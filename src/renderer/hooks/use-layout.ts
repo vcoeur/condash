@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createMemo, createSignal } from 'solid-js';
 import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
 import { getBootstrap } from '../bootstrap';
 
@@ -13,13 +13,27 @@ const DEFAULT_LAYOUT: LayoutState = {
   projectsWidth: 320,
 };
 
+/**
+ * Apply the modal auto-collapse mask to a persisted layout for display: while
+ * `autoCollapsed` the terminal reads as closed; otherwise the layout passes
+ * through by reference (so the display memo stays referentially stable). The
+ * input is never mutated, which is what keeps the collapse out of persistence —
+ * `updateLayout` reads the untouched persisted preference, not the masked view.
+ *
+ * @param base The persisted layout (the saved terminal preference).
+ * @param autoCollapsed Whether a modal is currently auto-collapsing the terminal.
+ * @returns The layout to display; `base` unchanged when not collapsed.
+ */
+export function maskTerminal(base: LayoutState, autoCollapsed: boolean): LayoutState {
+  return autoCollapsed ? { ...base, terminal: false } : base;
+}
+
 export interface UseLayoutDeps {
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
 export interface UseLayout {
   layout: () => LayoutState;
-  setLayoutState: (next: LayoutState) => void;
   /** Apply a layout patch and persist it. The persistence is fire-and-
    *  forget: any settings.json write failure surfaces as a toast but the
    *  UI state is the source of truth for the session. */
@@ -32,6 +46,11 @@ export interface UseLayout {
   toggleLeftView: (view: LeftView) => void;
   selectWorking: (next: WorkingSurface) => void;
   ensureTerminalOpen: () => void;
+  /** Set the ephemeral modal auto-collapse mask: `true` hides the terminal for
+   *  display only (the persisted preference is untouched), `false` reveals it.
+   *  Cleared by any user terminal toggle. Driven by the height-modal effect in
+   *  App so a doc/overlay reclaims the terminal's band while it is open. */
+  setTerminalAutoCollapsed: (collapsed: boolean) => void;
   /** Any of the three top-band panes is on — when all three are off only
    *  the Terminal renders and the top band collapses entirely. */
   topBandVisible: () => boolean;
@@ -53,17 +72,33 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   // Composite-layout state — replaces the prior single-`tab` selector.
   // Default mirrors the persisted server-side default until the real
   // value loads (avoids a frame of empty UI).
-  const [layout, setLayoutState] = createSignal<LayoutState>({ ...DEFAULT_LAYOUT });
+  // Persisted layout — the source of truth written to settings.json. Its
+  // `terminal` field is the user's saved preference; the modal auto-collapse
+  // never writes here (it toggles `autoCollapsed` below), so a transient
+  // collapse can never leak into persistence.
+  const [persisted, setPersisted] = createSignal<LayoutState>({ ...DEFAULT_LAYOUT });
+
+  // Ephemeral modal auto-collapse mask — true while a height-taking modal has
+  // collapsed the terminal. Display-only: it never persists, and any user
+  // terminal toggle (through `updateLayout`) clears it.
+  const [autoCollapsed, setAutoCollapsed] = createSignal(false);
+
+  // The layout every consumer reads: the persisted state with the terminal
+  // masked shut while the auto-collapse is active. Persistence reads `persisted`
+  // directly, so the mask is transparent to the UI yet invisible to settings.json.
+  const layout = createMemo<LayoutState>(() => maskTerminal(persisted(), autoCollapsed()));
 
   void getBootstrap()
     // Merge over the defaults so a layout persisted before a field existed
     // (e.g. `leftView`) is back-filled rather than landing as `undefined`.
-    .then((boot) => setLayoutState({ ...DEFAULT_LAYOUT, ...boot.layout }))
+    .then((boot) => setPersisted({ ...DEFAULT_LAYOUT, ...boot.layout }))
     .catch((err) => deps.flashToast(`Could not load layout: ${(err as Error).message}`, 'error'));
 
   const updateLayout = (patch: Partial<LayoutState>): void => {
-    const next = { ...layout(), ...patch };
-    setLayoutState(next);
+    // A user-intended terminal change supersedes an active modal auto-collapse.
+    if (patch.terminal !== undefined) setAutoCollapsed(false);
+    const next = { ...persisted(), ...patch };
+    setPersisted(next);
     void window.condash.setLayout(next).catch((err) => {
       deps.flashToast(`Could not persist layout: ${(err as Error).message}`, 'error');
     });
@@ -81,6 +116,9 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
+  };
+  const setTerminalAutoCollapsed = (collapsed: boolean): void => {
+    setAutoCollapsed(collapsed);
   };
 
   const topBandVisible = (): boolean => layout().projects || layout().working !== null;
@@ -132,13 +170,13 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
 
   return {
     layout,
-    setLayoutState,
     updateLayout,
     toggleProjects,
     toggleTerminal,
     toggleLeftView,
     selectWorking,
     ensureTerminalOpen,
+    setTerminalAutoCollapsed,
     topBandVisible,
     topBandStyle,
     startSplitterDrag,

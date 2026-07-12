@@ -23,6 +23,8 @@ Two ways:
 
 The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact. Code-pane Run buttons no longer auto-open the pane — output stays in the per-row CodeRunRow inside the Code pane.
 
+**Auto-collapse under modals.** Opening a document or full-screen overlay — a note, project preview, PDF / HTML / image / plan viewer, or the search / settings / shortcuts / help / about panels — auto-collapses the pane so the modal takes the full window height, and re-opens it when you close the last one. Toggle the pane yourself (the shortcut, the strip handle, or **View → Show Terminal**) while a modal is open to keep it visible — your choice stands until that modal closes, after which the next one collapses it again. Small confirmation dialogs (quit, force-stop) leave the pane alone. The collapse is display-only: your saved Show-Terminal preference in `settings.json` is never overwritten.
+
 ## Single-column by default; drag to split
 
 The pane starts as a single column. The right column materialises only when at least one tab lives there (created from the right strip's `+` button or dragged across from the left). During a tab drag, a **`Drop to split →`** zone appears on the right edge so you can promote single → split without first creating an empty right pane. Collapsing the last right tab returns to a single column.
