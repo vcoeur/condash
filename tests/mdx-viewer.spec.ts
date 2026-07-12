@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
 /**
- * End-to-end for the plan/review MDX viewer: a `.mdx` file opens in the
+ * End-to-end for the visual-note MDX viewer: a `.mdx` file opens in the
  * MdxModal (not the OS fallback), typed blocks render natively, validation
  * issues surface in the banner, a question-form's answer is written back into
  * the file, and the Source toggle shows highlighted MDX.

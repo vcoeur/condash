@@ -15,7 +15,8 @@
   padding: 16px;
 }
 
-/* Kind pill in the modal head (plan vs review). */
+/* Posture pill in the modal head (design / plan / review / note). The base
+   rule is the neutral `note` style, also used for any off-list value. */
 .plan-kind-pill {
   flex-shrink: 0;
   padding: 2px 8px;
@@ -26,13 +27,17 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
-.plan-kind-pill[data-kind='review'] {
-  border-color: var(--col-review);
-  color: var(--col-review);
+.plan-kind-pill[data-kind='design'] {
+  border-color: var(--col-soon);
+  color: var(--col-soon);
 }
 .plan-kind-pill[data-kind='plan'] {
   border-color: var(--accent);
   color: var(--accent);
+}
+.plan-kind-pill[data-kind='review'] {
+  border-color: var(--col-review);
+  color: var(--col-review);
 }
 
 /* Issues banner (parse/validation findings). */

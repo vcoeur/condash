@@ -12,7 +12,7 @@ import './mdx-modal-parts/plan-blocks.css';
 type MdxMode = 'rendered' | 'source';
 
 /**
- * In-app viewer for plan/review MDX documents (`.mdx` in a project's notes).
+ * In-app viewer for visual-note MDX documents (`.mdx` in a project's notes).
  * Rendered mode parses the file with the shared plan-block parser — the same
  * schemas `condash mdx check` validates — and renders each typed block
  * natively; parse/validation issues surface in a banner and invalid blocks
@@ -74,7 +74,10 @@ export function MdxModal(props: {
   };
   const kind = (): string => {
     const value = doc()?.frontmatter.kind;
-    return value === 'review' ? 'review' : 'plan';
+    // Show the literal posture (design/plan/review/note, or an off-list value);
+    // `note` is the neutral default. The pill CSS colors the known postures and
+    // falls back to a muted style for anything else.
+    return typeof value === 'string' && value !== '' ? value : 'note';
   };
   const errors = () => (doc()?.issues ?? []).filter((i) => i.severity === 'error');
   const warnings = () => (doc()?.issues ?? []).filter((i) => i.severity === 'warning');

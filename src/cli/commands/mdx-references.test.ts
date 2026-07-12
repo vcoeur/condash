@@ -7,8 +7,7 @@ import { renderBlocksDoc } from '../../shared/plan-blocks/blocks-doc';
  * Drift guard for the `/visual` skill's shipped block vocabulary:
  * `visual/blocks.md` is exactly `renderBlocksDoc()` output, so the registry
  * (parser + viewer + CLI) and the authored skill text can never disagree about
- * the vocabulary. `/visual-plan` and `/visual-review` reference this one copy
- * rather than each shipping their own. Regenerate with
+ * the vocabulary. Regenerate with
  * `condash mdx blocks > conception-template/.agents/skills/visual/blocks.md`.
  */
 describe('visual skill shipped references', () => {
