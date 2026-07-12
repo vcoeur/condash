@@ -206,24 +206,6 @@ export function IconExternal() {
   );
 }
 
-// Plus — used for the "+ New project" / "+ Add note" affordances. Same
-// stroke-weight as IconClose so the two read as a pair.
-export function IconPlus() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3.5v9M3.5 8h9" />
-    </svg>
-  );
-}
-
 // Folder — tabbed silhouette with a soft duotone fill. The "open in file
 // manager" entry uses this in the open_with menu, replacing the standalone
 // 📁 button on the card face.

@@ -1,14 +1,6 @@
-import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
+import type { Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { countSteps } from '@shared/projects';
-
-export const MARKER_LABEL: Record<StepMarker, string> = {
-  ' ': 'todo',
-  '~': 'doing',
-  x: 'done',
-  '!': 'blocked',
-  '-': 'dropped',
-};
 
 /** Click-toggle cycle for the in-card step button. Skips `!` (blocked) on
  * purpose — that state is set deliberately when the work is stuck, not
@@ -95,15 +87,6 @@ export function lastDate(p: Project): string {
     return max;
   }
   return slugDate(p.slug);
-}
-
-/** Render the first/last range as a single date when they coincide, an
- * en-dash range otherwise. Drives both the card meta row and the popup
- * Timeline pane's collapsed header. */
-export function dateRangeLabel(p: Project): string {
-  const first = firstDate(p);
-  const last = lastDate(p);
-  return first === last ? first : `${first} – ${last}`;
 }
 
 export function todayIso(): string {
@@ -200,20 +183,6 @@ export function applyStatus(items: Project[], path: string, status: string): Pro
   return items.map((p) => (p.path === path ? { ...p, status } : p));
 }
 
-export function hasSteps(c: StepCounts): boolean {
-  return c.todo + c.doing + c.done + c.blocked + c.dropped > 0;
-}
-
-/** True when no step is still open (todo, doing, or blocked). Resolved-by-drop
- * counts as "done enough" to dim the expander — the bar reaches 100%
- * the moment every step has been decided one way or the other. Blocked
- * steps keep the project incomplete because they're surfacing a problem
- * that still needs a decision. */
-export function isStepCountsComplete(c: StepCounts): boolean {
-  const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
-  return total > 0 && c.todo === 0 && c.doing === 0 && c.blocked === 0;
-}
-
 /** First *actionable* step — skips both `x` (done) and `-` (dropped/abandoned),
  * matching how `countSteps` treats `-` as settled. Returns undefined if every
  * step has been decided one way or the other. */
@@ -276,12 +245,4 @@ export function projectsTabGroups(
   const unknown = buckets.get(UNKNOWN) ?? [];
   if (unknown.length > 0) out.push(reuseOrBuild(UNKNOWN, unknown));
   return out;
-}
-
-export function markerClass(m: StepMarker): string {
-  if (m === ' ') return 'todo';
-  if (m === '~') return 'doing';
-  if (m === 'x') return 'done';
-  if (m === '!') return 'blocked';
-  return 'dropped';
 }
