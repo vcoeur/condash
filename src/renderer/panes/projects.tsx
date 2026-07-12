@@ -18,7 +18,6 @@ import { ActionDropdownButton } from '../action-dropdown-button';
 export {
   applyStatus,
   applyStepMarker,
-  dateRangeLabel,
   firstDate,
   groupByStatus,
   groupDone,
