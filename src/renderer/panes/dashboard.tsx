@@ -62,7 +62,11 @@ interface Crumb {
  * Self-contained — subscribes to the engine's pushed state and seeds from the
  * last snapshot on mount.
  */
-export function DashboardView() {
+export function DashboardView(props: {
+  /** Jump to the terminal tab a card summarizes (its `sid`). When set, each
+   *  card becomes a button that activates that tab and shows the terminal band. */
+  onOpenTab?: (sid: string) => void;
+}) {
   const [state, setState] = createSignal<DashboardState | null>(null);
   const [config, setConfig] = createSignal<DashboardConfigView | null>(null);
   // Local 1s clock so relative ages ("3m") and the pending next-attempt hint
@@ -110,12 +114,38 @@ export function DashboardView() {
         class="dashboard-tab-refresh"
         title="Re-summarize this tab now"
         disabled={summarizingSids().has(sid)}
-        onClick={() => refreshCard(sid)}
+        // stopPropagation: keep the card's open-tab click from also firing.
+        onClick={(e) => {
+          e.stopPropagation();
+          refreshCard(sid);
+        }}
       >
         Update
       </button>
     </Show>
   );
+
+  // Whole-card affordance: a card is a link to the terminal tab it summarizes.
+  // Only wired when the host passes `onOpenTab`; inner controls (crumb links,
+  // the Update button) stopPropagation so they keep their own action.
+  const cardClickProps = (sid: string) =>
+    props.onOpenTab
+      ? {
+          role: 'button' as const,
+          tabindex: 0,
+          title: 'Open this terminal tab',
+          onClick: () => props.onOpenTab!(sid),
+          // Guard on target === currentTarget so Enter/Space on an inner button
+          // (crumb / Update) doesn't also open the tab via the bubbled keydown.
+          onKeyDown: (e: KeyboardEvent & { currentTarget: HTMLElement; target: Element }) => {
+            if (e.currentTarget !== e.target) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              props.onOpenTab!(sid);
+            }
+          },
+        }
+      : {};
 
   // Cross-tab state tally for the top line — counted over the live summarized
   // tabs (state().tabs holds only still-open ones). Memoised: the top line reads
@@ -342,7 +372,12 @@ export function DashboardView() {
                 fallback={
                   // No summary yet: the tab stays visible, drawn from its
                   // command/cwd, with the engine's next-attempt hint.
-                  <li class="dashboard-card dashboard-card-pending" data-state="pending">
+                  <li
+                    class="dashboard-card dashboard-card-pending"
+                    classList={{ 'is-openable': !!props.onOpenTab }}
+                    data-state="pending"
+                    {...cardClickProps(card.tab.sid)}
+                  >
                     <div class="dashboard-card-head">
                       <span class="dashboard-card-dot" title="Starting" />
                       <span class="dashboard-card-head-right">
@@ -375,7 +410,12 @@ export function DashboardView() {
                 }
               >
                 {(summary) => (
-                  <li class="dashboard-card" data-state={summary().state}>
+                  <li
+                    class="dashboard-card"
+                    classList={{ 'is-openable': !!props.onOpenTab }}
+                    data-state={summary().state}
+                    {...cardClickProps(summary().sid)}
+                  >
                     <div class="dashboard-card-head">
                       <span
                         class="dashboard-card-dot"
@@ -435,7 +475,12 @@ export function DashboardView() {
                                   class="dashboard-card-crumb is-clickable"
                                   classList={{ 'is-mono': !!crumb.mono }}
                                   title={crumb.full ?? crumb.text}
-                                  onClick={() => crumb.onClick?.()}
+                                  // stopPropagation: a crumb opens its own target
+                                  // (app / worktree / project), not the tab.
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    crumb.onClick?.();
+                                  }}
                                 >
                                   {crumb.text}
                                   <Show when={crumb.extra}>

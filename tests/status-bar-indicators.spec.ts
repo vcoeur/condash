@@ -29,6 +29,12 @@ test('status bar shows live auto-sync + shipped-skills indicators', async () => 
     const popover = booted.window.locator('.status-commits');
     await expect(popover).toBeVisible();
     await expect(popover.getByText('No commits yet.')).toBeVisible();
+
+    // The popover must be portalled OUT of the status bar. The status bar has a
+    // `backdrop-filter`, which creates a stacking context that would trap the
+    // popover's z-index below the workspace and paint it *behind* the code
+    // cards. Portalling to the document body is the fix — assert it escaped.
+    expect(await popover.evaluate((el) => el.closest('.status-bar') === null)).toBe(true);
   } finally {
     await booted.cleanup();
   }

@@ -13,6 +13,7 @@
  * they stay live without owning any engine state.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { AutoSyncStatus, SkillsSyncStatus, SyncStatusSnapshot } from '@shared/types';
 import { createPositionedPopover } from './popover';
 import { Button } from './actions';
@@ -246,54 +247,60 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
       </span>
 
       <Show when={popover.open()}>
-        <div
-          ref={popRef}
-          class="status-commits"
-          style={{
-            top: `${popover.anchor()?.top ?? 0}px`,
-            left: `${popover.anchor()?.left ?? 0}px`,
-          }}
-          role="dialog"
-          aria-label="Recent commits"
-        >
-          <div class="status-commits-head">
-            <span>Recent commits</span>
-            <Button
-              type="button"
-              variant="default"
-              disabled={busy()}
-              onClick={() => void syncNow()}
-            >
-              {busy() ? 'Syncing…' : 'Sync now'}
-            </Button>
-          </div>
-          <Show
-            when={recentCommits().length > 0}
-            fallback={<div class="status-commits-empty">No commits yet.</div>}
+        {/* Portalled to the document body so it escapes the status-bar's
+            backdrop-filter stacking context — otherwise its z-index is
+            trapped below the workspace and the popover renders behind the
+            code cards. Same pattern as action-dropdown-button / branch-actions. */}
+        <Portal>
+          <div
+            ref={popRef}
+            class="status-commits"
+            style={{
+              top: `${popover.anchor()?.top ?? 0}px`,
+              left: `${popover.anchor()?.left ?? 0}px`,
+            }}
+            role="dialog"
+            aria-label="Recent commits"
           >
-            <ul class="status-commits-list">
-              <For each={recentCommits()}>
-                {(commit) => (
-                  <li
-                    class="status-commit"
-                    classList={{ 'status-commit--unpushed': !commit.pushed }}
-                  >
-                    <code class="status-commit-sha">{commit.sha}</code>
-                    <span class="status-commit-subject" title={commit.subject}>
-                      {commit.subject}
-                    </span>
-                    <span class="status-commit-meta">
-                      <Show when={!commit.pushed}>
-                        <span class="status-commit-tag">unpushed</span>
-                      </Show>
-                      {commit.relativeTime}
-                    </span>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
-        </div>
+            <div class="status-commits-head">
+              <span>Recent commits</span>
+              <Button
+                type="button"
+                variant="default"
+                disabled={busy()}
+                onClick={() => void syncNow()}
+              >
+                {busy() ? 'Syncing…' : 'Sync now'}
+              </Button>
+            </div>
+            <Show
+              when={recentCommits().length > 0}
+              fallback={<div class="status-commits-empty">No commits yet.</div>}
+            >
+              <ul class="status-commits-list">
+                <For each={recentCommits()}>
+                  {(commit) => (
+                    <li
+                      class="status-commit"
+                      classList={{ 'status-commit--unpushed': !commit.pushed }}
+                    >
+                      <code class="status-commit-sha">{commit.sha}</code>
+                      <span class="status-commit-subject" title={commit.subject}>
+                        {commit.subject}
+                      </span>
+                      <span class="status-commit-meta">
+                        <Show when={!commit.pushed}>
+                          <span class="status-commit-tag">unpushed</span>
+                        </Show>
+                        {commit.relativeTime}
+                      </span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </div>
+        </Portal>
       </Show>
     </>
   );

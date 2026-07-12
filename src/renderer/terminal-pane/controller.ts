@@ -966,6 +966,20 @@ export function createTerminalController(props: TerminalPaneProps) {
     paneSection = el;
   };
 
+  /** Activate the tab that owns session `id`, focusing its terminal — used by
+   *  the Dashboard to jump from a tab card to its terminal. Only `my`-side tabs
+   *  live in this pane (the dashboard roster is `my`-side only), so a miss just
+   *  means the tab closed between the roster push and the click; returns whether
+   *  a tab was found so the caller can skip the band swap on a stale card. */
+  const activateSession = (id: string): boolean => {
+    const tab = tabs().find((t) => t.side === 'my' && t.id === id);
+    if (!tab) return false;
+    setActiveColumn(tab.column);
+    setActiveIn(tab.column, id);
+    queueMicrotask(focusActive);
+    return true;
+  };
+
   return {
     tabsIn,
     activeIdIn,
@@ -973,6 +987,7 @@ export function createTerminalController(props: TerminalPaneProps) {
     renamingId,
     setActiveColumn,
     setActiveIn,
+    activateSession,
     setRenamingId,
     commitRename,
     closeTab,
