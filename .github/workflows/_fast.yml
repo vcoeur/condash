@@ -1,9 +1,9 @@
 name: _fast
 
-# Reusable fast lane: format-check + typecheck + build + vitest. Target
-# ≤ 90 s wall-clock. Called by ci.yml (every PR + every push to main) and
-# by release.yml (first stage of the real gate at tag time). Never
-# publishes anything.
+# Reusable fast lane: format-check + typecheck + build + vitest + knip
+# dead-code check. Target ≤ 90 s wall-clock. Called by ci.yml (every PR +
+# every push to main) and by release.yml (first stage of the real gate at
+# tag time). Never publishes anything.
 
 on:
   workflow_call:
@@ -66,8 +66,9 @@ jobs:
       - name: Vitest unit suite
         run: npx vitest run
 
-      # Dead-code / over-export guard (knip). Fails on dead files, dead /
-      # unlisted / unresolved deps, and duplicate exports; the pre-existing
-      # unused-export backlog is graded `warn` in knip.json and does not fail.
+      # Dead-code / over-export guard (knip). Per knip.json most rules are
+      # graded `error` and fail the lane: dead files, unused exports/types,
+      # dead / unlisted / unresolved deps, and duplicate exports. Only the
+      # namespace/enum/class-member checks are `warn` (reported, non-fatal).
       - name: Dead-code check
         run: npx knip
