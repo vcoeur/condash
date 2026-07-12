@@ -42,3 +42,7 @@ The **sweeper** — timer-driven `condash sync run` — is the conception's **on
 ## Specifics
 
 Conception-specific content lives here, below the marker. condash never reads or rewrites it.
+
+### Notes
+
+Notes live in `notes/` as flat files: `NN-<descriptive-slug>.md` or `NN-<descriptive-slug>.mdx`. When a note needs supporting files, place them in `notes/NN-<slug>/` (directory named after the note without extension). Keep the item root flat: `README.md` is the only file allowed at the project folder root.

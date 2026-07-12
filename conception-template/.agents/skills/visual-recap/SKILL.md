@@ -50,14 +50,15 @@ latest fix.
 
 ## Where the recap lives
 
-Same conventions as `/visual-plan`: `notes/NN-<slug>/plan.mdx` in the project
+Same conventions as `/visual-plan`: `notes/NN-<slug>.mdx` in the project
 item, frontmatter `kind: recap`, indexed in the README `## Notes`, a
 `## Deliverables` entry when designated, and a dated timeline entry. Validate
-with `condash plans check <item>/notes/NN-<slug>` before handing off — a green
+with `condash plans check <item>/notes/NN-<slug>.mdx` before handing off — a green
 check means every block parses and matches the viewer's schemas, but it does
 not prove each block has visible content (an unfolded diagram or an empty
 `code` still passes, with a warning). Read the `plans check` warnings and open
-the recap in the viewer once before hand-off.
+the recap in the viewer once before hand-off. If the recap needs supporting
+files, place them in `notes/NN-<slug>/`.
 
 ```yaml
 ---
@@ -93,7 +94,7 @@ objective, a real compatibility risk, a decision visible in the diff.
 
 ## Diff → block mapping
 
-Read `references/blocks.md` for exact tags and props (regenerate with
+Read `blocks.md` for exact tags and props (regenerate with
 `condash plans blocks`); never author from memory.
 
 - **Schema / migration change** → `data-model` with per-field
@@ -120,7 +121,7 @@ Read `references/blocks.md` for exact tags and props (regenerate with
 - **Rendered UI / interaction change** → wireframe blocks showing the visible
   delta BEFORE the reader reaches code: `columns` with `Before`/`After`
   labels when comparison clarifies, after-only when purely additive, a state
-  sequence for flows. Read `references/wireframe.md` first — always.
+  sequence for flows. Read `wireframe.md` first — always.
 - **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
   primitives) as before/after panels or layers, or `mermaid` for a quick
   graph. Never use a diagram as a stand-in for rendered UI.
@@ -153,8 +154,8 @@ caption, and note.
 
 | File | Read before |
 |---|---|
-| `references/blocks.md` | authoring any structured block |
-| `references/wireframe.md` | authoring ANY wireframe / `<Screen>` |
+| `blocks.md` | authoring any structured block |
+| `wireframe.md` | authoring ANY wireframe / `<Screen>` |
 
 Related: `/visual-plan` is the forward direction and carries the shared
 document-quality and exemplar references. Adapted from Builder.io's

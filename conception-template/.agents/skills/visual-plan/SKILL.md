@@ -32,10 +32,10 @@ sentence. Never pad a plan with filler and never ship a single-step plan.
 
 1. The plan belongs to a project item. If none exists, create one first
    (`/projects create`).
-2. Author the document at `notes/NN-<slug>/plan.mdx` inside the item — `NN`
-   is the next free note number, exactly like any other note. The folder
-   leaves room for future sibling files; today `plan.mdx` is the document.
-3. Index it in the README's `## Notes` (`- [NN — <label>](notes/NN-<slug>/plan.mdx)`),
+2. Author the document at `notes/NN-<slug>.mdx` inside the item — `NN`
+   is the next free note number, exactly like any other note. If the plan
+   needs supporting files, place them in `notes/NN-<slug>/`.
+3. Index it in the README's `## Notes` (`- [NN — <label>](notes/NN-<slug>.mdx)`),
    reference it from the step line as `— see note NN`, and add a
    `## Deliverables` entry when the plan is a designated output — the
    Deliverables pane then opens it in the plan viewer.
@@ -62,18 +62,18 @@ kind: plan
    get those right in the plan even if most of the feature ships later. Scope
    to the smallest first cut that proves the approach, stating what is in and
    what is explicitly deferred.
-3. **Read `references/blocks.md`** (or run `condash plans blocks`) before
+3. **Read `blocks.md`** (or run `condash plans blocks`) before
    authoring any structured block — never author tags from memory. Read
-   `references/document-quality.md` for the document bar and
-   `references/wireframe.md` before ANY wireframe. For `diff` / `annotated-code`
-   (and the code nested in a `tabs` block), paste the real file text and encode
-   multi-line code as JSON strings — do not retype code from memory.
+   `document-quality.md` for the document bar and `wireframe.md` before
+   ANY wireframe. For `diff` / `annotated-code` (and the code nested in a
+   `tabs` block), paste the real file text and encode multi-line code as
+   JSON strings — do not retype code from memory.
 4. **Write the document.** Ordinary markdown between blocks imports as prose;
    put each structured block where the prose discusses it. UI plans lead with
    the wireframe story near the top (entry surface → changed interaction →
    resulting state); architecture plans lead with a concrete example, then
    diagrams beside the claims they support.
-5. **Validate:** `condash plans check <item>/notes/NN-<slug>` must be green —
+5. **Validate:** `condash plans check <item>/notes/NN-<slug>.mdx` must be green —
    it validates the same schemas the viewer renders, so a green check means the
    document parses and matches the viewer. It does not prove each block has
    visible content — `plans check` warns on an empty diagram / code / wireframe
@@ -130,10 +130,10 @@ kind: plan
 
 | File | Read before |
 |---|---|
-| `references/blocks.md` | authoring any structured block (the vocabulary; regenerate with `condash plans blocks`) |
-| `references/wireframe.md` | authoring ANY wireframe / `<Screen>` — the quality bar |
-| `references/document-quality.md` | writing the plan document — block choice, open questions, altitude |
-| `references/exemplar.md` | a worked good/bad example of the bar |
+| `blocks.md` | authoring any structured block (the vocabulary; regenerate with `condash plans blocks`) |
+| `wireframe.md` | authoring ANY wireframe / `<Screen>` — the quality bar |
+| `document-quality.md` | writing the plan document — block choice, open questions, altitude |
+| `exemplar.md` | a worked good/bad example of the bar |
 
 Related: `/visual-recap` builds the same document backwards from a landed
 diff. Adapted from Builder.io's visual-plan skill (MIT).
