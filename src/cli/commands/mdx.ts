@@ -7,8 +7,8 @@ import { renderHelp, runNoun } from '../help';
 import type { PlanIssue } from '../../shared/plan-blocks/schemas';
 
 /**
- * `condash plans` — the CLI side of plan/recap MDX documents (the artifacts
- * the `visual-plan` / `visual-recap` skills author into a project item's
+ * `condash mdx` — the CLI side of plan/review MDX documents (the artifacts
+ * the `visual-plan` / `visual-review` skills author into a project item's
  * `notes/NN-<slug>/plan.mdx`).
  *
  *   - `check <path>`  validate a plan.mdx (or a folder holding one) against
@@ -18,7 +18,7 @@ import type { PlanIssue } from '../../shared/plan-blocks/schemas';
  *     registry (the same content the visual-plan skill ships as
  *     `references/blocks.md`).
  */
-export async function runPlans(
+export async function runMdx(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
@@ -26,7 +26,7 @@ export async function runPlans(
   universalHelp: boolean,
 ): Promise<void> {
   await runNoun(
-    'plans',
+    'mdx',
     verb,
     args,
     {
@@ -42,21 +42,21 @@ function printHelp(verb: string | null): void {
   const lines: string[] = [];
   if (verb === 'check') {
     lines.push(
-      'Usage: condash plans check <path>',
+      'Usage: condash mdx check <path>',
       '',
-      'Validate a plan/recap MDX document. <path> is a .mdx file or a folder',
+      'Validate a plan/review MDX document. <path> is a .mdx file or a folder',
       'containing plan.mdx, absolute or relative to the current directory.',
       'Errors exit 3 (validation) with per-issue lines and line numbers.',
     );
   } else if (verb === 'blocks') {
     lines.push(
-      'Usage: condash plans blocks',
+      'Usage: condash mdx blocks',
       '',
       'Print the plan block vocabulary reference (generated from the registry).',
     );
   } else {
     lines.push(
-      'Usage: condash plans <verb>',
+      'Usage: condash mdx <verb>',
       '',
       'Verbs:',
       '  check <path>   Validate a plan.mdx (or folder) against the block schemas.',
@@ -83,7 +83,7 @@ async function runCheck(
   assertNoExtraFlags(args);
   const target = args.positional[0];
   if (!target) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash plans check <path>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash mdx check <path>');
   }
 
   const { filePath, warnings } = await resolvePlanFile(target, conceptionPath);
@@ -102,7 +102,7 @@ async function runCheck(
   if (doc.frontmatter.kind === undefined) {
     issues.push({
       severity: 'warning',
-      message: 'frontmatter has no `kind` — set `kind: plan` or `kind: recap`',
+      message: 'frontmatter has no `kind` — set `kind: plan` or `kind: review`',
       line: 1,
     });
   }

@@ -2,7 +2,7 @@
 
 This file is the canonical quality bar for HTML wireframes / `<Screen>` /
 `WireframeBlock` content, shared word for word by `/visual-plan` and
-`/visual-recap` (a condash test pins the two copies identical). Read it in
+`/visual-review` (a condash test pins the two copies identical). Read it in
 full before authoring ANY wireframe; do not author wireframes from memory.
 
 **A wireframe is an HTML mockup. The viewer owns the look; you write the
@@ -19,7 +19,7 @@ screen (`<Screen surface="…"> … </Screen>`) and place the fragment in an `ht
 code fence, with an optional `css` fence beside it, exactly as `<Diagram>` does.
 Fenced children need no newline/quote escaping, so paste real multi-line HTML
 and let condash fold it into the screen. Both forms validate identically, and
-`condash plans check` warns when a screen carries no html at all.
+`condash mdx check` warns when a screen carries no html at all.
 
 **Write PLAIN semantic HTML and let the viewer style it.** Bare elements
 (`h1`/`h2`/`h3`, `p`, `button`, `input`, `<input type="checkbox">`, `a`,

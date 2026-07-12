@@ -1,7 +1,7 @@
 import type { CodeAnnotation, FileTreeEntry, KitNode } from '@shared/plan-blocks/schemas';
 
 /**
- * Pure logic for the plan/recap viewer blocks: line-range parsing, diff row
+ * Pure logic for the plan/review viewer blocks: line-range parsing, diff row
  * pairing, file-tree building, legacy kit-tree → HTML mapping, and CSS
  * scoping. No DOM, no Solid, no heavy deps — tested in `data.test.ts`.
  */

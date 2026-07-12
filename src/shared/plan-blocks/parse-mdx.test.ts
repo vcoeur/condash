@@ -33,6 +33,14 @@ describe('parsePlanMdx', () => {
     expect(doc.blocks[1].id).toBe('d1');
   });
 
+  it('normalizes a deprecated `recap` kind to `review` with a warning', () => {
+    const doc = parsePlanMdx(['---', 'kind: recap', '---', '', 'x', ''].join('\n'));
+    expect(doc.frontmatter.kind).toBe('review');
+    expect(doc.issues.some((i) => i.severity === 'warning' && i.message.includes('recap'))).toBe(
+      true,
+    );
+  });
+
   it('folds markdown children into callout body and endpoint description', () => {
     const doc = parsePlanMdx(
       [

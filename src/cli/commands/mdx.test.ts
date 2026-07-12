@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runPlans } from './plans';
+import { runMdx } from './mdx';
 import { CliError, ExitCodes } from '../output';
 import type { ParsedArgs } from '../parser';
 import {
@@ -13,7 +13,7 @@ import {
 } from './test-helpers';
 
 function args(positional: string[], flags: Record<string, string | boolean> = {}): ParsedArgs {
-  return { noun: 'plans', verb: null, positional, flags } as unknown as ParsedArgs;
+  return { noun: 'mdx', verb: null, positional, flags } as unknown as ParsedArgs;
 }
 
 const VALID_PLAN = [
@@ -30,7 +30,7 @@ const VALID_PLAN = [
   '',
 ].join('\n');
 
-describe('plans check', () => {
+describe('mdx check', () => {
   let conceptionPath: string;
   let planDir: string;
 
@@ -46,7 +46,7 @@ describe('plans check', () => {
   it('passes a valid plan.mdx given the folder', async () => {
     await fs.writeFile(join(planDir, 'plan.mdx'), VALID_PLAN, 'utf8');
     const { stdout, threw } = await captureStdout(() =>
-      runPlans('check', args([planDir]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([planDir]), jsonCtx(), conceptionPath, false),
     );
     expect(threw).toBeUndefined();
     const envelope = parseJsonEnvelope<{ blocks: number; kind: string }>(stdout);
@@ -59,7 +59,7 @@ describe('plans check', () => {
     const file = join(planDir, 'plan.mdx');
     await fs.writeFile(file, '# hi\n\n<Code id="c" code={"x"} />\n', 'utf8');
     const { stdout, threw } = await captureStdout(() =>
-      runPlans('check', args([file]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([file]), jsonCtx(), conceptionPath, false),
     );
     expect(threw).toBeUndefined();
     const envelope = parseJsonEnvelope<{ warnings: { message: string }[] }>(stdout);
@@ -69,7 +69,7 @@ describe('plans check', () => {
   it('exits VALIDATION with the report on block errors', async () => {
     await fs.writeFile(join(planDir, 'plan.mdx'), '<Bogus id="b" />\n', 'utf8');
     const { threw } = await captureStdout(() =>
-      runPlans('check', args([planDir]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([planDir]), jsonCtx(), conceptionPath, false),
     );
     expect(threw).toBeInstanceOf(CliError);
     const err = threw as CliError;
@@ -82,7 +82,7 @@ describe('plans check', () => {
     await fs.writeFile(join(planDir, 'plan.mdx'), VALID_PLAN, 'utf8');
     await fs.writeFile(join(planDir, 'canvas.mdx'), '<DesignBoard />\n', 'utf8');
     const { stdout } = await captureStdout(() =>
-      runPlans('check', args([planDir]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([planDir]), jsonCtx(), conceptionPath, false),
     );
     const envelope = parseJsonEnvelope(stdout);
     expect(envelope.warnings?.some((w) => w.includes('canvas.mdx'))).toBe(true);
@@ -90,14 +90,14 @@ describe('plans check', () => {
 
   it('NOT_FOUND for a missing path and USAGE for a non-mdx file', async () => {
     const missing = await captureStdout(() =>
-      runPlans('check', args([join(planDir, 'nope')]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([join(planDir, 'nope')]), jsonCtx(), conceptionPath, false),
     );
     expect((missing.threw as CliError).exitCode).toBe(ExitCodes.NOT_FOUND);
 
     const txt = join(planDir, 'a.txt');
     await fs.writeFile(txt, 'x', 'utf8');
     const wrongExt = await captureStdout(() =>
-      runPlans('check', args([txt]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([txt]), jsonCtx(), conceptionPath, false),
     );
     expect((wrongExt.threw as CliError).exitCode).toBe(ExitCodes.USAGE);
   });
@@ -106,17 +106,17 @@ describe('plans check', () => {
     await fs.writeFile(join(planDir, 'plan.mdx'), VALID_PLAN, 'utf8');
     const rel = 'projects/2026-07/2026-07-12-x/notes/01-plan';
     const { stdout, threw } = await captureStdout(() =>
-      runPlans('check', args([rel]), jsonCtx(), conceptionPath, false),
+      runMdx('check', args([rel]), jsonCtx(), conceptionPath, false),
     );
     expect(threw).toBeUndefined();
     expect(parseJsonEnvelope(stdout).ok).toBe(true);
   });
 });
 
-describe('plans blocks', () => {
+describe('mdx blocks', () => {
   it('prints the registry-generated reference', async () => {
     const { stdout, threw } = await captureStdout(() =>
-      runPlans('blocks', args([]), jsonCtx(), '/nonexistent', false),
+      runMdx('blocks', args([]), jsonCtx(), '/nonexistent', false),
     );
     expect(threw).toBeUndefined();
     const envelope = parseJsonEnvelope<{ markdown: string }>(stdout);

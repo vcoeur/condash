@@ -1,7 +1,7 @@
 # Plan block vocabulary
 
-Generated from the condash block registry (`condash plans blocks`) — do not hand-edit.
-Author against these tags; `condash plans check <path>` validates the same schemas the
+Generated from the condash block registry (`condash mdx blocks`) — do not hand-edit.
+Author against these tags; `condash mdx check <path>` validates the same schemas the
 in-app viewer renders, so a green check is exactly what condash can display.
 
 | type | MDX tag | key data fields | description |

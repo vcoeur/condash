@@ -30,7 +30,7 @@ app-specific adapters and examples; label examples as examples unless they
 are the whole requested scope.
 
 **Use the right block, and make it carry substance.** The authoritative
-vocabulary is `blocks.md` (`condash plans blocks`); highlights:
+vocabulary is `blocks.md` (`condash mdx blocks`); highlights:
 
 - Prose for the plan narrative — ordinary markdown between blocks.
 - `annotated-code` for the file map: when a load-bearing file is worth
@@ -75,7 +75,7 @@ rationale or in the form with a recommended default.
 the plan changes UI, files, or multi-app flows: at least one end-to-end smoke
 matching the user journey, naming the command or manual path when known.
 
-**Before handoff, open the plan in condash and check it.** `condash plans
+**Before handoff, open the plan in condash and check it.** `condash mdx
 check` must be green, and the rendered document must read cleanly: no
 overlap, no clipped fragments, wireframes correct in the current theme (dark
 especially — hard-coded light colors are defects; use `--wf-*` tokens).

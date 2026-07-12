@@ -1,4 +1,4 @@
-/* ---- Plan/recap block rendering ----------------------------------------
+/* ---- Plan/review block rendering ----------------------------------------
  *
  * `.plan-doc` scopes every block style and maps the dialect's `--wf-*` color
  * tokens onto condash's own theme variables, so author-supplied wireframe /

@@ -21,7 +21,7 @@ import {
 } from './schemas';
 
 /**
- * Parse a plan/recap MDX document into its block list — MDX as DATA, never as
+ * Parse a plan/review MDX document into its block list — MDX as DATA, never as
  * code. The official MDX grammar (micromark mdxjs extension) produces the
  * tree; attribute expressions are reduced with the static-literal evaluator;
  * each block's data is validated against its zod schema. Failures are
@@ -85,11 +85,21 @@ function splitFrontmatter(
     const parsed: unknown = parseYaml(match[1]);
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
       frontmatter = parsed as PlanFrontmatter;
-      const kind = frontmatter.kind;
-      if (kind !== undefined && kind !== 'plan' && kind !== 'recap') {
+      const kind: string | undefined = frontmatter.kind;
+      if (kind === 'recap') {
+        // Back-compat: `recap` was renamed to `review` in v4.81.0. Accept it
+        // for one release — warn and normalize so the rest of the app (viewer
+        // pill, CLI report) only ever sees `review`.
         issues.push({
           severity: 'warning',
-          message: `frontmatter kind should be "plan" or "recap" (got ${JSON.stringify(kind)})`,
+          message: 'frontmatter kind "recap" is deprecated — use "review"',
+          line: 1,
+        });
+        frontmatter.kind = 'review';
+      } else if (kind !== undefined && kind !== 'plan' && kind !== 'review') {
+        issues.push({
+          severity: 'warning',
+          message: `frontmatter kind should be "plan" or "review" (got ${JSON.stringify(kind)})`,
           line: 1,
         });
       }
@@ -170,7 +180,7 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
   if (!spec) {
     state.issues.push({
       severity: 'error',
-      message: `unknown block tag <${tag}> — run \`condash plans blocks\` for the vocabulary`,
+      message: `unknown block tag <${tag}> — run \`condash mdx blocks\` for the vocabulary`,
       line,
     });
     return invalidBlock(state, tag, `unknown block tag <${tag}>`, sliceOf(el, state));
@@ -382,7 +392,7 @@ function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>)
  * (`diagram.html`, `code`, `diff.before/after`, `file-tree.entries`) are
  * optional or unbounded, so a green schema check does not verify that anything
  * renders. Return a warning message for a block that would render blank, or
- * null. Surfaced in the viewer banner and by `condash plans check` so authors
+ * null. Surfaced in the viewer banner and by `condash mdx check` so authors
  * catch an unfolded diagram or an empty code attribute before hand-off.
  */
 function emptyPayloadMessage(type: string, data: Record<string, unknown>): string | null {

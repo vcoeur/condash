@@ -514,10 +514,10 @@ export interface PlanIssue {
   line?: number;
 }
 
-/** Frontmatter of a plan/recap document. Extra keys pass through untouched. */
+/** Frontmatter of a plan/review document. Extra keys pass through untouched. */
 export interface PlanFrontmatter {
   title?: string;
-  kind?: 'plan' | 'recap';
+  kind?: 'plan' | 'review';
   [key: string]: unknown;
 }
 

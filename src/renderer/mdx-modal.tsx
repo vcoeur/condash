@@ -11,9 +11,9 @@ import './mdx-modal-parts/plan-blocks.css';
 type MdxMode = 'rendered' | 'source';
 
 /**
- * In-app viewer for plan/recap MDX documents (`.mdx` in a project's notes).
+ * In-app viewer for plan/review MDX documents (`.mdx` in a project's notes).
  * Rendered mode parses the file with the shared plan-block parser — the same
- * schemas `condash plans check` validates — and renders each typed block
+ * schemas `condash mdx check` validates — and renders each typed block
  * natively; parse/validation issues surface in a banner and invalid blocks
  * render as labeled placeholders instead of blanking the document. Source
  * mode shows the highlighted MDX, and is the automatic fallback when the
@@ -52,7 +52,7 @@ export function MdxModal(props: {
   };
   const kind = (): string => {
     const value = doc()?.frontmatter.kind;
-    return value === 'recap' ? 'recap' : 'plan';
+    return value === 'review' ? 'review' : 'plan';
   };
   const errors = () => (doc()?.issues ?? []).filter((i) => i.severity === 'error');
   const warnings = () => (doc()?.issues ?? []).filter((i) => i.severity === 'warning');
@@ -149,7 +149,7 @@ export function MdxModal(props: {
               {errors().length > 0 ? `${errors().length} error(s)` : ''}
               {errors().length > 0 && warnings().length > 0 ? ' · ' : ''}
               {warnings().length > 0 ? `${warnings().length} warning(s)` : ''}
-              <span class="plan-muted"> — condash plans check</span>
+              <span class="plan-muted"> — condash mdx check</span>
             </button>
             <Show when={issuesOpen()}>
               <ul>

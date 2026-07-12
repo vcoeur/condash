@@ -23,6 +23,7 @@ import { runLogs } from './commands/logs';
 import { runSync } from './commands/sync';
 import { runSkills } from './commands/skills';
 import { runConfig } from './commands/config';
+import { runMdx } from './commands/mdx';
 import { ALL_AUDIT_CHECKS } from './commands/audit';
 
 function emptyArgs(noun: string): ParsedArgs {
@@ -84,6 +85,7 @@ const NOUN_RUNNERS: Record<string, (verb: string | null) => Promise<void> | void
   logs: (v) => runLogs(v, emptyArgs('logs'), humanCtx(), '', true),
   sync: (v) => runSync(v, emptyArgs('sync'), humanCtx(), '', true),
   skills: (v) => runSkills(v, emptyArgs('skills'), humanCtx(), true),
+  mdx: (v) => runMdx(v, emptyArgs('mdx'), humanCtx(), '', true),
   config: (v) => runConfig(v, emptyArgs('config'), humanCtx(), '', true),
 };
 
