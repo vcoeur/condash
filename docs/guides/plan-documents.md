@@ -16,7 +16,8 @@ whose props are static JSON literals. condash renders it in the in-app plan
 viewer and validates it with `condash mdx check`. Everything is local
 files; there is no hosted service.
 
-Two condash-shipped skills author them:
+The condash-shipped **`/visual`** skill is the umbrella; it owns the shared
+block vocabulary and quality bars and routes to two flows:
 
 - **`/visual-plan`** — a forward plan: the approval gate before code.
 - **`/visual-review`** — the same dialect driven backwards from a worktree's
@@ -50,7 +51,7 @@ Refresh tokens without re-login.
   `${…}` interpolation. That is what lets condash render agent-authored
   files with no code execution.
 - The full vocabulary (~20 block types) comes from `condash mdx blocks`
-  or the skills' `references/blocks.md` — one generated document, drift-
+  or the `/visual` skill's `blocks.md` — one generated document, drift-
   tested against the registry the parser and viewer share.
 
 ## Viewing

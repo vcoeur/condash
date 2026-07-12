@@ -316,7 +316,7 @@ Plan/review MDX documents (`plan.mdx` notes authored by the `/visual-plan` and
 | Verb | Behaviour |
 |------|-----------|
 | `check <path>` | Validate a `.mdx` file (or a folder holding `plan.mdx`) against the block schemas the in-app viewer renders. Errors exit 3 (validation) with per-issue line numbers; unsupported `canvas.mdx` / `prototype.mdx` siblings warn |
-| `blocks` | Print the block-vocabulary reference generated from the registry — the same content the `visual-plan` skill ships as `references/blocks.md` (drift-tested) |
+| `blocks` | Print the block-vocabulary reference generated from the registry — the same content the `/visual` skill ships as `blocks.md` (drift-tested) |
 
 The parser, the zod schemas, the viewer, and this verb are one code path
 (`src/shared/plan-blocks/`), so a green `check` means the document parses and

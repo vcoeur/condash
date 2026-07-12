@@ -15,8 +15,7 @@ import type { PlanIssue } from '../../shared/plan-blocks/schemas';
  *     the same parser + block schemas the in-app viewer renders — a green
  *     check IS renderability, there is no separate lint to drift.
  *   - `blocks`        print the block-vocabulary reference generated from the
- *     registry (the same content the visual-plan skill ships as
- *     `references/blocks.md`).
+ *     registry (the same content the `/visual` skill ships as `blocks.md`).
  */
 export async function runMdx(
   verb: string | null,

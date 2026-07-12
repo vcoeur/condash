@@ -4,7 +4,7 @@
  * the MDX tag authors write, and the reference prose. The registry is the
  * single vocabulary shared by the parser (tag → type resolution), the viewer
  * (type → component dispatch), the `condash mdx blocks` CLI verb, and the
- * shipped `visual-plan`/`visual-review` skill reference — a drift test pins the
+ * shipped `/visual` skill reference — a drift test pins the
  * shipped reference to `renderBlocksDoc()` output.
  *
  * The dialect is deliberately data-only: capitalized tags with static-literal

@@ -20,6 +20,10 @@ only now they summarize work that exists. It lives as a `plan.mdx` note
 plan viewer, and validates with `condash mdx check`. Fully local — no
 hosted service, no publish step.
 
+This is the review flow of **`/visual`**, which owns the shared block
+vocabulary and quality bars (the Shared references section below).
+`/visual-plan` is the same dialect authored forwards, before code.
+
 ## When to use
 
 Build a review when a branch or PR is large, multi-file, or touches schema,
@@ -56,7 +60,7 @@ item, frontmatter `kind: review`, indexed in the README `## Notes`, a
 with `condash mdx check <item>/notes/NN-<slug>.mdx` before handing off — a green
 check means every block parses and matches the viewer's schemas, but it does
 not prove each block has visible content (an unfolded diagram or an empty
-`code` still passes, with a warning). Read the `plans check` warnings and open
+`code` still passes, with a warning). Read the `mdx check` warnings and open
 the review in the viewer once before hand-off. If the review needs supporting
 files, place them in `notes/NN-<slug>/`.
 
@@ -94,8 +98,8 @@ objective, a real compatibility risk, a decision visible in the diff.
 
 ## Diff → block mapping
 
-Read `blocks.md` for exact tags and props (regenerate with
-`condash mdx blocks`); never author from memory.
+Read [`../visual/blocks.md`](../visual/blocks.md) for exact tags and props
+(regenerate with `condash mdx blocks`); never author from memory.
 
 - **Schema / migration change** → `data-model` with per-field
   `change: added|modified|removed|renamed` and `was` for prior types —
@@ -121,7 +125,7 @@ Read `blocks.md` for exact tags and props (regenerate with
 - **Rendered UI / interaction change** → wireframe blocks showing the visible
   delta BEFORE the reader reaches code: `columns` with `Before`/`After`
   labels when comparison clarifies, after-only when purely additive, a state
-  sequence for flows. Read `wireframe.md` first — always.
+  sequence for flows. Read [`../visual/wireframe.md`](../visual/wireframe.md) first — always.
 - **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
   primitives) as before/after panels or layers, or `mermaid` for a quick
   graph. Never use a diagram as a stand-in for rendered UI.
@@ -150,13 +154,15 @@ Inside `tabs`, each child is the runtime `{ id, type, data }` shape, not a
 or `.env` values — redact them (`sk-•••`, `<redacted>`) in every block,
 caption, and note.
 
-## Reference files
+## Shared references
+
+The block vocabulary and the wireframe quality bar are owned by **`/visual`**
+and shared with `/visual-plan` — read the relevant one before authoring:
 
 | File | Read before |
 |---|---|
-| `blocks.md` | authoring any structured block |
-| `wireframe.md` | authoring ANY wireframe / `<Screen>` |
+| [`../visual/blocks.md`](../visual/blocks.md) | any structured block |
+| [`../visual/wireframe.md`](../visual/wireframe.md) | ANY wireframe / `<Screen>` |
 
-Related: `/visual-plan` is the forward direction and carries the shared
-document-quality and exemplar references. Adapted from Builder.io's
-visual-review skill (MIT).
+See `/visual` for the full shared set (also `document-quality.md`, `exemplar.md`).
+Adapted from Builder.io's visual-recap skill (MIT).

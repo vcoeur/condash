@@ -3,7 +3,7 @@ import { BLOCK_SPECS } from './registry';
 /**
  * Render the block-vocabulary reference document from the registry. This one
  * string is the catalog in three places: `condash mdx blocks` prints it, the
- * shipped `visual-plan` skill carries it as `references/blocks.md`, and a
+ * shipped `/visual` skill carries it as `blocks.md`, and a
  * drift test pins the shipped copy to this output — the registry is the single
  * source, so the lint (`mdx check`), the viewer, and the skills can never
  * disagree about the vocabulary.
