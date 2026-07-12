@@ -111,7 +111,9 @@
 
 .terminal-header {
   display: flex;
-  align-items: center;
+  /* flex-start (not center) so the action buttons align with the first tab row
+   *  when the tab strip wraps onto a second row instead of floating mid-height. */
+  align-items: flex-start;
   gap: 10px;
   padding: 4px 12px;
   border-bottom: 1px solid var(--border);
@@ -179,15 +181,14 @@
 
 .terminal-tabs {
   display: flex;
-  /* Single horizontal row of tabs that scrolls when there are many. It lives
-   *  inside .terminal-header alongside the title/breadcrumb and actions. */
-  flex-wrap: nowrap;
+  /* Tabs wrap onto additional rows when they don't all fit on one line, rather
+   *  than scrolling horizontally. The header grows to fit the wrapped rows. It
+   *  lives inside .terminal-header alongside the actions. */
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
   transition: background 100ms ease;
 }
 
