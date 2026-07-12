@@ -291,17 +291,22 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 14px 12px 22px;
+  padding: 14px 16px 12px 18px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
+  /* Asymmetric card — flat left edge (where the full-height status rail
+   * sits, see .row::before) + rounded right, the vcoeur project-card
+   * silhouette (bold redesign, 2026-07). */
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   contain: layout paint;
+  animation: fade-up 0.45s ease-out both;
   transition:
     background-color 140ms ease,
     box-shadow 140ms ease,
-    border-color 140ms ease;
+    border-color 140ms ease,
+    transform 140ms ease;
 }
 
 .row::before {
@@ -343,13 +348,15 @@ body[data-dragging='project'] .row {
   content: '';
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 4px;
-  /* Rounded both ends so the stripe reads as an indicator, not a tab
-   * stuck onto the side of the card. */
-  border-radius: 3px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  /* Full-height flush-left status rail — the structural accent of the
+   * asymmetric card (was an inset rounded pill; the bold redesign turns it
+   * into the vcoeur 3 px border-left so the stripe *is* the left edge). */
+  border-radius: 0;
   background: var(--row-stripe);
+  opacity: 1;
 }
 
 [data-status-card='now'] {
@@ -374,8 +381,13 @@ body[data-dragging='project'] .row {
 .row:hover {
   border-color: var(--border-strong);
   background: var(--bg-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+  /* Accent glow on hover — the alicepeintures painting-card lift (bold
+   * redesign, 2026-07): a soft accent-tinted bloom stacked over the base
+   * lift shadow. */
+  box-shadow:
+    var(--shadow-lift),
+    0 0 28px -6px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .row:hover .title-actions,
@@ -437,15 +449,16 @@ body[data-dragging='project'] .row {
   flex: 1 1 auto;
   min-width: 0;
   font-family: var(--font-display);
-  /* Weight bumped to 700 with a tighter tracking now that --font-display
-   * is the same sans as --font-ui — gives card titles enough display
-   * presence without leaning on a serif. */
-  font-weight: 700;
-  font-size: var(--text-lg);
-  line-height: 1.25;
+  /* Upright Cormorant serif (bold redesign, 2026-07): card titles carry the
+   * editorial display face. 600 weight at 18 px gives the serif enough
+   * presence without going heavy; the slight negative tracking keeps
+   * multi-word titles tight. */
+  font-weight: 600;
+  font-size: var(--text-xl);
+  line-height: 1.2;
   color: var(--text);
   word-break: break-word;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.01em;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
