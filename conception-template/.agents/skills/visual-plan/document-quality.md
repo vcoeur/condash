@@ -30,7 +30,7 @@ app-specific adapters and examples; label examples as examples unless they
 are the whole requested scope.
 
 **Use the right block, and make it carry substance.** The authoritative
-vocabulary is `references/blocks.md` (`condash plans blocks`); highlights:
+vocabulary is `blocks.md` (`condash plans blocks`); highlights:
 
 - Prose for the plan narrative — ordinary markdown between blocks.
 - `annotated-code` for the file map: when a load-bearing file is worth

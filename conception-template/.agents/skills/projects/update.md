@@ -12,7 +12,7 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 3. **Decide the write:**
 
-   - **New finding / work log** → write a `notes/NN-<slug>.md` file (next available number from `data.notes[]`). Add one line under `## Notes` in the README: `` - [`notes/<name>.md`](notes/<name>.md) — <one-line hook>. ``.
+   - **New finding / work log** → write a `notes/NN-<slug>.md` or `notes/NN-<slug>.mdx` file (next available number from `data.notes[]`). When a note needs supporting files, place them in `notes/NN-<slug>/`. Add one line under `## Notes` in the README using the note's actual extension: `` - [`notes/<name>.md`](notes/<name>.md) — <one-line hook>. `` or `` - [`notes/<name>.mdx`](notes/<name>.mdx) — <one-line hook>. ``.
    - **Status change** → `condash projects status set <slug> <value> --json`. CLI validates the enum, rewrites the header line idempotently, touches `projects/.index-dirty`. Add a timeline entry explaining the change (one-line `Edit`).
    - **Field edit** (Apps, Branch, Severity, …) → edit the header line + a timeline entry if material. Run `condash dirty touch projects --json` if Apps or Branch changed.
    - **Step completion** → flip `[ ]` → `[x]` (or `[~]`/`[!]`). Add a timeline entry.

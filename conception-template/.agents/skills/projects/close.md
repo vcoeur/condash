@@ -18,7 +18,7 @@ Trigger: `/projects close <slug>`.
 
 4. **Knowledge promotion review.** Editorial step — Claude reads, the CLI is a backstop.
 
-   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`, and apply the three-question durability test (canonical definition in the `/knowledge` skill) to each candidate paragraph:
+   a. **Read the README and every `notes/*.md` or `notes/*.mdx` body** returned by step 2's `read --with-notes`, and apply the three-question durability test (canonical definition in the `/knowledge` skill) to each candidate paragraph:
 
       1. Holds beyond this task? (Not specific to the in-flight work.)
       2. Applies to more than one app, or to the ecosystem?
@@ -32,7 +32,7 @@ Trigger: `/projects close <slug>`.
       condash projects scan-promotions <slug> --json
       ```
 
-      Grep-walks `notes/*.md` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. Re-apply the three-question test on anything new. Skip paragraphs already carrying a `**Transferred:**` stamp.
+      Grep-walks `notes/*.md` and `notes/*.mdx` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. Re-apply the three-question test on anything new. Skip paragraphs already carrying a `**Transferred:**` stamp.
 
    c. **Present surviving candidates** (yours + new) as a numbered list with `<file>:<line>`, the exact paragraph, and the proposed `knowledge/` location (bucket-picking rubric in `knowledge/SKILL.md`). Per row: *"Promote to `knowledge/<path>`? (y / n / edit-first)"*.
 
