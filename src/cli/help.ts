@@ -42,6 +42,7 @@ Nouns:
                (single-writer git for a checkout shared by parallel sessions)
   logs         days (default), list [<day>], read <sid|path>, tail (session logs)
   skills       list shipped artefacts; install [<name-or-path>...]; status; validate
+  plans        check <path> (validate a plan/recap .mdx), blocks (vocabulary reference)
   config       conception-path, path, list [--effective|--global],
                get <key> [--effective|--global], set <key> <value> [--global],
                migrate (legacy condash.json → .condash/settings.json)
