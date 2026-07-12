@@ -442,16 +442,23 @@ body[data-dragging='project'] .row {
   gap: 9px;
   flex: 1 1 auto;
   min-width: 0;
-  font-family: var(--font-display);
-  /* Upright Cormorant serif (bold redesign, 2026-07): card titles carry the
-   * editorial display face. 700 weight at 15 px makes the title prominent on
-   * the new denser card without changing its size. */
+  /* Strong system sans instead of the display serif for the card title:
+   * dark UI cards read better with a clean, heavy sans face, and the
+   * kind glyph stays aligned with the title's first line. */
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   font-weight: 700;
-  font-size: 15px;
-  line-height: 1.2;
+  font-size: 16px;
+  line-height: 1.25;
   color: var(--text);
   word-break: break-word;
   letter-spacing: -0.01em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }

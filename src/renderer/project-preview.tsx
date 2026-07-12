@@ -57,9 +57,12 @@ interface ReadmeSection {
 
 type ContentBlock = { kind: 'p'; text: string } | { kind: 'ul'; items: string[] };
 
-/** Split README markdown into `## ` sections, skipping the `## Goal` section
- * because the modal already shows its content as the goal banner. Returns the
- * remaining sections with their content broken into paragraphs and list blocks. */
+const SKIP_SECTIONS = new Set(['goal', 'steps', 'timeline', 'notes']);
+
+/** Split README markdown into `## ` sections, skipping sections whose
+ * headings already appear as dedicated widgets in the modal (`Goal`,
+ * `Steps`, `Timeline`, `Notes`). Returns the remaining sections with their
+ * content broken into paragraphs and list blocks. */
 function parseReadmeSections(content: string): ReadmeSection[] {
   const sections: ReadmeSection[] = [];
   let current: ReadmeSection | null = null;
@@ -95,7 +98,7 @@ function parseReadmeSections(content: string): ReadmeSection[] {
     sections.push(current);
   }
 
-  return sections.filter((s) => s.heading.toLowerCase() !== 'goal');
+  return sections.filter((s) => !SKIP_SECTIONS.has(s.heading.toLowerCase()));
 }
 
 function appendParagraph(section: ReadmeSection, text: string) {
