@@ -319,8 +319,10 @@ Plan/recap MDX documents (`plan.mdx` notes authored by the `/visual-plan` and
 | `blocks` | Print the block-vocabulary reference generated from the registry — the same content the `visual-plan` skill ships as `references/blocks.md` (drift-tested) |
 
 The parser, the zod schemas, the viewer, and this verb are one code path
-(`src/shared/plan-blocks/`), so a green `check` is renderability by
-construction.
+(`src/shared/plan-blocks/`), so a green `check` means the document parses and
+matches the viewer by construction. It does not guarantee visible content —
+`check` warns on a block with an empty payload (an unfolded diagram, an empty
+`code`/`diff`, a wireframe with no html).
 
 ### `config`
 

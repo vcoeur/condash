@@ -124,6 +124,44 @@ describe('parsePlanMdx', () => {
     expect(doc.blocks[0].data.css).toContain('display: flex');
   });
 
+  it('folds Screen html/css fences from children like Diagram', () => {
+    const doc = parsePlanMdx(
+      [
+        '<WireframeBlock id="wf">',
+        '  <Screen surface="panel" caption="Menu">',
+        '',
+        '  ```html',
+        '  <div class="wf-card">Save</div>',
+        '  ```',
+        '',
+        '  ```css',
+        '  .wf-card { padding: 8px; }',
+        '  ```',
+        '',
+        '  </Screen>',
+        '</WireframeBlock>',
+      ].join('\n'),
+    );
+    expect(doc.issues).toEqual([]);
+    const wf = doc.blocks[0].data as unknown as WireframeData;
+    expect(wf.surface).toBe('panel');
+    expect(wf.html).toContain('wf-card');
+    expect(wf.css).toContain('padding: 8px');
+  });
+
+  it('warns on a visually-empty payload but keeps the block renderable elsewhere', () => {
+    const doc = parsePlanMdx(
+      ['<Diagram id="d" caption="empty" />', '', '<Code id="c" code={"const x = 1;\\n"} />'].join(
+        '\n',
+      ),
+    );
+    expect(doc.blocks.map((b) => b.type)).toEqual(['diagram', 'code']);
+    const warning = doc.issues.find((i) => i.severity === 'warning');
+    expect(warning?.message).toContain('no html payload');
+    // The block with real content draws no warning.
+    expect(doc.issues.filter((i) => i.severity === 'warning')).toHaveLength(1);
+  });
+
   it('salvages an invalid nested tab block and keeps the rest', () => {
     const doc = parsePlanMdx(
       [

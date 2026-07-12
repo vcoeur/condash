@@ -53,8 +53,11 @@ latest fix.
 Same conventions as `/visual-plan`: `notes/NN-<slug>/plan.mdx` in the project
 item, frontmatter `kind: recap`, indexed in the README `## Notes`, a
 `## Deliverables` entry when designated, and a dated timeline entry. Validate
-with `condash plans check <item>/notes/NN-<slug>` before handing off — green
-check IS renderability in the condash viewer.
+with `condash plans check <item>/notes/NN-<slug>` before handing off — a green
+check means every block parses and matches the viewer's schemas, but it does
+not prove each block has visible content (an unfolded diagram or an empty
+`code` still passes, with a warning). Read the `plans check` warnings and open
+the recap in the viewer once before hand-off.
 
 ```yaml
 ---
@@ -121,6 +124,10 @@ Read `references/blocks.md` for exact tags and props (regenerate with
 - **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
   primitives) as before/after panels or layers, or `mermaid` for a quick
   graph. Never use a diagram as a stand-in for rendered UI.
+- **CLI / command-surface change** → there is no endpoint block for a command:
+  summarize new or changed verbs in a `table` (command, effect, exit code) or a
+  `code` block of real invocations, with a short prose note. `api-endpoint` is
+  for an HTTP method/path, not a CLI.
 - **Outcome narrative** → prose; the one place the model writes freely.
 
 ## Grounding rule
@@ -131,6 +138,12 @@ text — never inferred, rounded, or invented. The model writes only the prose.
 A confidently wrong recap is dangerous: a reviewer who trusts the summary
 skips the very line the summary got wrong. When the diff does not contain a
 fact, leave it out; mark anything inferred as inferred.
+
+Build code-bearing blocks (`diff`, `annotated-code`, and the code nested in a
+`tabs` block) from the real file text — copy the exact changed lines and encode
+multi-line code as JSON string attributes; never retype code from memory.
+Inside `tabs`, each child is the runtime `{ id, type, data }` shape, not a
+`<Diff>` / `<AnnotatedCode>` tag.
 
 **Never transcribe secrets.** A diff can contain keys, tokens, webhook URLs,
 or `.env` values — redact them (`sk-•••`, `<redacted>`) in every block,

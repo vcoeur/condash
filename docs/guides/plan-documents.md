@@ -74,8 +74,12 @@ condash plans check path/to/file.mdx              # or a file directly
 ```
 
 The check runs the **same parser and schemas the viewer renders**, so a green
-check is renderability — there is no separate lint to drift. Errors exit 3
-with line numbers; a missing `kind` warns.
+check means the document parses and matches the viewer — there is no separate
+lint to drift. It does not prove every block has visible content: `check`
+warns when a block would render blank (an unfolded diagram, an empty `code` or
+`diff`, a wireframe with no html), so read the warnings and open the document
+in the viewer once before hand-off. Errors exit 3 with line numbers; a missing
+`kind` warns.
 
 ## Where documents live
 

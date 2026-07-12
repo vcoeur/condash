@@ -65,15 +65,20 @@ kind: plan
 3. **Read `references/blocks.md`** (or run `condash plans blocks`) before
    authoring any structured block — never author tags from memory. Read
    `references/document-quality.md` for the document bar and
-   `references/wireframe.md` before ANY wireframe.
+   `references/wireframe.md` before ANY wireframe. For `diff` / `annotated-code`
+   (and the code nested in a `tabs` block), paste the real file text and encode
+   multi-line code as JSON strings — do not retype code from memory.
 4. **Write the document.** Ordinary markdown between blocks imports as prose;
    put each structured block where the prose discusses it. UI plans lead with
    the wireframe story near the top (entry surface → changed interaction →
    resulting state); architecture plans lead with a concrete example, then
    diagrams beside the claims they support.
 5. **Validate:** `condash plans check <item>/notes/NN-<slug>` must be green —
-   it validates the same schemas the viewer renders, so a green check IS
-   renderability. Fix errors; take warnings seriously.
+   it validates the same schemas the viewer renders, so a green check means the
+   document parses and matches the viewer. It does not prove each block has
+   visible content — `plans check` warns on an empty diagram / code / wireframe
+   — so fix errors, take warnings seriously, and open the plan in the viewer
+   once before hand-off.
 6. **Hand off.** Update the README (Notes index, step reference, timeline,
    Deliverables when designated) and tell the user where the plan is —
    opening the note in condash shows the rendered document. The plan is the

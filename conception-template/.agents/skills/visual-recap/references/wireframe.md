@@ -13,6 +13,14 @@ styling — you never write `<html>`/`<body>`/`<script>`/`<style>` tags or any
 width/height/coordinates. You write real HTML layout and real product
 content; the viewer themes it.
 
+**Two ways to carry the html.** `html={"…"}` is one JSON-escaped string — fine
+for a line or two. For longer markup, prefer the fenced-children form: open the
+screen (`<Screen surface="…"> … </Screen>`) and place the fragment in an `html`
+code fence, with an optional `css` fence beside it, exactly as `<Diagram>` does.
+Fenced children need no newline/quote escaping, so paste real multi-line HTML
+and let condash fold it into the screen. Both forms validate identically, and
+`condash plans check` warns when a screen carries no html at all.
+
 **Write PLAIN semantic HTML and let the viewer style it.** Bare elements
 (`h1`/`h2`/`h3`, `p`, `button`, `input`, `<input type="checkbox">`, `a`,
 `hr`, `label`) are auto-themed — no classes needed. Helper classes carry the

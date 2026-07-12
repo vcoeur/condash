@@ -35,4 +35,6 @@ architecture plan forced into overlapping labeled boxes while the actual
 code evidence lives elsewhere; a product wireframe mixing a real screen with
 repo names, file-contract arrows, or architecture notes; and a plan that
 describes itself as a revision of a prior conversation instead of a
-standalone proposal. Never produce this.
+standalone proposal; a `diagram` / `code` / `wireframe` whose payload is empty
+so it passes `plans check` yet renders blank; and a code block retyped from
+memory instead of copied from the real file. Never produce this.

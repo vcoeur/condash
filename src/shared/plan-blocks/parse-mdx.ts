@@ -209,7 +209,7 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
   } else if (spec.children === 'screen') {
     foldScreenChild(el, data, state);
   } else if (spec.type === 'diagram') {
-    foldDiagramFences(el, data);
+    foldHtmlCssFences(el, data);
   }
 
   // Validate, then recurse into JSON-carried nested blocks (tabs).
@@ -222,6 +222,11 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
       .join('; ');
     state.issues.push({ severity: 'error', message: `<${tag}>: ${detail}`, line });
     return invalidBlock(state, tag, detail, sliceOf(el, state));
+  }
+
+  const emptiness = emptyPayloadMessage(spec.type, data);
+  if (emptiness) {
+    state.issues.push({ severity: 'warning', message: `<${tag}>: ${emptiness}`, line });
   }
 
   if (spec.type === 'tabs' || spec.type === 'code-tabs') {
@@ -332,6 +337,9 @@ function foldScreenChild(
   for (const key of ['surface', 'html', 'css', 'caption', 'frame', 'skeleton'] as const) {
     if (props[key] !== undefined && data[key] === undefined) data[key] = props[key];
   }
+  // A <Screen> may carry its html/css as ```html / ```css fenced children too
+  // (the escape-hatch form, no JSON-string escaping) — same as <Diagram>.
+  if (data.html === undefined) foldHtmlCssFences(screen, data);
   const kit = kitTreeOf(screen, state);
   if (kit.length > 0) {
     data.kit = kit;
@@ -358,13 +366,49 @@ function kitTreeOf(el: MdxJsxFlowElement, state: NormalizeState): KitNode[] {
   return out;
 }
 
-/** `<Diagram>` children carry ```html / ```css fences (the authoring form). */
-function foldDiagramFences(el: MdxJsxFlowElement, data: Record<string, unknown>): void {
+/** Fold ```html / ```css fenced children into data.html/css — the escape-hatch
+ *  authoring form shared by `<Diagram>` and `<Screen>` (no attribute escaping). */
+function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>): void {
   for (const child of el.children) {
     if (child.type !== 'code') continue;
     const lang = (child.lang ?? '').toLowerCase();
     if (lang === 'html' && data.html === undefined) data.html = child.value;
     if (lang === 'css' && data.css === undefined) data.css = child.value;
+  }
+}
+
+/**
+ * A schema-valid block can still be visually empty: most visual payloads
+ * (`diagram.html`, `code`, `diff.before/after`, `file-tree.entries`) are
+ * optional or unbounded, so a green schema check does not verify that anything
+ * renders. Return a warning message for a block that would render blank, or
+ * null. Surfaced in the viewer banner and by `condash plans check` so authors
+ * catch an unfolded diagram or an empty code attribute before hand-off.
+ */
+function emptyPayloadMessage(type: string, data: Record<string, unknown>): string | null {
+  const blank = (value: unknown): boolean => typeof value !== 'string' || value.trim() === '';
+  switch (type) {
+    case 'diagram':
+      return blank(data.html) ? 'no html payload — renders as an empty placeholder' : null;
+    case 'custom-html':
+      return blank(data.html) ? 'no html payload — renders empty' : null;
+    case 'wireframe':
+      return blank(data.html) && !(Array.isArray(data.kit) && data.kit.length > 0)
+        ? 'no html payload — the screen renders empty'
+        : null;
+    case 'code':
+    case 'annotated-code':
+      return blank(data.code) ? 'empty code — renders as a blank block' : null;
+    case 'diff':
+      return blank(data.before) && blank(data.after)
+        ? 'empty before and after — the diff renders blank'
+        : null;
+    case 'file-tree':
+      return Array.isArray(data.entries) && data.entries.length === 0
+        ? 'no entries — the tree renders empty'
+        : null;
+    default:
+      return null;
   }
 }
 
@@ -416,6 +460,14 @@ function validateNestedRef(
       line,
     });
     return { id: candidate.id, type: 'invalid', data: { reason: message, tag: candidate.type } };
+  }
+  const emptiness = emptyPayloadMessage(candidate.type, candidate.data);
+  if (emptiness) {
+    state.issues.push({
+      severity: 'warning',
+      message: `<${tag}> nested ${candidate.type} "${candidate.id}": ${emptiness}`,
+      line,
+    });
   }
   return candidate;
 }
