@@ -1,9 +1,11 @@
-/* Vendored variable font — Figtree (used for UI, body, and display).
+/* Vendored variable font — Figtree (UI + body text).
    Sourced from fontsource (jsdelivr) as woff2 variable-axis files; loaded
    per-subset via unicode-range so the browser only fetches what's needed.
-   Newsreader (the previous serif display face) has been retired in favour
-   of a single legible sans across the app — easier to read at small UI
-   sizes. The .woff2 files are still in vendor/fonts/ for reference. */
+   The bold redesign (2026-07) reintroduces a serif *display* face alongside
+   Figtree — Cormorant, registered below (--font-display) — after a spell of
+   single-sans-everywhere. Figtree keeps the dense UI legible; Cormorant does
+   the editorial display work. The retired Newsreader .woff2 files remain in
+   vendor/fonts/ for reference. */
 @font-face {
   font-family: 'Figtree Variable';
   font-style: normal;
@@ -25,25 +27,44 @@
     U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Vendored variable serif — Cormorant (upright, weight 300–700). This is the
+   editorial display face (--font-display): pane headers, card + modal titles,
+   the command-palette headline. Body / UI stays Figtree; the serif is what
+   gives condash its crafted-workspace identity (bold redesign, 2026-07). Same
+   woff2 the docs site ships (docs/assets/fonts/cormorant-latin.woff2), copied
+   here so the renderer stays self-contained under the strict 'self' CSP. */
+@font-face {
+  font-family: 'Cormorant';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('./vendor/fonts/cormorant-latin.woff2') format('woff2');
+}
+
 :root {
-  /* Warm-paper light theme — feels like an editorial page. */
-  --bg: #ece9dd;
+  /* Warm-paper light theme — the vcoeur editorial page palette (bold
+   * redesign, 2026-07): warm pink-paper page, purple primary, pink accent.
+   * Replaces the older oat/indigo scheme so the light mode reads as the same
+   * crafted identity as the gallery-dark lead theme. */
+  --bg: #faf6f8;
   --bg-panel: var(--bg);
   --bg-base: var(--bg-panel);
   --bg-elevated: #ffffff;
-  --bg-subtle: #f3f1ea;
+  --bg-subtle: #f5f0f3;
   --bg-tertiary: var(--bg-subtle);
-  --bg-hover: #e3dfd0;
-  --text: #1a1a1c;
+  --bg-hover: #f0eaf0;
+  --text: #1a1418;
   --text-primary: var(--text);
-  --text-body: #3a3933;
-  --text-muted: #6b6960;
-  /* Bumped from #a09c91 — that was ~2.6:1 over bg, failing AA. */
-  --text-faint: #706c60;
-  --border: #e8e3d6;
-  --border-strong: #d6cfbf;
-  --accent: #4f46e5;
-  --accent-soft: #e8effd;
+  --text-body: #423b40;
+  --text-muted: #665c64;
+  /* Kept dark enough to clear AA over the warm-paper bg. */
+  --text-faint: #837984;
+  --border: #ede5eb;
+  --border-strong: #ddd2da;
+  --accent: #672167;
+  /* Pink accent — the vcoeur hover/CTA hue, used where a warmer accent reads. */
+  --accent-hover: #e04e88;
+  --accent-soft: #f6e4ef;
   --warn: #b03020;
 
   /* Status palette — saturated red→green temperature scale so the six
@@ -149,14 +170,15 @@
   --shadow-card: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.02);
   --shadow-lift: 0 4px 14px rgba(20, 18, 12, 0.08), 0 2px 4px rgba(20, 18, 12, 0.04);
 
-  /* Single Figtree stack for both display and UI text. Card and modal
-   * titles reclaim the display feel via font-weight: 700, not a
-   * different family. The --font-display alias is kept so old
-   * stylesheets keep building during the migration. */
+  /* Two families: Figtree for body/UI, Cormorant (upright serif) for display.
+   * --font-display is the editorial face — pane headers, card + modal titles,
+   * the command-palette headline. The bold redesign (2026-07) reintroduces a
+   * serif display split: the sans stays for dense UI, the serif does the
+   * crafted-identity work. Georgia/Times are the local-fallback serifs. */
   --font-ui:
     'Figtree Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'Helvetica Neue', 'Liberation Sans', system-ui, sans-serif;
-  --font-display: var(--font-ui);
+  --font-display: 'Cormorant', Georgia, 'Times New Roman', serif;
   --font-mono:
     ui-monospace, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
 
@@ -210,32 +232,42 @@
  * pops a purple-pink hue so an unknown status doesn't merge with the
  * now/review reds. */
 :root {
-  --dark-bg: #0a0a0a;
-  --dark-bg-panel: #111;
-  --dark-bg-elevated: #1a1a1a;
-  --dark-bg-subtle: #141414;
-  --dark-bg-hover: #222;
-  --dark-text: #f0f0f0;
-  --dark-text-body: #ccc;
-  --dark-text-muted: #999;
-  --dark-text-faint: #666;
-  --dark-border: rgba(255, 255, 255, 0.06);
-  --dark-border-strong: rgba(255, 255, 255, 0.12);
-  --dark-accent: #0070f3;
-  --dark-accent-soft: #0a1f3d;
+  /* Warm gallery dark — the alicepeintures gold-on-warm-black palette (bold
+   * redesign, 2026-07, LEAD theme). Replaces the old cold blue-black + blue
+   * accent: the surface family is a warm brown-black, the accent is warm gold,
+   * borders are gold-tinted alpha. The status arc keeps its red→amber→blue→gray
+   * temperature coding, desaturated a touch so it sits beside the gold without
+   * clashing. The live/"running" signal adopts the gold accent (gold *is* the
+   * life of the page) — see --dark-col-running below. */
+  --dark-bg: #151412;
+  --dark-bg-panel: #1a1815;
+  --dark-bg-elevated: #1c1b18;
+  --dark-bg-subtle: #211f1c;
+  --dark-bg-hover: #252320;
+  --dark-text: #f0ebe4;
+  --dark-text-body: #cabfae;
+  --dark-text-muted: #9a9488;
+  --dark-text-faint: #6b6558;
+  --dark-border: rgba(200, 168, 130, 0.1);
+  --dark-border-strong: rgba(200, 168, 130, 0.22);
+  --dark-accent: #c8a882;
+  --dark-accent-soft: rgba(200, 168, 130, 0.14);
   --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --dark-shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
-  --dark-col-now: #ff6b6b;
-  --dark-col-review: #f0a05a;
-  --dark-col-soon: #f0d05a;
-  --dark-col-later: #66b3ff;
-  --dark-col-backlog: #8899aa;
-  --dark-col-done: #888;
+  --dark-col-now: #e07a7a;
+  --dark-col-review: #e0a06a;
+  --dark-col-soon: #d8c47a;
+  --dark-col-later: #7aa0d8;
+  --dark-col-backlog: #8a96a4;
+  --dark-col-done: #7a7468;
   --dark-warn: #d6748f;
   --dark-success: #3fb950;
   --dark-col-unknown: #d6748f;
-  --dark-col-running: #3fb950;
-  --dark-col-dirty: #e8a878;
+  /* Live = the gold accent, so the "alive" signal and the accent are one
+   * colour (the signature move of the gallery-dark direction). Light mode
+   * keeps a distinct green --col-running — see the light :root above. */
+  --dark-col-running: var(--dark-accent);
+  --dark-col-dirty: #d4a06a;
   --dark-col-added: #4ade80;
   --dark-col-removed: #f87171;
   --dark-kind-project: #5fa982;
@@ -637,4 +669,56 @@ h4,
 h5,
 h6 {
   text-wrap: pretty;
+}
+
+/* ── Bold-redesign signature motifs (2026-07) ─────────────────────────────
+ * Editorial motion + the paint-dot live indicator, imported from the
+ * alicepeintures / vcoeur identity. Keyframes live here (the one shared
+ * source); the elements that use them live in the pane stylesheets.
+ *   fade-up     staggered card / row entrance
+ *   dot-glow    the paint-dot's slow breathing pulse
+ *   slide-rule  the accent bar that draws in under a pane header
+ * All three are neutralised under prefers-reduced-motion below. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dot-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes slide-rule {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The paint-dot glow itself (the triple-layered accent bloom + 4 s breath) is
+ * composited directly onto the app's existing live dots in code-pane.css,
+ * keyed on --col-running so it is gold in the gallery-dark lead and green in
+ * the light theme. dot-glow above is the shared breath keyframe. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -215,12 +215,21 @@
   height: 7px;
   border-radius: 50%;
   background: var(--col-running);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 22%, transparent);
+  /* Paint-dot glow — the alicepeintures live indicator (bold redesign,
+   * 2026-07): a triple-layered accent bloom breathing on a slow 4 s pulse,
+   * so the running dev-server reads as the signature motif. Keyed on
+   * --col-running (gold in the gallery-dark lead, green in the light theme). */
+  box-shadow:
+    0 0 8px 2px color-mix(in srgb, var(--col-running) 55%, transparent),
+    0 0 18px 5px color-mix(in srgb, var(--col-running) 30%, transparent),
+    0 0 34px 9px color-mix(in srgb, var(--col-running) 12%, transparent);
+  animation: dot-glow 4s ease-in-out infinite;
 }
 
 .code-run-row.exited .code-run-head .dot {
   background: var(--text-faint);
   box-shadow: none;
+  animation: none;
 }
 
 .code-run-head .repo {
@@ -1075,7 +1084,12 @@
   height: 8px;
   border-radius: 50%;
   background: var(--col-running);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 20%, transparent);
+  /* Paint-dot bloom (bold redesign, 2026-07) — layered accent glow around
+   * the branch live dot, keyed on --col-running so it tracks the theme. */
+  box-shadow:
+    0 0 8px 2px color-mix(in srgb, var(--col-running) 55%, transparent),
+    0 0 18px 5px color-mix(in srgb, var(--col-running) 28%, transparent),
+    0 0 34px 9px color-mix(in srgb, var(--col-running) 12%, transparent);
   animation: branch-live-pulse 1.6s ease-in-out infinite;
 }
 
@@ -1203,7 +1217,11 @@
   height: 6px;
   border-radius: 50%;
   background: var(--col-running);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 22%, transparent);
+  /* Paint-dot bloom (bold redesign, 2026-07). */
+  box-shadow:
+    0 0 7px 2px color-mix(in srgb, var(--col-running) 55%, transparent),
+    0 0 16px 4px color-mix(in srgb, var(--col-running) 28%, transparent),
+    0 0 30px 8px color-mix(in srgb, var(--col-running) 12%, transparent);
   flex-shrink: 0;
 }
 
