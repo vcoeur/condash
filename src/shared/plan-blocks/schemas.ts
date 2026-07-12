@@ -518,10 +518,13 @@ export interface PlanIssue {
   line?: number;
 }
 
-/** Frontmatter of a plan/review document. Extra keys pass through untouched. */
+/** Frontmatter of a visual-note document. Extra keys pass through untouched. */
 export interface PlanFrontmatter {
   title?: string;
-  kind?: 'plan' | 'review';
+  /** Document posture. Known values `design | plan | review | note` are colored
+   *  by the viewer; `note` is the neutral default. Any other string is accepted
+   *  and rendered as a neutral pill — `kind` is optional and never warns. */
+  kind?: string;
   [key: string]: unknown;
 }
 

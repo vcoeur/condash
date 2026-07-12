@@ -1,25 +1,25 @@
-# Plan document quality — single source of truth
+# Document quality — single source of truth
 
-The canonical quality bar for the plan document. Read it in full before
-authoring; do not write the document from memory.
+The canonical quality bar for the visual note, whatever its posture
+(design / plan / review / note). Read it in full before authoring; do not write
+the document from memory.
 
-**The document is a serious technical plan, not marketing.** Write it the way
-a strong implementation plan reads: outcome-first, prose-first,
-self-contained, specific. State the objective and what "done" means, the
-scope and non-goals, the approach with key decisions and their rationale,
-ordered steps that name real files, symbols, actions, and data shapes, the
-risks, and a closing verification step. Replace vague prose with specifics;
-never ship a step like "make it work". No hero art, slogans, value props, or
-marketing cards.
+**The document is serious technical writing, not marketing.** Write a `plan` or
+`design` the way a strong implementation plan reads, a `review` the way a strong
+change summary reads: outcome-first, prose-first, self-contained, specific.
+State the objective and what "done" means, the scope and non-goals, the approach
+with key decisions and their rationale, ordered steps that name real files,
+symbols, actions, and data shapes, the risks, and a closing verification step.
+Replace vague prose with specifics; never ship a step like "make it work". No
+hero art, slogans, value props, or marketing cards.
 
-**Every plan must stand alone.** Even when revising, the output is a plan to
-do the work, not a changelog of the conversation. No "preserve the previous
-plan", "as discussed above", "this revision", "unlike the prior version". A
-reviewer who opens the note with no chat history should understand it. State
-the positive model directly instead of negative framing against absent
-context.
+**Every document must stand alone.** Even when revising, the output is the note
+itself, not a changelog of the conversation. No "preserve the previous plan",
+"as discussed above", "this revision", "unlike the prior version". A reader who
+opens the note with no chat history should understand it. State the positive
+model directly instead of negative framing against absent context.
 
-**Make abstract plans instantly legible.** If the idea is broad or strategic,
+**Make abstract notes instantly legible.** If the idea is broad or strategic,
 put one concrete product snapshot near the top — for UI-capable concepts a
 wireframe of the real app state plus a short paragraph — before dense
 architecture, mode tables, or roadmaps.

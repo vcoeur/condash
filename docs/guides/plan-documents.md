@@ -1,27 +1,29 @@
 ---
-description: Plan and review MDX documents — the visual-plan / visual-review skills, the plan.mdx block dialect, the in-app viewer, and condash mdx check.
+description: Visual-note MDX documents — the /visual skill, the four postures, the .mdx block dialect, the in-app viewer, and condash mdx check.
 ---
 
-# Plan documents (visual plans & reviews)
+# Visual notes (plans, reviews, designs)
 
-**When to read this.** You want an implementation plan or a change review that
-reads better than a wall of prose — wireframes, diagrams, data models, API
-contracts, annotated diffs — reviewable inside condash, living as a plain
-file in the project item.
+**When to read this.** You want a document that reads better than a wall of
+prose — wireframes, diagrams, data models, API contracts, annotated diffs —
+reviewable inside condash, living as a plain file in the project item.
 
-A **plan document** is a `plan.mdx` file in a project item's notes
-(`notes/NN-<slug>/plan.mdx`). It is MDX used as *data*, never as code:
-ordinary Markdown prose interleaved with typed blocks — capitalized tags
-whose props are static JSON literals. condash renders it in the in-app plan
-viewer and validates it with `condash mdx check`. Everything is local
-files; there is no hosted service.
+A **visual note** is an `.mdx` file in a project item's notes
+(`notes/NN-<slug>.mdx`). It is MDX used as *data*, never as code: ordinary
+Markdown prose interleaved with typed blocks — capitalized tags whose props are
+static JSON literals. condash renders it in the in-app viewer and validates it
+with `condash mdx check`. Everything is local files; there is no hosted service.
 
-The condash-shipped **`/visual`** skill is the umbrella; it owns the shared
-block vocabulary and quality bars and routes to two flows:
+The condash-shipped **`/visual`** skill authors them all. One skill, one
+dialect; a frontmatter `kind` picks the posture and what the bottom
+question-form asks:
 
-- **`/visual-plan`** — a forward plan: the approval gate before code.
-- **`/visual-review`** — the same dialect driven backwards from a worktree's
-  diff, so a reviewer scans the shape of a change before the raw diff.
+- **`design`** — approaches still being weighed; the form asks *directions*.
+- **`plan`** — the reviewable approval gate before code; the form asks *approval*.
+- **`review`** — the same dialect driven backwards from a worktree's diff, so a
+  reviewer scans the shape of a change before the raw diff; the form asks *feedback*.
+- **`note`** — the default when `kind` is omitted: a layout of blocks where prose
+  would be worse, with nothing to decide.
 
 ## The dialect in 30 seconds
 
@@ -44,7 +46,8 @@ Refresh tokens without re-login.
   before={"const ttl = 3600;\n"} after={"const ttl = 900;\n"} />
 ```
 
-- Frontmatter carries `title` and `kind: plan | review`.
+- Frontmatter carries `title` and an optional `kind`
+  (`design` / `plan` / `review` / `note`, default `note`).
 - Prose between blocks is normal Markdown (wikilinks, mermaid fences, and
   relative images all work exactly as in `.md` notes).
 - Block props are **static literals only** — no imports, no expressions, no
@@ -56,7 +59,7 @@ Refresh tokens without re-login.
 
 ## Viewing
 
-Any `.mdx` file opens in the plan viewer — from a Deliverables entry, the
+Any `.mdx` file opens in the viewer — from a Deliverables entry, the
 Resources pane, or an `.mdx` link inside a note. The viewer renders each
 block natively (split diffs, collapsible endpoints, JSON explorers, themed
 wireframes), shows parse/validation issues in a banner, renders an invalid
@@ -79,17 +82,17 @@ check means the document parses and matches the viewer — there is no separate
 lint to drift. It does not prove every block has visible content: `check`
 warns when a block would render blank (an unfolded diagram, an empty `code` or
 `diff`, a wireframe with no html), so read the warnings and open the document
-in the viewer once before hand-off. Errors exit 3 with line numbers; a missing
-`kind` warns.
+in the viewer once before hand-off. Errors exit 3 with line numbers; `kind` is
+optional and never warns.
 
 ## Where documents live
 
 | Piece | Convention |
 |---|---|
-| File | `projects/…/<item>/notes/NN-<slug>/plan.mdx` |
+| File | `projects/…/<item>/notes/NN-<slug>.mdx` (supporting files in `notes/NN-<slug>/`) |
 | README | indexed in `## Notes`; step lines say `— see note NN` |
 | Card | add a `## Deliverables` entry when the document is a designated output |
-| Kind | `plan` (forward) or `review` (from a diff) in frontmatter |
+| Kind | `design` / `plan` / `review` / `note` in frontmatter (optional; default `note`) |
 
 The review unit is the project item's **worktree branch** — potentially
 several app repos under `<worktrees_path>/<branch>/` — diffed against each

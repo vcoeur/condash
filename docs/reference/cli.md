@@ -310,8 +310,8 @@ Skill sources flow through one manifest at `.agents/.condash-skills.json` (v3 sc
 
 ### `mdx`
 
-Plan/review MDX documents (`plan.mdx` notes authored by the `/visual-plan` and
-`/visual-review` skills — see the [plan documents guide](../guides/plan-documents.md)).
+Visual-note MDX documents (`.mdx` notes authored by the `/visual` skill — see
+the [visual notes guide](../guides/plan-documents.md)).
 
 | Verb | Behaviour |
 |------|-----------|

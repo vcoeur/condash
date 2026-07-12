@@ -7,9 +7,8 @@ import { renderHelp, runNoun } from '../help';
 import type { PlanIssue } from '../../shared/plan-blocks/schemas';
 
 /**
- * `condash mdx` — the CLI side of plan/review MDX documents (the artifacts
- * the `visual-plan` / `visual-review` skills author into a project item's
- * `notes/NN-<slug>/plan.mdx`).
+ * `condash mdx` — the CLI side of visual-note MDX documents (the artifacts the
+ * `/visual` skill authors into a project item's `notes/NN-<slug>.mdx`).
  *
  *   - `check <path>`  validate a plan.mdx (or a folder holding one) against
  *     the same parser + block schemas the in-app viewer renders — a green
@@ -67,7 +66,8 @@ function printHelp(verb: string | null): void {
 
 interface CheckReport {
   path: string;
-  kind: string | null;
+  /** Effective posture — the frontmatter `kind`, or `note` when unset. */
+  kind: string;
   title: string | null;
   blocks: number;
   errors: PlanIssue[];
@@ -98,17 +98,15 @@ async function runCheck(
   const doc = parsePlanMdx(source);
 
   const issues = [...doc.issues];
-  if (doc.frontmatter.kind === undefined) {
-    issues.push({
-      severity: 'warning',
-      message: 'frontmatter has no `kind` — set `kind: plan` or `kind: review`',
-      line: 1,
-    });
-  }
+  // `kind` is optional and free-form; a missing or off-list value is not a
+  // warning. The report shows the effective posture (`note` when unset).
 
   const report: CheckReport = {
     path: filePath,
-    kind: typeof doc.frontmatter.kind === 'string' ? doc.frontmatter.kind : null,
+    kind:
+      typeof doc.frontmatter.kind === 'string' && doc.frontmatter.kind !== ''
+        ? doc.frontmatter.kind
+        : 'note',
     title: typeof doc.frontmatter.title === 'string' ? doc.frontmatter.title : null,
     blocks: doc.blocks.length,
     errors: issues.filter((i) => i.severity === 'error'),

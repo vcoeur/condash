@@ -85,24 +85,20 @@ function splitFrontmatter(
     const parsed: unknown = parseYaml(match[1]);
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
       frontmatter = parsed as PlanFrontmatter;
-      const kind: string | undefined = frontmatter.kind;
-      if (kind === 'recap') {
-        // Back-compat: `recap` was renamed to `review` in v4.81.0. Accept it
-        // for one release — warn and normalize so the rest of the app (viewer
-        // pill, CLI report) only ever sees `review`.
+      if (frontmatter.kind === 'recap') {
+        // Back-compat: `recap` was renamed to `review` in v4.81.0. Warn and
+        // normalize so the rest of the app (viewer pill, CLI report) only ever
+        // sees `review`.
         issues.push({
           severity: 'warning',
           message: 'frontmatter kind "recap" is deprecated — use "review"',
           line: 1,
         });
         frontmatter.kind = 'review';
-      } else if (kind !== undefined && kind !== 'plan' && kind !== 'review') {
-        issues.push({
-          severity: 'warning',
-          message: `frontmatter kind should be "plan" or "review" (got ${JSON.stringify(kind)})`,
-          line: 1,
-        });
       }
+      // Any other kind — the known postures (design/plan/review/note) or an
+      // unrecognized value — passes through untouched; the viewer renders a
+      // neutral pill for anything off the known set. `kind` is never required.
     } else {
       issues.push({ severity: 'warning', message: 'frontmatter is not a YAML mapping', line: 1 });
     }

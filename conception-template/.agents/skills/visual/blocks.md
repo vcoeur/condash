@@ -1,4 +1,4 @@
-# Plan block vocabulary
+# Visual-note block vocabulary
 
 Generated from the condash block registry (`condash mdx blocks`) — do not hand-edit.
 Author against these tags; `condash mdx check <path>` validates the same schemas the

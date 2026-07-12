@@ -41,6 +41,14 @@ describe('parsePlanMdx', () => {
     );
   });
 
+  it('accepts the known postures and any off-list kind without a warning', () => {
+    for (const kind of ['design', 'plan', 'review', 'note', 'proposal']) {
+      const doc = parsePlanMdx(['---', `kind: ${kind}`, '---', '', 'x', ''].join('\n'));
+      expect(doc.frontmatter.kind).toBe(kind);
+      expect(doc.issues.some((i) => i.message.includes('kind'))).toBe(false);
+    }
+  });
+
   it('folds markdown children into callout body and endpoint description', () => {
     const doc = parsePlanMdx(
       [

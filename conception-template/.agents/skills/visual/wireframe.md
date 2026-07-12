@@ -1,9 +1,8 @@
 # HTML wireframe quality — single source of truth
 
 This file is the canonical quality bar for HTML wireframes / `<Screen>` /
-`WireframeBlock` content, shared word for word by `/visual-plan` and
-`/visual-review` (a condash test pins the two copies identical). Read it in
-full before authoring ANY wireframe; do not author wireframes from memory.
+`WireframeBlock` content, shared by every posture of the `/visual` skill. Read
+it in full before authoring ANY wireframe; do not author wireframes from memory.
 
 **A wireframe is an HTML mockup. The viewer owns the look; you write the
 content.** Author `<WireframeBlock id="…"><Screen surface="…" html={"…"} …/></WireframeBlock>`:

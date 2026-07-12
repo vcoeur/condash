@@ -55,15 +55,16 @@ describe('mdx check', () => {
     expect(envelope.data?.kind).toBe('plan');
   });
 
-  it('accepts a direct .mdx path and warns on a missing kind', async () => {
+  it('accepts a direct .mdx path with no kind, defaulting to note without warning', async () => {
     const file = join(planDir, 'plan.mdx');
     await fs.writeFile(file, '# hi\n\n<Code id="c" code={"x"} />\n', 'utf8');
     const { stdout, threw } = await captureStdout(() =>
       runMdx('check', args([file]), jsonCtx(), conceptionPath, false),
     );
     expect(threw).toBeUndefined();
-    const envelope = parseJsonEnvelope<{ warnings: { message: string }[] }>(stdout);
-    expect(envelope.data?.warnings.some((w) => w.message.includes('kind'))).toBe(true);
+    const envelope = parseJsonEnvelope<{ kind: string; warnings: { message: string }[] }>(stdout);
+    expect(envelope.data?.kind).toBe('note');
+    expect(envelope.data?.warnings.some((w) => w.message.includes('kind'))).toBe(false);
   });
 
   it('exits VALIDATION with the report on block errors', async () => {

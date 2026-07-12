@@ -1,7 +1,8 @@
 # Good vs. bad exemplar — single source of truth
 
 A worked example of the bar. Read it alongside `document-quality.md` before
-authoring a plan.
+authoring a note. The three examples below are a `plan`, a `review`, and the
+anti-pattern that fails all postures.
 
 **GOOD.** A UI-first plan for a todo app: near the top, a `desktop` wireframe
 whose `html` is a real flex layout — a sidebar of links (`Inbox 12`,
@@ -36,5 +37,5 @@ code evidence lives elsewhere; a product wireframe mixing a real screen with
 repo names, file-contract arrows, or architecture notes; and a plan that
 describes itself as a revision of a prior conversation instead of a
 standalone proposal; a `diagram` / `code` / `wireframe` whose payload is empty
-so it passes `plans check` yet renders blank; and a code block retyped from
+so it passes `mdx check` yet renders blank; and a code block retyped from
 memory instead of copied from the real file. Never produce this.
