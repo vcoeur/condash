@@ -60,6 +60,10 @@ async function rowsOf(window: Page, sid: string): Promise<number> {
   return window.evaluate((id) => window.__condashXterms?.get(id)?.rows ?? -1, sid);
 }
 
+async function colsOf(window: Page, sid: string): Promise<number> {
+  return window.evaluate((id) => window.__condashXterms?.get(id)?.cols ?? -1, sid);
+}
+
 // The Refresh action nudges the pty one row shorter and back (SIGWINCH) so the
 // running program repaints its whole screen — the escape hatch for a stale
 // half-frame left by the hidden-tab serialize/hydrate round-trip. The nudge must
@@ -341,6 +345,63 @@ test('auto-refresh opt-out: alt-screen tab repaints on switch, plain shell does 
 
     await booted.window.evaluate((id) => window.condash.termClose(id), tui.id);
     await booted.window.evaluate((id) => window.condash.termClose(id), sh.id);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+// Regression for the "terminal renders into a small box" bug: once a fit has run,
+// nothing used to re-fit the terminal when its host later changed size for a
+// reason other than a window-resize or splitter drag (a layout reflow, the top
+// band collapsing, a maximize sampled mid-animation) — so the grid stayed sized
+// for the old, smaller host and stranded narrow in a wider pane. The controller
+// now runs a ResizeObserver on each column host that refits its active terminal
+// on any host size change. Shrinking the host (a size change that goes through no
+// existing fit listener) must make the terminal's column count follow it down,
+// and restoring the host must let it grow back.
+test('the active terminal tracks its host size (ResizeObserver refit)', async () => {
+  const booted = await bootApp({ globalConfig: { layout: { terminal: true } } });
+  booted.window.on('console', (msg) => console.log('RENDERER CONSOLE:', msg.text()));
+  try {
+    await booted.window.evaluate(() => {
+      document.body.setAttribute('data-test-xterm-registry', '');
+    });
+
+    const term = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 30' }),
+    );
+    await booted.window.waitForSelector(`[data-sid="${term.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await waitForDomTerm(booted.window, term.id);
+
+    // Full-width (1280px window) baseline — comfortably above the 80-col default.
+    const wideCols = await colsOf(booted.window, term.id);
+    expect(wideCols, 'fitted to the full pane width').toBeGreaterThan(80);
+
+    // Force the column host narrow. This changes only the host's box — no window
+    // 'resize' event, no splitter drag — so only the ResizeObserver refit can
+    // react. Explicit width beats the flex:1 stretch; the absolute-inset
+    // .xterm-host follows, and proposeDimensions reads the smaller parent.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.width = '420px';
+    });
+    await expect
+      .poll(() => colsOf(booted.window, term.id), { timeout: 5000 })
+      .toBeLessThan(wideCols);
+
+    // Restore the host: the terminal must grow back to (about) its full width.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.removeProperty('width');
+    });
+    await expect
+      .poll(() => colsOf(booted.window, term.id), { timeout: 5000 })
+      .toBeGreaterThanOrEqual(wideCols);
+
+    await booted.window.evaluate((id) => window.condash.termClose(id), term.id);
   } finally {
     await booted.cleanup();
   }

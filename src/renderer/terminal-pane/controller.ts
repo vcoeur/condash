@@ -14,6 +14,7 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'soli
 import type { TabSummary, TermSide, TermSpawnRequest } from '@shared/types';
 import { createDragDropController } from './drag-drop';
 import { decideRefreshAction, refreshOnSwitchTargets, REPAINT_NUDGE_MS } from './nudge-machine';
+import { decideFit, MAX_FIT_ATTEMPTS } from './fit-when-ready';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
@@ -149,23 +150,76 @@ export function createTerminalController(props: TerminalPaneProps) {
     }
   };
 
+  /** Fit a session's terminal, retrying across animation frames until its host
+   *  is laid out at a real size. `FitAddon.proposeDimensions()` sizes the grid
+   *  from the host's computed width/height, so a fit run before the host has
+   *  resolved (a freshly-shown tab whose flex box hasn't settled, a host still
+   *  0-sized from a visibility transition) returns undefined / a NaN axis and
+   *  `fit()` is a no-op — the grid strands at the default 80×24 inside a larger
+   *  pane (the "terminal renders into a small box" bug), and nothing re-fits once
+   *  the host settles. Retrying on rAF closes that so the terminal fills its host.
+   *  A session mid-nudge is skipped: its pty is held one row short on purpose and
+   *  refitting now would collapse the dip before the TUI repaints (see the
+   *  Refresh nudge below). The live-handle re-read each frame drops the retry if
+   *  the tab was demoted, closed, or re-mounted meanwhile. */
+  const fitWhenReady = (id: string, attemptsLeft = MAX_FIT_ATTEMPTS): void => {
+    const handle = xterms.get(id);
+    if (!handle || nudging.has(id)) return;
+    let dims: { cols: number; rows: number } | undefined;
+    try {
+      dims = handle.fit.proposeDimensions();
+    } catch {
+      dims = undefined;
+    }
+    const action = decideFit(dims, attemptsLeft);
+    if (action === 'retry') {
+      requestAnimationFrame(() => fitWhenReady(id, attemptsLeft - 1));
+      return;
+    }
+    if (action === 'giveup') return;
+    try {
+      handle.fit.fit();
+    } catch {
+      /* host not sized yet / term disposed */
+    }
+  };
+
   /** Focus + fit the active DOM Terminal, if one exists. */
   const focusActiveDom = (): void => {
     const id = activeIdIn(activeColumn());
     if (!id) return;
     const handle = xterms.get(id);
     if (handle) {
-      try {
-        // Don't refit a session whose Refresh nudge is holding the pty one row
-        // short — restoring the size now would collapse the dip before the
-        // program repaints. The nudge's own timeout refits when it's done.
-        if (!nudging.has(id)) handle.fit.fit();
-      } catch {
-        /* not yet sized */
-      }
+      // fitWhenReady skips a nudging session (its pty is held one row short) and
+      // retries until the host is laid out, so a tab shown before its flex box
+      // settles still fills the host rather than stranding at 80×24.
+      fitWhenReady(id);
       handle.term.focus();
     }
   };
+
+  // Keep the visible terminal fitted to its host at all times. The explicit fits
+  // (focusActiveDom / view-switch / nudge / splitter-drag / window-resize) each
+  // fire at one moment; none covers a host that changes size for some OTHER
+  // reason — a flex/grid reflow settling a frame late, the top band collapsing,
+  // a window maximize the 'resize' listener sampled mid-animation. Once a fit has
+  // run against a smaller or not-yet-laid-out host, nothing re-fits it and the
+  // terminal is stranded narrower than its pane (the "small box" bug). A
+  // ResizeObserver on each column host closes that: whenever a host's box
+  // actually changes size, refit that column's active terminal. RO callbacks are
+  // frame-batched (no storm), the nudge resizes the pty not the host (so it never
+  // fires mid-nudge), and fitWhenReady skips a nudging / not-laid-out terminal —
+  // so this is a pure backstop that can't fight the tuned resize/nudge paths.
+  const hostResizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const col: Column | null =
+        entry.target === leftHost ? 'left' : entry.target === rightHost ? 'right' : null;
+      if (!col) continue;
+      const id = activeIdIn(col);
+      if (id) fitWhenReady(id);
+    }
+  });
+  onCleanup(() => hostResizeObserver.disconnect());
 
   /** Serialize/hydrate guard. Visibility transitions are async (dynamic import
    *  of xterm + worker round-trip), so concurrent calls chain on a single
@@ -751,7 +805,10 @@ export function createTerminalController(props: TerminalPaneProps) {
   createEffect(() => {
     if (props.open && props.bottomView === 'terminal') {
       queueMicrotask(() => {
-        for (const entry of xterms.values()) entry.fit.fit();
+        // The hosts were CSS-hidden while the Dashboard body showed, so the
+        // just-restored host may still read 0×0 this microtask — fitWhenReady
+        // retries until it is laid out rather than one-shot no-opping on it.
+        for (const id of xterms.keys()) fitWhenReady(id);
         focusActive();
       });
     }
@@ -865,11 +922,14 @@ export function createTerminalController(props: TerminalPaneProps) {
           nudging.delete(id);
           // Bail if the tab was demoted, closed, or re-mounted while we waited.
           if (xterms.get(id) !== live) return;
+          // fitWhenReady (not a bare fit) so the restore still lands even if the
+          // host is not laid out at its real size by REPAINT_NUDGE_MS — it retries
+          // across frames instead of no-opping and stranding the grid.
+          fitWhenReady(id);
           try {
-            live.fit.fit();
             live.term.focus();
           } catch {
-            /* host not sized yet / term disposed */
+            /* term disposed */
           }
         }, REPAINT_NUDGE_MS);
       })
@@ -920,10 +980,18 @@ export function createTerminalController(props: TerminalPaneProps) {
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
 
-  /** Store a column's xterm host element (set from the column's ref). */
+  /** Store a column's xterm host element (set from the column's ref) and observe
+   *  it for size changes so the column's active terminal always tracks its host.
+   *  Unobserve any previous element for the column first — the right column's host
+   *  is re-created on every split toggle, and a ResizeObserver keeps a strong ref
+   *  to each observed target until unobserve/disconnect, so re-registering without
+   *  this would accumulate detached hosts. */
   const registerHost = (col: Column, el: HTMLDivElement): void => {
+    const prev = col === 'left' ? leftHost : rightHost;
+    if (prev && prev !== el) hostResizeObserver.unobserve(prev);
     if (col === 'left') leftHost = el;
     else rightHost = el;
+    hostResizeObserver.observe(el);
   };
 
   /** Direct the next default spawn at `col` (set when a `+` button is hit). */
