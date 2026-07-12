@@ -444,9 +444,9 @@ body[data-dragging='project'] .row {
   min-width: 0;
   font-family: var(--font-display);
   /* Upright Cormorant serif (bold redesign, 2026-07): card titles carry the
-   * editorial display face. 600 weight at 15 px keeps the title compact while
-   * preserving enough presence for the new denser card. */
-  font-weight: 600;
+   * editorial display face. 700 weight at 15 px makes the title prominent on
+   * the new denser card without changing its size. */
+  font-weight: 700;
   font-size: 15px;
   line-height: 1.2;
   color: var(--text);
@@ -645,24 +645,6 @@ body[data-dragging='project'] .row {
   width: 1px;
   height: 10px;
   background: var(--border);
-}
-
-/* Status pill — compact uppercase label tinted with the status colour.
- * Sits at the start of the single bottom meta row. */
-.row .status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 1px solid color-mix(in srgb, var(--col-status, var(--text-muted)) 20%, transparent);
-  background: color-mix(in srgb, var(--col-status, var(--text-muted)) 12%, transparent);
-  color: var(--col-status, var(--text-muted));
-  flex-shrink: 0;
 }
 
 .row .step-progress-inner {

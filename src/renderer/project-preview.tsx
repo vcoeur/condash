@@ -50,6 +50,74 @@ function markerClass(m: StepMarker): string {
   return 'dropped';
 }
 
+interface ReadmeSection {
+  heading: string;
+  blocks: ContentBlock[];
+}
+
+type ContentBlock = { kind: 'p'; text: string } | { kind: 'ul'; items: string[] };
+
+/** Split README markdown into `## ` sections, skipping the `## Goal` section
+ * because the modal already shows its content as the goal banner. Returns the
+ * remaining sections with their content broken into paragraphs and list blocks. */
+function parseReadmeSections(content: string): ReadmeSection[] {
+  const sections: ReadmeSection[] = [];
+  let current: ReadmeSection | null = null;
+
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith('## ')) {
+      if (current) sections.push(current);
+      current = { heading: line.slice(3).trim(), blocks: [] };
+      continue;
+    }
+    if (!current) continue;
+
+    const trimmed = line.trim();
+    if (trimmed === '') {
+      flushBlock(current);
+      continue;
+    }
+    if (trimmed.startsWith('- ')) {
+      flushParagraph(current);
+      const last = current.blocks[current.blocks.length - 1];
+      if (last?.kind === 'ul') {
+        last.items.push(trimmed.slice(2).trim());
+      } else {
+        current.blocks.push({ kind: 'ul', items: [trimmed.slice(2).trim()] });
+      }
+      continue;
+    }
+    appendParagraph(current, trimmed);
+  }
+  if (current) {
+    flushBlock(current);
+    sections.push(current);
+  }
+
+  return sections.filter((s) => s.heading.toLowerCase() !== 'goal');
+}
+
+function appendParagraph(section: ReadmeSection, text: string) {
+  const last = section.blocks[section.blocks.length - 1];
+  if (last?.kind === 'p') {
+    last.text += ' ' + text;
+  } else {
+    section.blocks.push({ kind: 'p', text });
+  }
+}
+
+function flushParagraph(section: ReadmeSection) {
+  const last = section.blocks[section.blocks.length - 1];
+  if (last?.kind === 'p') {
+    last.text = last.text.trim();
+  }
+}
+
+function flushBlock(section: ReadmeSection) {
+  flushParagraph(section);
+}
+
 export function ProjectPreview(props: {
   project: Project | null;
   onClose: () => void;
@@ -68,6 +136,7 @@ export function ProjectPreview(props: {
 }) {
   const [statusMenu, setStatusMenu] = createSignal(false);
   const [activityExpanded, setActivityExpanded] = createSignal(false);
+  const [deliverablesExpanded, setDeliverablesExpanded] = createSignal(false);
   const [editingLineIndex, setEditingLineIndex] = createSignal<number | null>(null);
   const [editingText, setEditingText] = createSignal('');
   const [adding, setAdding] = createSignal(false);
@@ -90,6 +159,11 @@ export function ProjectPreview(props: {
   const [fullProject] = createResource(
     () => props.project?.path ?? null,
     async (path) => (path ? await window.condash.getProject(path) : null),
+  );
+
+  const [readmeContent] = createResource(
+    () => props.project?.path ?? null,
+    async (path) => (path ? await window.condash.readNote(path) : ''),
   );
 
   const handleKey = (event: KeyboardEvent): void => {
@@ -304,7 +378,7 @@ export function ProjectPreview(props: {
                     onClick={() => props.onOpenInEditor(projectDir(project().path))}
                     title="Open project folder in OS"
                   >
-                    Open worktree
+                    Open directory
                   </Button>
                   <Button
                     type="button"
@@ -516,28 +590,85 @@ export function ProjectPreview(props: {
                 <Show when={project().deliverables.length > 0}>
                   <section class="widget">
                     <h3 class="widget-title">Deliverables</h3>
-                    <ul class="deliverables-list">
-                      <For each={project().deliverables}>
-                        {(d) => (
-                          <li class="deliverable-row">
-                            <Button
-                              variant="ghost"
-                              class="deliverable-button"
-                              onClick={() => props.onOpenDeliverable(d)}
-                              title={d.path}
+                    {(() => {
+                      const entries = () => project().deliverables;
+                      const visible = () =>
+                        deliverablesExpanded() || entries().length <= 3
+                          ? entries()
+                          : entries().slice(0, 3);
+                      return (
+                        <>
+                          <ul class="deliverables-list">
+                            <For each={visible()}>
+                              {(d) => (
+                                <li class="deliverable-row">
+                                  <Button
+                                    variant="ghost"
+                                    class="deliverable-button"
+                                    onClick={() => props.onOpenDeliverable(d)}
+                                    title={d.path}
+                                  >
+                                    <span class="deliverable-label">{d.label}</span>
+                                    <Show when={d.description}>
+                                      <span class="deliverable-desc">— {d.description}</span>
+                                    </Show>
+                                    <span class="deliverable-path">{d.path}</span>
+                                  </Button>
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                          <Show when={entries().length > 3}>
+                            <button
+                              type="button"
+                              class="activity-expand"
+                              onClick={() => setDeliverablesExpanded((v) => !v)}
+                              aria-expanded={deliverablesExpanded()}
                             >
-                              <span class="deliverable-label">{d.label}</span>
-                              <Show when={d.description}>
-                                <span class="deliverable-desc">— {d.description}</span>
-                              </Show>
-                              <span class="deliverable-path">{d.path}</span>
-                            </Button>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
+                              {deliverablesExpanded() ? 'Show less' : 'Show more'}
+                            </button>
+                          </Show>
+                        </>
+                      );
+                    })()}
                   </section>
                 </Show>
+
+                {(() => {
+                  const sections = () => parseReadmeSections(readmeContent() ?? '');
+                  return (
+                    <Show when={sections().length > 0}>
+                      <section class="widget readme-widget">
+                        <h3 class="widget-title">README</h3>
+                        <div class="readme-body">
+                          <For each={sections()}>
+                            {(section) => (
+                              <div class="readme-section">
+                                <h4 class="readme-heading">{section.heading}</h4>
+                                <div class="readme-content">
+                                  <For each={section.blocks}>
+                                    {(block) => {
+                                      if (block.kind === 'ul') {
+                                        return (
+                                          <ul>
+                                            <For each={block.items}>
+                                              {(item) => <li>{item}</li>}
+                                            </For>
+                                          </ul>
+                                        );
+                                      }
+                                      return <p>{block.text}</p>;
+                                    }}
+                                  </For>
+                                </div>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </section>
+                    </Show>
+                  );
+                })()}
               </main>
             </div>
           </div>

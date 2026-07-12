@@ -397,12 +397,12 @@ export function Card(props: {
           </div>
         </div>
 
-        {/* Single compact meta row: status pill, app pills, branch/PR/warn,
-            a spacer, then a mini progress indicator + date. The summary and
+        {/* Single compact meta row: app pills, branch/PR/warn, a spacer,
+            then a mini progress indicator + date. The status is shown in the
+            section header, so it is omitted from each card. The summary and
             next-step line have been removed to make the card denser and keep
             the focus on title + status silhouette. */}
         <div class="meta meta-bottom">
-          <span class="status-pill">{props.item.status}</span>
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
               <For each={props.item.apps}>

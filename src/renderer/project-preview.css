@@ -196,6 +196,56 @@
   color: var(--text);
 }
 
+.readme-widget {
+  gap: 12px;
+}
+
+.readme-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.readme-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readme-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.readme-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readme-content p {
+  margin: 0;
+}
+
+.readme-content ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.readme-content li {
+  margin: 2px 0;
+}
+
+.readme-content li::marker {
+  color: var(--text-muted);
+}
+
 .revamped-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
