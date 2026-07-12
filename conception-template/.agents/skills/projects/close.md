@@ -1,6 +1,6 @@
 # /projects — close
 
-Mark an item as `done`. Under the flat layout, this is a status change only — no folder move.
+Mark an item as `done`. Under the flat layout, this is a status change only — no folder move. The whole ritual is **write-files-only**: nothing here commits — the sweeper (`condash sync run` on its timer) sweeps the close and mints the `Close <slug>. Outcome: …` milestone commit on its next tick.
 
 Trigger: `/projects close <slug>`.
 
@@ -44,15 +44,7 @@ Trigger: `/projects close <slug>`.
 
     d. **Deferred promotions.** A candidate that fails *only* #3 (durable and cross-cutting, but its truth is established by this not-yet-merged PR) is not a drop — record it exactly as `/projects update` does: append a `[knowledge-recheck:pending]` `## Timeline` marker naming the fact, the blocking PR, and the candidate `knowledge/` path. The `knowledge-recheck` audit (`/knowledge verify`) re-surfaces it after the PR merges — **including in `done` projects**, so deferring at close never buries it. Marker format and the closing `[knowledge-recheck:done]` step live in [update.md](update.md) — use that form, not a prose checklist, or the audit can't see it.
 
-5. **Flip status + append timeline:**
-
-    ```bash
-    condash projects close <slug> --summary "<one-line outcome>" --json
-    ```
-
-    The CLI sets the status to `done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, then **automatically appends** `- YYYY-MM-DD — Checked knowledge promotion`. The check entry is always last — nothing may follow it without re-running the check. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
-
-6. **Worktree + branch cleanup.** If the item has a `branch` field:
+5. **Worktree + branch cleanup.** If the item has a `branch` field:
 
    ```bash
    condash worktrees check <branch> --json
@@ -69,6 +61,22 @@ Trigger: `/projects close <slug>`.
 
    If `-d` refuses (branch not merged), surface the message and **stop**. Don't fall back to `-D`. Don't touch the remote branch — `origin/<branch>` is GitHub's responsibility.
 
+   **Record the cleanup in the README** so the facts live in the item: append one terse `## Timeline` entry naming what went away, e.g.
+
+   ```
+   - YYYY-MM-DD — Removed worktrees: <branch>/<repo>, …; deleted local branches: <branch> (<repo>).
+   ```
+
+   Nothing removed or deleted → no entry. Cleanup runs **before** the status flip so the `Checked knowledge promotion` entry the close appends stays last.
+
+6. **Flip status + append timeline:**
+
+    ```bash
+    condash projects close <slug> --summary "<one-line outcome>" --json
+    ```
+
+    The CLI sets the status to `done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, then **automatically appends** `- YYYY-MM-DD — Checked knowledge promotion`. The check entry is always last — nothing may follow it without re-running the check. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
+
 7. **Refresh dirty indexes.**
 
    ```bash
@@ -78,30 +86,12 @@ Trigger: `/projects close <slug>`.
    - If `data.projects.present` is true → `condash projects index --json`.
    - If `data.knowledge.present` is true → `condash knowledge index --json`.
 
-8. **Milestone commit.** `condash sync` is the conception's only committer — never run `git add` / `git commit` / `git push` here, and never invoke `/commit`. Close the item under the sync lock:
-
-   ```bash
-   condash sync commit <slug> --message "<subject>"
-   ```
-
-   Build `<subject>` as:
-
-   ```
-   Close <slug>. Outcome: <one-line outcome from the closing timeline entry>.
-
-   Knowledge promoted: <list of knowledge/<path> entries with the **Transferred:** stamps just written, or "none">.
-   Indexes refreshed: <"projects", "knowledge", "both", or "none">.
-   Worktrees removed: <comma-separated list of `<branch>/<repo>`, or "none">.
-   Branches deleted: <comma-separated list of `<branch>` (in `<repo>`), or "none">.
-   ```
-
-   `sync commit` pushes by default; pass `--no-push` to hold the commit local. It commits **only that item's paths** — any regenerated `index.md` from step 7 is left for the next `condash sync run`. A held lock is an error (exit 3), not a silent skip: report it and stop rather than falling back to `git`.
-
-9. **Report** what changed: status, knowledge promotions, worktrees removed, branches deleted, indexes refreshed, commit created.
+8. **Report** what changed: status, knowledge promotions, worktrees removed, branches deleted, indexes refreshed. Do **not** commit anything — the sweeper mints the `Close <slug>. Outcome: …` milestone commit from the closing timeline entry on its next tick.
 
 ## Rules
 
 - **No folder move.** Done items stay in their creation-month bucket.
+- **No commits, no sync verbs.** Never run `git add` / `git commit` / `git push` or any `condash sync` verb here, and never invoke `/commit` — write the files and stop. The sweeper owns every conception commit and synthesizes the close milestone subject itself; `condash sync commit` stays a manual escape hatch for humans.
 - **Transfer stamps are historical.** They never expire; no `/verify` action checks them.
 
 ## Reopen

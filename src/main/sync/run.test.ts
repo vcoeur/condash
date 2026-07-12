@@ -281,6 +281,70 @@ describe('syncRun', () => {
     expect(await git(root, 'status', '--porcelain')).toContain('AGENTS.md');
   });
 
+  it('synthesizes a Close milestone subject when a sweep introduces the Closed. entry', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+      body: '## Timeline\n\n- 2026-07-10 — Opened.',
+    });
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+
+    // The write-files-only close ritual: status flip + Closed. timeline entry.
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+      body: [
+        '## Timeline',
+        '',
+        '- 2026-07-10 — Opened.',
+        '- 2026-07-12 — Closed. Did the thing.',
+        '- 2026-07-12 — Checked knowledge promotion',
+      ].join('\n'),
+    });
+    await settle(readme);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      'Close 2026-07-10-alpha. Outcome: Did the thing.',
+    ]);
+    expect((await git(root, 'log', '--format=%s', '-1')).trim()).toBe(
+      'Close 2026-07-10-alpha. Outcome: Did the thing.',
+    );
+  });
+
+  it('reverts to the plain sync subject once the close is already committed', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+      body: ['## Timeline', '', '- 2026-07-12 — Closed. Did the thing.'].join('\n'),
+    });
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+
+    // A later edit with no new Closed. entry is an ordinary sweep again.
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+      body: [
+        '## Timeline',
+        '',
+        '- 2026-07-12 — Closed. Did the thing.',
+        '- 2026-07-12 — Edited after close.',
+      ].join('\n'),
+    });
+    await settle(readme);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+  });
+
   it('commits a deletion even inside the quiet period (no mtime to compare)', async () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     await settle(readme);

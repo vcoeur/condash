@@ -6,8 +6,10 @@
  *  process the committer dissolves all three.
  *
  *    run     the sweeper (default verb) — commit settled changes, one commit
- *            per item, regenerate stale indexes, push
- *    commit  a milestone commit for one item, under the same lock
+ *            per item (with a synthesized `Close <item>. …` subject when the
+ *            sweep introduces the item's close), regenerate stale indexes, push
+ *    commit  a manual milestone commit for one item, under the same lock —
+ *            a human escape hatch; agents never run sync verbs
  *
  *  There is no scheduler here. `run` is meant to be driven by a `systemd --user`
  *  timer, a launchd agent, or cron — condash stays a CLI with no daemon. */
@@ -180,6 +182,10 @@ function printHelp(verb: string | null): void {
           'an index is fan-in over every item, so committing one while an item is',
           'still mid-write would record a bullet pointing at an uncommitted directory.',
           '',
+          "A sweep that introduces an item's `Closed.` timeline entry commits that",
+          'item under a synthesized `Close <item>. Outcome: …` subject instead of',
+          '`<item>: sync`, so closing an item stays write-files-only.',
+          '',
           'Flags:',
           '  --dry-run              Report what would be committed; write nothing.',
           '  --no-push              Commit but leave the branch ahead of upstream.',
@@ -202,6 +208,10 @@ function printHelp(verb: string | null): void {
           '',
           'Unlike `run`, a held lock is an error here (exit 3) rather than a silent skip.',
           'There is no `-m` short flag — short flags are boolean-only.',
+          '',
+          'This is a manual escape hatch for humans. Agents never run sync verbs —',
+          'the sweeper synthesizes the `Close <item>. Outcome: …` milestone subject',
+          'itself when a sweep introduces the closing timeline entry.',
           '',
           'Flags:',
           '  --message <subject>  Commit subject (required).',
@@ -228,7 +238,7 @@ function printSubHelp(): void {
       '',
       'Verbs:',
       '  run     Sweep and commit settled changes, one commit per item (default).',
-      '  commit  Milestone commit for one item, under the same lock.',
+      '  commit  Manual milestone commit for one item, under the same lock.',
     ]),
   );
 }

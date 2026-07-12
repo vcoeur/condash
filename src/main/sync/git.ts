@@ -126,6 +126,27 @@ export async function commitPaths(
 }
 
 /**
+ * A file's content as of HEAD.
+ *
+ * @param cwd conception root
+ * @param relPath repo-relative, POSIX-separated path
+ * @returns the committed text, or `null` when the path is not in HEAD (a new
+ *          file) or the repo has no HEAD yet (no commits)
+ */
+export async function readFileAtHead(cwd: string, relPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec('git', ['show', `HEAD:${relPath}`], { cwd });
+    return stdout;
+  } catch (err) {
+    const combined = `${(err as ExecError).stdout ?? ''}${(err as ExecError).stderr ?? ''}`;
+    // "does not exist in" / "exists on disk, but not in" — path absent from
+    // HEAD (a new file); "invalid object name" — no HEAD yet (empty repo).
+    if (/does not exist in|exists on disk|invalid object name/i.test(combined)) return null;
+    throw err;
+  }
+}
+
+/**
  * Commits on HEAD that the upstream branch doesn't have.
  *
  * @param cwd conception root
