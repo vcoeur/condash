@@ -246,6 +246,24 @@ export function FolderIcon() {
   );
 }
 
+// Refresh — a clockwise circular arrow (reload), feather's rotate-cw scaled
+// to the 16×16 shelf. Backs the active terminal tab's in-title repaint button.
+export function RefreshIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.7 10a6 6 0 1 1-1.4-6.24L15.3 6.7" />
+      <polyline points="15.3 2.7 15.3 6.7 11.3 6.7" />
+    </svg>
+  );
+}
+
 // Rail icons — 24×24 viewBox, slightly heavier stroke so they read at 20 px.
 
 /** Projects rail icon — folder with a small dot, suggesting the project inbox. */

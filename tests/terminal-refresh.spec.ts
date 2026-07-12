@@ -106,9 +106,9 @@ test('Refresh repaints the active terminal, restoring its size and keeping its b
     const rowsBefore = await rowsOf(booted.window, term.id);
     expect(rowsBefore, 'terminal has a real row count').toBeGreaterThan(1);
 
-    // Trigger the Refresh strip button and let the down-then-restore nudge settle
-    // (well past REPAINT_NUDGE_MS = 80ms).
-    await booted.window.click('[data-label="refresh"]');
+    // Trigger the active tab's in-title Refresh button and let the down-then-
+    // restore nudge settle (well past REPAINT_NUDGE_MS = 80ms).
+    await booted.window.click(`[data-sid="${term.id}"] .terminal-tab-refresh`);
     await wait(400);
 
     // The terminal is back at its original size, still live, and the marker is
@@ -231,7 +231,7 @@ test('Refresh repaints a debounced alt-screen TUI (the opencode case)', async ()
     const before = await latestPaintCount(booted.window, term.id);
 
     // Refresh must drive at least one more repaint past the debounce.
-    await booted.window.click('[data-label="refresh"]');
+    await booted.window.click(`[data-sid="${term.id}"] .terminal-tab-refresh`);
     await expect
       .poll(() => latestPaintCount(booted.window, term.id), { timeout: 5000 })
       .toBeGreaterThan(before);

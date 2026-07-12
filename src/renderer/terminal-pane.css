@@ -384,6 +384,40 @@
   padding: 0 3px;
 }
 
+/* Per-tab repaint button — only rendered on the active tab, trailing the label
+ * (and memory meter) at the tab's right edge. A subtle icon affordance that
+ * replaces the old column-level Refresh toolbar button; inherits the tab's
+ * foreground so it reads on any app-pill slot. */
+.terminal-tab-refresh {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  transition:
+    opacity 0.1s ease,
+    background 0.1s ease;
+}
+
+.terminal-tab-refresh:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.terminal-tab-refresh svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.6;
+}
+
 .terminal-tab-rename {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
