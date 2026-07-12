@@ -1,4 +1,5 @@
 import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js';
+import type { JSX } from 'solid-js';
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
@@ -52,73 +53,159 @@ function markerClass(m: StepMarker): string {
 
 interface ReadmeSection {
   heading: string;
-  blocks: ContentBlock[];
+  blocks: Block[];
 }
 
-type ContentBlock = { kind: 'p'; text: string } | { kind: 'ul'; items: string[] };
+type Block =
+  | { kind: 'h3'; text: string }
+  | { kind: 'p'; text: string }
+  | { kind: 'ul'; items: string[] };
 
 const SKIP_SECTIONS = new Set(['goal', 'steps', 'timeline', 'notes']);
 
 /** Split README markdown into `## ` sections, skipping sections whose
  * headings already appear as dedicated widgets in the modal (`Goal`,
  * `Steps`, `Timeline`, `Notes`). Returns the remaining sections with their
- * content broken into paragraphs and list blocks. */
+ * content broken into paragraphs, `### ` subheadings, and list blocks. */
 function parseReadmeSections(content: string): ReadmeSection[] {
   const sections: ReadmeSection[] = [];
   let current: ReadmeSection | null = null;
+  let paragraphLines: string[] = [];
+
+  function flushParagraph() {
+    if (paragraphLines.length === 0 || !current) return;
+    current.blocks.push({ kind: 'p', text: paragraphLines.join(' ') });
+    paragraphLines = [];
+  }
+
+  function flushBlock() {
+    flushParagraph();
+  }
 
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trimEnd();
     if (line.startsWith('## ')) {
-      if (current) sections.push(current);
+      if (current) {
+        flushBlock();
+        sections.push(current);
+      }
       current = { heading: line.slice(3).trim(), blocks: [] };
+      paragraphLines = [];
       continue;
     }
     if (!current) continue;
 
     const trimmed = line.trim();
     if (trimmed === '') {
-      flushBlock(current);
+      flushBlock();
+      continue;
+    }
+    if (trimmed.startsWith('### ')) {
+      flushBlock();
+      current.blocks.push({ kind: 'h3', text: trimmed.slice(4) });
       continue;
     }
     if (trimmed.startsWith('- ')) {
-      flushParagraph(current);
+      flushParagraph();
       const last = current.blocks[current.blocks.length - 1];
+      const item = trimmed.slice(2).trim();
       if (last?.kind === 'ul') {
-        last.items.push(trimmed.slice(2).trim());
+        last.items.push(item);
       } else {
-        current.blocks.push({ kind: 'ul', items: [trimmed.slice(2).trim()] });
+        current.blocks.push({ kind: 'ul', items: [item] });
       }
       continue;
     }
-    appendParagraph(current, trimmed);
+    paragraphLines.push(trimmed);
   }
   if (current) {
-    flushBlock(current);
+    flushBlock();
     sections.push(current);
   }
 
   return sections.filter((s) => !SKIP_SECTIONS.has(s.heading.toLowerCase()));
 }
 
-function appendParagraph(section: ReadmeSection, text: string) {
-  const last = section.blocks[section.blocks.length - 1];
-  if (last?.kind === 'p') {
-    last.text += ' ' + text;
-  } else {
-    section.blocks.push({ kind: 'p', text });
+type InlineNode =
+  | { type: 'text'; text: string }
+  | { type: 'strong'; children: InlineNode[] }
+  | { type: 'em'; children: InlineNode[] }
+  | { type: 'code'; text: string }
+  | { type: 'link'; href: string; children: InlineNode[] };
+
+/** Parse a single line of inline markdown into rich-text nodes. Supports
+ * bold (`**`), italic (`*`), inline code (`` ` ``), and links (`[label](url)`).
+ * Nested emphasis is allowed; unmatched markers are treated as plain text. */
+function parseInline(input: string): InlineNode[] {
+  const nodes: InlineNode[] = [];
+  let i = 0;
+  while (i < input.length) {
+    const rest = input.slice(i);
+    const linkMatch = rest.match(/^\[([^\]]+)\]\(([^)]+)\)/);
+    if (linkMatch) {
+      const [full, label, href] = linkMatch;
+      nodes.push({ type: 'link', href, children: parseInline(label) });
+      i += full.length;
+      continue;
+    }
+    if (rest.startsWith('`')) {
+      const end = input.indexOf('`', i + 1);
+      if (end !== -1) {
+        nodes.push({ type: 'code', text: input.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    if (rest.startsWith('**')) {
+      const end = input.indexOf('**', i + 2);
+      if (end !== -1) {
+        nodes.push({ type: 'strong', children: parseInline(input.slice(i + 2, end)) });
+        i = end + 2;
+        continue;
+      }
+    }
+    if (rest.startsWith('*')) {
+      const end = input.indexOf('*', i + 1);
+      if (end !== -1) {
+        nodes.push({ type: 'em', children: parseInline(input.slice(i + 1, end)) });
+        i = end + 1;
+        continue;
+      }
+    }
+    const nextIndex = input.slice(i + 1).search(/[\[*`]/);
+    if (nextIndex === -1) {
+      nodes.push({ type: 'text', text: input.slice(i) });
+      break;
+    }
+    const stop = i + 1 + nextIndex;
+    nodes.push({ type: 'text', text: input.slice(i, stop) });
+    i = stop;
+  }
+  return nodes;
+}
+
+function renderInlineNode(node: InlineNode, _index: number): JSX.Element {
+  switch (node.type) {
+    case 'text':
+      return node.text;
+    case 'strong':
+      return <strong>{node.children.map((c, idx) => renderInlineNode(c, idx))}</strong>;
+    case 'em':
+      return <em>{node.children.map((c, idx) => renderInlineNode(c, idx))}</em>;
+    case 'code':
+      return <code>{node.text}</code>;
+    case 'link':
+      return (
+        <a href={node.href} target="_blank" rel="noopener noreferrer">
+          {node.children.map((c, idx) => renderInlineNode(c, idx))}
+        </a>
+      );
   }
 }
 
-function flushParagraph(section: ReadmeSection) {
-  const last = section.blocks[section.blocks.length - 1];
-  if (last?.kind === 'p') {
-    last.text = last.text.trim();
-  }
-}
-
-function flushBlock(section: ReadmeSection) {
-  flushParagraph(section);
+/** Render inline markdown inside a paragraph, list item, or heading. */
+function InlineMarkup(props: { text: string }): JSX.Element {
+  return <>{parseInline(props.text).map((n, idx) => renderInlineNode(n, idx))}</>;
 }
 
 export function ProjectPreview(props: {
@@ -655,12 +742,27 @@ export function ProjectPreview(props: {
                                         return (
                                           <ul>
                                             <For each={block.items}>
-                                              {(item) => <li>{item}</li>}
+                                              {(item) => (
+                                                <li>
+                                                  <InlineMarkup text={item} />
+                                                </li>
+                                              )}
                                             </For>
                                           </ul>
                                         );
                                       }
-                                      return <p>{block.text}</p>;
+                                      if (block.kind === 'h3') {
+                                        return (
+                                          <h3 class="readme-subheading">
+                                            <InlineMarkup text={block.text} />
+                                          </h3>
+                                        );
+                                      }
+                                      return (
+                                        <p>
+                                          <InlineMarkup text={block.text} />
+                                        </p>
+                                      );
                                     }}
                                   </For>
                                 </div>

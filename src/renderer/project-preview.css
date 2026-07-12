@@ -8,6 +8,12 @@
 .project-preview .modal-title {
   font-family: var(--font-display), Georgia, 'Times New Roman', serif;
   font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--text);
+  -webkit-text-stroke: 0.45px currentColor;
+  text-shadow: 0 0 0.6px currentColor;
+  -webkit-font-smoothing: auto;
 }
 
 /* Two-column body — sidebar (apps, summary, files) on the left,
@@ -255,6 +261,44 @@
 
 .readme-content li::marker {
   color: var(--text-muted);
+}
+
+.readme-subheading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.readme-content strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.readme-content em {
+  color: var(--text-body);
+  font-style: italic;
+}
+
+.readme-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.readme-content a:hover {
+  color: var(--accent-hover);
+}
+
+.readme-content code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 
 .revamped-grid {

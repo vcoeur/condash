@@ -443,20 +443,26 @@ body[data-dragging='project'] .row {
   flex: 1 1 auto;
   min-width: 0;
   /* Upright Cormorant serif (bold redesign, 2026-07): card titles share the
-   * editorial display face with the modal title; 700 weight at 16 px keeps the
-   * title prominent on the denser card. The kind glyph aligns with the first line. */
+   * editorial display face with the modal title; 700 weight at 18 px with a
+   * light stroke keeps the title prominent on the denser card. The kind glyph
+   * aligns with the first line. */
   font-family: var(--font-display), Georgia, 'Times New Roman', serif;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.25;
   color: var(--text);
   word-break: break-word;
+  -webkit-text-stroke: 0.45px currentColor;
+  text-shadow: 0 0 0.6px currentColor;
+  -webkit-font-smoothing: auto;
 }
 
 .row .title .kind-glyph {
-  /* Glyph is em-sized (1.15em of the 15 px title), so its top sits
+  /* Glyph is em-sized (1.15em of the 18 px title), so its top sits
    * naturally on the cap-height line; no margin nudge needed. The
    * left edge aligns with the next-step-marker on the row below. */
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .row .title-text {
