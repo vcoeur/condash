@@ -32,6 +32,7 @@ condash <noun> <verb> [args] [--flags]
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
 | `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
 | `skills` | `list`, `install`, `status`, `validate` |
+| `plans` | `check <path>`, `blocks` |
 | `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 
