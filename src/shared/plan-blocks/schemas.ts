@@ -248,6 +248,9 @@ export interface Question {
   required?: boolean;
   placeholder?: string;
   allowOther?: boolean;
+  /** The reader's answer, written back by the viewer: an option id (single),
+   *  option ids (multi), or free text (freeform). */
+  answer?: string | string[];
 }
 
 export interface QuestionFormData {
@@ -471,6 +474,7 @@ export const DATA_SCHEMAS: Record<string, z.ZodType<unknown>> = {
         required: z.boolean().optional(),
         placeholder: z.string().optional(),
         allowOther: z.boolean().optional(),
+        answer: z.union([z.string(), z.array(z.string())]).optional(),
       }),
     ),
     submitLabel: z.string().optional(),
@@ -514,10 +518,10 @@ export interface PlanIssue {
   line?: number;
 }
 
-/** Frontmatter of a plan/recap document. Extra keys pass through untouched. */
+/** Frontmatter of a plan/review document. Extra keys pass through untouched. */
 export interface PlanFrontmatter {
   title?: string;
-  kind?: 'plan' | 'recap';
+  kind?: 'plan' | 'review';
   [key: string]: unknown;
 }
 

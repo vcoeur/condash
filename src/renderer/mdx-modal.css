@@ -1,4 +1,4 @@
-/* ---- Plan/recap MDX viewer modal --------------------------------------- */
+/* ---- Plan/review MDX viewer modal --------------------------------------- */
 
 .mdx-modal {
   width: var(--modal-w-lg);
@@ -15,7 +15,7 @@
   padding: 16px;
 }
 
-/* Kind pill in the modal head (plan vs recap). */
+/* Kind pill in the modal head (plan vs review). */
 .plan-kind-pill {
   flex-shrink: 0;
   padding: 2px 8px;
@@ -26,7 +26,7 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
-.plan-kind-pill[data-kind='recap'] {
+.plan-kind-pill[data-kind='review'] {
   border-color: var(--col-review);
   color: var(--col-review);
 }

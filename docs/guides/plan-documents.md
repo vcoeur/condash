@@ -1,10 +1,10 @@
 ---
-description: Plan and recap MDX documents — the visual-plan / visual-recap skills, the plan.mdx block dialect, the in-app viewer, and condash plans check.
+description: Plan and review MDX documents — the visual-plan / visual-review skills, the plan.mdx block dialect, the in-app viewer, and condash mdx check.
 ---
 
-# Plan documents (visual plans & recaps)
+# Plan documents (visual plans & reviews)
 
-**When to read this.** You want an implementation plan or a change recap that
+**When to read this.** You want an implementation plan or a change review that
 reads better than a wall of prose — wireframes, diagrams, data models, API
 contracts, annotated diffs — reviewable inside condash, living as a plain
 file in the project item.
@@ -13,13 +13,14 @@ A **plan document** is a `plan.mdx` file in a project item's notes
 (`notes/NN-<slug>/plan.mdx`). It is MDX used as *data*, never as code:
 ordinary Markdown prose interleaved with typed blocks — capitalized tags
 whose props are static JSON literals. condash renders it in the in-app plan
-viewer and validates it with `condash plans check`. Everything is local
+viewer and validates it with `condash mdx check`. Everything is local
 files; there is no hosted service.
 
-Two condash-shipped skills author them:
+The condash-shipped **`/visual`** skill is the umbrella; it owns the shared
+block vocabulary and quality bars and routes to two flows:
 
 - **`/visual-plan`** — a forward plan: the approval gate before code.
-- **`/visual-recap`** — the same dialect driven backwards from a worktree's
+- **`/visual-review`** — the same dialect driven backwards from a worktree's
   diff, so a reviewer scans the shape of a change before the raw diff.
 
 ## The dialect in 30 seconds
@@ -43,14 +44,14 @@ Refresh tokens without re-login.
   before={"const ttl = 3600;\n"} after={"const ttl = 900;\n"} />
 ```
 
-- Frontmatter carries `title` and `kind: plan | recap`.
+- Frontmatter carries `title` and `kind: plan | review`.
 - Prose between blocks is normal Markdown (wikilinks, mermaid fences, and
   relative images all work exactly as in `.md` notes).
 - Block props are **static literals only** — no imports, no expressions, no
   `${…}` interpolation. That is what lets condash render agent-authored
   files with no code execution.
-- The full vocabulary (~20 block types) comes from `condash plans blocks`
-  or the skills' `references/blocks.md` — one generated document, drift-
+- The full vocabulary (~20 block types) comes from `condash mdx blocks`
+  or the `/visual` skill's `blocks.md` — one generated document, drift-
   tested against the registry the parser and viewer share.
 
 ## Viewing
@@ -69,8 +70,8 @@ supported — flows are expressed as ordered wireframe blocks in the document.
 ## Validating
 
 ```bash
-condash plans check <item>/notes/03-auth-plan     # folder holding plan.mdx
-condash plans check path/to/file.mdx              # or a file directly
+condash mdx check <item>/notes/03-auth-plan     # folder holding plan.mdx
+condash mdx check path/to/file.mdx              # or a file directly
 ```
 
 The check runs the **same parser and schemas the viewer renders**, so a green
@@ -88,8 +89,8 @@ in the viewer once before hand-off. Errors exit 3 with line numbers; a missing
 | File | `projects/…/<item>/notes/NN-<slug>/plan.mdx` |
 | README | indexed in `## Notes`; step lines say `— see note NN` |
 | Card | add a `## Deliverables` entry when the document is a designated output |
-| Kind | `plan` (forward) or `recap` (from a diff) in frontmatter |
+| Kind | `plan` (forward) or `review` (from a diff) in frontmatter |
 
-The recap unit is the project item's **worktree branch** — potentially
+The review unit is the project item's **worktree branch** — potentially
 several app repos under `<worktrees_path>/<branch>/` — diffed against each
-repo's base; multi-repo recaps group blocks per `#handle`.
+repo's base; multi-repo reviews group blocks per `#handle`.

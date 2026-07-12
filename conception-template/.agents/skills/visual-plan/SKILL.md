@@ -4,7 +4,7 @@ description: >-
   Turn an implementation plan into a structured visual plan document — a
   plan.mdx of typed blocks (diagrams, wireframes, data models, API endpoints,
   annotated code, open questions) inside the project item's notes/, validated
-  with `condash plans check` and rendered by the condash in-app viewer. Fully
+  with `condash mdx check` and rendered by the condash in-app viewer. Fully
   local; the plan is the approval gate before code.
 ---
 
@@ -15,9 +15,13 @@ scannable document of typed blocks: prose where prose explains, and structured
 blocks — wireframes, diagrams, data models, API contracts, annotated code,
 file maps, open questions — where structure reads faster. It lives as a
 `plan.mdx` note inside the project item, renders in condash's plan viewer, and
-is validated by `condash plans check` against the exact schemas the viewer
+is validated by `condash mdx check` against the exact schemas the viewer
 renders. Everything is local files in the conception tree — there is no
 hosted service, no publish step, and no MCP connector.
+
+This is the forward flow of **`/visual`**, which owns the shared block
+vocabulary and quality bars (the Shared references section below).
+`/visual-review` is the same dialect driven backwards from a landed diff.
 
 ## When to use
 
@@ -62,10 +66,11 @@ kind: plan
    get those right in the plan even if most of the feature ships later. Scope
    to the smallest first cut that proves the approach, stating what is in and
    what is explicitly deferred.
-3. **Read `blocks.md`** (or run `condash plans blocks`) before
-   authoring any structured block — never author tags from memory. Read
-   `document-quality.md` for the document bar and `wireframe.md` before
-   ANY wireframe. For `diff` / `annotated-code` (and the code nested in a
+3. **Read [`../visual/blocks.md`](../visual/blocks.md)** (or run `condash mdx
+   blocks`) before authoring any structured block — never author tags from
+   memory. Read [`../visual/document-quality.md`](../visual/document-quality.md)
+   for the document bar and [`../visual/wireframe.md`](../visual/wireframe.md)
+   before ANY wireframe. For `diff` / `annotated-code` (and the code nested in a
    `tabs` block), paste the real file text and encode multi-line code as
    JSON strings — do not retype code from memory.
 4. **Write the document.** Ordinary markdown between blocks imports as prose;
@@ -73,10 +78,10 @@ kind: plan
    the wireframe story near the top (entry surface → changed interaction →
    resulting state); architecture plans lead with a concrete example, then
    diagrams beside the claims they support.
-5. **Validate:** `condash plans check <item>/notes/NN-<slug>.mdx` must be green —
+5. **Validate:** `condash mdx check <item>/notes/NN-<slug>.mdx` must be green —
    it validates the same schemas the viewer renders, so a green check means the
    document parses and matches the viewer. It does not prove each block has
-   visible content — `plans check` warns on an empty diagram / code / wireframe
+   visible content — `mdx check` warns on an empty diagram / code / wireframe
    — so fix errors, take warnings seriously, and open the plan in the viewer
    once before hand-off.
 6. **Hand off.** Update the README (Notes index, step reference, timeline,
@@ -126,14 +131,17 @@ kind: plan
   are NOT supported by the condash viewer — express the flow as an ordered
   sequence of wireframe blocks with short prose transitions instead.
 
-## Reference files
+## Shared references
+
+The block vocabulary, the wireframe quality bar, the document-quality bar, and a
+worked exemplar are owned by **`/visual`** and shared with `/visual-review`.
+Read the relevant one before authoring:
 
 | File | Read before |
 |---|---|
-| `blocks.md` | authoring any structured block (the vocabulary; regenerate with `condash plans blocks`) |
-| `wireframe.md` | authoring ANY wireframe / `<Screen>` — the quality bar |
-| `document-quality.md` | writing the plan document — block choice, open questions, altitude |
-| `exemplar.md` | a worked good/bad example of the bar |
+| [`../visual/blocks.md`](../visual/blocks.md) | any structured block (regenerate with `condash mdx blocks`) |
+| [`../visual/wireframe.md`](../visual/wireframe.md) | ANY wireframe / `<Screen>` — the quality bar |
+| [`../visual/document-quality.md`](../visual/document-quality.md) | the document — block choice, open questions, altitude |
+| [`../visual/exemplar.md`](../visual/exemplar.md) | a worked good/bad example of the bar |
 
-Related: `/visual-recap` builds the same document backwards from a landed
-diff. Adapted from Builder.io's visual-plan skill (MIT).
+Adapted from Builder.io's visual-plan skill (MIT).

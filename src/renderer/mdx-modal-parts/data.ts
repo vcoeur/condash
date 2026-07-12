@@ -1,7 +1,7 @@
-import type { CodeAnnotation, FileTreeEntry, KitNode } from '@shared/plan-blocks/schemas';
+import type { CodeAnnotation, FileTreeEntry, KitNode, Question } from '@shared/plan-blocks/schemas';
 
 /**
- * Pure logic for the plan/recap viewer blocks: line-range parsing, diff row
+ * Pure logic for the plan/review viewer blocks: line-range parsing, diff row
  * pairing, file-tree building, legacy kit-tree → HTML mapping, and CSS
  * scoping. No DOM, no Solid, no heavy deps — tested in `data.test.ts`.
  */
@@ -280,4 +280,111 @@ export function tryParseJson(text: string): { value?: unknown; error?: string } 
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Serialize a JSON-ish value to a static MDX literal the plan parser accepts:
+ *  identifier-keyed objects, arrays, and JSON string/number/boolean scalars.
+ *  Every key in a question object is a valid identifier, so none are quoted. */
+export function serializeLiteral(value: unknown): string {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return `[${value.map(serializeLiteral).join(', ')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([, item]) => item !== undefined,
+    );
+    return `{ ${entries.map(([key, item]) => `${key}: ${serializeLiteral(item)}`).join(', ')} }`;
+  }
+  return 'null';
+}
+
+/** Index of the `>` closing a self-closing tag whose attributes begin at
+ *  `from`, tracking balanced braces/brackets and strings so a `/>` inside an
+ *  attribute value never ends the tag early. -1 when unbalanced. */
+function scanSelfCloseEnd(source: string, from: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = from; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (ch === '{' || ch === '[') depth += 1;
+    else if (ch === '}' || ch === ']') depth -= 1;
+    else if (ch === '/' && source[i + 1] === '>' && depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+/** Whether a `<QuestionForm …/>` element's text declares the given `id` —
+ *  matches `id="x"`, `id='x'`, or `id={"x"}` / `id={'x'}`. */
+function elementDeclaresId(element: string, id: string): boolean {
+  const match = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*(["'])([^"']*)\3\s*\})/.exec(element);
+  if (!match) return false;
+  return (match[1] ?? match[2] ?? match[4]) === id;
+}
+
+/** All self-closing `<QuestionForm …/>` spans in the document, in order. */
+function questionFormSpans(source: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  const tag = '<QuestionForm';
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf(tag, from);
+    if (start === -1) break;
+    const gt = scanSelfCloseEnd(source, start + tag.length);
+    if (gt === -1) break;
+    spans.push({ start, end: gt + 1 });
+    from = gt + 1;
+  }
+  return spans;
+}
+
+/** Char span of the `<QuestionForm …/>` element to write, or null when it can't
+ *  be located. Prefers the element that declares `id`; when the block id is
+ *  parser-auto-generated (no `id=` in source) and the document holds exactly one
+ *  form, that lone form is unambiguously the target. */
+export function findQuestionFormSpan(
+  source: string,
+  id: string,
+): { start: number; end: number } | null {
+  const spans = questionFormSpans(source);
+  const byId = spans.find((span) => elementDeclaresId(source.slice(span.start, span.end), id));
+  if (byId) return byId;
+  return spans.length === 1 ? spans[0] : null;
+}
+
+/** Write `answers` into the target `<QuestionForm>` element's `questions` and
+ *  return the new document source, or null when the element can't be located
+ *  (so the caller surfaces a failure instead of a silent no-op). Each answer
+ *  keys by question id: an option id (single), option ids (multi), or free text
+ *  (freeform); an empty value clears that question's `answer`. Pure — no IO. */
+export function applyAnswers(
+  source: string,
+  blockId: string,
+  questions: readonly Question[],
+  submitLabel: string | undefined,
+  answers: Record<string, string | string[]>,
+): string | null {
+  const span = findQuestionFormSpan(source, blockId);
+  if (!span) return null;
+  const nextQuestions = questions.map((question) => {
+    const value = answers[question.id];
+    const filled =
+      typeof value === 'string' ? value.trim() !== '' : Array.isArray(value) && value.length > 0;
+    const next: Question = { ...question };
+    if (filled) next.answer = value;
+    else delete next.answer;
+    return next;
+  });
+  const parts = [
+    `id={${JSON.stringify(blockId)}}`,
+    `questions={${serializeLiteral(nextQuestions)}}`,
+  ];
+  if (submitLabel !== undefined) parts.push(`submitLabel={${JSON.stringify(submitLabel)}}`);
+  const replacement = `<QuestionForm ${parts.join(' ')} />`;
+  return source.slice(0, span.start) + replacement + source.slice(span.end);
 }

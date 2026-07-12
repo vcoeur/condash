@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { parsePlanMdx } from '../../shared/plan-blocks/parse-mdx';
+import type { QuestionFormData } from '../../shared/plan-blocks/schemas';
 import {
   annotatedLines,
+  applyAnswers,
   buildFileTree,
   computeSplitRows,
   computeUnifiedRows,
+  findQuestionFormSpan,
   kitNodesToHtml,
   parseLineRange,
   scopeCss,
+  serializeLiteral,
   tryParseJson,
 } from './data';
 
@@ -110,5 +115,75 @@ describe('tryParseJson', () => {
   it('returns value or error', () => {
     expect(tryParseJson('{"a":1}')).toEqual({ value: { a: 1 } });
     expect(tryParseJson('nope').error).toBeTruthy();
+  });
+});
+
+describe('question-form answers', () => {
+  const doc = (form: string): string =>
+    ['---', 'kind: plan', '---', '', '### Open Questions', '', form, ''].join('\n');
+
+  const FORM =
+    '<QuestionForm id="oq" questions={[' +
+    '{ id: "q1", title: "Pick one", mode: "single", options: [{ id: "a", label: "A" }, { id: "b", label: "B" }] }, ' +
+    '{ id: "q2", title: "Pick many", mode: "multi", options: [{ id: "x", label: "X" }, { id: "y", label: "Y" }] }, ' +
+    '{ id: "q3", title: "Say", mode: "freeform" }' +
+    ']} submitLabel="Go" />';
+
+  const questions = () => {
+    const block = parsePlanMdx(doc(FORM)).blocks.find((b) => b.type === 'question-form');
+    return (block!.data as unknown as QuestionFormData).questions;
+  };
+
+  it('writes single/multi/freeform answers back and re-parses them', () => {
+    const next = applyAnswers(doc(FORM), 'oq', questions(), 'Go', {
+      q1: 'b',
+      q2: ['x', 'y'],
+      q3: 'hello',
+    })!;
+    // Everything before the block is byte-identical.
+    expect(next.startsWith('---\nkind: plan\n---\n\n### Open Questions')).toBe(true);
+    const parsed = parsePlanMdx(next);
+    expect(parsed.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    const qs = (
+      parsed.blocks.find((b) => b.type === 'question-form')!.data as unknown as QuestionFormData
+    ).questions;
+    expect(qs[0].answer).toBe('b');
+    expect(qs[1].answer).toEqual(['x', 'y']);
+    expect(qs[2].answer).toBe('hello');
+  });
+
+  it('is idempotent and clears an answer for an empty value', () => {
+    const once = applyAnswers(doc(FORM), 'oq', questions(), 'Go', { q1: 'a' })!;
+    expect(applyAnswers(once, 'oq', questions(), 'Go', { q1: 'a' })).toBe(once);
+    const cleared = applyAnswers(once, 'oq', questions(), 'Go', { q1: '' })!;
+    const qs = (
+      parsePlanMdx(cleared).blocks.find((b) => b.type === 'question-form')!
+        .data as unknown as QuestionFormData
+    ).questions;
+    expect(qs[0].answer).toBeUndefined();
+  });
+
+  it('returns null when there is no question-form to write', () => {
+    expect(applyAnswers('# no form here\n', 'oq', questions(), 'Go', { q1: 'a' })).toBeNull();
+  });
+
+  it('falls back to the only form when the block id is not in the source', () => {
+    const noId = doc(FORM.replace('id="oq" ', ''));
+    const next = applyAnswers(noId, 'question-form-1', questions(), 'Go', { q1: 'a' });
+    expect(next).not.toBeNull();
+    expect(next).toContain('answer: "a"');
+  });
+
+  it('serializeLiteral emits parser-compatible identifier-keyed literals', () => {
+    expect(serializeLiteral({ id: 'a', n: 2, ok: true })).toBe('{ id: "a", n: 2, ok: true }');
+    expect(serializeLiteral(['x', 'y'])).toBe('["x", "y"]');
+  });
+
+  it('findQuestionFormSpan ignores a /> inside a string attribute value', () => {
+    const tricky =
+      '<QuestionForm id="oq" questions={[{ id: "q", title: "a /> b", mode: "freeform" }]} />';
+    const span = findQuestionFormSpan(tricky, 'oq');
+    expect(span).not.toBeNull();
+    expect(tricky.slice(span!.start, span!.end)).toBe(tricky);
   });
 });

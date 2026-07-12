@@ -25,7 +25,7 @@ export interface MdLinkCallbacks {
   onMarkdown?: (absPath: string) => void;
   /** Resolved absolute path to a `.pdf`. */
   onPdf?: (absPath: string) => void;
-  /** Resolved absolute path to a `.mdx` plan/recap document. Falls back to
+  /** Resolved absolute path to a `.mdx` plan/review document. Falls back to
    *  `onOtherFile` when not provided. */
   onMdx?: (absPath: string) => void;
   /** Resolved absolute path to anything else (image, dir, unknown ext). */

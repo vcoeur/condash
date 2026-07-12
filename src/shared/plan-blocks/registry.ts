@@ -1,10 +1,10 @@
 /**
- * Block registry for plan/recap MDX documents (`plan.mdx` in a project item's
+ * Block registry for plan/review MDX documents (`plan.mdx` in a project item's
  * `notes/NN-<slug>/` folder). One row per block type: the runtime `type` id,
  * the MDX tag authors write, and the reference prose. The registry is the
  * single vocabulary shared by the parser (tag → type resolution), the viewer
- * (type → component dispatch), the `condash plans blocks` CLI verb, and the
- * shipped `visual-plan`/`visual-recap` skill reference — a drift test pins the
+ * (type → component dispatch), the `condash mdx blocks` CLI verb, and the
+ * shipped `/visual` skill reference — a drift test pins the
  * shipped reference to `renderBlocksDoc()` output.
  *
  * The dialect is deliberately data-only: capitalized tags with static-literal
@@ -166,7 +166,7 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
     fields: 'questions, submitLabel?',
     description:
       'An open-questions form (single/multi/freeform, recommended options). condash renders it ' +
-      'read-only; answers travel back through chat or note edits.',
+      'interactively: the reader answers in the viewer and Save writes each answer back into the same .mdx.',
   },
   {
     type: 'custom-html',

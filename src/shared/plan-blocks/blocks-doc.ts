@@ -2,10 +2,10 @@ import { BLOCK_SPECS } from './registry';
 
 /**
  * Render the block-vocabulary reference document from the registry. This one
- * string is the catalog in three places: `condash plans blocks` prints it, the
- * shipped `visual-plan` skill carries it as `references/blocks.md`, and a
+ * string is the catalog in three places: `condash mdx blocks` prints it, the
+ * shipped `/visual` skill carries it as `blocks.md`, and a
  * drift test pins the shipped copy to this output — the registry is the single
- * source, so the lint (`plans check`), the viewer, and the skills can never
+ * source, so the lint (`mdx check`), the viewer, and the skills can never
  * disagree about the vocabulary.
  */
 export function renderBlocksDoc(): string {
@@ -17,8 +17,8 @@ export function renderBlocksDoc(): string {
   );
   return `# Plan block vocabulary
 
-Generated from the condash block registry (\`condash plans blocks\`) — do not hand-edit.
-Author against these tags; \`condash plans check <path>\` validates the same schemas the
+Generated from the condash block registry (\`condash mdx blocks\`) — do not hand-edit.
+Author against these tags; \`condash mdx check <path>\` validates the same schemas the
 in-app viewer renders, so a green check is exactly what condash can display.
 
 | type | MDX tag | key data fields | description |

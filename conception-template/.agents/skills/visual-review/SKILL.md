@@ -1,69 +1,73 @@
 ---
-name: visual-recap
+name: visual-review
 description: >-
   Turn a project item's worktree branch (possibly spanning several app repos
-  and PRs) into a visual recap — a recap plan.mdx of typed blocks
+  and PRs) into a visual review — a review plan.mdx of typed blocks
   (wireframes, data models, API summaries, file map, annotated split diffs)
-  inside the item's notes/, validated with `condash plans check` and rendered
+  inside the item's notes/, validated with `condash mdx check` and rendered
   by the condash in-app viewer. Fully local; a reviewer scans the shape of
   the change before reading raw diff.
 ---
 
-# /visual-recap — visual change recaps
+# /visual-review — visual change reviews
 
-A recap is a visual plan built **from** a diff, not toward one: it describes
+A review is a visual plan built **from** a diff, not toward one: it describes
 the change that was just made, at a higher altitude than line-by-line review.
 Schema, API, file, and architecture changes become the same `data-model`,
 `api-endpoint`, `file-tree`, and `diagram` blocks a forward plan would use —
 only now they summarize work that exists. It lives as a `plan.mdx` note
-(frontmatter `kind: recap`) inside the project item, renders in condash's
-plan viewer, and validates with `condash plans check`. Fully local — no
+(frontmatter `kind: review`) inside the project item, renders in condash's
+plan viewer, and validates with `condash mdx check`. Fully local — no
 hosted service, no publish step.
+
+This is the review flow of **`/visual`**, which owns the shared block
+vocabulary and quality bars (the Shared references section below).
+`/visual-plan` is the same dialect authored forwards, before code.
 
 ## When to use
 
-Build a recap when a branch or PR is large, multi-file, or touches schema,
+Build a review when a branch or PR is large, multi-file, or touches schema,
 API contracts, or architecture — anywhere a reviewer benefits from seeing the
 change mapped to structured blocks before reading the raw diff. Skip it for
 small, single-file, or obvious diffs: a tiny change reviews faster as plain
-diff, and a recap would be overhead.
+diff, and a review would be overhead.
 
 ## Scope: the whole work unit is the worktree
 
-The unit a recap covers is the project item's **worktree branch**, which may
+The unit a review covers is the project item's **worktree branch**, which may
 span several app repos: every repo at `<worktrees_path>/<branch>/<repo>/`
 (the union of the item's `apps:` — `condash worktrees check <branch> --json`
 lists them). Gather each repo's diff against its base
 (`git -C <worktrees_path>/<branch>/<repo> diff <base>...HEAD`, default base
-`main`; include uncommitted work when it belongs to the item) and recap the
+`main`; include uncommitted work when it belongs to the item) and review the
 union — follow-up fixes, tests, and doc updates included, not just the most
-recent commit or a single PR. When the branch spans repos, group the recap
+recent commit or a single PR. When the branch spans repos, group the review
 by app: lead each repo's section with a `### <#handle>` heading, and give
 each repo its own `file-tree` and key-change tabs; cross-repo contract
 changes (a server field + its client consumer) sit together in one
 `data-model`/`api-endpoint` section so the reviewer sees the pair. Exclude
 unrelated pre-existing dirty work. If the scope is genuinely ambiguous,
-state the assumption in the recap's opening prose or ask one concise
-question first. When updating a recap after feedback, keep covering the
-whole work unit plus the correction — never narrow a broad recap to only the
+state the assumption in the review's opening prose or ask one concise
+question first. When updating a review after feedback, keep covering the
+whole work unit plus the correction — never narrow a broad review to only the
 latest fix.
 
-## Where the recap lives
+## Where the review lives
 
 Same conventions as `/visual-plan`: `notes/NN-<slug>.mdx` in the project
-item, frontmatter `kind: recap`, indexed in the README `## Notes`, a
+item, frontmatter `kind: review`, indexed in the README `## Notes`, a
 `## Deliverables` entry when designated, and a dated timeline entry. Validate
-with `condash plans check <item>/notes/NN-<slug>.mdx` before handing off — a green
+with `condash mdx check <item>/notes/NN-<slug>.mdx` before handing off — a green
 check means every block parses and matches the viewer's schemas, but it does
 not prove each block has visible content (an unfolded diagram or an empty
-`code` still passes, with a warning). Read the `plans check` warnings and open
-the recap in the viewer once before hand-off. If the recap needs supporting
+`code` still passes, with a warning). Read the `mdx check` warnings and open
+the review in the viewer once before hand-off. If the review needs supporting
 files, place them in `notes/NN-<slug>/`.
 
 ```yaml
 ---
-title: <Recap title>
-kind: recap
+title: <Review title>
+kind: review
 ---
 ```
 
@@ -81,21 +85,21 @@ One skeleton, top to bottom:
 
 Budgets that keep it reviewable: 3–8 key-change tabs; under ~150 lines per
 tab (summarize the rest of a long file instead of dumping it); title ≤ ~70
-characters. Lean is not thin: a one-wireframe-one-sentence recap of a 40-file
+characters. Lean is not thin: a one-wireframe-one-sentence review of a 40-file
 change under-serves the reviewer as much as boilerplate prose over-serves
 them. Before authoring, inventory the changed surfaces (routes, components,
 dialogs, role/empty/error states, shared abstractions) and either represent
 each meaningful one with a block or intentionally omit it as tiny.
 
-Do not add boilerplate: no disclaimer prose, no "this recap is an aid", no
+Do not add boilerplate: no disclaimer prose, no "this review is an aid", no
 restating the file count the `file-tree` already carries. Prose earns its
 place only when it tells the reviewer something the blocks cannot: the
 objective, a real compatibility risk, a decision visible in the diff.
 
 ## Diff → block mapping
 
-Read `blocks.md` for exact tags and props (regenerate with
-`condash plans blocks`); never author from memory.
+Read [`../visual/blocks.md`](../visual/blocks.md) for exact tags and props
+(regenerate with `condash mdx blocks`); never author from memory.
 
 - **Schema / migration change** → `data-model` with per-field
   `change: added|modified|removed|renamed` and `was` for prior types —
@@ -121,7 +125,7 @@ Read `blocks.md` for exact tags and props (regenerate with
 - **Rendered UI / interaction change** → wireframe blocks showing the visible
   delta BEFORE the reader reaches code: `columns` with `Before`/`After`
   labels when comparison clarifies, after-only when purely additive, a state
-  sequence for flows. Read `wireframe.md` first — always.
+  sequence for flows. Read [`../visual/wireframe.md`](../visual/wireframe.md) first — always.
 - **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
   primitives) as before/after panels or layers, or `mermaid` for a quick
   graph. Never use a diagram as a stand-in for rendered UI.
@@ -136,7 +140,7 @@ Read `blocks.md` for exact tags and props (regenerate with
 Structured blocks are true by construction ONLY if derived from the actual
 changed lines: real paths, real fields, real method/path, real before/after
 text — never inferred, rounded, or invented. The model writes only the prose.
-A confidently wrong recap is dangerous: a reviewer who trusts the summary
+A confidently wrong review is dangerous: a reviewer who trusts the summary
 skips the very line the summary got wrong. When the diff does not contain a
 fact, leave it out; mark anything inferred as inferred.
 
@@ -150,13 +154,15 @@ Inside `tabs`, each child is the runtime `{ id, type, data }` shape, not a
 or `.env` values — redact them (`sk-•••`, `<redacted>`) in every block,
 caption, and note.
 
-## Reference files
+## Shared references
+
+The block vocabulary and the wireframe quality bar are owned by **`/visual`**
+and shared with `/visual-plan` — read the relevant one before authoring:
 
 | File | Read before |
 |---|---|
-| `blocks.md` | authoring any structured block |
-| `wireframe.md` | authoring ANY wireframe / `<Screen>` |
+| [`../visual/blocks.md`](../visual/blocks.md) | any structured block |
+| [`../visual/wireframe.md`](../visual/wireframe.md) | ANY wireframe / `<Screen>` |
 
-Related: `/visual-plan` is the forward direction and carries the shared
-document-quality and exemplar references. Adapted from Builder.io's
-visual-recap skill (MIT).
+See `/visual` for the full shared set (also `document-quality.md`, `exemplar.md`).
+Adapted from Builder.io's visual-recap skill (MIT).

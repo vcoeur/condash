@@ -50,7 +50,7 @@ The viewer is chosen by the item's type:
 | `.pdf` | the in-app PDF viewer modal |
 | `.html` / `.htm` | the in-app HTML preview (sandboxed `condash-file://` webview), with a **Rendered / Source** header toggle |
 | `.md` / `.markdown` | the in-app note modal, read-only |
-| `.mdx` | the in-app plan/recap viewer — typed blocks (wireframes, diffs, data models, …) with a **Rendered / Source** toggle; see the [plan documents guide](plan-documents.md) |
+| `.mdx` | the in-app plan/review viewer — typed blocks (wireframes, diffs, data models, …) with a **Rendered / Source** toggle; see the [plan documents guide](plan-documents.md) |
 | images (`.png` / `.jpg` / `.svg` / …) | the in-app image viewer, fit-to-window |
 | text / source code (`.txt` / `.json` / `.css` / `.js` / …) | the in-app note modal, read-only, syntax-highlighted |
 | anything else (audio, video, archives, binaries) | your OS default application (`shell.openPath`) |

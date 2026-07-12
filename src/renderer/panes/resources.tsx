@@ -24,7 +24,7 @@ export interface ResourcesViewActions {
   viewHtml: (path: string) => void;
   /** View an image (raster or SVG) in the image-modal. */
   viewImage: (path: string) => void;
-  /** View a plan/recap `.mdx` in the block viewer. */
+  /** View a plan/review `.mdx` in the block viewer. */
   viewMdx: (path: string) => void;
   /** Reveal the file in the OS file manager. */
   reveal: (path: string) => void;

@@ -33,7 +33,7 @@ One binary, one launcher: the `condash` entry on PATH inspects its argv. With no
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   dirty   sync   logs   skills   plans   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   dirty   sync   logs   skills   mdx   config   help
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
@@ -308,15 +308,15 @@ Install flags: `--dest <path>` (retarget the install dir; default the resolved c
 
 Skill sources flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` per source file; a `files.<path>` namespace is retained only to reconcile legacy top-level entries such as a `.gitignore` shipped by condash ≤ 4.0.1), tracking the shipped version and SHA256 per file so a re-install can detect local edits. A per-skill entry left by an earlier schema (one with no `source` map) is re-seeded on read, so upgrading condash never crashes the install. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
 
-### `plans`
+### `mdx`
 
-Plan/recap MDX documents (`plan.mdx` notes authored by the `/visual-plan` and
-`/visual-recap` skills — see the [plan documents guide](../guides/plan-documents.md)).
+Plan/review MDX documents (`plan.mdx` notes authored by the `/visual-plan` and
+`/visual-review` skills — see the [plan documents guide](../guides/plan-documents.md)).
 
 | Verb | Behaviour |
 |------|-----------|
 | `check <path>` | Validate a `.mdx` file (or a folder holding `plan.mdx`) against the block schemas the in-app viewer renders. Errors exit 3 (validation) with per-issue line numbers; unsupported `canvas.mdx` / `prototype.mdx` siblings warn |
-| `blocks` | Print the block-vocabulary reference generated from the registry — the same content the `visual-plan` skill ships as `references/blocks.md` (drift-tested) |
+| `blocks` | Print the block-vocabulary reference generated from the registry — the same content the `/visual` skill ships as `blocks.md` (drift-tested) |
 
 The parser, the zod schemas, the viewer, and this verb are one code path
 (`src/shared/plan-blocks/`), so a green `check` means the document parses and
