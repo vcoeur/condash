@@ -17,7 +17,7 @@ Trigger: `/knowledge verify`.
 
    Stamps are owned by `condash knowledge verify` (returns `data.stale[]`, `data.fresh`, `data.unstamped[]`, `data.maxAge`). Everything else lives under `condash audit` (returns `{summary, issues[]}` with one entry per finding). Both are pure read-only.
 
-   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,knowledge-recheck,knowledge-check`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
+   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,knowledge-recheck,knowledge-check`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
 
 2. **Triage by check and severity.**
 
