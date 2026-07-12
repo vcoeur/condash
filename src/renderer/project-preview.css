@@ -3,9 +3,26 @@
   max-height: min(85vh, 900px);
 }
 
+/* Project preview modal title matches the project card title: the same
+ * Cormorant display face and bold weight so the two titles read as one family. */
+.project-preview .modal-title {
+  font-family: var(--font-display), Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--text);
+  -webkit-text-stroke: 0.45px currentColor;
+  text-shadow: 0 0 0.6px currentColor;
+  -webkit-font-smoothing: auto;
+}
+
 /* Two-column body — sidebar (apps, summary, files) on the left,
  * main pane (steps + deliverables) on the right. The sidebar is a
- * fixed 280 px column; main fills the remaining space. */
+ * fixed 280 px column; main fills the remaining space.
+ *
+ * The `.revamped` variant replaces the mixed sidebar with a compact
+ * metadata rail, pulls the summary into a full-width goal banner, and
+ * renders the main content as widget cards. */
 .preview-body {
   flex: 1;
   overflow-y: auto;
@@ -16,67 +33,278 @@
   align-items: start;
 }
 
-.preview-sidebar {
+.preview-body.revamped {
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-items: stretch;
+}
+
+.revamped-goal {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-subtle);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.revamped-goal .eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.revamped-goal p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.revamped-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-subtle);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+}
+
+.revamped-meta-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   min-width: 0;
 }
 
-.preview-main {
+.revamped-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.meta-branch {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.revamped-main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 16px 20px 20px;
   min-width: 0;
 }
 
-.sidebar-block {
+.widget,
+.readme-widget {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.widget-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
   margin: 0;
 }
 
-.sidebar-row {
+.widget-files {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
-}
-
-.sidebar-row .apps-pills {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.preview-meta {
-  display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
-.preview-meta .badge {
+.widget-file {
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 1px 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  color: var(--text);
+  cursor: pointer;
 }
 
-.preview-meta .badge.warn {
-  border-color: var(--warn);
-  color: var(--warn);
-  font-weight: 600;
+.widget-file:hover {
+  background: var(--bg-hover);
 }
 
-/* The popup's old .kind-badge has been replaced by the shared <KindChip>
- * component (defined in styles.css). The old text-only badge had its
- * own colour mapping (project=indigo, incident=purple, document=green)
- * that no longer matches the icon system; KindChip uses a more
- * semantic palette: project=indigo, incident=red, document=amber. */
-
-.slug-badge {
+.widget-file.add-note {
   color: var(--text-muted);
+  border-style: dashed;
+}
+
+.widget-file.add-note:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.widget-progress {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.widget-progress > div {
+  height: 100%;
+  background: var(--col-done);
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
+
+.widget-activity {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.widget-activity-entry {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.widget-activity-entry:last-child {
+  border-bottom: none;
+}
+
+.widget-activity strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.activity-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.activity-expand:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.readme-widget {
+  gap: 12px;
+}
+
+.readme-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.readme-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readme-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.readme-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readme-content p {
+  margin: 0;
+}
+
+.readme-content ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.readme-content li {
+  margin: 2px 0;
+}
+
+.readme-content li::marker {
+  color: var(--text-muted);
+}
+
+.readme-subheading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.readme-content strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.readme-content em {
+  color: var(--text-body);
+  font-style: italic;
+}
+
+.readme-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.readme-content a:hover {
+  color: var(--accent-hover);
+}
+
+.readme-content code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.revamped-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 /* Status select — sits in the modal head, picks up the status's colour
@@ -250,39 +478,6 @@
   color: var(--text);
 }
 
-.preview-summary {
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.preview-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.preview-section-head {
-  margin: 0;
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  font-weight: 600;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 4px;
-}
-
-.preview-section-counts {
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  color: var(--text-muted);
-}
-
 .preview-steps {
   border-top: none;
   padding-top: 0;
@@ -359,151 +554,6 @@
   color: var(--text-muted);
   width: 18px;
   text-align: center;
-}
-
-/* File tree — recursive list with collapsible folders. Indent uses the
- * --tree-depth custom property so each level adds 14 px of padding-left
- * without needing nested <ul>s. README.md is rendered separately above
- * the Steps section in the main column, so the tree only carries the
- * other files and folders. */
-.files-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  --tree-indent: 14px;
-}
-
-.file-row,
-.file-group-head {
-  margin: 0;
-  padding-left: calc(var(--tree-depth, 0) * var(--tree-indent));
-}
-
-.file-group-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Layout over .btn--ghost (actions.css): full-width left-aligned dir toggle. */
-.file-group-toggle {
-  flex: 1;
-  justify-content: flex-start;
-  gap: 6px;
-  padding: 4px 6px;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  text-align: left;
-  min-width: 0;
-}
-
-.file-group-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text);
-  letter-spacing: 0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-/* Inline "+" sitting next to the notes/ folder head — adds a new note
- * to the project. Small enough to be quiet but coloured on hover so
- * it's obviously interactive. */
-/* Small (20 px) ghost icon-button over .btn--icon (actions.css); quiet at
- * rest, accent on hover via tone="add". */
-.file-group-add {
-  --btn-size: 20px;
-  --btn-icon: 13px;
-  color: var(--text-faint);
-}
-
-/* Layout over .btn--ghost (actions.css): full-width left-aligned file row. */
-.file-button {
-  width: 100%;
-  justify-content: flex-start;
-  gap: 7px;
-  padding: 4px 6px;
-  font-size: var(--text-xs);
-  min-width: 0;
-}
-
-.file-row-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-
-.file-row-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.file-name {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-/* README quick-link — sits above the Steps section in the main column.
- * A real button (not a tree row) so it reads as a primary action; gets
- * a faint border + hover state. The README is the canonical entry
- * point for a project's narrative, so it earns prominence. */
-/* .btn--default (actions.css) with tone="open" — README is the canonical
- * entry point, so it reads as a real secondary action with an accent hover. */
-.preview-readme-link {
-  align-self: flex-start;
-  gap: 8px;
-}
-
-.preview-readme-link-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-}
-
-.preview-readme-link-icon svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 1.6;
-}
-
-.preview-readme-link-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.01em;
-}
-
-.preview-readme-link-arrow {
-  margin-left: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  transition: transform 120ms ease;
-}
-
-.preview-readme-link-arrow svg {
-  width: 12px;
-  height: 12px;
-}
-
-.preview-readme-link:hover .preview-readme-link-arrow {
-  transform: translateX(2px);
-  color: var(--accent);
 }
 
 .deliverables-list {

@@ -123,7 +123,6 @@ export function ProjectsView(props: {
                   group={group}
                   collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
                   onOpen={props.onOpen}
-                  onToggleStep={props.onToggleStep}
                   onDropProject={props.onDropProject}
                   onWorkOn={props.onWorkOn}
                   projectActions={props.projectActions}
@@ -139,7 +138,6 @@ export function ProjectsView(props: {
                           defaultExpanded={true}
                           hint="Sliding window — projects move into their close month after 7 days."
                           onOpen={props.onOpen}
-                          onToggleStep={props.onToggleStep}
                           onWorkOn={props.onWorkOn}
                           onChangeStatus={props.onDropProject}
                           projectActions={props.projectActions}
@@ -154,7 +152,6 @@ export function ProjectsView(props: {
                             storageKey={`done.${sub.month}`}
                             defaultExpanded={sub.month === grouping.defaultExpandMonth}
                             onOpen={props.onOpen}
-                            onToggleStep={props.onToggleStep}
                             onWorkOn={props.onWorkOn}
                             onChangeStatus={props.onDropProject}
                             projectActions={props.projectActions}
@@ -172,7 +169,6 @@ export function ProjectsView(props: {
                 group={group}
                 collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
                 onOpen={props.onOpen}
-                onToggleStep={props.onToggleStep}
                 onDropProject={props.onDropProject}
                 onWorkOn={props.onWorkOn}
                 projectActions={props.projectActions}

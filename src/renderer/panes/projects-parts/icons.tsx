@@ -126,8 +126,18 @@ export function StepProgress(props: { counts: StepCounts }) {
   };
   const title = (): string =>
     `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.blocked} blocked, ${props.counts.dropped} dropped`;
+  const isComplete = (): boolean =>
+    total() > 0 &&
+    props.counts.todo === 0 &&
+    props.counts.doing === 0 &&
+    props.counts.blocked === 0;
+
   return (
-    <span class="step-progress-inner" title={title()}>
+    <span
+      class="step-progress-inner"
+      data-complete={isComplete() ? 'true' : undefined}
+      title={title()}
+    >
       <span class="progress-track">
         <span class="progress-fill" style={{ width: `${ratio() * 100}%` }} />
       </span>

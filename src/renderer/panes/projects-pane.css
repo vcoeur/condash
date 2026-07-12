@@ -290,15 +290,15 @@ body[data-dragging='project'] .row {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 12px 18px;
+  gap: 6px;
+  padding: 10px 12px 10px 16px;
   border: 1px solid var(--border-strong);
   /* Asymmetric card — flat left edge (where the full-height status rail
    * sits, see .row::before) + rounded right, the vcoeur project-card
    * silhouette (bold redesign, 2026-07). */
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   contain: layout paint;
   animation: fade-up 0.45s ease-out both;
@@ -325,12 +325,6 @@ body[data-dragging='project'] .row {
   background: var(--bg-hover);
   border-color: var(--border-strong);
   box-shadow: var(--shadow-lift);
-}
-
-.row:hover .title-actions,
-.row:focus-visible .title-actions,
-.row:focus-within .title-actions {
-  opacity: 1;
 }
 
 /* Focus ring on cards. The card is tabIndex={0} so the user can land on
@@ -361,21 +355,27 @@ body[data-dragging='project'] .row {
 
 [data-status-card='now'] {
   --row-stripe: var(--col-now);
+  --col-status: var(--col-now);
 }
 [data-status-card='later'] {
   --row-stripe: var(--col-later);
+  --col-status: var(--col-later);
 }
 [data-status-card='backlog'] {
   --row-stripe: var(--col-backlog);
+  --col-status: var(--col-backlog);
 }
 [data-status-card='review'] {
   --row-stripe: var(--col-review);
+  --col-status: var(--col-review);
 }
 [data-status-card='done'] {
   --row-stripe: var(--col-done);
+  --col-status: var(--col-done);
 }
 [data-status-card='?'] {
   --row-stripe: var(--col-unknown);
+  --col-status: var(--col-unknown);
 }
 
 .row:hover {
@@ -388,12 +388,6 @@ body[data-dragging='project'] .row {
   box-shadow:
     var(--shadow-lift),
     0 0 28px -6px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.row:hover .title-actions,
-.row:focus-visible .title-actions,
-.row:focus-within .title-actions {
-  opacity: 1;
 }
 
 /* Focus ring on cards. The card is tabIndex={0} so the user can land on
@@ -437,7 +431,7 @@ body[data-dragging='project'] .row {
    * line of text — the button is 28 px tall, the title cap height
    * sits a couple of pixels below the box top. */
   margin-top: -1px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 120ms ease;
 }
 
@@ -448,25 +442,27 @@ body[data-dragging='project'] .row {
   gap: 9px;
   flex: 1 1 auto;
   min-width: 0;
-  font-family: var(--font-display);
-  /* Upright Cormorant serif (bold redesign, 2026-07): card titles carry the
-   * editorial display face. 600 weight at 18 px gives the serif enough
-   * presence without going heavy; the slight negative tracking keeps
-   * multi-word titles tight. */
-  font-weight: 600;
-  font-size: var(--text-xl);
-  line-height: 1.2;
+  /* Upright Cormorant serif (bold redesign, 2026-07): card titles share the
+   * editorial display face with the modal title; 700 weight at 18 px with a
+   * light stroke keeps the title prominent on the denser card. The kind glyph
+   * aligns with the first line. */
+  font-family: var(--font-display), Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
   color: var(--text);
   word-break: break-word;
-  letter-spacing: -0.01em;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  -webkit-text-stroke: 0.45px currentColor;
+  text-shadow: 0 0 0.6px currentColor;
+  -webkit-font-smoothing: auto;
 }
 
 .row .title .kind-glyph {
-  /* Glyph is em-sized (1.15em of the 15 px title), so its top sits
+  /* Glyph is em-sized (1.15em of the 18 px title), so its top sits
    * naturally on the cap-height line; no margin nudge needed. The
    * left edge aligns with the next-step-marker on the row below. */
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .row .title-text {
@@ -476,76 +472,6 @@ body[data-dragging='project'] .row {
   overflow: hidden;
   flex: 1;
   min-width: 0;
-}
-
-.row .summary {
-  margin: 0;
-  color: var(--text-body);
-  font-size: var(--text-md);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
-}
-
-/* Container for the next-step text + the steps-progress expander button
- * — they sit on one row, text grows to fill, expander right-aligned.
- * Only renders when there's at least one still-open step. */
-.row .next-step-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.row .next-step-row .summary.next-step {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.row .next-step-row .meta-icon.expander {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.row .summary.next-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: var(--text-sm);
-  line-height: 1.45;
-  color: var(--text-body);
-}
-
-.row .summary.next-step .next-step-marker {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* Fixed 16 × 16 — same pixel box as .kind-glyph so the two icons'
-   * left edges are pixel-aligned across rows. Slight margin-top
-   * centres the marker on the body text's cap-height line. */
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  color: var(--text-muted);
-}
-
-.row .summary.next-step .next-step-marker svg {
-  width: 16px;
-  height: 16px;
-  stroke-width: 1.5;
-}
-
-.row .summary.next-step[data-marker='doing'] .next-step-marker {
-  color: var(--col-soon);
-}
-
-.row .summary.next-step[data-marker='dropped'] {
-  color: var(--text-muted);
-  text-decoration: line-through;
-  text-decoration-color: var(--text-faint);
 }
 
 .row-head {
@@ -569,19 +495,15 @@ body[data-dragging='project'] .row {
   min-width: 0;
 }
 
-/* Single meta row at the bottom of the card: step progress + apps +
- * branch + dates (dates pinned to the right). The shared `.meta` rules
+/* Single compact meta row at the bottom of the card: status pill + app pills +
+ * branch/PR/warn + spacer + mini progress + date. The shared `.meta` rules
  * above (flex, gap, font-size) cover layout; this only tweaks spacing. */
 .row .meta-bottom {
-  margin-top: 2px;
-}
-
-/* App pills row directly under the title — drop the shared `.meta`
- * top margin so the row-head's own 6px gap sets the spacing and the
- * pills sit snug beneath the heading. */
-.row .apps-row {
   margin-top: 0;
 }
+
+/* App pills are now rendered inside the single bottom meta row, so they
+ * reuse the shared `.meta` gap and the `.meta-icon.apps` overrides below. */
 
 .row .meta-icon.branch {
   font-family: var(--font-mono);
@@ -620,13 +542,12 @@ body[data-dragging='project'] .row {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  /* Resting state: just a tinted fill on transparent border so the three
-   * action buttons don't form a visual block competing with the title.
-   * Border (and per-action colour cue) returns on hover, see :hover rules
-   * below. */
+  /* Resting state: just a tinted fill on transparent border so the action
+   * button stays quiet at rest. Border (and per-action colour cue) returns
+   * on hover. */
   border: 1px solid transparent;
   border-radius: 6px;
   background: var(--bg-subtle);
@@ -711,72 +632,11 @@ body[data-dragging='project'] .row {
   min-width: 0;
 }
 
-/* Bottom-of-card row: slug (left) + date range (right). Same height
- * and typography as `meta-bottom` but no progress/buttons inside. */
-.row .meta.meta-bottom-slug {
-  margin-top: 2px;
-}
-
-.row .meta-bottom-slug .meta-icon.slug {
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-}
-
-.row .meta-icon.expander {
-  cursor: pointer;
-}
-
-.row .meta-icon.expander:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-/* When every step has been resolved (done or dropped, no todo/doing
- * left) the counter dims so a finished card stops competing visually
- * with cards that still have open work. The bar fill drops to a faint
- * grey too — green at 100% reads as "celebrate", which isn't what we
- * want when scanning a Done bucket. */
-.row .meta-icon.expander[data-complete='true'] {
-  color: var(--text-faint);
-}
-
-.row .meta-icon.expander[data-complete='true'] .progress-fill {
-  background: var(--text-faint);
-}
-
-.row .step-progress-inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.row .meta-icon.expander .progress-track {
-  width: clamp(56px, 12%, 96px);
-  height: 5px;
-  border-radius: 2px;
-  background: var(--bg-subtle);
-  overflow: hidden;
-  position: relative;
-}
-
-.row .meta-icon.expander .progress-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--col-soon);
-  border-radius: 2px;
-  transition: width 200ms ease;
-}
-
-.row .meta-icon.expander .progress-text {
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
-
-.row .meta-icon.expander .expander-arrow {
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-  margin-left: 4px;
+/* In the compact card meta row the app pills are slightly smaller so they
+ * sit comfortably next to the status pill and progress mini. */
+.row .meta-icon.apps .app-pill {
+  font-size: 11px;
+  padding: 1px 6px;
 }
 
 .row .meta-icon.warn {
@@ -788,6 +648,43 @@ body[data-dragging='project'] .row {
   width: 1px;
   height: 10px;
   background: var(--border);
+}
+
+.row .step-progress-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row .step-progress-inner[data-complete='true'] {
+  color: var(--text-faint);
+}
+
+.row .step-progress-inner[data-complete='true'] .progress-fill {
+  background: var(--text-faint);
+}
+
+.row .step-progress-inner .progress-track {
+  width: clamp(56px, 12%, 96px);
+  height: 5px;
+  border-radius: 2px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+  position: relative;
+}
+
+.row .step-progress-inner .progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--col-soon);
+  border-radius: 2px;
+  transition: width 200ms ease;
+}
+
+.row .step-progress-inner .progress-text {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
 }
 
 .steps-list {
