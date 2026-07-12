@@ -51,6 +51,10 @@ export interface TerminalBridge {
    *  "Paste path → Term" button — re-uses the same "open pane, spawn
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
+  /** Open the terminal pane, spawn a fresh user-shell tab, and run `command`
+   *  (typed + Enter). Used by the status-bar "Install skills" action to run
+   *  `condash skills install` visibly in its own tab. */
+  runShellCommand: (command: string, title?: string) => Promise<void>;
   /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`
    *  and deliver the already-substituted `text`. The tab title is pinned to
    *  `<agent label>•<taskName>`. A `promptFlags` agent is seeded via the run's
@@ -332,6 +336,33 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
+  const runShellCommand = async (command: string, title?: string): Promise<void> => {
+    if (!deps.terminalHandle()) {
+      deps.ensureTerminalOpen();
+      await waitForTerminalHandle(deps);
+    }
+    const handle = deps.terminalHandle();
+    if (!handle) {
+      deps.flashToast('Terminal pane not available.', 'error');
+      return;
+    }
+    deps.ensureTerminalOpen();
+    try {
+      // Always a fresh plain-shell tab — never reuse the focused tab (which
+      // could be a running agent). null agent + a pinned title.
+      await handle.spawnUserShell(null, 'my', title);
+    } catch (err) {
+      deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
+      return;
+    }
+    // Same settle as an agent spawn: let the reconcile mark the new tab active
+    // and the shell print its prompt before typing.
+    await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+    handle.typeIntoActive(command);
+    await new Promise((r) => setTimeout(r, 50));
+    handle.typeIntoActive('\r');
+  };
+
   const runTask = async (
     agentId: string,
     text: string,
@@ -372,6 +403,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handleOpenInTerm,
     handleScreenshotPaste,
     handlePasteToTerm,
+    runShellCommand,
     runTask,
   };
 }

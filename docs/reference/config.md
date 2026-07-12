@@ -165,6 +165,8 @@ The `autoSync` block turns condash into the single writer for a conception share
 
 Edit it in **Settings → Auto-commit** (under **Personal · this machine**), which also carries a **Commit & push now** button (one sweep, regardless of the cadence) and a live status line (next-run ETA · last result · any error). It is a personal/per-machine setting written to `settings.json` — nothing about it is committed to a tree's `.condash/settings.json`.
 
+The **status bar** surfaces the same engine at a glance: an auto-sync pill (synced / *N* to sync / syncing / failed / off) with its own **Sync now** button and a click-to-open list of the conception's most recent commits (each marked pushed or unpushed) — so you can see sync state and trigger a sweep without opening Settings. Alongside it, a **shipped-skills** pill shows whether the condash-shipped skills under `.agents/skills/` are in sync, with an **Install** action (runs [`condash skills install`](cli.md#skills)) when any are missing or outdated.
+
 The first commit lands one interval **after** you enable it, never the instant the app opens. To keep a file out of auto-commit, gitignore it. Two caveats: the engine only runs while the condash app is open (for headless commits, use the [`systemd` timer](cli.md#sync)), and the quiet period is the *only* thing standing between an in-progress edit and a commit — set it comfortably longer than your longest pause between keystrokes.
 
 ### Workspace keys

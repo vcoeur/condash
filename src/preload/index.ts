@@ -149,6 +149,8 @@ const api: CondashApi = {
     ipcRenderer.on(EVENT_CHANNELS.autoSyncStatus, handler);
     return () => ipcRenderer.removeListener(EVENT_CHANNELS.autoSyncStatus, handler);
   },
+  syncStatusSnapshot: () => ipcRenderer.invoke('syncStatusSnapshot'),
+  skillsSyncStatus: () => ipcRenderer.invoke('skillsSyncStatus'),
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
   logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),
   logsReadSession: (filePath) => ipcRenderer.invoke('logsReadSession', filePath),

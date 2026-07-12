@@ -107,6 +107,29 @@ export interface SkillShippedInfo {
 }
 
 /**
+ * Aggregate sync state of the condash-shipped skills for one conception —
+ * what the status-bar shipped-skills indicator renders. Computed by comparing
+ * the running condash's bundled skill source against the files installed under
+ * `<conception>/.agents/skills/` and the install manifest.
+ */
+export interface SkillsSyncStatus {
+  /** A manifest exists, or at least one shipped file is present on disk —
+   *  i.e. `condash skills install` has run here at least once. */
+  installed: boolean;
+  /** Total shipped skill files the running condash would lay down. */
+  shippedTotal: number;
+  /** Files that are missing on disk, or superseded by a newer shipped
+   *  version (outdated). This is the count that drives the Install action. */
+  needsInstall: number;
+  /** Locally edited shipped files (diverged from the installed version).
+   *  Informational: `condash skills install` would overwrite them, so this
+   *  alone does not mark the skills out of sync. */
+  edited: number;
+  /** True when installed and nothing needs installing (`needsInstall === 0`). */
+  synced: boolean;
+}
+
+/**
  * Tree node for the Skills pane. Same shape as `KnowledgeNode` plus the
  * optional `shipped` stamp on `SKILL.md` and shipped body files.
  */

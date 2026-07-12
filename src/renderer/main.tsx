@@ -49,6 +49,7 @@ import { useSkillsScope } from './hooks/use-skills-scope';
 import { useTreeEvents } from './hooks/use-tree-events';
 import type { Deliverable, Project } from '@shared/types';
 import { ActivityRail } from './activity-rail';
+import { StatusBarIndicators } from './status-bar-indicators';
 import './styles.css';
 import './app-shell.css';
 import './primitives.css';
@@ -452,7 +453,13 @@ function App() {
             <span class="status-bar-path">{conceptionPath()}</span>
           </span>
           <span class="status-bar-spacer" />
-          <span class="status-badge">auto-sync on</span>
+          <StatusBarIndicators
+            conceptionPath={conceptionPath}
+            onInstallSkills={() =>
+              void bridge.runShellCommand('condash skills install', 'skills install')
+            }
+            flashToast={flashToast}
+          />
           <span class="status-item">
             {(() => {
               const parts: string[] = [];
