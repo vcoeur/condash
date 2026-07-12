@@ -2,10 +2,9 @@ import { For, Show, createResource, createSignal, onCleanup, onMount } from 'sol
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
-import { ChevronDownIcon, ChevronIcon, IconClose, IconExternal } from './icons';
+import { ChevronDownIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
 import { Button } from './actions';
-import { buildFileTree, FileTreeRows, IconFile } from './project-preview-parts/file-tree';
 import { TimelinePane } from './project-preview-parts/timeline';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
@@ -234,37 +233,6 @@ export function ProjectPreview(props: {
               <span class="modal-title">{project().title}</span>
               <span class="modal-head-spacer" />
 
-              {/* Steps progress mini — at-a-glance bar + X/Y, sits next
-                  to the status select so the project's overall state is
-                  scannable from one look at the head. Resolved =
-                  done + dropped. */}
-              <Show when={project().steps.length > 0}>
-                {(() => {
-                  const c = project().stepCounts;
-                  const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
-                  const resolved = c.done + c.dropped;
-                  const ratio = total === 0 ? 0 : Math.min(1, resolved / total);
-                  return (
-                    <span
-                      class="head-progress"
-                      data-complete={
-                        total > 0 && c.todo === 0 && c.doing === 0 && c.blocked === 0
-                          ? 'true'
-                          : undefined
-                      }
-                      title={`${resolved} of ${total} steps resolved`}
-                    >
-                      <span class="head-progress-text">
-                        {resolved}/{total}
-                      </span>
-                      <span class="head-progress-track">
-                        <span class="head-progress-fill" style={{ width: `${ratio * 100}%` }} />
-                      </span>
-                    </span>
-                  );
-                })()}
-              </Show>
-
               <span class="head-date" title="Project date">
                 {project().slug.slice(0, 10)}
               </span>
@@ -306,213 +274,270 @@ export function ProjectPreview(props: {
               </Button>
             </header>
 
-            <div class="preview-body">
-              <aside class="preview-sidebar">
-                <Show when={apps().length > 0}>
-                  <div class="sidebar-row">
-                    <span class="apps-pills">
-                      <For each={apps()}>{(app) => <span class="pill">{app}</span>}</For>
-                    </span>
+            <div class="preview-body revamped">
+              <Show when={project().summary}>
+                <div class="revamped-goal">
+                  <div class="eyebrow">Goal</div>
+                  <p>{project().summary}</p>
+                </div>
+              </Show>
+
+              <div class="revamped-content">
+                <aside class="revamped-rail">
+                  <div class="rail-item">
+                    <strong>Status</strong>
+                    {project().status}
                   </div>
-                </Show>
-
-                <Show when={project().summary}>
-                  <p class="preview-summary sidebar-block">{project().summary}</p>
-                </Show>
-
-                <Show when={(files() ?? []).some((f) => f.relPath === 'README.md')}>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    tone="open"
-                    class="preview-readme-link"
-                    onClick={() => props.onOpenReadme(project())}
-                    title="Open README"
-                  >
-                    <span class="preview-readme-link-icon">
-                      <IconFile />
-                    </span>
-                    <span class="preview-readme-link-label">README.md</span>
-                    <span class="preview-readme-link-arrow" aria-hidden="true">
-                      <ChevronIcon />
-                    </span>
-                  </Button>
-                </Show>
-
-                <Show
-                  when={
-                    (files() ?? []).filter((f) => f.relPath !== 'README.md').length > 0 ||
-                    !!props.onCreateNote
-                  }
-                >
-                  <section class="preview-section sidebar-block">
-                    <h3 class="preview-section-head">
-                      Files
-                      <span class="preview-section-counts">
-                        {(files() ?? []).filter((f) => f.relPath !== 'README.md').length}
+                  <div class="rail-item">
+                    <strong>Progress</strong>
+                    {(() => {
+                      const c = project().stepCounts;
+                      const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
+                      const resolved = c.done + c.dropped;
+                      return `${resolved}/${total} steps`;
+                    })()}
+                  </div>
+                  <Show when={apps().length > 0}>
+                    <div class="rail-item">
+                      <strong>Apps</strong>
+                      <span class="apps-pills">
+                        <For each={apps()}>{(app) => <span class="pill">{app}</span>}</For>
                       </span>
-                    </h3>
-                    <ul class="files-list">
-                      <FileTreeRows
-                        tree={buildFileTree(
-                          (files() ?? []).filter((f) => f.relPath !== 'README.md'),
-                          { ensureNotesDir: !!props.onCreateNote },
-                        )}
-                        depth={0}
-                        onOpenFile={(file) => props.onOpenFile(file.path)}
-                        onCreateNote={
-                          props.onCreateNote ? () => props.onCreateNote?.(project()) : undefined
-                        }
-                      />
-                    </ul>
-                  </section>
-                </Show>
-              </aside>
-
-              <main class="preview-main">
-                <section class="preview-section">
-                  <h3 class="preview-section-head">
-                    Steps
-                    <span class="preview-section-counts">
-                      {project().stepCounts.done}/{project().steps.length}
-                    </span>
-                  </h3>
-                  <Show
-                    when={project().steps.length > 0}
-                    fallback={<p class="preview-empty">No steps yet.</p>}
-                  >
-                    <ul class="steps-list preview-steps">
-                      <For each={project().steps}>
-                        {(step) => (
-                          <li class={`step step-marker-${markerClass(step.marker)}`}>
-                            <button
-                              class="step-toggle"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                props.onToggleStep(project(), step);
-                              }}
-                              title={MARKER_LABEL[step.marker]}
-                            >
-                              <StepIcon marker={step.marker} />
-                            </button>
-                            <Show
-                              when={editingLineIndex() === step.lineIndex}
-                              fallback={
-                                <span
-                                  class="step-text step-text-editable"
-                                  title="Click to edit step text"
-                                  onClick={() => beginEdit(step)}
-                                >
-                                  {step.text}
-                                </span>
-                              }
-                            >
-                              <input
-                                class="step-edit-input"
-                                type="text"
-                                value={editingText()}
-                                ref={(el) => queueMicrotask(() => el?.focus())}
-                                onInput={(e) => setEditingText(e.currentTarget.value)}
-                                onBlur={() => void commitEdit(project(), step)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    void commitEdit(project(), step);
-                                  } else if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    cancelEdit();
-                                  }
-                                }}
-                                disabled={busy()}
-                              />
-                            </Show>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                  </Show>
-                  <Show
-                    when={showAddForm()}
-                    fallback={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        tone="add"
-                        class="add-step-button"
-                        onClick={beginAdd}
-                        disabled={busy()}
-                        title="Append a new step to ## Steps"
-                      >
-                        + Add step
-                      </Button>
-                    }
-                  >
-                    <div class="add-step-form">
-                      <span class="step-toggle-placeholder" aria-hidden="true">
-                        <StepIcon marker={' '} />
-                      </span>
-                      <input
-                        class="step-edit-input"
-                        type="text"
-                        placeholder="New step…"
-                        value={addText()}
-                        ref={(el) => queueMicrotask(() => el?.focus())}
-                        onInput={(e) => setAddText(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            void commitAdd(project());
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            cancelAdd();
-                          }
-                        }}
-                        disabled={busy()}
-                      />
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => void commitAdd(project())}
-                        disabled={busy() || addText().trim().length === 0}
-                      >
-                        Add
-                      </Button>
-                      <Show when={project().steps.length > 0}>
-                        <Button variant="default" size="sm" onClick={cancelAdd} disabled={busy()}>
-                          Cancel
-                        </Button>
-                      </Show>
                     </div>
                   </Show>
-                </section>
+                  <div class="rail-item">
+                    <strong>Date</strong>
+                    {project().slug.slice(0, 10)}
+                  </div>
+                  <div class="rail-actions">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      tone="open"
+                      onClick={() => props.onOpenInEditor(projectDir(project().path))}
+                      title="Open project folder in OS"
+                    >
+                      Open worktree
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      tone="open"
+                      onClick={() => props.onOpenReadme(project())}
+                      title="Open README"
+                    >
+                      README.md
+                    </Button>
+                  </div>
+                </aside>
 
-                <Show when={project().deliverables.length > 0}>
-                  <section class="preview-section">
-                    <h3 class="preview-section-head">Deliverables</h3>
-                    <ul class="deliverables-list">
-                      <For each={project().deliverables}>
-                        {(d) => (
-                          <li class="deliverable-row">
+                <main class="revamped-main">
+                  <div class="revamped-grid">
+                    <section class="widget">
+                      <h3 class="widget-title">Steps</h3>
+                      <Show
+                        when={project().steps.length > 0}
+                        fallback={<p class="preview-empty">No steps yet.</p>}
+                      >
+                        <ul class="steps-list preview-steps">
+                          <For each={project().steps}>
+                            {(step) => (
+                              <li class={`step step-marker-${markerClass(step.marker)}`}>
+                                <button
+                                  class="step-toggle"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    props.onToggleStep(project(), step);
+                                  }}
+                                  title={MARKER_LABEL[step.marker]}
+                                >
+                                  <StepIcon marker={step.marker} />
+                                </button>
+                                <Show
+                                  when={editingLineIndex() === step.lineIndex}
+                                  fallback={
+                                    <span
+                                      class="step-text step-text-editable"
+                                      title="Click to edit step text"
+                                      onClick={() => beginEdit(step)}
+                                    >
+                                      {step.text}
+                                    </span>
+                                  }
+                                >
+                                  <input
+                                    class="step-edit-input"
+                                    type="text"
+                                    value={editingText()}
+                                    ref={(el) => queueMicrotask(() => el?.focus())}
+                                    onInput={(e) => setEditingText(e.currentTarget.value)}
+                                    onBlur={() => void commitEdit(project(), step)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void commitEdit(project(), step);
+                                      } else if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        cancelEdit();
+                                      }
+                                    }}
+                                    disabled={busy()}
+                                  />
+                                </Show>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                      <Show
+                        when={showAddForm()}
+                        fallback={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            tone="add"
+                            class="add-step-button"
+                            onClick={beginAdd}
+                            disabled={busy()}
+                            title="Append a new step to ## Steps"
+                          >
+                            + Add step
+                          </Button>
+                        }
+                      >
+                        <div class="add-step-form">
+                          <span class="step-toggle-placeholder" aria-hidden="true">
+                            <StepIcon marker={' '} />
+                          </span>
+                          <input
+                            class="step-edit-input"
+                            type="text"
+                            placeholder="New step…"
+                            value={addText()}
+                            ref={(el) => queueMicrotask(() => el?.focus())}
+                            onInput={(e) => setAddText(e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void commitAdd(project());
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelAdd();
+                              }
+                            }}
+                            disabled={busy()}
+                          />
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => void commitAdd(project())}
+                            disabled={busy() || addText().trim().length === 0}
+                          >
+                            Add
+                          </Button>
+                          <Show when={project().steps.length > 0}>
                             <Button
-                              variant="ghost"
-                              class="deliverable-button"
-                              onClick={() => props.onOpenDeliverable(d)}
-                              title={d.path}
+                              variant="default"
+                              size="sm"
+                              onClick={cancelAdd}
+                              disabled={busy()}
                             >
-                              <span class="deliverable-label">{d.label}</span>
-                              <Show when={d.description}>
-                                <span class="deliverable-desc">— {d.description}</span>
-                              </Show>
-                              <span class="deliverable-path">{d.path}</span>
+                              Cancel
                             </Button>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
+                          </Show>
+                        </div>
+                      </Show>
+                      {(() => {
+                        const c = project().stepCounts;
+                        const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
+                        const resolved = c.done + c.dropped;
+                        const ratio = total === 0 ? 0 : resolved / total;
+                        return (
+                          <Show when={total > 0}>
+                            <div class="widget-progress">
+                              <div style={{ width: `${ratio * 100}%` }} />
+                            </div>
+                          </Show>
+                        );
+                      })()}
+                    </section>
+
+                    <section class="widget">
+                      <h3 class="widget-title">Files</h3>
+                      <div class="widget-files">
+                        <For each={(files() ?? []).filter((f) => f.relPath !== 'README.md')}>
+                          {(file) => (
+                            <button
+                              type="button"
+                              class="widget-file"
+                              onClick={() => props.onOpenFile(file.path)}
+                              title={file.relPath}
+                            >
+                              {file.name}
+                            </button>
+                          )}
+                        </For>
+                        <Show when={props.onCreateNote}>
+                          <button
+                            type="button"
+                            class="widget-file add-note"
+                            onClick={() => props.onCreateNote?.(project())}
+                            title="Add a new note to this project"
+                          >
+                            + Add note
+                          </button>
+                        </Show>
+                      </div>
+                    </section>
+                  </div>
+
+                  <section class="widget">
+                    <h3 class="widget-title">Activity</h3>
+                    <div class="widget-activity">
+                      <Show
+                        when={(fullProject() ?? project()).timeline.length > 0}
+                        fallback={<div class="widget-activity-entry">No timeline entries yet.</div>}
+                      >
+                        <For each={(fullProject() ?? project()).timeline}>
+                          {(entry) => (
+                            <div class="widget-activity-entry">
+                              <strong>{entry.date}</strong> — {entry.text}
+                            </div>
+                          )}
+                        </For>
+                      </Show>
+                    </div>
                   </section>
-                </Show>
-              </main>
+
+                  <Show when={project().deliverables.length > 0}>
+                    <section class="widget">
+                      <h3 class="widget-title">Deliverables</h3>
+                      <ul class="deliverables-list">
+                        <For each={project().deliverables}>
+                          {(d) => (
+                            <li class="deliverable-row">
+                              <Button
+                                variant="ghost"
+                                class="deliverable-button"
+                                onClick={() => props.onOpenDeliverable(d)}
+                                title={d.path}
+                              >
+                                <span class="deliverable-label">{d.label}</span>
+                                <Show when={d.description}>
+                                  <span class="deliverable-desc">— {d.description}</span>
+                                </Show>
+                                <span class="deliverable-path">{d.path}</span>
+                              </Button>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </section>
+                  </Show>
+                </main>
+              </div>
             </div>
 
             <TimelinePane project={fullProject() ?? project()} />

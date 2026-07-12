@@ -1,24 +1,12 @@
 import { createSignal, For, onCleanup, Show } from 'solid-js';
-import type { ActionTemplate, Project, Step } from '@shared/types';
+import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
 import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
-import {
-  Group,
-  MARKER_LABEL,
-  firstDate,
-  hasSteps,
-  isStepCountsComplete,
-  lastDate,
-  markerClass,
-  nextMarker,
-  nextOpenStep,
-  readCollapseMap,
-  writeCollapseEntry,
-} from './data';
-import { KindGlyph, StepIcon, StepProgress, WarnIcon } from './icons';
+import { Group, firstDate, lastDate, readCollapseMap, writeCollapseEntry } from './data';
+import { KindGlyph, StepProgress, WarnIcon } from './icons';
 
 // Status lane the pointer currently hovers during a card drag (null = none).
 // Module scope so every GroupBlock highlights its lane reactively while the
@@ -48,7 +36,6 @@ export function GroupBlock(props: {
    * stopped from propagating so it doesn't toggle the section. */
   headerAction?: () => any;
   onOpen: (project: Project) => void;
-  onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
   projectActions?: ActionTemplate[];
@@ -110,7 +97,6 @@ export function GroupBlock(props: {
                   <Card
                     item={item}
                     onOpen={props.onOpen}
-                    onToggleStep={props.onToggleStep}
                     onWorkOn={props.onWorkOn}
                     onChangeStatus={onChangeStatus}
                     projectActions={props.projectActions}
@@ -142,7 +128,6 @@ export function SubGroup(props: {
    * like the Recent window's deliberate overlap with the month subgroups. */
   hint?: string;
   onOpen: (project: Project) => void;
-  onToggleStep: (project: Project, step: Step) => void;
   onWorkOn: (project: Project) => void;
   /** Same shape as GroupBlock.onDropProject — threaded so cards in done
    * subgroups still respond to the Cmd/Ctrl+1..N keyboard shortcut. */
@@ -182,7 +167,6 @@ export function SubGroup(props: {
               <Card
                 item={item}
                 onOpen={props.onOpen}
-                onToggleStep={props.onToggleStep}
                 onWorkOn={props.onWorkOn}
                 onChangeStatus={props.onChangeStatus}
                 projectActions={props.projectActions}
@@ -199,7 +183,6 @@ export function SubGroup(props: {
 export function Card(props: {
   item: Project;
   onOpen: (project: Project) => void;
-  onToggleStep: (project: Project, step: Step) => void;
   onWorkOn: (project: Project) => void;
   /** Keyboard alternative for the status drag: Cmd/Ctrl+1..N, where N is
    * KNOWN_STATUSES.length, sets the focused card's status. Wired only when
@@ -211,16 +194,13 @@ export function Card(props: {
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
-  const [expanded, setExpanded] = createSignal(false);
-
   const handleHeaderClick = (event: MouseEvent) => {
     // A click synthesised at the end of a drag must not also open the card.
     if (draggedThisGesture) {
       draggedThisGesture = false;
       return;
     }
-    if ((event.target as HTMLElement).closest('.step-toggle, .expander, .row-action, .pr-badge'))
-      return;
+    if ((event.target as HTMLElement).closest('.row-action, .pr-badge')) return;
     props.onOpen(props.item);
   };
 
@@ -299,13 +279,9 @@ export function Card(props: {
 
   const handlePointerDown = (event: PointerEvent) => {
     if (!isDraggable() || event.button !== 0) return;
-    // Let interactive children (work-on dropdown, expander, step toggles)
-    // keep their own click behaviour.
-    if (
-      (event.target as HTMLElement).closest(
-        '.title-actions, .expander, .step-toggle, .row-action, .pr-badge',
-      )
-    ) {
+    // Let interactive children (work-on dropdown, PR badge) keep their own
+    // click behaviour.
+    if ((event.target as HTMLElement).closest('.title-actions, .row-action, .pr-badge')) {
       return;
     }
     dragPointerId = event.pointerId;
@@ -421,52 +397,19 @@ export function Card(props: {
           </div>
         </div>
 
-        {/* App pills row — pinned directly under the title so a card's
-            app identity reads at a glance, above the next-step text. */}
-        <Show when={props.item.apps.length > 0}>
-          <div class="meta apps-row">
+        {/* Single compact meta row: status pill, app pills, branch/PR/warn,
+            a spacer, then a mini progress indicator + date. The summary and
+            next-step line have been removed to make the card denser and keep
+            the focus on title + status silhouette. */}
+        <div class="meta meta-bottom">
+          <span class="status-pill">{props.item.status}</span>
+          <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
               <For each={props.item.apps}>
                 {(app) => <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>}
               </For>
             </span>
-          </div>
-        </Show>
-
-        {/* Row 2: next task (text) + expander (progress + arrow). Both
-            keyed by the presence of an open step — once every step is
-            settled (done or dropped), the whole row disappears. */}
-        <Show when={nextOpenStep(props.item)} keyed>
-          {(step) => (
-            <div class="next-step-row">
-              <p class="summary next-step" data-marker={markerClass(step.marker)}>
-                <span class="next-step-marker" aria-hidden="true">
-                  <StepIcon marker={step.marker} />
-                </span>
-                {step.text}
-              </p>
-              <Show when={hasSteps(props.item.stepCounts)}>
-                <button
-                  class="meta-icon expander"
-                  data-complete={isStepCountsComplete(props.item.stepCounts) ? 'true' : undefined}
-                  aria-expanded={expanded()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded((v) => !v);
-                  }}
-                  title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
-                >
-                  <StepProgress counts={props.item.stepCounts} />
-                  <Caret expanded={expanded()} />
-                </button>
-              </Show>
-            </div>
-          )}
-        </Show>
-
-        {/* Row 3: branch + warn. App pills moved up to their own row
-            directly under the title; the expander lives in row 2. */}
-        <div class="meta meta-bottom">
+          </Show>
           <Show when={props.item.branch}>
             <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
               {props.item.branch}
@@ -495,15 +438,7 @@ export function Card(props: {
             </span>
           </Show>
           <span class="meta-spacer" />
-        </div>
-        {/* Row 4: slug (left) + last-activity date (right). Start date is
-            already encoded in the slug (`YYYY-MM-DD-…`); only the latest
-            timeline date is worth surfacing here. */}
-        <div class="meta meta-bottom-slug">
-          <span class="meta-icon slug" title={`slug: ${props.item.slug}`}>
-            {props.item.slug}
-          </span>
-          <span class="meta-spacer" />
+          <StepProgress counts={props.item.stepCounts} />
           <span
             class="meta-icon date"
             title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
@@ -512,27 +447,6 @@ export function Card(props: {
           </span>
         </div>
       </div>
-      <Show when={expanded() && props.item.steps.length > 0}>
-        <ul class="steps-list">
-          <For each={props.item.steps}>
-            {(step) => (
-              <li class={`step step-marker-${markerClass(step.marker)}`}>
-                <button
-                  class="step-toggle"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onToggleStep(props.item, step);
-                  }}
-                  title={`${MARKER_LABEL[step.marker]} → ${MARKER_LABEL[nextMarker(step.marker)]}`}
-                >
-                  <StepIcon marker={step.marker} />
-                </button>
-                <span class="step-text">{step.text}</span>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
     </article>
   );
 }
