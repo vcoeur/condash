@@ -18,6 +18,7 @@ export interface UseTreeActionsDeps {
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
   setImagePath: Setter<string | null>;
+  setMdxPath: Setter<string | null>;
   setSettingsOpen: (open: boolean) => void;
   bridge: TerminalBridge;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -87,6 +88,7 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
       setPdfPath: deps.setPdfPath,
       setHtmlPath: deps.setHtmlPath,
       setImagePath: deps.setImagePath,
+      setMdxPath: deps.setMdxPath,
       setModal: deps.setModal,
     });
 
@@ -151,6 +153,7 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     viewPdf: (path) => deps.setPdfPath(path),
     viewHtml: (path) => deps.setHtmlPath(path),
     viewImage: (path) => deps.setImagePath(path),
+    viewMdx: (path) => deps.setMdxPath(path),
     reveal: (path) => void window.condash.showInFolder(path),
     copyPath: (path) => {
       void navigator.clipboard

@@ -12,6 +12,7 @@ import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { PdfModal } from './pdf-modal';
 import { HtmlModal } from './html-modal';
+import { MdxModal } from './mdx-modal';
 import { ImageModal } from './image-modal';
 import { HelpModal } from './help-modal';
 import { PromptModal } from './prompt-modal';
@@ -80,6 +81,8 @@ export interface ModalHostProps {
   setHtmlPath: UseModals['setHtmlPath'];
   imagePath: UseModals['imagePath'];
   setImagePath: UseModals['setImagePath'];
+  mdxPath: UseModals['mdxPath'];
+  setMdxPath: UseModals['setMdxPath'];
   // --- Search modal ---
   searchModalOpen: UseModals['searchModalOpen'];
   setSearchModalOpen: UseModals['setSearchModalOpen'];
@@ -157,6 +160,8 @@ export function ModalHost(props: ModalHostProps) {
     setHtmlPath,
     imagePath,
     setImagePath,
+    mdxPath,
+    setMdxPath,
     searchModalOpen,
     setSearchModalOpen,
     setLogsOpenRequest,
@@ -215,6 +220,7 @@ export function ModalHost(props: ModalHostProps) {
           onOpenMarkdown={(path) => router.navigateInModal({ path })}
           onBack={router.handleModalBack}
           onOpenPdf={(path) => setPdfPath(path)}
+          onOpenMdx={(path) => setMdxPath(path)}
           onOpenHelp={(doc) => setHelpDoc(doc)}
           onDirtyChange={setNoteDirty}
           dark={isDark()}
@@ -259,6 +265,19 @@ export function ModalHost(props: ModalHostProps) {
           onClose={() => router.closeChildModal(() => setImagePath(null))}
           onOpenInOs={handleOpenInEditor}
           onReveal={(p) => void window.condash.showInFolder(p)}
+        />
+      </Show>
+
+      <Show when={mdxPath()}>
+        <MdxModal
+          path={mdxPath()!}
+          onClose={() => router.closeChildModal(() => setMdxPath(null))}
+          onOpenInEditor={handleOpenInEditor}
+          onReveal={(p) => void window.condash.showInFolder(p)}
+          onWikilink={handleWikilink}
+          onOpenMarkdown={(path) => setModal({ path, readOnly: true })}
+          onOpenPdf={(path) => setPdfPath(path)}
+          onOpenMdx={(path) => setMdxPath(path)}
         />
       </Show>
 

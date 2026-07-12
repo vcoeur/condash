@@ -55,6 +55,7 @@ export function NoteModal(props: {
   onOpenMarkdown: (path: string) => void;
   /** Open a PDF referenced by a relative link in the rendered body. */
   onOpenPdf: (path: string) => void;
+  onOpenMdx: (path: string) => void;
   /** Open a bundled help doc — used by the condash.json reference panel
    * to expand into the full doc. */
   onOpenHelp?: (doc: 'configuration' | 'welcome') => void;
@@ -303,6 +304,7 @@ export function NoteModal(props: {
       },
       onMarkdown: (path) => props.onOpenMarkdown(path),
       onPdf: (path) => props.onOpenPdf(path),
+      onMdx: (path) => props.onOpenMdx(path),
       onOtherFile: (path) => props.onOpenInEditor(path),
     });
   };

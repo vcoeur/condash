@@ -167,6 +167,11 @@ async function dispatch(
       await runSkills(args.verb, args, ctx, help);
       return ExitCodes.OK;
     }
+    case 'plans': {
+      const { runPlans } = await import('./commands/plans');
+      await runPlans(args.verb, args, ctx, conceptionPath, help);
+      return ExitCodes.OK;
+    }
     case 'config': {
       const { runConfig } = await import('./commands/config');
       await runConfig(args.verb, args, ctx, conceptionPath, help);

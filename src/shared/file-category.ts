@@ -27,6 +27,7 @@ function extLower(name: string): string {
 export function categorise(name: string): ResourceCategory {
   const ext = extLower(name);
   if (ext === '.md' || ext === '.markdown') return 'markdown';
+  if (ext === '.mdx') return 'mdx';
   if (ext === '.pdf') return 'pdf';
   if (HTML_EXTS.has(ext)) return 'html';
   if (TEXT_EXTS.has(ext)) return 'text';
@@ -120,6 +121,7 @@ const BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.
 const MIME_TABLE: Record<string, string> = {
   '.md': 'text/markdown',
   '.markdown': 'text/markdown',
+  '.mdx': 'text/mdx',
   '.pdf': 'application/pdf',
   '.txt': 'text/plain',
   '.log': 'text/plain',

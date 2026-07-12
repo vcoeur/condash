@@ -25,6 +25,9 @@ export interface MdLinkCallbacks {
   onMarkdown?: (absPath: string) => void;
   /** Resolved absolute path to a `.pdf`. */
   onPdf?: (absPath: string) => void;
+  /** Resolved absolute path to a `.mdx` plan/recap document. Falls back to
+   *  `onOtherFile` when not provided. */
+  onMdx?: (absPath: string) => void;
   /** Resolved absolute path to anything else (image, dir, unknown ext). */
   onOtherFile?: (absPath: string) => void;
 }
@@ -107,6 +110,8 @@ export function routeMarkdownClick(
     cb.onMarkdown?.(abs);
   } else if (lower.endsWith('.pdf')) {
     cb.onPdf?.(abs);
+  } else if (lower.endsWith('.mdx') && cb.onMdx) {
+    cb.onMdx(abs);
   } else {
     cb.onOtherFile?.(abs);
   }
