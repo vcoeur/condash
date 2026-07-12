@@ -6,6 +6,7 @@ export interface DeliverableOpenSetters {
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
   setImagePath: Setter<string | null>;
+  setMdxPath: Setter<string | null>;
   setModal: Setter<ModalState>;
 }
 
@@ -19,6 +20,7 @@ export interface DeliverableOpenSetters {
  *   - pdf         → in-app PDF modal
  *   - html        → in-app HTML preview (rendered, with a source toggle)
  *   - image       → in-app image viewer
+ *   - mdx         → in-app plan/recap viewer (typed blocks, source toggle)
  *   - markdown    → in-app read-only markdown viewer
  *   - text/code   → in-app read-only, syntax-highlighted viewer
  *   - everything else → OS default application
@@ -43,6 +45,9 @@ export function openDeliverableTarget(target: string, setters: DeliverableOpenSe
       return;
     case 'image':
       setters.setImagePath(target);
+      return;
+    case 'mdx':
+      setters.setMdxPath(target);
       return;
     case 'markdown':
     case 'text':

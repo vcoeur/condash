@@ -187,6 +187,47 @@ export async function highlightCode(text: string, path: string): Promise<string>
   return `<pre class="hljs"><code>${md.utils.escapeHtml(text)}</code></pre>`;
 }
 
+/**
+ * Highlight a snippet by explicit language id (plan blocks carry `language`
+ * rather than a path). Unknown/unbundled languages degrade to escaped text.
+ */
+export async function highlightSnippet(text: string, language?: string): Promise<string> {
+  const { md, highlight } = await getEngine();
+  if (language && highlight.getLanguage(language) && text.length <= MAX_HIGHLIGHT_BYTES) {
+    try {
+      return highlight.highlight(text, { language, ignoreIllegals: true }).value;
+    } catch {
+      /* fall through to plain text */
+    }
+  }
+  return md.utils.escapeHtml(text);
+}
+
+/**
+ * Highlight code line by line, returning one HTML string per line. Used by
+ * the plan viewer's diff / annotated-code blocks, whose line-anchored
+ * annotations need each line addressable. Per-line tokenising loses state
+ * that spans lines (an unterminated block comment re-tokenises per line) —
+ * an accepted trade-off for anchorable lines.
+ */
+export async function highlightLines(
+  lines: readonly string[],
+  language?: string,
+): Promise<string[]> {
+  const { md, highlight } = await getEngine();
+  const canHighlight = Boolean(language && highlight.getLanguage(language));
+  return lines.map((line) => {
+    if (canHighlight) {
+      try {
+        return highlight.highlight(line, { language: language!, ignoreIllegals: true }).value;
+      } catch {
+        /* fall through per line */
+      }
+    }
+    return md.utils.escapeHtml(line);
+  });
+}
+
 const HLJS_LANG_BY_EXT: Record<string, string> = {
   '.js': 'javascript',
   '.cjs': 'javascript',
@@ -225,6 +266,7 @@ const HLJS_LANG_BY_EXT: Record<string, string> = {
   '.sql': 'sql',
   '.md': 'markdown',
   '.markdown': 'markdown',
+  '.mdx': 'markdown',
 };
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;

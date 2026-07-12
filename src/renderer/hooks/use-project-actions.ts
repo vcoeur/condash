@@ -18,6 +18,7 @@ export interface UseProjectActionsDeps {
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
   setImagePath: Setter<string | null>;
+  setMdxPath: Setter<string | null>;
   openPrompt: (init: Omit<PromptModalState, 'resolve'>) => Promise<string | null>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
@@ -101,6 +102,7 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
       setPdfPath: deps.setPdfPath,
       setHtmlPath: deps.setHtmlPath,
       setImagePath: deps.setImagePath,
+      setMdxPath: deps.setMdxPath,
       setModal: deps.setModal,
     });
 
@@ -127,7 +129,7 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     // OS app and leave the preview in place.
     const base = path.split(/[/\\]/).pop() ?? path;
     const cat = categorise(base);
-    if (cat === 'pdf' || cat === 'html' || cat === 'image' || cat === 'text') {
+    if (cat === 'pdf' || cat === 'html' || cat === 'image' || cat === 'text' || cat === 'mdx') {
       deps.router.setPreviewBackPath(previewPath());
     }
     openTarget(path);

@@ -50,6 +50,7 @@ export interface KnowledgeNode {
  */
 export type ResourceCategory =
   | 'markdown'
+  | 'mdx'
   | 'pdf'
   | 'html'
   | 'text'

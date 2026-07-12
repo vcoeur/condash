@@ -1,0 +1,78 @@
+/* ---- Plan/recap MDX viewer modal --------------------------------------- */
+
+.mdx-modal {
+  width: var(--modal-w-lg);
+  height: 100%;
+}
+
+.mdx-body {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-elevated);
+}
+
+.mdx-source {
+  padding: 16px;
+}
+
+/* Kind pill in the modal head (plan vs recap). */
+.plan-kind-pill {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.plan-kind-pill[data-kind='recap'] {
+  border-color: var(--col-review);
+  color: var(--col-review);
+}
+.plan-kind-pill[data-kind='plan'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Issues banner (parse/validation findings). */
+.plan-issues {
+  margin: 12px 16px 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+.plan-issues[data-severity='error'] {
+  border-color: var(--danger);
+}
+.plan-issues-head {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.plan-issues ul {
+  margin: 0;
+  padding: 0 12px 10px 12px;
+  list-style: none;
+  font-size: var(--text-xs);
+}
+.plan-issues li {
+  padding: 2px 0;
+}
+.plan-issue-line {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+.plan-issue-error {
+  color: var(--danger);
+}
+.plan-issue-warning {
+  color: var(--col-review);
+}

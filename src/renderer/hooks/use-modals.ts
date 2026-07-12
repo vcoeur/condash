@@ -38,6 +38,8 @@ export interface UseModals {
   setHtmlPath: Setter<string | null>;
   imagePath: () => string | null;
   setImagePath: Setter<string | null>;
+  mdxPath: () => string | null;
+  setMdxPath: Setter<string | null>;
   /** The single active-overlay signal backing the boolean accessors below. */
   activeModal: () => ActiveModal;
   setActiveModal: Setter<ActiveModal>;
@@ -80,6 +82,7 @@ export function useModals(): UseModals {
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [htmlPath, setHtmlPath] = createSignal<string | null>(null);
   const [imagePath, setImagePath] = createSignal<string | null>(null);
+  const [mdxPath, setMdxPath] = createSignal<string | null>(null);
   const [activeModal, setActiveModal] = createSignal<ActiveModal>(null);
   const [noteDirty, setNoteDirty] = createSignal(false);
   const [initConfirmState, setInitConfirmState] = createSignal<{
@@ -124,6 +127,8 @@ export function useModals(): UseModals {
     setHtmlPath,
     imagePath,
     setImagePath,
+    mdxPath,
+    setMdxPath,
     activeModal,
     setActiveModal,
     helpDoc,

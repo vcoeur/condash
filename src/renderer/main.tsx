@@ -90,6 +90,8 @@ function App() {
     setHtmlPath,
     imagePath,
     setImagePath,
+    mdxPath,
+    setMdxPath,
     helpDoc,
     setHelpDoc,
     searchModalOpen,
@@ -311,6 +313,7 @@ function App() {
     setPdfPath,
     setHtmlPath,
     setImagePath,
+    setMdxPath,
     setSettingsOpen,
     bridge,
     flashToast,
@@ -338,6 +341,7 @@ function App() {
     setPdfPath,
     setHtmlPath,
     setImagePath,
+    setMdxPath,
     openPrompt,
     flashToast,
   });
@@ -808,6 +812,8 @@ function App() {
         setHtmlPath={setHtmlPath}
         imagePath={imagePath}
         setImagePath={setImagePath}
+        mdxPath={mdxPath}
+        setMdxPath={setMdxPath}
         searchModalOpen={searchModalOpen}
         setSearchModalOpen={setSearchModalOpen}
         setLogsOpenRequest={setLogsOpenRequest}

@@ -24,6 +24,8 @@ export interface ResourcesViewActions {
   viewHtml: (path: string) => void;
   /** View an image (raster or SVG) in the image-modal. */
   viewImage: (path: string) => void;
+  /** View a plan/recap `.mdx` in the block viewer. */
+  viewMdx: (path: string) => void;
   /** Reveal the file in the OS file manager. */
   reveal: (path: string) => void;
   /** Copy a path to the system clipboard. */
@@ -114,7 +116,14 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
 
   const canViewInline = (): boolean => {
     const c = cat();
-    return c === 'markdown' || c === 'pdf' || c === 'text' || c === 'html' || c === 'image';
+    return (
+      c === 'markdown' ||
+      c === 'pdf' ||
+      c === 'text' ||
+      c === 'html' ||
+      c === 'image' ||
+      c === 'mdx'
+    );
   };
 
   const handleView = (): void => {
@@ -123,6 +132,7 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
     else if (c === 'pdf') props.actions.viewPdf(props.node.path);
     else if (c === 'html') props.actions.viewHtml(props.node.path);
     else if (c === 'image') props.actions.viewImage(props.node.path);
+    else if (c === 'mdx') props.actions.viewMdx(props.node.path);
     else if (c === 'text') props.actions.viewText(props.node.path, props.node.title);
   };
 
@@ -226,6 +236,8 @@ function CategoryGlyph(props: { category: ResourceCategory }) {
     switch (props.category) {
       case 'markdown':
         return 'MD';
+      case 'mdx':
+        return 'MDX';
       case 'pdf':
         return 'PDF';
       case 'html':
