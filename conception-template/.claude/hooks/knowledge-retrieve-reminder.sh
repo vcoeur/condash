@@ -23,7 +23,7 @@
 #   */auth/*|*auth.ts|*auth.py|*/tokens/*|*token.ts|*session*.ts|*session*.py)
 #     match="knowledge/topics/security/auth.md (token storage rules)" ;;
 #   */conception/condash.json)
-#     match="the file's own header + .claude/skills/projects/worktree.md (configuration schema)" ;;
+#     match="the file's own header + .agents/skills/projects/worktree.md (configuration schema)" ;;
 
 set -euo pipefail
 

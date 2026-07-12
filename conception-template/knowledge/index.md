@@ -47,7 +47,7 @@ When you write or modify a file under `knowledge/`:
 - **Don't create pointer-only per-app stubs.** If there is no conception-side knowledge to record for an app, the `internal/index.md` row *is* the body. Create a body file only when the first non-pointer fact surfaces.
 - **Prefer narrow-scope slugs over subject-area slugs.**
 - **Cite sources.** `([source](url): "quoted text")` for web, `` (`path/to/file:line`: `relevant snippet`) `` for local code.
-- **Verification stamps.** Stamp any fact whose truth depends on an observable source — see [`SKILL.md`](.claude/skills/knowledge/SKILL.md) for the format.
+- **Verification stamps.** Stamp any fact whose truth depends on an observable source — see [`SKILL.md`](.agents/skills/knowledge/SKILL.md) for the format.
 - **Cross-link.** Link body files to the items under `projects/` that produced them, and vice versa.
 
 After any add, rename, delete, or substantial rewrite of a knowledge file, run `/knowledge index` to refresh the affected `index.md` files.
