@@ -313,8 +313,8 @@ export function TerminalColumn(props: TerminalColumnProps) {
         </div>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
-      {/* Right-click tab menu. Portal'd to the body so it escapes the strip's
-       *  `overflow: auto` (same reason as the spawn dropdown). */}
+      {/* Right-click tab menu. Portal'd to the body so it isn't clipped by the
+       *  header bounds (same reason as the spawn dropdown). */}
       <Show when={ctxMenu.isOpen() && ctxMenu.anchor()}>
         <Portal>
           <div
