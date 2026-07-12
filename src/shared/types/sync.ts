@@ -50,6 +50,36 @@ export interface AutoSyncLastResult {
   pushError: string | null;
 }
 
+/** One recent commit on the conception checkout, for the status-bar
+ *  auto-sync indicator's click-to-view-commits popover. */
+export interface SyncCommit {
+  /** Short SHA (`%h`). */
+  sha: string;
+  /** Subject line (`%s`). */
+  subject: string;
+  /** git's relative-date rendering (`%cr`), e.g. `3 minutes ago`. */
+  relativeTime: string;
+  /** False when the commit is ahead of the upstream tracking ref (i.e. not
+   *  yet pushed). */
+  pushed: boolean;
+}
+
+/** Lightweight sync snapshot of the conception checkout — what the status-bar
+ *  auto-sync indicator renders alongside the engine's {@link AutoSyncStatus}.
+ *  Every field degrades to a zero/empty value when git can't be read, so the
+ *  indicator never breaks on a transient git hiccup. */
+export interface SyncStatusSnapshot {
+  /** Uncommitted (settleable) files in the conception working tree — the
+   *  "N to sync" count. Excludes gitignored paths. */
+  pendingCount: number;
+  /** Commits on HEAD not yet on the upstream tracking ref. */
+  ahead: number;
+  /** False when the branch has no upstream (nothing to push against). */
+  hasUpstream: boolean;
+  /** Most-recent commits, newest first (capped). */
+  recentCommits: SyncCommit[];
+}
+
 /** Renderer-safe snapshot of the engine, pushed on every state change. */
 export interface AutoSyncStatus {
   phase: AutoSyncPhase;

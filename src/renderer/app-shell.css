@@ -78,6 +78,169 @@
   stroke-width: 1.7;
 }
 
+.status-bar .status-bar-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Sync + shipped-skills indicators — a state pill (dot + label) plus an
+ * action button apiece. */
+.status-bar .status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.status-bar .status-pill.status-pill--static {
+  cursor: default;
+}
+
+.status-bar .status-pill:not(.status-pill--static):hover,
+.status-bar .status-pill.status-pill--open {
+  background: var(--bg-hover);
+}
+
+.status-bar .status-pill-label {
+  line-height: 1;
+}
+
+.status-bar .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.status-bar .status-dot--synced,
+.status-bar .status-dot--skills-synced {
+  background: var(--success);
+}
+
+.status-bar .status-dot--pending,
+.status-bar .status-dot--skills-update {
+  background: var(--warn-bg);
+}
+
+.status-bar .status-dot--error {
+  background: var(--danger);
+}
+
+.status-bar .status-dot--syncing {
+  background: var(--accent);
+  animation: status-dot-pulse 1.1s ease-in-out infinite;
+}
+
+.status-bar .status-dot--off,
+.status-bar .status-dot--unknown,
+.status-bar .status-dot--skills-install,
+.status-bar .status-dot--skills-unknown {
+  background: var(--text-muted);
+}
+
+@keyframes status-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Recent-commits popover, anchored under the auto-sync pill. */
+.status-commits {
+  position: fixed;
+  z-index: 60;
+  min-width: 320px;
+  max-width: 460px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg, 0 8px 28px rgba(0, 0, 0, 0.28));
+  padding: 8px;
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+.status-commits-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 4px 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.status-commits-empty {
+  padding: 6px 4px;
+  color: var(--text-muted);
+}
+
+.status-commits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.status-commit {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.status-commit:hover {
+  background: var(--bg-hover);
+}
+
+.status-commit-sha {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.status-commit-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-commit-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.status-commit-tag {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
 /* Activity rail — single 56 px left strip with icon buttons,
  * tooltips, and an active accent indicator. */
 .rail {

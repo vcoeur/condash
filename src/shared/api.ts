@@ -30,7 +30,9 @@ import type {
   SearchResults,
   SkillNode,
   SkillScope,
+  SkillsSyncStatus,
   StepMarker,
+  SyncStatusSnapshot,
   TabInfo,
   TaskConfigEntry,
   TaskRunGroup,
@@ -370,6 +372,15 @@ export interface CondashApi {
   /** Subscribe to auto-sync status pushed on every engine state change. Returns
    *  an unsubscribe function. */
   onAutoSyncStatus(callback: (status: AutoSyncStatus) => void): () => void;
+  /** Read-only sync snapshot of the conception checkout (uncommitted-file
+   *  count, unpushed-commit count, recent commits) for the status-bar auto-sync
+   *  indicator. Disjoint from the engine — never takes the sync lock. Zeroed
+   *  when no conception is active or git can't be read. */
+  syncStatusSnapshot(): Promise<SyncStatusSnapshot>;
+  /** Aggregate shipped-skills sync state for the status-bar indicator: whether
+   *  condash-shipped skills are installed and how many files are missing /
+   *  outdated. Read-only. Not-installed defaults when no conception is active. */
+  skillsSyncStatus(): Promise<SkillsSyncStatus>;
 
   /** List the day-directories present under
    * `<conception>/.condash/logs/` — newest first. Empty when no

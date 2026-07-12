@@ -1,13 +1,36 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
+import { join } from 'node:path';
 import { readKnowledgeTree } from '../knowledge';
 import { readNote } from '../note';
 import { readResourcesTree } from '../resources';
 import { requireReadableSkillPath } from '../path-bounds';
 import { readSkillsTreeForScope } from '../skills';
+import { getSkillsSyncStatus } from '../skills-sync-status';
 import { search } from '../search';
 import { readSettings } from '../settings';
 import { treeCreateMd, treeImportFile, treeMkdir } from '../tree-mutations';
-import { emptySearchResults, type SkillScope, type TreeRoot } from '../../shared/types';
+import {
+  emptySearchResults,
+  type SkillsSyncStatus,
+  type SkillScope,
+  type TreeRoot,
+} from '../../shared/types';
+
+/** Aggregate shipped-skills status for a conception with nothing installed. */
+const EMPTY_SKILLS_SYNC: SkillsSyncStatus = {
+  installed: false,
+  shippedTotal: 0,
+  needsInstall: 0,
+  edited: 0,
+  synced: false,
+};
+
+/** Bundled shipped-skills source of the running condash — mirrors
+ *  `conception-init.ts`'s `templateRoot()` (electron-builder copies
+ *  `conception-template/**` into the app dir). */
+function shippedSkillsRoot(): string {
+  return join(app.getAppPath(), 'conception-template', '.agents', 'skills');
+}
 import {
   requireMainWindowSender,
   requireNonEmptyString,
@@ -42,6 +65,17 @@ export function registerTreesIpc(): void {
     return withConception(
       (conceptionPath) => readSkillsTreeForScope(asScope(rawScope), conceptionPath),
       null,
+    );
+  });
+
+  // Aggregate shipped-skills sync state for the status-bar indicator: how many
+  // shipped files are missing / outdated vs. installed under
+  // `<conception>/.agents/skills/`. Read-only.
+  ipcMain.handle('skillsSyncStatus', (event) => {
+    requireMainWindowSender(event);
+    return withConception(
+      (conceptionPath) => getSkillsSyncStatus(shippedSkillsRoot(), conceptionPath),
+      EMPTY_SKILLS_SYNC,
     );
   });
 
