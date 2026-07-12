@@ -46,6 +46,8 @@ interface Crumb {
   extra?: string;
   /** Tooltip listing the remaining project titles behind `extra`. */
   extraTitle?: string;
+  /** Click handler to open the crumb's target. */
+  onClick?: () => void;
 }
 
 /**
@@ -141,15 +143,37 @@ export function DashboardView() {
   const dirName = (tab: TabInfo): string => tab.cwd.split('/').filter(Boolean).pop() ?? '';
 
   // The provenance breadcrumb under a card title — only the segments that exist,
-  // so missing app / worktree / project carry no dangling separator.
+  // so missing app / worktree / project carry no dangling separator. Each segment
+  // is clickable when the main process supplied a path.
   const breadcrumb = (summary: TabSummary): Crumb[] => {
     const crumbs: Crumb[] = [];
-    if (summary.app) crumbs.push({ text: `#${summary.app}`, mono: true });
-    if (summary.worktree)
-      crumbs.push({ text: `wt:${summary.worktree}`, full: summary.worktree, mono: true });
+    if (summary.app) {
+      crumbs.push({
+        text: `#${summary.app}`,
+        full: summary.app,
+        mono: true,
+        onClick: summary.appPath ? () => void window.condash.openPath(summary.appPath!) : undefined,
+      });
+    }
+    if (summary.worktree) {
+      crumbs.push({
+        text: `wt:${summary.worktree}`,
+        full: summary.worktree,
+        mono: true,
+        onClick: summary.worktreePath
+          ? () => void window.condash.openPath(summary.worktreePath!)
+          : undefined,
+      });
+    }
     const projects = summary.projects ?? [];
     if (projects.length === 1) {
-      crumbs.push({ text: projects[0].title, full: projects[0].title });
+      crumbs.push({
+        text: projects[0].title,
+        full: projects[0].title,
+        onClick: projects[0].readmePath
+          ? () => void window.condash.openInEditor(projects[0].readmePath!)
+          : undefined,
+      });
     } else if (projects.length > 1) {
       crumbs.push({
         text: projects[0].title,
@@ -159,6 +183,9 @@ export function DashboardView() {
           .slice(1)
           .map((project) => project.title)
           .join('\n'),
+        onClick: projects[0].readmePath
+          ? () => void window.condash.openInEditor(projects[0].readmePath!)
+          : undefined,
       });
     }
     return crumbs;
@@ -192,11 +219,20 @@ export function DashboardView() {
     return 'pending';
   };
 
-  // The on/off dot state and label for the top line.
-  const powerState = (cfg: DashboardConfigView): 'on' | 'off' | 'nokey' =>
-    !cfg.enabled ? 'off' : cfg.hasApiKey ? 'on' : 'nokey';
-  const powerLabel = (cfg: DashboardConfigView): string =>
-    !cfg.enabled ? 'Off' : cfg.hasApiKey ? 'On' : 'On · no key';
+  // The on/off dot state and label for the top line. Engine phase can override
+  // the plain "on" state when the engine is in backoff after repeated failures.
+  const powerState = (cfg: DashboardConfigView): 'on' | 'off' | 'nokey' | 'backoff' => {
+    if (!cfg.enabled) return 'off';
+    if (!cfg.hasApiKey) return 'nokey';
+    if (engine()?.phase === 'backoff') return 'backoff';
+    return 'on';
+  };
+  const powerLabel = (cfg: DashboardConfigView): string => {
+    if (!cfg.enabled) return 'Off';
+    if (!cfg.hasApiKey) return 'On · no key';
+    if (engine()?.phase === 'backoff') return 'On · backoff';
+    return 'On';
+  };
   const endpointLabel = (cfg: DashboardConfigView): string =>
     cfg.baseUrl?.trim() ? cfg.baseUrl : 'DeepSeek (default)';
 
@@ -272,6 +308,8 @@ export function DashboardView() {
                   <dd>{cfg().intervalSec}s</dd>
                   <dt>Activity gate</dt>
                   <dd>{cfg().gateOnActivity ? 'On — only changed tabs' : 'Off — every tab'}</dd>
+                  <dt>Skip idle</dt>
+                  <dd>{cfg().skipIdle ? 'On' : 'Off'}</dd>
                   <dt>API key</dt>
                   <dd>{cfg().hasApiKey ? 'set' : 'missing'}</dd>
                 </dl>
@@ -372,18 +410,44 @@ export function DashboardView() {
                               <Show when={index() > 0}>
                                 <span class="dashboard-card-crumb-sep">›</span>
                               </Show>
-                              <span
-                                class="dashboard-card-crumb"
-                                classList={{ 'is-mono': !!crumb.mono }}
-                                title={crumb.full ?? crumb.text}
-                              >
-                                {crumb.text}
-                                <Show when={crumb.extra}>
-                                  <span class="dashboard-card-crumb-more" title={crumb.extraTitle}>
-                                    {crumb.extra}
+                              <Show
+                                when={crumb.onClick}
+                                fallback={
+                                  <span
+                                    class="dashboard-card-crumb"
+                                    classList={{ 'is-mono': !!crumb.mono }}
+                                    title={crumb.full ?? crumb.text}
+                                  >
+                                    {crumb.text}
+                                    <Show when={crumb.extra}>
+                                      <span
+                                        class="dashboard-card-crumb-more"
+                                        title={crumb.extraTitle}
+                                      >
+                                        {crumb.extra}
+                                      </span>
+                                    </Show>
                                   </span>
-                                </Show>
-                              </span>
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  class="dashboard-card-crumb is-clickable"
+                                  classList={{ 'is-mono': !!crumb.mono }}
+                                  title={crumb.full ?? crumb.text}
+                                  onClick={() => crumb.onClick?.()}
+                                >
+                                  {crumb.text}
+                                  <Show when={crumb.extra}>
+                                    <span
+                                      class="dashboard-card-crumb-more"
+                                      title={crumb.extraTitle}
+                                    >
+                                      {crumb.extra}
+                                    </span>
+                                  </Show>
+                                </button>
+                              </Show>
                             </>
                           )}
                         </For>

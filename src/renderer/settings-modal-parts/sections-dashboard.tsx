@@ -214,10 +214,14 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
         <label class="settings-checkbox">
           <input
             type="checkbox"
-            checked={dashboard().gateOnActivity ?? true}
-            onChange={(e) => void update({ gateOnActivity: e.currentTarget.checked })}
+            checked={dashboard().skipIdle ?? true}
+            onChange={(e) => void update({ skipIdle: e.currentTarget.checked })}
           />
-          <span>Only summarize tabs that produced new output</span>
+          <span>Skip idle tabs that produced no new output</span>
+          <small class="settings-field-hint">
+            Even when the activity gate is off, don't re-summarize tabs already marked idle with no
+            new bytes.
+          </small>
         </label>
       </div>
 

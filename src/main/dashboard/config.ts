@@ -20,6 +20,7 @@ export const DASHBOARD_DEFAULTS = {
   cardInputChars: 16000,
   intervalSec: 120,
   gateOnActivity: true,
+  skipIdle: true,
   historyLimit: 20,
 };
 
@@ -68,6 +69,7 @@ export function resolveDashboardConfig(raw: DashboardSettings | undefined): Dash
     ),
     intervalSec: clampInterval(raw?.intervalSec ?? DASHBOARD_DEFAULTS.intervalSec),
     gateOnActivity: raw?.gateOnActivity ?? DASHBOARD_DEFAULTS.gateOnActivity,
+    skipIdle: raw?.skipIdle ?? DASHBOARD_DEFAULTS.skipIdle,
     historyLimit: raw?.historyLimit ?? DASHBOARD_DEFAULTS.historyLimit,
   };
 }
@@ -93,6 +95,7 @@ export function toDashboardConfigView(config: DashboardConfig): DashboardConfigV
     cardInputChars: config.cardInputChars,
     intervalSec: config.intervalSec,
     gateOnActivity: config.gateOnActivity,
+    skipIdle: config.skipIdle,
     historyLimit: config.historyLimit,
   };
 }

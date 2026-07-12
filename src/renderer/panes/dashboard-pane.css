@@ -64,7 +64,11 @@
 .dashboard-topline-power[data-power='nokey'] {
   --power-color: var(--warn);
 }
-.dashboard-topline-power[data-power='on'] .dashboard-topline-power-dot {
+.dashboard-topline-power[data-power='backoff'] {
+  --power-color: var(--warn);
+}
+.dashboard-topline-power[data-power='on'] .dashboard-topline-power-dot,
+.dashboard-topline-power[data-power='backoff'] .dashboard-topline-power-dot {
   box-shadow: 0 0 6px color-mix(in srgb, var(--power-color) 80%, transparent);
 }
 
@@ -423,6 +427,22 @@
 .dashboard-card-crumb.is-mono {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+}
+.dashboard-card-crumb.is-clickable {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  text-underline-offset: 2px;
+}
+.dashboard-card-crumb.is-clickable:hover {
+  color: var(--text);
+  text-decoration-color: var(--text-muted);
 }
 .dashboard-card-crumb-sep {
   flex: 0 0 auto;

@@ -111,6 +111,43 @@ export function clearSummarizerError(): void {
   lastError = null;
 }
 
+/** Cache for writer-tier results. The writer model is expensive and composes only
+ *  from already-distilled facts + provenance, so when the input is unchanged the
+ *  previous title/subtitle can be reused without another LLM call. The key
+ *  includes the model and reasoning flag so a settings change invalidates stale
+ *  entries; the cache is cleared on conception switch. */
+const writerCache = new Map<string, CardWriterResult>();
+
+/** Clear the writer cache, e.g. when arming a new conception. */
+export function clearWriterCache(): void {
+  writerCache.clear();
+}
+
+/** Build a stable cache key for the writer input. */
+function writerCacheKey(
+  config: DashboardConfig,
+  facts: SubtitleInput,
+  provenance: TabProvenance,
+): string {
+  const parts = [
+    config.writerModel,
+    String(config.writerReasoning),
+    facts.title,
+    facts.currentAction,
+    facts.activity,
+    facts.state,
+    ...facts.contextLines,
+    provenance.app ?? '',
+    provenance.appPath ?? '',
+    provenance.worktree ?? '',
+    provenance.worktreePath ?? '',
+    ...(provenance.projects ?? []).map(
+      (p) => p.slug + '\x00' + p.title + '\x00' + (p.readmePath ?? ''),
+    ),
+  ];
+  return parts.join('\x00');
+}
+
 /** Pull the first balanced-looking JSON object out of an LLM reply (which may
  *  wrap it in prose or a ```json fence despite instructions) and parse it.
  *  Returns null when no parseable object is present. */
@@ -567,6 +604,9 @@ export async function writeCard(
   facts: SubtitleInput,
   provenance: TabProvenance,
 ): Promise<CardWriterResult> {
+  const key = writerCacheKey(config, facts, provenance);
+  const cached = writerCache.get(key);
+  if (cached) return cached;
   try {
     const reply = await runCompletion(config, {
       model: config.writerModel,
@@ -577,7 +617,9 @@ export async function writeCard(
       // max_tokens) but far less than the old cross-tab narrative.
       maxTokens: config.writerReasoning ? 2000 : 500,
     });
-    return parseCardWriter(reply);
+    const result = parseCardWriter(reply);
+    writerCache.set(key, result);
+    return result;
   } catch (err) {
     lastError = (err as Error).message;
     process.stderr.write(`condash dashboard: writeCard failed: ${(err as Error).message}\n`);

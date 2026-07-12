@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   recent: '',
   summary: null as TabSummaryResult | null,
   subtitle: '',
+  fail: false,
+  lastError: null as string | null,
   // Every `dashboardState` payload the engine broadcasts, in order — lets a test
   // assert what actually reached the renderer (not just the in-memory state).
   pushed: [] as DashboardState[],
@@ -53,13 +55,28 @@ vi.mock('../terminals', () => ({
   tabRecentText: () => h.recent,
 }));
 vi.mock('./summarizer', () => ({
-  clearSummarizerError: () => {},
-  getSummarizerError: () => null,
+  clearSummarizerError: () => {
+    h.lastError = null;
+  },
+  clearWriterCache: () => {},
+  getSummarizerError: () => h.lastError,
   makeEvent: (text: string, at: number) => ({ at, text }),
-  summarizeTab: vi.fn(async () => h.summary),
+  summarizeTab: vi.fn(async () => {
+    if (h.fail) {
+      h.lastError = 'simulated failure';
+      return null;
+    }
+    return h.summary;
+  }),
   // The writer adds no title here, so the engine falls back to the cheap pass's
   // draft title (h.summary.title) — what these tests assert flows through.
-  writeCard: vi.fn(async () => ({ title: '', subtitle: h.subtitle })),
+  writeCard: vi.fn(async () => {
+    if (h.fail) {
+      h.lastError = 'simulated failure';
+      return { title: '', subtitle: '' };
+    }
+    return { title: '', subtitle: h.subtitle };
+  }),
 }));
 // Provenance is local fs/config; stub it so the engine tests stay hermetic.
 vi.mock('./provenance', () => ({
@@ -74,11 +91,16 @@ import {
   DECAY_INTERVALS,
   decayStaleWorkingTabs,
   forceWorkingOnUserTail,
+  getBackoffDelayMs,
   getDashboardState,
+  isInBackoff,
+  recordFailure,
+  recordSuccess,
   refreshTab,
   setDashboardConception,
   tick,
 } from './engine';
+import { writeCard } from './summarizer';
 
 const CONCEPTION = '/tmp/condash-engine-status-test';
 
@@ -94,6 +116,7 @@ function baseConfig(): DashboardConfig {
     cardInputChars: 16000,
     intervalSec: 30,
     gateOnActivity: true,
+    skipIdle: true,
     historyLimit: 50,
   };
 }
@@ -105,6 +128,8 @@ beforeEach(() => {
   h.recent = '';
   h.summary = null;
   h.subtitle = '';
+  h.fail = false;
+  h.lastError = null;
   h.pushed = [];
 });
 
@@ -292,6 +317,86 @@ describe('dashboard engine status', () => {
       expect(last?.engine?.phase).toBe('waiting');
       expect(last?.tabs.map((tab) => tab.sid)).toEqual(['a']);
     });
+  });
+  it('backs off after repeated summarization failures', async () => {
+    await setDashboardConception(null);
+    expect(getBackoffDelayMs()).toBe(0);
+    expect(isInBackoff(0)).toBe(false);
+    recordFailure(0);
+    expect(getBackoffDelayMs()).toBe(30_000);
+    expect(isInBackoff(29_999)).toBe(true);
+    expect(isInBackoff(30_000)).toBe(false);
+    recordFailure(30_000);
+    expect(getBackoffDelayMs()).toBe(60_000);
+    recordSuccess();
+    expect(getBackoffDelayMs()).toBe(0);
+    expect(isInBackoff(Number.MAX_SAFE_INTEGER)).toBe(false);
+  });
+
+  it('skipIdle prevents unchanged idle tabs from being re-summarized', async () => {
+    vi.useFakeTimers({
+      toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+    });
+    vi.setSystemTime(0);
+    try {
+      h.config = { ...baseConfig(), intervalSec: 1, gateOnActivity: false, skipIdle: true };
+      h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+      h.bytes = new Map([['a', 100]]);
+      h.recent = 'real transcript output';
+      h.summary = {
+        title: 'Idle',
+        contextLines: [],
+        currentAction: 'Idle — finished',
+        state: 'idle',
+        activity: 'idle',
+      };
+      await setDashboardConception(CONCEPTION);
+      await vi.advanceTimersByTimeAsync(0);
+      // First cycle summarizes the tab and marks it idle.
+      expect(getDashboardState()?.tabs[0]?.state).toBe('idle');
+      const firstRunCount = (writeCard as ReturnType<typeof vi.fn>).mock.calls.length;
+      // Advance past the 1s interval + max jitter so the tab is due again. With
+      // skipIdle on, the idle tab with no byte growth is held back.
+      await vi.advanceTimersByTimeAsync(16_000);
+      await tick(CONCEPTION);
+      await tick(CONCEPTION);
+      expect((writeCard as ReturnType<typeof vi.fn>).mock.calls.length).toBe(firstRunCount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('skipIdle off still re-summarizes idle tabs when gateOnActivity is off', async () => {
+    vi.useFakeTimers({
+      toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+    });
+    vi.setSystemTime(0);
+    try {
+      h.config = { ...baseConfig(), intervalSec: 1, gateOnActivity: false, skipIdle: false };
+      h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+      h.bytes = new Map([['a', 100]]);
+      h.recent = 'real transcript output';
+      h.summary = {
+        title: 'Idle',
+        contextLines: [],
+        currentAction: 'Idle — finished',
+        state: 'idle',
+        activity: 'idle',
+      };
+      await setDashboardConception(CONCEPTION);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getDashboardState()?.tabs[0]?.state).toBe('idle');
+      const firstRunCount = (writeCard as ReturnType<typeof vi.fn>).mock.calls.length;
+      // With skipIdle off, the idle tab is re-summarized when it comes due again.
+      await vi.advanceTimersByTimeAsync(16_000);
+      await tick(CONCEPTION);
+      await tick(CONCEPTION);
+      expect((writeCard as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
+        firstRunCount,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
