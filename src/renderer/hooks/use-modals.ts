@@ -43,6 +43,14 @@ export interface UseModals {
   /** The single active-overlay signal backing the boolean accessors below. */
   activeModal: () => ActiveModal;
   setActiveModal: Setter<ActiveModal>;
+  /** True while a modal that should take over the terminal's vertical space is
+   *  open — the note/doc viewers (note, project preview, pdf, html, image, mdx)
+   *  and the full-screen singleton overlays (search, settings, new-project,
+   *  about, shortcuts, help). Excludes the transient confirm dialogs: the
+   *  quit-confirm here, plus force-stop / init-confirm / prompt, which live in
+   *  their own signals and are intentionally not counted. Drives the
+   *  terminal-pane auto-collapse (App effect → `setTerminalAutoCollapsed`). */
+  heightModalOpen: () => boolean;
   helpDoc: () => HelpDoc | null;
   setHelpDoc: (doc: HelpDoc | null) => void;
   searchModalOpen: () => boolean;
@@ -107,6 +115,25 @@ export function useModals(): UseModals {
     else if (isOpen(kind)) setActiveModal(null);
   };
 
+  // Any content/utility modal that should reclaim the terminal band. The
+  // payload-carrying doc viewers plus every singleton overlay except the
+  // quit-confirm; the force-stop / init-confirm / prompt dialogs keep their
+  // own signals and are deliberately excluded.
+  const heightModalOpen = (): boolean => {
+    if (
+      modal() !== null ||
+      previewPath() !== null ||
+      pdfPath() !== null ||
+      htmlPath() !== null ||
+      imagePath() !== null ||
+      mdxPath() !== null
+    ) {
+      return true;
+    }
+    const active = activeModal();
+    return active !== null && active.kind !== 'quitConfirm';
+  };
+
   const helpDoc = (): HelpDoc | null => {
     const m = activeModal();
     return m?.kind === 'help' ? m.doc : null;
@@ -131,6 +158,7 @@ export function useModals(): UseModals {
     setMdxPath,
     activeModal,
     setActiveModal,
+    heightModalOpen,
     helpDoc,
     setHelpDoc,
     searchModalOpen: () => isOpen('search'),

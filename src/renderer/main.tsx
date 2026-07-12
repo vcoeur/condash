@@ -93,6 +93,7 @@ function App() {
     setImagePath,
     mdxPath,
     setMdxPath,
+    heightModalOpen,
     helpDoc,
     setHelpDoc,
     searchModalOpen,
@@ -127,6 +128,7 @@ function App() {
     toggleLeftView,
     selectWorking,
     ensureTerminalOpen,
+    setTerminalAutoCollapsed,
     topBandVisible,
     topBandStyle,
     startSplitterDrag,
@@ -144,6 +146,18 @@ function App() {
       ensureTerminalOpen();
     }
   };
+
+  // --- Auto-collapse the terminal pane while a height-taking modal is open ---
+  // Opening a note/doc viewer or a full-screen overlay masks the terminal shut so
+  // the modal reclaims its vertical band; closing the last one reveals it again.
+  // The mask (`setTerminalAutoCollapsed`) is display-only and never persisted, so
+  // a transient modal can't overwrite the saved terminal preference. A manual
+  // terminal toggle clears the mask (see updateLayout in use-layout), so a user
+  // who re-opens the terminal mid-modal keeps it open — until the next modal
+  // opens, when a fresh edge re-collapses. The memo fires only on the actual
+  // open↔closed edge, not on every doc-path swap that keeps the boolean the same.
+  const anyHeightModalOpen = createMemo(() => heightModalOpen());
+  createEffect(() => setTerminalAutoCollapsed(anyHeightModalOpen()));
 
   // --- Tree expansion + branch filter (existing stores) ------------------
   const treeExpansion = createTreeExpansion({ flashToast });
