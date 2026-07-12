@@ -41,7 +41,11 @@ import { CustomHtmlBlockView, DiagramBlockView, WireframeBlockView } from './vis
 
 /** Container blocks + the type → component dispatch every level renders through. */
 
-export function BlockView(props: { block: PlanBlock; baseDir: string }): JSX.Element {
+export function BlockView(props: {
+  block: PlanBlock;
+  baseDir: string;
+  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+}): JSX.Element {
   const data = <T,>(): T => props.block.data as unknown as T;
   switch (props.block.type) {
     case 'rich-text':
@@ -75,13 +79,34 @@ export function BlockView(props: { block: PlanBlock; baseDir: string }): JSX.Ele
     case 'wireframe':
       return <WireframeBlockView data={data<WireframeData>()} />;
     case 'columns':
-      return <ColumnsBlock data={data<ColumnsData>()} baseDir={props.baseDir} />;
+      return (
+        <ColumnsBlock
+          data={data<ColumnsData>()}
+          baseDir={props.baseDir}
+          onSaveAnswers={props.onSaveAnswers}
+        />
+      );
     case 'tabs':
     case 'code-tabs':
-      return <TabsBlock data={data<TabsData>()} baseDir={props.baseDir} />;
+      return (
+        <TabsBlock
+          data={data<TabsData>()}
+          baseDir={props.baseDir}
+          onSaveAnswers={props.onSaveAnswers}
+        />
+      );
     case 'question-form':
     case 'visual-questions':
-      return <QuestionFormBlock data={data<QuestionFormData>()} />;
+      return (
+        <QuestionFormBlock
+          data={data<QuestionFormData>()}
+          onSave={
+            props.onSaveAnswers
+              ? (answers) => props.onSaveAnswers!(props.block, answers)
+              : undefined
+          }
+        />
+      );
     case 'custom-html':
       return <CustomHtmlBlockView data={data<CustomHtmlData>()} />;
     case 'invalid':
@@ -91,10 +116,20 @@ export function BlockView(props: { block: PlanBlock; baseDir: string }): JSX.Ele
   }
 }
 
-export function BlockList(props: { blocks: readonly NestedBlockRef[]; baseDir: string }) {
+export function BlockList(props: {
+  blocks: readonly NestedBlockRef[];
+  baseDir: string;
+  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+}) {
   return (
     <For each={props.blocks}>
-      {(block) => <BlockView block={block as PlanBlock} baseDir={props.baseDir} />}
+      {(block) => (
+        <BlockView
+          block={block as PlanBlock}
+          baseDir={props.baseDir}
+          onSaveAnswers={props.onSaveAnswers}
+        />
+      )}
     </For>
   );
 }
@@ -112,7 +147,11 @@ function columnsMustStack(data: ColumnsData): boolean {
   );
 }
 
-export function ColumnsBlock(props: { data: ColumnsData; baseDir: string }) {
+export function ColumnsBlock(props: {
+  data: ColumnsData;
+  baseDir: string;
+  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+}) {
   const stacked = createMemo(() => columnsMustStack(props.data));
   return (
     <div class="plan-block plan-columns" classList={{ 'plan-columns-stacked': stacked() }}>
@@ -122,7 +161,11 @@ export function ColumnsBlock(props: { data: ColumnsData; baseDir: string }) {
             <Show when={column.label}>
               <h4 class="plan-column-label">{column.label}</h4>
             </Show>
-            <BlockList blocks={column.blocks} baseDir={props.baseDir} />
+            <BlockList
+              blocks={column.blocks}
+              baseDir={props.baseDir}
+              onSaveAnswers={props.onSaveAnswers}
+            />
           </div>
         )}
       </For>
@@ -132,7 +175,11 @@ export function ColumnsBlock(props: { data: ColumnsData; baseDir: string }) {
 
 /** Tabs container; `code-tabs` (deprecated) normalizes each `{label, code}`
  *  tab into a nested `code` block on the fly. */
-export function TabsBlock(props: { data: TabsData; baseDir: string }) {
+export function TabsBlock(props: {
+  data: TabsData;
+  baseDir: string;
+  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+}) {
   const tabs = createMemo(() =>
     props.data.tabs.map((tab, index) => {
       const legacy = tab as { code?: string; language?: string };
@@ -172,7 +219,13 @@ export function TabsBlock(props: { data: TabsData; baseDir: string }) {
       </div>
       <div class="plan-tab-body">
         <Show when={tabs()[active()]} keyed>
-          {(tab) => <BlockList blocks={tab.blocks} baseDir={props.baseDir} />}
+          {(tab) => (
+            <BlockList
+              blocks={tab.blocks}
+              baseDir={props.baseDir}
+              onSaveAnswers={props.onSaveAnswers}
+            />
+          )}
         </Show>
       </div>
     </div>

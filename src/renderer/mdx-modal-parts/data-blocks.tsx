@@ -386,9 +386,63 @@ export function FileTreeBlock(props: { data: FileTreeData }) {
   );
 }
 
-/** Read-only rendering: options, recommendations, and freeform placeholders
- *  are displayed, never submitted — answers travel back through chat/notes. */
-export function QuestionFormBlock(props: { data: QuestionFormData }) {
+/** Interactive question form: the reader picks answers (radio / checkbox /
+ *  free text) and Save writes them back into the same `.mdx` via `onSave`.
+ *  With no `onSave` it renders read-only, still reflecting any saved answers. */
+export function QuestionFormBlock(props: {
+  data: QuestionFormData;
+  onSave?: (answers: Record<string, string | string[]>) => Promise<void>;
+}) {
+  const seed = (): Record<string, string | string[]> => {
+    const out: Record<string, string | string[]> = {};
+    for (const question of props.data.questions) {
+      if (question.answer !== undefined) out[question.id] = question.answer;
+    }
+    return out;
+  };
+  const [answers, setAnswers] = createSignal<Record<string, string | string[]>>(seed());
+  const [saving, setSaving] = createSignal(false);
+  const [saved, setSaved] = createSignal(false);
+
+  const isChosen = (questionId: string, optionId: string): boolean => {
+    const value = answers()[questionId];
+    return Array.isArray(value) ? value.includes(optionId) : value === optionId;
+  };
+  const chooseSingle = (questionId: string, optionId: string): void => {
+    setAnswers({ ...answers(), [questionId]: optionId });
+    setSaved(false);
+  };
+  const toggleMulti = (questionId: string, optionId: string): void => {
+    const current = answers()[questionId];
+    const list = Array.isArray(current) ? current : [];
+    const next = list.includes(optionId)
+      ? list.filter((id) => id !== optionId)
+      : [...list, optionId];
+    setAnswers({ ...answers(), [questionId]: next });
+    setSaved(false);
+  };
+  const setText = (questionId: string, text: string): void => {
+    setAnswers({ ...answers(), [questionId]: text });
+    setSaved(false);
+  };
+  const textValue = (questionId: string): string => {
+    const value = answers()[questionId];
+    return typeof value === 'string' ? value : '';
+  };
+  const save = async (): Promise<void> => {
+    const handler = props.onSave;
+    if (!handler) return;
+    setSaving(true);
+    try {
+      await handler(answers());
+      setSaved(true);
+    } catch {
+      setSaved(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div class="plan-block plan-questions">
       <For each={props.data.questions}>
@@ -402,29 +456,71 @@ export function QuestionFormBlock(props: { data: QuestionFormData }) {
             <Show when={question.subtitle}>
               <div class="plan-muted">{question.subtitle}</div>
             </Show>
-            <For each={question.options ?? []}>
-              {(option) => (
-                <div class="plan-option" data-recommended={option.recommended ? '' : undefined}>
-                  <span class="plan-option-label">
-                    {option.label}
-                    <Show when={option.recommended}>
-                      <span class="plan-change" data-change="added">
-                        recommended
+            <Show when={question.mode !== 'freeform'}>
+              <For each={question.options ?? []}>
+                {(option) => (
+                  <label
+                    class="plan-option"
+                    data-recommended={option.recommended ? '' : undefined}
+                    data-chosen={isChosen(question.id, option.id) ? '' : undefined}
+                  >
+                    <input
+                      class="plan-option-input"
+                      type={question.mode === 'multi' ? 'checkbox' : 'radio'}
+                      name={`q-${question.id}`}
+                      checked={isChosen(question.id, option.id)}
+                      disabled={!props.onSave}
+                      onChange={() =>
+                        question.mode === 'multi'
+                          ? toggleMulti(question.id, option.id)
+                          : chooseSingle(question.id, option.id)
+                      }
+                    />
+                    <span class="plan-option-body">
+                      <span class="plan-option-label">
+                        {option.label}
+                        <Show when={option.recommended}>
+                          <span class="plan-change" data-change="added">
+                            recommended
+                          </span>
+                        </Show>
                       </span>
-                    </Show>
-                  </span>
-                  <Show when={option.detail}>
-                    <small class="plan-muted">{option.detail}</small>
-                  </Show>
-                </div>
-              )}
-            </For>
+                      <Show when={option.detail}>
+                        <small class="plan-muted">{option.detail}</small>
+                      </Show>
+                    </span>
+                  </label>
+                )}
+              </For>
+            </Show>
             <Show when={question.mode === 'freeform'}>
-              <div class="plan-option plan-muted">{question.placeholder ?? 'Free-text answer'}</div>
+              <textarea
+                class="plan-answer-text"
+                rows={2}
+                placeholder={question.placeholder ?? 'Free-text answer'}
+                disabled={!props.onSave}
+                value={textValue(question.id)}
+                onInput={(event) => setText(question.id, event.currentTarget.value)}
+              />
             </Show>
           </div>
         )}
       </For>
+      <Show when={props.onSave}>
+        <div class="plan-questions-actions">
+          <button
+            type="button"
+            class="plan-answer-save"
+            disabled={saving()}
+            onClick={() => void save()}
+          >
+            {saving() ? 'Saving…' : (props.data.submitLabel ?? 'Save answers')}
+          </button>
+          <Show when={saved()}>
+            <span class="plan-muted">Saved ✓</span>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 }

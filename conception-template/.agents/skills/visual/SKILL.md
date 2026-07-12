@@ -83,11 +83,19 @@ open the note in condash once before hand-off. Any `.mdx` opens in the plan
 viewer — from a Deliverables entry, the Resources pane, or an `.mdx` link in a
 note.
 
-## Open questions
+## Open questions — answered in the viewer
 
 A document's open decisions live in ONE bottom `question-form` block under an
 `### Open Questions` heading, each with a recommended default — the single place
 they are enumerated. Non-answerable assumptions stay as concise `callout`s in
 the relevant section.
+
+condash renders the form **interactively**: the reader picks options (radio for
+`single`, checkboxes for `multi`) or types a `freeform` answer and clicks
+**Save**. The answer is written back onto each question as an `answer` field in
+the same `.mdx` — an option id, a list of option ids, or the free text — so a
+question and its answer live in one file and one git diff. On the next turn,
+re-read the note and act on the `answer` fields; never re-ask in chat what the
+form already answered.
 
 Adapted from Builder.io's visual-plan / visual-recap skills (MIT).

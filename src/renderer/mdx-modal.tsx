@@ -3,8 +3,9 @@ import { Modal } from './modal';
 import { Button } from './actions';
 import { highlightCode } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
-import type { PlanDocument } from '@shared/plan-blocks/schemas';
+import type { PlanBlock, PlanDocument, QuestionFormData } from '@shared/plan-blocks/schemas';
 import { BlockView } from './mdx-modal-parts/containers';
+import { applyAnswers } from './mdx-modal-parts/data';
 import './mdx-modal.css';
 import './mdx-modal-parts/plan-blocks.css';
 
@@ -37,7 +38,7 @@ export function MdxModal(props: {
   const filename = (): string => props.path.split('/').pop() ?? props.path;
   const baseDir = (): string => props.path.replace(/\/[^/]*$/, '');
 
-  const [source] = createResource(
+  const [source, { mutate: mutateSource }] = createResource(
     () => props.path,
     (path) => window.condash.readNote(path),
   );
@@ -46,6 +47,26 @@ export function MdxModal(props: {
     const { parsePlanMdx } = await import('@shared/plan-blocks/parse-mdx');
     return parsePlanMdx(text);
   });
+
+  // Write a question-form's answers back into the note in place, then update
+  // the in-memory source so the rendered form reflects the saved answers.
+  const saveAnswers = async (
+    block: PlanBlock,
+    answers: Record<string, string | string[]>,
+  ): Promise<void> => {
+    const current = source();
+    if (current == null) return;
+    const data = block.data as unknown as QuestionFormData;
+    const next = applyAnswers(current, block.id, data.questions, data.submitLabel, answers);
+    if (next === current) return;
+    try {
+      await window.condash.writeNote(props.path, current, next);
+    } catch (err) {
+      console.error('failed to save question-form answers', err);
+      throw err;
+    }
+    mutateSource(next);
+  };
   const title = (): string => {
     const fromDoc = doc()?.frontmatter.title;
     return typeof fromDoc === 'string' && fromDoc !== '' ? fromDoc : filename();
@@ -173,7 +194,9 @@ export function MdxModal(props: {
         >
           <div class="plan-doc">
             <For each={doc()?.blocks ?? []}>
-              {(block) => <BlockView block={block} baseDir={baseDir()} />}
+              {(block) => (
+                <BlockView block={block} baseDir={baseDir()} onSaveAnswers={saveAnswers} />
+              )}
             </For>
           </div>
         </Show>

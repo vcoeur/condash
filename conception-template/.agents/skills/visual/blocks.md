@@ -23,7 +23,7 @@ in-app viewer renders, so a green check is exactly what condash can display.
 | `wireframe` | `<WireframeBlock>` | surface, caption?, frame?, skeleton?, html?, css? | A wireframe of one screen: a `<Screen surface="…" html={…} />` child carrying a semantic HTML fragment, rendered in a desktop/browser/mobile/popover/panel surface. |
 | `columns` | `<Columns>` | columns | A side-by-side container built from `<Column label="…">` children, each wrapping nested blocks. The standard Before/After comparison primitive. |
 | `tabs` | `<TabsBlock>` | tabs, orientation? | A tab container; the whole `tabs` array (including nested child blocks in runtime JSON shape) is one prop — there is no nested Tab element. |
-| `question-form` | `<QuestionForm>` | questions, submitLabel? | An open-questions form (single/multi/freeform, recommended options). condash renders it read-only; answers travel back through chat or note edits. |
+| `question-form` | `<QuestionForm>` | questions, submitLabel? | An open-questions form (single/multi/freeform, recommended options). condash renders it interactively: the reader answers in the viewer and Save writes each answer back into the same .mdx. |
 | `custom-html` | `<HtmlBlock>` | html, css?, caption? | An author-supplied HTML (+ optional CSS) fragment, sanitized before rendering. A bounded escape hatch — prefer the native blocks. |
 
 Deprecated (parse for old documents, never author):

@@ -166,7 +166,7 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
     fields: 'questions, submitLabel?',
     description:
       'An open-questions form (single/multi/freeform, recommended options). condash renders it ' +
-      'read-only; answers travel back through chat or note edits.',
+      'interactively: the reader answers in the viewer and Save writes each answer back into the same .mdx.',
   },
   {
     type: 'custom-html',
