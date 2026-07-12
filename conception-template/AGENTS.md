@@ -25,11 +25,11 @@ condash exists to make every piece of work a tracked project. This loop is the d
 
 ### Committing
 
-`condash sync` is the conception's **only committer**. Parallel agent sessions share one `.git/index`, the `index.md` files are fan-in that no session owns, and concurrent pushes race — exactly one writer dissolves all three.
+The **sweeper** — timer-driven `condash sync run` — is the conception's **only committer**. Parallel agent sessions share one `.git/index`, the `index.md` files are fan-in that no session owns, and concurrent pushes race — exactly one writer dissolves all three.
 
-- **Never run `git add`, `git commit`, or `git push` in the conception checkout.** Not to save a README, not to close an item. Write the files and stop; the sweeper takes them from there.
-- **`condash sync run`** sweeps every settled, non-gitignored change — one commit per item, then `knowledge`, then everything outside the two trees (`AGENTS.md`, `.agents/`, config, `resources/`, …) as `meta`, then the regenerated indexes — and pushes. It skips any path written within the quiet period (default 90 s), so a live edit is never committed half-written. To keep a file out of `sync`, gitignore it.
-- **`condash sync commit <item> --message "<subject>"`** is the milestone commit: one item, a real subject line, taken under the same lock. Use it when closing an item.
+- **Agents never run `git` or any `condash sync` verb in the conception checkout.** Not to save a README, not to close an item. Write the files and stop; the sweeper takes them from there.
+- **The sweeper** commits every settled, non-gitignored change — one commit per item, then `knowledge`, then everything outside the two trees (`AGENTS.md`, `.agents/`, config, `resources/`, …) as `meta`, then the regenerated indexes — and pushes. It skips any path written within the quiet period (default 90 s), so a live edit is never committed half-written. To keep a file out of `sync`, gitignore it.
+- **Closing needs no commit either.** A sweep that introduces an item's `Closed.` timeline entry gets a synthesized `Close <slug>. Outcome: …` milestone subject instead of `<slug>: sync`. `condash sync commit <item> --message "<subject>"` remains a manual escape hatch for humans.
 - **A repo worktree is a different tree.** `<worktrees_path>/<branch>/<repo>/` is not the conception — commit and push there as normal.
 
 ### Generated layers — never hand-edit

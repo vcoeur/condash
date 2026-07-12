@@ -13,12 +13,14 @@ import { knowledgeStrategy } from '../index-knowledge';
 import { projectsStrategy } from '../index-projects';
 import { regenerateIndex } from '../index-tree';
 import type { IndexStrategy } from '../index-tree';
-import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT } from './group';
+import { closeMilestoneSubject, extractClosedEntries } from './close-milestone';
+import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT, type CommitGroup } from './group';
 import {
   commitPaths,
   inProgressOperation,
   push,
   readChangedPaths,
+  readFileAtHead,
   resolveGitDir,
   upstreamAhead,
   type ChangedPath,
@@ -142,7 +144,8 @@ export async function syncRun(
 
     const commits: SyncCommitRecord[] = [];
     for (const group of commitGroups(eligible)) {
-      commits.push(await record(conceptionPath, group.paths, group.subject, options.dryRun));
+      const subject = (await closeSubject(conceptionPath, group)) ?? group.subject;
+      commits.push(await record(conceptionPath, group.paths, subject, options.dryRun));
     }
     if (indexPaths.length > 0) {
       commits.push(await record(conceptionPath, indexPaths, INDEX_COMMIT_SUBJECT, options.dryRun));
@@ -271,6 +274,39 @@ async function regenerateDirtyTrees(conceptionPath: string, dryRun: boolean): Pr
     regenerated.push(tree);
   }
   return regenerated;
+}
+
+/**
+ * Milestone subject for an item group whose sweep introduces the README's
+ * `Closed.` timeline entry, or `null` to keep the group's `<item>: sync`
+ * default. Closing is write-files-only for agents, so the real history line
+ * has to come from the sweeper itself.
+ */
+async function closeSubject(conceptionPath: string, group: CommitGroup): Promise<string | null> {
+  // Only an item group carries its own README at projects/<month>/<item>/README.md.
+  const readmeRel = group.paths.find((path) => {
+    const segments = path.split('/');
+    return (
+      segments.length === 4 &&
+      segments[0] === 'projects' &&
+      segments[2] === group.key &&
+      segments[3] === 'README.md'
+    );
+  });
+  if (!readmeRel) return null;
+
+  let worktreeText: string;
+  try {
+    worktreeText = await fs.readFile(join(conceptionPath, readmeRel), 'utf8');
+  } catch {
+    return null; // README deleted in this sweep — nothing to close.
+  }
+  const headText = await readFileAtHead(conceptionPath, readmeRel);
+  return closeMilestoneSubject(
+    group.key,
+    extractClosedEntries(headText ?? ''),
+    extractClosedEntries(worktreeText),
+  );
 }
 
 async function record(
