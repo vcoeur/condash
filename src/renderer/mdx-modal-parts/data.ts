@@ -1,4 +1,10 @@
-import type { CodeAnnotation, FileTreeEntry, KitNode, Question } from '@shared/plan-blocks/schemas';
+import type {
+  CodeAnnotation,
+  FileTreeEntry,
+  KitNode,
+  PlanBlock,
+  Question,
+} from '@shared/plan-blocks/schemas';
 
 /**
  * Pure logic for the plan/review viewer blocks: line-range parsing, diff row
@@ -327,14 +333,46 @@ function elementDeclaresId(element: string, id: string): boolean {
   return (match[1] ?? match[2] ?? match[4]) === id;
 }
 
-/** All self-closing `<QuestionForm …/>` spans in the document, in order. */
+/** Char ranges covered by fenced code blocks (``` or ~~~), fence lines
+ *  included. A `<QuestionForm>` literal inside a fence is documentation, not an
+ *  element the parser turns into a block, so span-scanning skips it — otherwise
+ *  a quoted example desyncs the span order from the parsed block order. */
+function fencedRanges(source: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  const fence = /^\s{0,3}(`{3,}|~{3,})/;
+  let open: { start: number; char: string; length: number } | null = null;
+  let offset = 0;
+  for (const line of source.split('\n')) {
+    const lineLength = line.length + 1; // + the '\n' that split() consumed
+    const match = fence.exec(line);
+    if (open === null) {
+      if (match) open = { start: offset, char: match[1][0], length: match[1].length };
+    } else if (match && match[1][0] === open.char && match[1].length >= open.length) {
+      ranges.push({ start: open.start, end: offset + lineLength });
+      open = null;
+    }
+    offset += lineLength;
+  }
+  if (open !== null) ranges.push({ start: open.start, end: source.length });
+  return ranges;
+}
+
+/** All self-closing `<QuestionForm …/>` spans in the document, in order,
+ *  skipping any inside a fenced code block. */
 function questionFormSpans(source: string): { start: number; end: number }[] {
+  const fenced = fencedRanges(source);
+  const inFence = (index: number): boolean =>
+    fenced.some((range) => index >= range.start && index < range.end);
   const spans: { start: number; end: number }[] = [];
   const tag = '<QuestionForm';
   let from = 0;
   for (;;) {
     const start = source.indexOf(tag, from);
     if (start === -1) break;
+    if (inFence(start)) {
+      from = start + tag.length;
+      continue;
+    }
     const gt = scanSelfCloseEnd(source, start + tag.length);
     if (gt === -1) break;
     spans.push({ start, end: gt + 1 });
@@ -343,17 +381,46 @@ function questionFormSpans(source: string): { start: number; end: number }[] {
   return spans;
 }
 
+/** Doc-order index of the question-form block `id` among **all** question-form
+ *  blocks (recursing into `columns`/`tabs` containers), or -1 when absent. This
+ *  matches the source-span order `questionFormSpans` scans, so it locates the
+ *  right form even when several share no explicit `id=` in the source. */
+export function questionFormOrdinal(blocks: readonly PlanBlock[] | undefined, id: string): number {
+  let index = -1;
+  let found = -1;
+  const walk = (list: readonly PlanBlock[]): void => {
+    for (const block of list) {
+      if (block.type === 'question-form') {
+        index += 1;
+        if (block.id === id) found = index;
+      }
+      const data = block.data as { columns?: unknown; tabs?: unknown };
+      for (const group of [data.columns, data.tabs]) {
+        if (!Array.isArray(group)) continue;
+        for (const holder of group as { blocks?: unknown }[]) {
+          if (Array.isArray(holder?.blocks)) walk(holder.blocks as PlanBlock[]);
+        }
+      }
+    }
+  };
+  walk(blocks ?? []);
+  return found;
+}
+
 /** Char span of the `<QuestionForm …/>` element to write, or null when it can't
- *  be located. Prefers the element that declares `id`; when the block id is
- *  parser-auto-generated (no `id=` in source) and the document holds exactly one
- *  form, that lone form is unambiguously the target. */
+ *  be located. Prefers the element that declares `id` (an authored id, or one a
+ *  prior save wrote in); otherwise takes the `ordinal`-th form in document order
+ *  (`questionFormOrdinal`); otherwise the lone form. Null when still ambiguous,
+ *  so the caller surfaces a failure instead of writing the wrong element. */
 export function findQuestionFormSpan(
   source: string,
   id: string,
+  ordinal?: number,
 ): { start: number; end: number } | null {
   const spans = questionFormSpans(source);
   const byId = spans.find((span) => elementDeclaresId(source.slice(span.start, span.end), id));
   if (byId) return byId;
+  if (ordinal !== undefined && ordinal >= 0 && ordinal < spans.length) return spans[ordinal];
   return spans.length === 1 ? spans[0] : null;
 }
 
@@ -361,15 +428,18 @@ export function findQuestionFormSpan(
  *  return the new document source, or null when the element can't be located
  *  (so the caller surfaces a failure instead of a silent no-op). Each answer
  *  keys by question id: an option id (single), option ids (multi), or free text
- *  (freeform); an empty value clears that question's `answer`. Pure — no IO. */
+ *  (freeform); an empty value clears that question's `answer`. `ordinal` (the
+ *  block's position among the document's question-forms) disambiguates when
+ *  several forms share no explicit source `id=`. Pure — no IO. */
 export function applyAnswers(
   source: string,
   blockId: string,
   questions: readonly Question[],
   submitLabel: string | undefined,
   answers: Record<string, string | string[]>,
+  ordinal?: number,
 ): string | null {
-  const span = findQuestionFormSpan(source, blockId);
+  const span = findQuestionFormSpan(source, blockId, ordinal);
   if (!span) return null;
   const nextQuestions = questions.map((question) => {
     const value = answers[question.id];
