@@ -15,6 +15,7 @@ import type {
   TerminalXtermPrefs,
   TreeExpansionPrefs,
 } from '../shared/types';
+import { PROJECT_CARD_TITLE_FONTS } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -549,6 +550,9 @@ const globalOnlyFields = {
    *  drives commits, not the tree. See {@link autoSyncSettings}. */
   autoSync: autoSyncSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
+  /** Font-family for project-card titles (Settings → Appearance). `default`
+   *  keeps the theme's editorial display face. See {@link ProjectCardTitleFont}. */
+  projectCardTitleFont: z.enum(PROJECT_CARD_TITLE_FONTS).optional(),
   layout: layoutSchema.optional(),
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
   cardMinWidth: cardMinWidthSchema.optional(),

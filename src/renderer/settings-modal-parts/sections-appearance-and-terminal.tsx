@@ -10,6 +10,7 @@ import type {
   AppScopeMemoryPrefs,
   CardMinWidthPrefs,
   Platform,
+  ProjectCardTitleFont,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
   TerminalPrefs,
@@ -17,12 +18,19 @@ import type {
   Theme,
 } from '@shared/types';
 import { type BindTextFn, type ColorEntry, type TerminalStringFieldKey } from './data';
-import { CardDensityFields, TerminalFields, ThemePicker } from './fields';
+import {
+  CardDensityFields,
+  ProjectCardTitleFontPicker,
+  TerminalFields,
+  ThemePicker,
+} from './fields';
 import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
   setTheme: (theme: Theme) => Promise<void>;
+  projectCardTitleFont: () => ProjectCardTitleFont;
+  setProjectCardTitleFont: (font: ProjectCardTitleFont) => Promise<void>;
   cardMinWidth: (key: keyof CardMinWidthPrefs) => number;
   setCardMinWidth: (patch: CardMinWidthPrefs) => Promise<void>;
 }
@@ -41,6 +49,10 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
       }
     >
       <ThemePicker current={props.theme()} onChange={(t) => void props.setTheme(t)} />
+      <ProjectCardTitleFontPicker
+        current={props.projectCardTitleFont()}
+        onChange={(f) => void props.setProjectCardTitleFont(f)}
+      />
       <CardDensityFields
         resolve={props.cardMinWidth}
         onChange={(patch) => void props.setCardMinWidth(patch)}

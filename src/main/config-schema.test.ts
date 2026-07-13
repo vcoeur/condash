@@ -558,6 +558,8 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
     // setTheme
     theme: 'dark',
+    // projectCardTitleFont — no narrow setter; edited through the raw save
+    projectCardTitleFont: 'sans',
     // setLayout
     layout: {
       projects: true,

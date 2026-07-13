@@ -4,13 +4,14 @@ import type {
   CardMinWidthPrefs,
   Platform,
   AppScopeMemoryPrefs,
+  ProjectCardTitleFont,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
 } from '@shared/types';
-import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, DEFAULT_PROJECT_CARD_TITLE_FONT } from '@shared/types';
 import {
   addActionTemplate,
   buildSavePayload,
@@ -78,6 +79,12 @@ export function SettingsModal(props: {
   /** Commit a partial card-min-width patch. The renderer applies the new
    *  CSS variables and persists. */
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
+  /** Effective project-card title font. Drives the live value shown in the
+   *  Appearance section. */
+  projectCardTitleFont: ProjectCardTitleFont;
+  /** Commit a project-card title font choice. The renderer applies the new
+   *  CSS variable and persists. */
+  onChangeProjectCardTitleFont: (font: ProjectCardTitleFont) => void;
   onClose: () => void;
 }) {
   // Conception read path: `.condash/settings.json` (canonical) or a legacy
@@ -341,6 +348,9 @@ export function SettingsModal(props: {
               // so the rest of the app picks up the new CSS variables.
               const g = parseRawConfig(written);
               if (g.theme && g.theme !== props.theme) props.onChangeTheme(g.theme);
+              if (g.projectCardTitleFont && g.projectCardTitleFont !== props.projectCardTitleFont) {
+                props.onChangeProjectCardTitleFont(g.projectCardTitleFont);
+              }
               if (g.cardMinWidth) props.onChangeCardMinWidth(g.cardMinWidth);
               setGlobalDraft(null);
             },
@@ -400,6 +410,15 @@ export function SettingsModal(props: {
   const setGlobalTheme = (next: Theme): Promise<void> =>
     patchSettings((c) => {
       c.theme = next;
+    });
+
+  const globalProjectCardTitleFont = (): ProjectCardTitleFont =>
+    globalParsed().projectCardTitleFont ??
+    props.projectCardTitleFont ??
+    DEFAULT_PROJECT_CARD_TITLE_FONT;
+  const setGlobalProjectCardTitleFont = (next: ProjectCardTitleFont): Promise<void> =>
+    patchSettings((c) => {
+      c.projectCardTitleFont = next;
     });
 
   const cardMinWidthGlobal = (key: keyof CardMinWidthPrefs): number =>
@@ -749,6 +768,8 @@ export function SettingsModal(props: {
               <AppearanceSection
                 theme={globalTheme}
                 setTheme={setGlobalTheme}
+                projectCardTitleFont={globalProjectCardTitleFont}
+                setProjectCardTitleFont={setGlobalProjectCardTitleFont}
                 cardMinWidth={cardMinWidthGlobal}
                 setCardMinWidth={setGlobalCardMinWidth}
               />

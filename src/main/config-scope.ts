@@ -38,6 +38,7 @@ export const GLOBAL_ONLY_KEYS = [
   'dashboard',
   'autoSync',
   'theme',
+  'projectCardTitleFont',
   'layout',
   'welcome',
   'cardMinWidth',

@@ -37,6 +37,7 @@ import { useToast } from './hooks/use-toast';
 import { usePromptModal } from './hooks/use-prompt-modal';
 import { useTheme } from './hooks/use-theme';
 import { useCardMinWidth } from './hooks/use-card-min-width';
+import { useProjectCardTitleFont } from './hooks/use-project-card-title-font';
 import { useLayout } from './hooks/use-layout';
 import { useConfigBindings } from './hooks/use-config-bindings';
 import { useModals } from './hooks/use-modals';
@@ -80,6 +81,7 @@ function App() {
   const { promptState, setPromptState, openPrompt } = usePromptModal();
   const { theme, isDark, handleThemeChange } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
+  const { projectCardTitleFont, handleProjectCardTitleFontChange } = useProjectCardTitleFont();
   const {
     modal,
     setModal,
@@ -847,6 +849,8 @@ function App() {
         handleThemeChange={handleThemeChange}
         cardMinWidth={cardMinWidth}
         handleCardMinWidthChange={handleCardMinWidthChange}
+        projectCardTitleFont={projectCardTitleFont}
+        handleProjectCardTitleFontChange={handleProjectCardTitleFontChange}
         newProjectOpen={newProjectOpen}
         setNewProjectOpen={setNewProjectOpen}
         reloadProjects={reloadProjects}

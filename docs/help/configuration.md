@@ -83,7 +83,7 @@ The first-launch folder picker writes `lastConceptionPath` for you and
 prepends the path to `recentConceptionPaths`. Theme follows the OS
 unless you set it explicitly via the toolbar toggle.
 
-Personal keys (`terminal`, `theme`, `cardMinWidth`, `open_with`,
+Personal keys (`terminal`, `theme`, `projectCardTitleFont`, `cardMinWidth`, `open_with`,
 `pdf_viewer`, `dashboard`, `agents`, …) live **only** in `settings.json`;
 the tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branches`,
 `repositories`, `retired_apps`, `taskConfig`) live **only** in `.condash/settings.json`.
@@ -102,7 +102,7 @@ the file it writes.
 
 - **Recent conceptions** — manage the recents list backing
   **File → Open Recent**.
-- **Appearance** — theme; per-pane card-grid min-widths.
+- **Appearance** — theme; project-card title font; per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences.
 - **Launchers** — the `agents` list.
 - **Open with** — slot labels and commands.
