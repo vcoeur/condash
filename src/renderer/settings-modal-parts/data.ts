@@ -139,12 +139,24 @@ export const THEME_OPTIONS: { value: Theme; label: string }[] = [
 /** Project-card title-font choices, in picker order. `default` first so the
  *  no-op choice reads as the baseline. Labels name the face; the picker renders
  *  each in its own typeface for a live preview. */
-export const PROJECT_CARD_TITLE_FONT_OPTIONS: { value: ProjectCardTitleFont; label: string }[] = [
+export const PROJECT_CARD_TITLE_FONT_OPTIONS = [
   { value: 'default', label: 'Editorial (default)' },
   { value: 'sans', label: 'Sans-serif' },
   { value: 'mono', label: 'Monospace' },
   { value: 'system', label: 'System UI' },
-];
+] as const satisfies readonly { value: ProjectCardTitleFont; label: string }[];
+
+// Compile-time completeness: every ProjectCardTitleFont value must have a
+// picker option here, so a new font added to the enum (and forced into the
+// hook's STACKS Record) can't be silently unreachable in Settings. A missing
+// value makes `_MissingFontOption` that value (not `never`), failing this
+// assignment — the same guard shape as card-density's `_MissingDensityField`.
+type _MissingFontOption = Exclude<
+  ProjectCardTitleFont,
+  (typeof PROJECT_CARD_TITLE_FONT_OPTIONS)[number]['value']
+>;
+const _assertAllFontOptionsPresent: _MissingFontOption extends never ? true : false = true;
+void _assertAllFontOptionsPresent;
 
 export const OPEN_WITH_SLOTS: { key: 'main_ide' | 'secondary_ide' | 'terminal'; label: string }[] =
   [

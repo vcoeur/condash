@@ -18,9 +18,12 @@ export function ProjectCardTitleFontPicker(props: {
         <For each={PROJECT_CARD_TITLE_FONT_OPTIONS}>
           {(opt) => (
             <label class="settings-radio">
+              {/* Stable shared name — this picker renders once (Global tab
+                  only), so a fixed name forms a real radio group with native
+                  arrow-key navigation and a single tab stop. */}
               <input
                 type="radio"
-                name={`pctf-${Math.random().toString(36).slice(2, 8)}`}
+                name="project-card-title-font"
                 checked={props.current === opt.value}
                 onChange={() => props.onChange(opt.value)}
               />

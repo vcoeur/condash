@@ -19,14 +19,18 @@ export const PROJECT_CARD_TITLE_FONT_STACKS: Record<ProjectCardTitleFont, string
 /** Push the chosen project-card title font onto `:root` as
  *  `--project-card-title-font`. `projects-pane.css` reads it with a
  *  `var(--font-display)` fallback, so `default` (which removes the variable)
- *  restores the theme face exactly. */
+ *  restores the theme face exactly. A `data-project-card-title-font` attribute
+ *  is set alongside so the stylesheet can drop the serif-tuned faux-weight
+ *  (stroke + shadow) for the non-serif overrides. */
 function applyProjectCardTitleFont(font: ProjectCardTitleFont): void {
   const root = document.documentElement;
   const stack = PROJECT_CARD_TITLE_FONT_STACKS[font];
   if (stack) {
     root.style.setProperty('--project-card-title-font', stack);
+    root.dataset.projectCardTitleFont = font;
   } else {
     root.style.removeProperty('--project-card-title-font');
+    delete root.dataset.projectCardTitleFont;
   }
 }
 

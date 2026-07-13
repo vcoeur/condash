@@ -460,6 +460,15 @@ body[data-dragging='project'] .row {
   -webkit-font-smoothing: auto;
 }
 
+/* The stroke + shadow above are a faux-weight tuned for the thin Cormorant
+ * serif. The sans/mono/system overrides are already substantial at 700, so the
+ * extra stroke muddies them and diverges from the Settings picker preview
+ * (which draws no stroke) — drop it whenever a non-default face is active. */
+:root[data-project-card-title-font] .row .title {
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
 .row .title .kind-glyph {
   /* Glyph is em-sized (1.15em of the 18 px title), so its top sits
    * naturally on the cap-height line; no margin nudge needed. The
