@@ -5,6 +5,7 @@ import type {
   CardMinWidthPrefs,
   DashboardSettings,
   Platform,
+  ProjectCardTitleFont,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
@@ -66,7 +67,7 @@ export const SECTIONS: SectionMeta[] = [
  */
 export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   recents: [],
-  appearance: ['theme', 'cardMinWidth'],
+  appearance: ['theme', 'projectCardTitleFont', 'cardMinWidth'],
   terminal: ['terminal'],
   agents: ['agents'],
   'open-with': ['open_with'],
@@ -133,6 +134,16 @@ export const THEME_OPTIONS: { value: Theme; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
+];
+
+/** Project-card title-font choices, in picker order. `default` first so the
+ *  no-op choice reads as the baseline. Labels name the face; the picker renders
+ *  each in its own typeface for a live preview. */
+export const PROJECT_CARD_TITLE_FONT_OPTIONS: { value: ProjectCardTitleFont; label: string }[] = [
+  { value: 'default', label: 'Editorial (default)' },
+  { value: 'sans', label: 'Sans-serif' },
+  { value: 'mono', label: 'Monospace' },
+  { value: 'system', label: 'System UI' },
 ];
 
 export const OPEN_WITH_SLOTS: { key: 'main_ide' | 'secondary_ide' | 'terminal'; label: string }[] =
@@ -250,6 +261,7 @@ export interface RawConfig {
   open_with?: Record<string, { label?: string; command?: string }>;
   pdf_viewer?: string[];
   theme?: Theme;
+  projectCardTitleFont?: ProjectCardTitleFont;
   cardMinWidth?: CardMinWidthPrefs;
   terminal?: TerminalPrefs;
   /** Live terminal-tab summarization. Personal/global key (the `apiKey`
@@ -282,6 +294,7 @@ export const RAW_CONFIG_KEYS = [
   'open_with',
   'pdf_viewer',
   'theme',
+  'projectCardTitleFont',
   'cardMinWidth',
   'terminal',
   'dashboard',

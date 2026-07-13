@@ -150,6 +150,7 @@ describe('bootstrap IPC', () => {
         'conceptionPath',
         'layout',
         'openWith',
+        'projectCardTitleFont',
         'selectedBranches',
         'skillsActiveScope',
         'terminalPrefs',
@@ -158,6 +159,8 @@ describe('bootstrap IPC', () => {
         'welcomeDismissed',
       ].sort(),
     );
+    // projectCardTitleFont falls back to the built-in default when unset.
+    expect(boot.projectCardTitleFont).toBe('default');
     // Deduped selectedBranches, exactly as getSelectedBranches returns.
     expect(boot.selectedBranches).toEqual(['feat-1', 'feat-2']);
     // cardMinWidth is fully resolved (every pane present, missing keys defaulted).

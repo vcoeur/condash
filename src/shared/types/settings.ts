@@ -2,7 +2,7 @@
 // it nests (tree expansion, card min-widths, skill scope) and the "open with"
 // editor slots.
 
-import type { Theme } from './common';
+import type { ProjectCardTitleFont, Theme } from './common';
 import type { LayoutState } from './layout';
 import type { TerminalPrefs } from './terminal';
 import type { TaskConfigEntry } from './task-runs';
@@ -25,6 +25,10 @@ export interface Settings {
    * submenu and the Global tab's recents list. */
   recentConceptionPaths: string[];
   theme: Theme;
+  /** Font-family for project-card titles. Unset (or `default`) keeps the
+   * theme's editorial display face, so doing nothing changes nothing.
+   * Per-machine, like `theme` — a readability/taste choice. */
+  projectCardTitleFont?: ProjectCardTitleFont;
   /** Per-machine terminal prefs. Moved here from condash.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
@@ -97,6 +101,8 @@ export interface BootstrapData {
   conceptionPath: string | null;
   /** Effective theme (`getTheme`). */
   theme: Theme;
+  /** Effective project-card title font (`resolveProjectCardTitleFont`). */
+  projectCardTitleFont: ProjectCardTitleFont;
   /** Composite layout, DEFAULT_LAYOUT-backfilled by main (`getLayout`). */
   layout: LayoutState;
   /** First-launch welcome dismissed flag (`getWelcomeDismissed`). */

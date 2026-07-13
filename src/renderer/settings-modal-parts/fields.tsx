@@ -4,5 +4,6 @@
 // resolve unchanged.
 export { SearchProvider, LabeledField } from './fields/primitives';
 export { ThemePicker } from './fields/theme';
+export { ProjectCardTitleFontPicker } from './fields/project-card-title-font';
 export { CardDensityFields } from './fields/card-density';
 export { TerminalFields } from './fields/terminal';

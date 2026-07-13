@@ -445,8 +445,11 @@ body[data-dragging='project'] .row {
   /* Upright Cormorant serif (bold redesign, 2026-07): card titles share the
    * editorial display face with the modal title; 700 weight at 18 px with a
    * light stroke keeps the title prominent on the denser card. The kind glyph
-   * aligns with the first line. */
-  font-family: var(--font-display), Georgia, 'Times New Roman', serif;
+   * aligns with the first line. `--project-card-title-font` is the user's
+   * Settings → Appearance override (`use-project-card-title-font`); unset, the
+   * editorial `--font-display` face applies, so the default is unchanged. */
+  font-family:
+    var(--project-card-title-font, var(--font-display)), Georgia, 'Times New Roman', serif;
   font-weight: 700;
   font-size: 18px;
   line-height: 1.25;

@@ -32,7 +32,7 @@ The left rail lists every section once, under its scope group:
 | Section | Scope group | Config key(s) | Guide |
 |---------|-------------|---------------|-------|
 | Recent conceptions | Personal | *(managed outside the file)* | [Configure the conception path](configure-conception-path.md) |
-| Appearance | Personal | `theme`, `cardMinWidth` | — |
+| Appearance | Personal | `theme`, `projectCardTitleFont`, `cardMinWidth` | — |
 | Terminal | Personal | `terminal` | [Embedded terminal](terminal.md) |
 | Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
 | Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |

@@ -9,6 +9,7 @@ import {
   resolveBranchFilterStickyAll,
   resolveCardMinWidth,
   resolveLayout,
+  resolveProjectCardTitleFont,
   resolveSelectedBranches,
   resolveSkillsActiveScope,
   resolveTheme,
@@ -38,8 +39,9 @@ export function registerBootstrapIpc(): void {
     // with the effective-config-backed resolvers (theme, card min-widths). Every
     // readSettings / getEffectiveConceptionConfig underneath is mtime-memoized,
     // so the whole bundle resolves against a single read of each file.
-    const [theme, cardMinWidth, openWith, terminalPrefs] = await Promise.all([
+    const [theme, projectCardTitleFont, cardMinWidth, openWith, terminalPrefs] = await Promise.all([
       resolveTheme(settings),
+      resolveProjectCardTitleFont(settings),
       resolveCardMinWidth(settings),
       conceptionPath ? listOpenWith(conceptionPath) : Promise.resolve<OpenWithSlots>({}),
       getTerminalPrefs(),
@@ -47,6 +49,7 @@ export function registerBootstrapIpc(): void {
     return {
       conceptionPath: conceptionPath ? toPosix(conceptionPath) : null,
       theme,
+      projectCardTitleFont,
       layout: resolveLayout(settings),
       welcomeDismissed: resolveWelcomeDismissed(settings),
       cardMinWidth,

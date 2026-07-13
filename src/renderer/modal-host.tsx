@@ -30,6 +30,7 @@ import type { UseProjectActions } from './hooks/use-project-actions';
 import type { UseTreeActions } from './hooks/use-tree-actions';
 import type { UseTheme } from './hooks/use-theme';
 import type { UseCardMinWidth } from './hooks/use-card-min-width';
+import type { UseProjectCardTitleFont } from './hooks/use-project-card-title-font';
 import type { UseConception } from './hooks/use-conception';
 import type { UseRepoActions } from './hooks/use-repo-actions';
 import type { UseToast } from './hooks/use-toast';
@@ -97,6 +98,8 @@ export interface ModalHostProps {
   handleThemeChange: UseTheme['handleThemeChange'];
   cardMinWidth: UseCardMinWidth['cardMinWidth'];
   handleCardMinWidthChange: UseCardMinWidth['handleCardMinWidthChange'];
+  projectCardTitleFont: UseProjectCardTitleFont['projectCardTitleFont'];
+  handleProjectCardTitleFontChange: UseProjectCardTitleFont['handleProjectCardTitleFontChange'];
   // --- New project modal ---
   newProjectOpen: UseModals['newProjectOpen'];
   setNewProjectOpen: UseModals['setNewProjectOpen'];
@@ -174,6 +177,8 @@ export function ModalHost(props: ModalHostProps) {
     handleThemeChange,
     cardMinWidth,
     handleCardMinWidthChange,
+    projectCardTitleFont,
+    handleProjectCardTitleFontChange,
     newProjectOpen,
     setNewProjectOpen,
     reloadProjects,
@@ -320,6 +325,8 @@ export function ModalHost(props: ModalHostProps) {
           onChangeTheme={handleThemeChange}
           cardMinWidth={cardMinWidth()}
           onChangeCardMinWidth={handleCardMinWidthChange}
+          projectCardTitleFont={projectCardTitleFont()}
+          onChangeProjectCardTitleFont={handleProjectCardTitleFontChange}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>

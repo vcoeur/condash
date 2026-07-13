@@ -7,6 +7,7 @@ import type {
   CardMinWidthPrefs,
   DashboardSettings,
   LayoutState,
+  ProjectCardTitleFont,
   TaskConfigEntry,
   TerminalPrefs,
   Theme,
@@ -46,6 +47,7 @@ export interface EffectiveConfig extends ConfigShape {
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;
   theme?: Theme;
+  projectCardTitleFont?: ProjectCardTitleFont;
   cardMinWidth?: CardMinWidthPrefs;
   layout?: LayoutState;
   treeExpansion?: TreeExpansionPrefs;
