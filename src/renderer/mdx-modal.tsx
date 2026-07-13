@@ -5,7 +5,7 @@ import { highlightCode } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { PlanBlock, PlanDocument, QuestionFormData } from '@shared/plan-blocks/schemas';
 import { BlockView } from './mdx-modal-parts/containers';
-import { applyAnswers } from './mdx-modal-parts/data';
+import { applyAnswers, questionFormOrdinal } from './mdx-modal-parts/data';
 import './mdx-modal.css';
 import './mdx-modal-parts/plan-blocks.css';
 
@@ -57,7 +57,17 @@ export function MdxModal(props: {
     const current = source();
     if (current == null) return;
     const data = block.data as unknown as QuestionFormData;
-    const next = applyAnswers(current, block.id, data.questions, data.submitLabel, answers);
+    // Locate the form by its document-order position, so notes with several
+    // id-less <QuestionForm> blocks each save into the right element.
+    const ordinal = questionFormOrdinal(doc()?.blocks, block.id);
+    const next = applyAnswers(
+      current,
+      block.id,
+      data.questions,
+      data.submitLabel,
+      answers,
+      ordinal,
+    );
     if (next === null) throw new Error('could not locate the question-form in the note');
     if (next === current) return;
     try {

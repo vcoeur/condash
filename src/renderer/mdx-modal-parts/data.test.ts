@@ -10,6 +10,7 @@ import {
   findQuestionFormSpan,
   kitNodesToHtml,
   parseLineRange,
+  questionFormOrdinal,
   scopeCss,
   serializeLiteral,
   tryParseJson,
@@ -185,5 +186,105 @@ describe('question-form answers', () => {
     const span = findQuestionFormSpan(tricky, 'oq');
     expect(span).not.toBeNull();
     expect(tricky.slice(span!.start, span!.end)).toBe(tricky);
+  });
+
+  // Two id-less forms — the reported incident. Pre-fix, findQuestionFormSpan
+  // bailed to null on 2+ spans, so neither could be saved.
+  const twoForms = [
+    '---',
+    'kind: plan',
+    '---',
+    '',
+    '### First',
+    '<QuestionForm questions={[{ id: "a1", title: "One", mode: "freeform" }]} />',
+    '',
+    '### Second',
+    '<QuestionForm questions={[{ id: "b1", title: "Two", mode: "freeform" }]} />',
+    '',
+  ].join('\n');
+
+  const formsOf = (source: string) =>
+    parsePlanMdx(source).blocks.filter((block) => block.type === 'question-form');
+
+  it('saves the right form when several share no source id (via ordinal)', () => {
+    const blocks = parsePlanMdx(twoForms).blocks;
+    const forms = blocks.filter((block) => block.type === 'question-form');
+    const second = forms[1];
+    const ordinal = questionFormOrdinal(blocks, second.id);
+    expect(ordinal).toBe(1);
+
+    // Without the ordinal, the old id-only path can't locate either form.
+    const questionsB = (second.data as unknown as QuestionFormData).questions;
+    expect(applyAnswers(twoForms, second.id, questionsB, undefined, { b1: 'hi' })).toBeNull();
+
+    const next = applyAnswers(twoForms, second.id, questionsB, undefined, { b1: 'hi' }, ordinal)!;
+    expect(next).not.toBeNull();
+    const saved = formsOf(next);
+    expect((saved[1].data as unknown as QuestionFormData).questions[0].answer).toBe('hi');
+    // The first form is untouched.
+    expect((saved[0].data as unknown as QuestionFormData).questions[0].answer).toBeUndefined();
+  });
+
+  it('ignores a <QuestionForm> quoted in a fenced code block', () => {
+    const fenced = [
+      '---',
+      'kind: plan',
+      '---',
+      '',
+      'Example of the block:',
+      '',
+      '```mdx',
+      '<QuestionForm questions={[{ id: "ex", title: "Example", mode: "freeform" }]} />',
+      '```',
+      '',
+      '### Real',
+      '<QuestionForm questions={[{ id: "r1", title: "Real", mode: "freeform" }]} />',
+      '',
+    ].join('\n');
+    // Only the real form parses to a block; the fenced one is documentation.
+    const forms = formsOf(fenced);
+    expect(forms).toHaveLength(1);
+    const ordinal = questionFormOrdinal(parsePlanMdx(fenced).blocks, forms[0].id);
+    const questions = (forms[0].data as unknown as QuestionFormData).questions;
+    const next = applyAnswers(fenced, forms[0].id, questions, undefined, { r1: 'yes' }, ordinal)!;
+    expect(next).not.toBeNull();
+    // The fenced example is preserved verbatim, and only the real form is answered.
+    expect(next).toContain(
+      '<QuestionForm questions={[{ id: "ex", title: "Example", mode: "freeform" }]} />',
+    );
+    expect(formsOf(next)[0].data).toMatchObject({ questions: [{ id: 'r1', answer: 'yes' }] });
+  });
+
+  it('questionFormOrdinal counts nested forms in document order', () => {
+    const nested = [
+      '---',
+      'kind: plan',
+      '---',
+      '',
+      '<Columns>',
+      '<Column label="L">',
+      '',
+      '<QuestionForm questions={[{ id: "n1", title: "Nested", mode: "freeform" }]} />',
+      '',
+      '</Column>',
+      '</Columns>',
+      '',
+      '<QuestionForm questions={[{ id: "t1", title: "Top", mode: "freeform" }]} />',
+      '',
+    ].join('\n');
+    const blocks = parsePlanMdx(nested).blocks;
+    const topForm = blocks.find((block) => block.type === 'question-form')!;
+    // The nested form precedes the top-level one in source order, so the
+    // top-level form is ordinal 1 — matching its <QuestionForm> span index.
+    const ordinal = questionFormOrdinal(blocks, topForm.id);
+    expect(ordinal).toBe(1);
+    const questions = (topForm.data as unknown as QuestionFormData).questions;
+    const next = applyAnswers(nested, topForm.id, questions, undefined, { t1: 'ok' }, ordinal)!;
+    expect(next).not.toBeNull();
+    // The top-level form got the answer; the nested example is untouched.
+    expect(formsOf(next)[0].data).toMatchObject({ questions: [{ id: 't1', answer: 'ok' }] });
+    expect(next).toContain(
+      '<QuestionForm questions={[{ id: "n1", title: "Nested", mode: "freeform" }]} />',
+    );
   });
 });
