@@ -9,7 +9,14 @@ import {
   projectsTabGroups,
   todayIso,
 } from './projects-parts/data';
-import { GroupBlock, ParentInfoContext, SubGroup, type ParentInfo } from './projects-parts/cards';
+import {
+  GroupBlock,
+  ParentInfoContext,
+  SubGroup,
+  type ChildRow,
+  type ParentInfo,
+} from './projects-parts/cards';
+import { compareByStatusThenSlug } from '@shared/projects';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
 
@@ -51,23 +58,31 @@ export function ProjectsView(props: {
   // GroupBlock (and its synchronous localStorage collapse read) on an unrelated
   // status/step change (R2).
   const groups = createMemo<Group[]>((prev) => projectsTabGroups(props.buckets, prev));
-  // List-wide parent/child lookup shared with every Card via context: a slug →
-  // title map for the "Part of" banner, and a parent-slug → child-count map for
-  // the subproject count chip. Rebuilt whenever the buckets change.
+  // List-wide parent/child lookup shared with every Card via context: slug →
+  // title and slug → status maps for the "Part of" banner (name + status pill),
+  // and a parent-slug → status-ordered child rows map for the bottom
+  // subprojects banner. Rebuilt whenever the buckets change.
   const parentInfo = createMemo<ParentInfo>(() => {
     const titleBySlug = new Map<string, string>();
-    const childCountByParent = new Map<string, number>();
+    const statusBySlug = new Map<string, string>();
+    const childrenByParent = new Map<string, ChildRow[]>();
     for (const items of props.buckets.values()) {
       for (const item of items) {
         titleBySlug.set(item.slug, item.title);
+        statusBySlug.set(item.slug, item.status);
         if (item.parent) {
-          childCountByParent.set(item.parent, (childCountByParent.get(item.parent) ?? 0) + 1);
+          const row: ChildRow = { slug: item.slug, title: item.title, status: item.status };
+          const rows = childrenByParent.get(item.parent);
+          if (rows) rows.push(row);
+          else childrenByParent.set(item.parent, [row]);
         }
       }
     }
+    for (const rows of childrenByParent.values()) rows.sort(compareByStatusThenSlug);
     return {
       parentTitleOf: (slug) => titleBySlug.get(slug),
-      childCountOf: (slug) => childCountByParent.get(slug) ?? 0,
+      parentStatusOf: (slug) => statusBySlug.get(slug),
+      childrenOf: (slug) => childrenByParent.get(slug) ?? [],
     };
   });
   return (

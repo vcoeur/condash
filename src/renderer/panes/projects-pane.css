@@ -834,7 +834,73 @@ body[data-dragging='project'] .row {
   min-width: 0;
 }
 
-/* Count of spin-off subprojects on a parent card, in the compact meta row. */
-.row .meta-icon.subprojects {
+/* Subprojects banner at the bottom of a parent card: one full-width row per
+ * spin-off child, mirroring the "Part of" pill at the top of each child. Same
+ * accent tint so both read as relationship markers; the ↓ icon and status pill
+ * echo the child card's ↑ icon and pill. */
+.row .children-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.row .child-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-body);
+  font-size: var(--text-2xs);
+}
+.row .child-row-icon {
   color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.row .child-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Status pill shared by both relationship banners — text + border tinted by the
+ * linked item's status via --col-status, set by the status-<x> / warn class on
+ * the banner element (mirrors the preview modal's subproject pill). */
+.row .rel-status-pill {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  color: var(--col-status, var(--text-muted));
+  border: 1px solid color-mix(in srgb, var(--col-status, var(--text-muted)) 40%, transparent);
+}
+
+/* Status → colour token, shared by the top parent banner and the child rows. */
+.row .parent-banner.status-now,
+.row .child-row.status-now {
+  --col-status: var(--col-now);
+}
+.row .parent-banner.status-review,
+.row .child-row.status-review {
+  --col-status: var(--col-review);
+}
+.row .parent-banner.status-later,
+.row .child-row.status-later {
+  --col-status: var(--col-later);
+}
+.row .parent-banner.status-backlog,
+.row .child-row.status-backlog {
+  --col-status: var(--col-backlog);
+}
+.row .parent-banner.status-done,
+.row .child-row.status-done {
+  --col-status: var(--col-done);
+}
+.row .parent-banner.warn,
+.row .child-row.warn {
+  --col-status: var(--warn);
 }
