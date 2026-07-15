@@ -1,4 +1,5 @@
-import { createSignal, For, onCleanup, Show } from 'solid-js';
+import { createContext, createSignal, For, onCleanup, Show, useContext } from 'solid-js';
+import type { Accessor } from 'solid-js';
 import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
@@ -16,6 +17,20 @@ const [overStatus, setOverStatus] = createSignal<string | null>(null);
 // Movement past this many pixels turns a press into a drag — below it the
 // press stays a click so cards still open on a plain click.
 const DRAG_THRESHOLD_PX = 4;
+
+/** Parent/subproject lookups a Card needs but that depend on the whole project
+ *  list. Provided once by ProjectsView so cards read them without threading
+ *  props through GroupBlock/SubGroup. */
+export interface ParentInfo {
+  /** Title for a child's "Part of" banner, or undefined when the parent slug
+   *  doesn't resolve (the card then falls back to the raw slug). */
+  parentTitleOf: (parentSlug: string) => string | undefined;
+  /** How many items declare this slug as their `parent` — the count-chip value. */
+  childCountOf: (slug: string) => number;
+}
+
+/** Accessor-typed so cards re-derive their banner/chip when the list changes. */
+export const ParentInfoContext = createContext<Accessor<ParentInfo>>();
 
 export function GroupBlock(props: {
   group: Group;
@@ -354,6 +369,16 @@ export function Card(props: {
   const statusUnknown = (): boolean =>
     !(KNOWN_STATUSES as readonly string[]).includes(props.item.status);
 
+  // Parent banner + subproject count, from the list-wide lookup provided by
+  // ProjectsView. A dangling parent slug falls back to showing the raw slug.
+  const parentInfo = useContext(ParentInfoContext);
+  const parentLabel = (): string | null => {
+    const slug = props.item.parent;
+    if (!slug) return null;
+    return parentInfo?.().parentTitleOf(slug) ?? slug;
+  };
+  const childCount = (): number => parentInfo?.().childCountOf(props.item.slug) ?? 0;
+
   return (
     <article
       class="row"
@@ -368,6 +393,14 @@ export function Card(props: {
       onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
     >
+      <Show when={parentLabel()}>
+        <div class="parent-banner" title={`Part of: ${parentLabel()}`}>
+          <span class="parent-banner-icon" aria-hidden="true">
+            ↑
+          </span>
+          <span class="parent-banner-name">{parentLabel()}</span>
+        </div>
+      </Show>
       <div class="row-head" onClick={handleHeaderClick}>
         {/* Row 1: kind glyph + title (left, can wrap to 2 lines) and the
             work-on action pinned to the right. */}
@@ -413,6 +446,14 @@ export function Card(props: {
           <Show when={props.item.branch}>
             <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
               {props.item.branch}
+            </span>
+          </Show>
+          <Show when={childCount() > 0}>
+            <span
+              class="meta-icon subprojects"
+              title={`${childCount()} spin-off subproject${childCount() === 1 ? '' : 's'}`}
+            >
+              ↓ {childCount()}
             </span>
           </Show>
           <For each={prsForProject(props.item)}>

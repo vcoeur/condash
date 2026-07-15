@@ -117,6 +117,7 @@ export async function createCommand(
   // gets reported as "missing --apps" rather than "did you mean --apps?".
   const apps = parseCsvFlag(args.flags.apps) ?? [];
   const rawStatus = typeof args.flags.status === 'string' ? args.flags.status.toLowerCase() : '';
+  const parentRaw = typeof args.flags.parent === 'string' ? args.flags.parent.trim() : '';
   const input: CreateProjectInput = {
     kind: String(args.flags.kind ?? '').toLowerCase(),
     slug: String(args.flags.slug ?? '').trim(),
@@ -124,6 +125,8 @@ export async function createCommand(
     apps,
     branch: typeof args.flags.branch === 'string' ? args.flags.branch.trim() || null : null,
     base: typeof args.flags.base === 'string' ? args.flags.base.trim() || null : null,
+    // Resolved to the canonical dated slug below, once the tree is in scope.
+    parent: null,
     date: typeof args.flags.date === 'string' ? args.flags.date.trim() : undefined,
     status: rawStatus || 'now',
     severity:
@@ -144,6 +147,7 @@ export async function createCommand(
     'title',
     'branch',
     'base',
+    'parent',
     'date',
     'status',
     'severity',
@@ -169,6 +173,15 @@ export async function createCommand(
     );
   }
   if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+
+  // Resolve --parent to a real item's canonical dated slug and store that, so
+  // the reference stays stable regardless of the short form the user typed.
+  // resolveSlug throws NOT_FOUND / AMBIGUOUS with a descriptive message when
+  // the slug doesn't point at exactly one existing item.
+  if (parentRaw) {
+    const parent = await resolveSlug(conceptionPath, parentRaw);
+    input.parent = parent.slug;
+  }
 
   const result = await createProjectCore(conceptionPath, input);
   emit(ctx, result, (data) => {

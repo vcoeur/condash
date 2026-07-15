@@ -187,3 +187,93 @@ describe('validateHeader (unchanged behaviour across both shapes)', () => {
     expect(v.errors.some((e) => e.field === 'status')).toBe(true);
   });
 });
+
+describe('parseHeader — parent field', () => {
+  it('reads parent from YAML frontmatter and keeps it out of extra', () => {
+    const raw = [
+      '---',
+      'date: 2026-07-20',
+      'kind: project',
+      'status: now',
+      'apps:',
+      '  - condash',
+      'parent: 2026-07-15-checkout-revamp',
+      '---',
+      '',
+      '# Cart',
+      '',
+      '## Goal',
+    ].join('\n');
+    const h = parseHeader(raw);
+    expect(h.parent).toBe('2026-07-15-checkout-revamp');
+    expect(h.extra.parent).toBeUndefined();
+  });
+
+  it('reads parent from a bold-prose header, bare or backticked', () => {
+    const bare = parseHeader(
+      [
+        '# Cart',
+        '',
+        '**Status**: now',
+        '**Parent**: 2026-07-15-checkout-revamp',
+        '',
+        '## Goal',
+      ].join('\n'),
+    );
+    expect(bare.parent).toBe('2026-07-15-checkout-revamp');
+    expect(bare.extra.parent).toBeUndefined();
+    const ticked = parseHeader(
+      [
+        '# Cart',
+        '',
+        '**Status**: now',
+        '**Parent**: `2026-07-15-checkout-revamp`',
+        '',
+        '## Goal',
+      ].join('\n'),
+    );
+    expect(ticked.parent).toBe('2026-07-15-checkout-revamp');
+  });
+
+  it('defaults parent to null when absent', () => {
+    expect(parseHeader(['---', 'status: now', '---', '', '# X'].join('\n')).parent).toBeNull();
+  });
+});
+
+describe('validateHeader — parent self-reference', () => {
+  it('errors when parent points at the item itself', () => {
+    const folder = '/tmp/projects/2026-07/2026-07-15-plan/README.md';
+    const raw = [
+      '---',
+      'date: 2026-07-15',
+      'kind: project',
+      'status: now',
+      'apps:',
+      '  - condash',
+      'parent: 2026-07-15-plan',
+      '---',
+      '',
+      '# Plan',
+    ].join('\n');
+    const v = validateHeader(parseHeader(raw), folder);
+    expect(v.errors.some((e) => e.field === 'parent')).toBe(true);
+  });
+
+  it('accepts a parent pointing at a different item', () => {
+    const folder = '/tmp/projects/2026-07/2026-07-20-cart/README.md';
+    const raw = [
+      '---',
+      'date: 2026-07-20',
+      'kind: project',
+      'status: now',
+      'apps:',
+      '  - condash',
+      'parent: 2026-07-15-plan',
+      '---',
+      '',
+      '# Cart',
+    ].join('\n');
+    const v = validateHeader(parseHeader(raw), folder);
+    expect(v.errors.some((e) => e.field === 'parent')).toBe(false);
+  });
+});

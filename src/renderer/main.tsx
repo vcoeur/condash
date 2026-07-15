@@ -800,6 +800,8 @@ function App() {
 
       <ModalHost
         previewProject={previewProject}
+        projects={() => projects() ?? []}
+        handleOpenProject={handleOpenProject}
         previewPath={previewPath}
         setPreviewPath={setPreviewPath}
         handleToggleStep={handleToggleStep}

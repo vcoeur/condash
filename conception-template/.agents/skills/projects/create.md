@@ -19,6 +19,7 @@ Trigger: `/projects create` — all arguments are flags (`--kind`, `--slug`, `--
    - Apps (comma-separated, e.g. `condash, conception`).
    - Branch (optional).
    - Base (optional, only when targeting a non-default base branch).
+   - Parent (optional, only for a spin-off implementation project — the slug of the plan it derives from).
    - Kind-specific:
      - incident → Environment (`PROD` / `STAGING` / `DEV`) + Severity (`low` / `medium` / `high`) + a one-line impact.
 
@@ -30,7 +31,7 @@ Trigger: `/projects create` — all arguments are flags (`--kind`, `--slug`, `--
      --slug <slug> \
      --title "<Title>" \
      --apps "<a,b,c>" \
-     [--branch <branch>] [--base <base>] \
+     [--branch <branch>] [--base <base>] [--parent <plan-slug>] \
      [--severity <low|medium|high>] [--severity-impact "<text>"] \
      [--environment <PROD|STAGING|DEV>] \
      --json

@@ -32,6 +32,9 @@ export interface CreateProjectInput {
   apps: string[];
   branch: string | null;
   base: string | null;
+  /** Parent item slug — the plan this project spins off from. Optional; the
+   * GUI quick-create omits it. Resolved + validated by the CLI before this call. */
+  parent?: string | null;
   /** ISO YYYY-MM-DD; defaults to today. */
   date?: string;
   /** Initial status; defaults to 'now'. The CLI rejects 'done' here — see createCommand. */
@@ -53,6 +56,7 @@ export interface CreateProjectResult {
   apps: string[];
   branch: string | null;
   base: string | null;
+  parent: string | null;
 }
 
 export async function createProjectCore(
@@ -76,6 +80,7 @@ export async function createProjectCore(
 
   const branch = input.branch;
   const base = input.base;
+  const parent = input.parent ?? null;
   const date = input.date && input.date.length > 0 ? input.date : isoToday();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     validation(`--date must be YYYY-MM-DD; got '${date}'`);
@@ -121,6 +126,7 @@ export async function createProjectCore(
     apps,
     branch,
     base,
+    parent,
     severity,
     severityImpact,
     environment,
@@ -172,6 +178,7 @@ export async function createProjectCore(
     apps,
     branch,
     base,
+    parent,
   };
 }
 
@@ -183,6 +190,7 @@ interface TemplateInputs {
   apps: string[];
   branch: string | null;
   base: string | null;
+  parent: string | null;
   severity: string | null;
   severityImpact: string | null;
   environment: string | null;
@@ -201,6 +209,7 @@ function renderTemplate(input: TemplateInputs): string {
   }
   if (input.branch) fmLines.push(`branch: ${yamlScalar(input.branch)}`);
   if (input.base) fmLines.push(`base: ${yamlScalar(input.base)}`);
+  if (input.parent) fmLines.push(`parent: ${yamlScalar(input.parent)}`);
   if (input.kind === 'incident') {
     if (input.environment) fmLines.push(`environment: ${yamlScalar(input.environment)}`);
     if (input.severity) fmLines.push(`severity: ${yamlScalar(input.severity)}`);

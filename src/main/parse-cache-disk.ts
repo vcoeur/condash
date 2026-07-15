@@ -59,7 +59,8 @@ interface CacheFile {
 // the guard for the latter.
 // v2: entries gained a `size` field (keyed alongside `mtimeMs`). Old v1 files
 // carry no `size`, so bumping discards them wholesale for a clean cold re-parse.
-export const PARSE_CACHE_VERSION = 2;
+// v3: `Project`/`HeaderFields` gained a `parent` field (spin-off → plan edge).
+export const PARSE_CACHE_VERSION = 3;
 
 const CACHE_SUBDIR = 'cache';
 const CACHE_FILENAME = 'readme-parse.json';
