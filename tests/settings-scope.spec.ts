@@ -144,39 +144,44 @@ test('settings modal: a UI-font category applies live and round-trips to setting
   try {
     const modal = await openSettings(booted);
 
-    // Pick Monospace for the Card & list titles category. Scope to that
-    // category's field so we don't hit the identical 'Monospace' option in the
-    // other four categories.
+    // Pick a Monospace family and Bold weight for the Card & list titles
+    // category from that category's family/weight <select>s.
     const cardTitleField = modal.locator('#settings-section-appearance .settings-field', {
       hasText: 'Card & list titles',
     });
     await cardTitleField.scrollIntoViewIfNeeded();
     await cardTitleField
-      .locator('.settings-radio', { hasText: 'Monospace' })
-      .locator('input[type="radio"]')
-      .check();
+      .locator('[aria-label="Card & list titles font family"]')
+      .selectOption('mono');
+    await cardTitleField.locator('[aria-label="Card & list titles weight"]').selectOption('bold');
 
     await modal.locator('button.settings-save').click();
 
-    // Round-trips to the per-machine file under uiFonts.cardTitle.
+    // Round-trips to the per-machine file under uiFonts.cardTitle as a
+    // {family, weight} object.
     await expect
       .poll(async () => (await readJson(globalPath)).uiFonts)
-      .toEqual({ cardTitle: 'mono' });
+      .toEqual({ cardTitle: { family: 'mono', weight: 'bold' } });
 
-    // Applied live: the hook sets the category CSS variable + data attribute on
-    // :root (no reload), so card titles restyle immediately. The variable
-    // resolves to the monospace brand base, so the computed value matches
-    // `--font-mono-base` — card titles now render in the mono face.
+    // Applied live: the hook sets the family + weight CSS variables and data
+    // attributes on :root (no reload), so card titles restyle immediately. The
+    // family variable resolves to the monospace brand base; weight is 700.
     await expect(booted.window.locator(':root')).toHaveAttribute('data-ui-font-card-title', 'mono');
-    const [cardTitleFace, monoBase] = await booted.window.evaluate(() => {
+    await expect(booted.window.locator(':root')).toHaveAttribute(
+      'data-ui-weight-card-title',
+      'bold',
+    );
+    const [cardTitleFace, monoBase, cardTitleWeight] = await booted.window.evaluate(() => {
       const cs = getComputedStyle(document.documentElement);
       return [
         cs.getPropertyValue('--ui-font-card-title').trim(),
         cs.getPropertyValue('--font-mono-base').trim(),
+        cs.getPropertyValue('--ui-weight-card-title').trim(),
       ];
     });
     expect(cardTitleFace).toBe(monoBase);
     expect(cardTitleFace).toContain('monospace');
+    expect(cardTitleWeight).toBe('700');
   } finally {
     await booted.cleanup();
   }

@@ -52,6 +52,7 @@ import type { Deliverable, Project } from '@shared/types';
 import { ActivityRail } from './activity-rail';
 import { StatusBarIndicators } from './status-bar-indicators';
 import './styles.css';
+import './ui-fonts.css';
 import './app-shell.css';
 import './primitives.css';
 import './actions.css';

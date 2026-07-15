@@ -159,14 +159,15 @@ describe('bootstrap IPC', () => {
         'welcomeDismissed',
       ].sort(),
     );
-    // uiFonts is fully resolved — every category present, each defaulting to
-    // the built-in `default` when unset.
+    // uiFonts is fully resolved — every category present, and every field
+    // (family/weight/size) defaulting to `default` when unset.
+    const allDefault = { family: 'default', weight: 'default', size: 'default' };
     expect(boot.uiFonts).toEqual({
-      cardTitle: 'default',
-      heading: 'default',
-      body: 'default',
-      code: 'default',
-      terminal: 'default',
+      cardTitle: allDefault,
+      heading: allDefault,
+      body: allDefault,
+      code: allDefault,
+      terminal: allDefault,
     });
     // Deduped selectedBranches, exactly as getSelectedBranches returns.
     expect(boot.selectedBranches).toEqual(['feat-1', 'feat-2']);

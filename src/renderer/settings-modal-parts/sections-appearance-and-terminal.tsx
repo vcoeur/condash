@@ -15,8 +15,8 @@ import type {
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
-  UiFont,
   UiFontCategory,
+  UiFontCategoryPrefs,
   UiFontPrefs,
 } from '@shared/types';
 import { type BindTextFn, type ColorEntry, type TerminalStringFieldKey } from './data';
@@ -26,7 +26,7 @@ import { SectionShell } from './section-shell';
 interface AppearanceSectionProps {
   theme: () => Theme;
   setTheme: (theme: Theme) => Promise<void>;
-  uiFont: (category: UiFontCategory) => UiFont;
+  uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   setUiFonts: (patch: UiFontPrefs) => Promise<void>;
   cardMinWidth: (key: keyof CardMinWidthPrefs) => number;
   setCardMinWidth: (patch: CardMinWidthPrefs) => Promise<void>;

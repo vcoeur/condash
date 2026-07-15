@@ -52,7 +52,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `dashboard`             | global      | object       | —        | Live terminal-tab summarization (direct OpenAI-compatible endpoint, DeepSeek by default): `{enabled, provider, apiKey, baseUrl, model, writerModel, cardReasoning, writerReasoning, cardInputChars, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
 | `autoSync`              | global      | object       | —        | GUI-driven periodic committer: `{enabled, intervalMinutes, quietPeriodSeconds, push}`. While a conception is open, runs `condash sync run` on a timer. Off by default; set it in **Settings → Auto-commit**. [↓](#auto-commit)                                                                                    |
 | `theme`                 | global      | enum         | `system`  | `light` \| `dark` \| `system`.                                                                                                                                                                                          |
-| `uiFonts`               | global      | object       | —        | Per-category UI typefaces `{cardTitle, heading, body, code, terminal}`, each `default` \| `sans` \| `mono` \| `system`. Any category left `default` keeps the theme's face for that surface. [↓](#uifonts)                 |
+| `uiFonts`               | global      | object       | —        | Per-category UI typography `{cardTitle, heading, body, code, terminal}`, each a `{family, weight, size}` object. Any field left `default` keeps the theme's value for that surface. [↓](#uifonts)                            |
 | `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | global      | object       | —        | `{ dismissed }` — first-launch welcome-screen state.                                                                                                                                                                     |
 | `cardMinWidth`          | global      | object       | —        | Per-surface minimum card width. [↓](#cardminwidth)                                                                                                                                                                       |
@@ -523,7 +523,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `lastConceptionPath`    | Absolute path to the conception tree condash should render. Replaces the older `conceptionPath` field — a one-shot migration on first read rewrites old files.                                                                                                                                                 |
 | `recentConceptionPaths` | Newest-first list of paths the user has opened (cap 5). Drives the **File → Open Recent** submenu and the Settings modal's recents section.                                                                                                                                                                    |
 | `theme`                 | `light`, `dark`, or `system`. Persisted by `setTheme`.                                                                                                                                                                                                                                                         |
-| `uiFonts`               | Per-category UI typefaces. See [UiFonts](#uifonts) below. Set in **Settings → Appearance**; applied live via the `--ui-font-*` CSS variables. Any category unset ⇒ `default`.                                                                                                                                    |
+| `uiFonts`               | Per-category UI typography (family, weight, size). See [UiFonts](#uifonts) below. Set in **Settings → Appearance**; applied live via the `--ui-font-*` / `--ui-weight-*` / `--ui-size-*` CSS variables. Any field unset ⇒ `default`.                                                                              |
 | `terminal.*`            | Embedded-terminal preferences. See [Terminal preferences](#terminal-preferences) above for every sub-key.                                                                                                                                                                                                      |
 | `layout`                | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                                                                                                                                                                                 |
 | `welcome`               | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                                                                                                                                                                                        |
@@ -570,9 +570,9 @@ Lower numbers pack more cards per row at the same window size; higher numbers ke
 
 ### UiFonts
 
-`uiFonts` groups the UI into five typographic categories, each a single choice that restyles every element in the group at once. Each category is one of `default`, `sans`, `mono`, or `system`; `default` leaves the theme's face for that surface untouched, so an all-`default` record (or an unset key) renders exactly as before the picker existed.
+`uiFonts` groups the UI into five typographic categories, each a `{ family, weight, size }` object that restyles every element in the group at once. Each field is independent and any left `default` keeps the theme's value for that surface, so an all-`default` category (or an unset key) renders exactly as before the picker existed.
 
-| Category    | Elements                                                              | `default` face   |
+| Category    | Elements                                                              | `default` family |
 | ----------- | -------------------------------------------------------------------- | ---------------- |
 | `cardTitle` | Project, knowledge, and task card/list titles.                       | editorial serif  |
 | `heading`   | Pane headers, section titles, modal titles, project-preview title.   | editorial serif  |
@@ -580,11 +580,17 @@ Lower numbers pack more cards per row at the same window size; higher numbers ke
 | `code`      | Task ids, code-pane names, deliverables, and code blocks.            | monospace        |
 | `terminal`  | Terminal chrome and log viewers.                                     | monospace        |
 
-The renderer applies each non-`default` category as a CSS variable on `:root` (`--ui-font-card-title`, `--ui-font-heading`, `--ui-font-body`, `--ui-font-code`, `--ui-font-terminal`) plus a matching `data-ui-font-*` attribute, so live edits in the Settings modal restyle the app without a reload. Each surface reads its category variable with a base-face fallback, which is why `default` preserves the current look even where one category spans faces (e.g. a project title in serif and a task name in sans both move together only when the choice is non-`default`).
+Each category field:
+
+- **`family`** — `default` or one of the cross-platform faces `sans`, `serif`, `mono`, `system`, `georgia`, `times`, `helvetica`, `verdana`, `trebuchet`, `palatino`, `courier` (no fonts are bundled — the picker renders each option in its own face).
+- **`weight`** — `default`, `light`, `regular`, `medium`, `semibold`, or `bold` (300–700).
+- **`size`** — `default`, `xs` (85%), `sm` (92%), `lg` (112%), or `xl` (128%), a relative scale multiplied onto the element's base size.
+
+The renderer applies each non-`default` field as a `:root` CSS variable — `--ui-font-*` (family), `--ui-weight-*` (numeric weight), `--ui-size-*` (scale factor) — plus a matching `data-ui-*` attribute that scopes the rule in `ui-fonts.css`, so live edits in the Settings modal restyle the app without a reload. `default` sets no variable, so the element keeps its own family/weight/size. Family covers every element in a category (via the role tokens and carved `--ui-font-*` vars); weight and size apply to each category's primary text surfaces.
 
 The embedded terminal's own canvas font is set separately in **Settings → Terminal** (`terminal.xterm`); the `terminal` category here governs the surrounding terminal/log chrome text.
 
-`uiFonts` supersedes the earlier single `projectCardTitleFont` scalar (v4.86.0). A saved `projectCardTitleFont` value is folded into `uiFonts.cardTitle` and the legacy key dropped on the next read (see [config migration](#scope-partition-migrator)).
+`uiFonts` supersedes the earlier single `projectCardTitleFont` scalar (v4.86.0). A saved `projectCardTitleFont` value is folded into `uiFonts.cardTitle.family` and the legacy key dropped on the next read (see [config migration](#scope-partition-migrator)).
 
 Resolution order for the conception path, checked in sequence:
 

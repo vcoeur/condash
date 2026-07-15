@@ -9,11 +9,12 @@ import type {
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
-  UiFont,
+  ResolvedUiFonts,
   UiFontCategory,
+  UiFontCategoryPrefs,
   UiFontPrefs,
 } from '@shared/types';
-import { DEFAULT_CARD_MIN_WIDTH, DEFAULT_UI_FONTS } from '@shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, DEFAULT_UI_FONT_CATEGORY } from '@shared/types';
 import {
   addActionTemplate,
   buildSavePayload,
@@ -83,7 +84,7 @@ export function SettingsModal(props: {
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   /** Fully-resolved per-category UI fonts. Drives the live values shown in
    *  the Appearance section. */
-  uiFonts: Required<UiFontPrefs>;
+  uiFonts: ResolvedUiFonts;
   /** Commit a partial per-category UI-font patch. The renderer applies the new
    *  CSS variables and persists. */
   onChangeUiFonts: (patch: UiFontPrefs) => void;
@@ -412,11 +413,20 @@ export function SettingsModal(props: {
       c.theme = next;
     });
 
-  const uiFontOf = (category: UiFontCategory): UiFont =>
-    globalParsed().uiFonts?.[category] ?? props.uiFonts[category] ?? DEFAULT_UI_FONTS[category];
+  const uiFontOf = (category: UiFontCategory): Required<UiFontCategoryPrefs> => ({
+    ...DEFAULT_UI_FONT_CATEGORY,
+    ...props.uiFonts[category],
+    ...(globalParsed().uiFonts?.[category] ?? {}),
+  });
   const setGlobalUiFonts = (patch: UiFontPrefs): Promise<void> =>
     patchSettings((c) => {
-      c.uiFonts = { ...(c.uiFonts ?? {}), ...patch };
+      // Deep-merge each category so a family patch doesn't drop a saved
+      // weight/size (and vice-versa).
+      const merged: UiFontPrefs = { ...(c.uiFonts ?? {}) };
+      for (const category of Object.keys(patch) as UiFontCategory[]) {
+        merged[category] = { ...(merged[category] ?? {}), ...patch[category] };
+      }
+      c.uiFonts = merged;
     });
 
   const cardMinWidthGlobal = (key: keyof CardMinWidthPrefs): number =>

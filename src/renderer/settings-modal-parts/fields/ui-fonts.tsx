@@ -1,12 +1,27 @@
 import { For } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { UiFont, UiFontCategory, UiFontPrefs } from '@shared/types';
-import { UI_FONT_CATEGORY_FIELDS, UI_FONT_OPTIONS } from '../data';
-import { UI_FONT_STACKS } from '../../hooks/use-ui-fonts';
+import type {
+  UiFont,
+  UiFontCategory,
+  UiFontCategoryPrefs,
+  UiFontPrefs,
+  UiFontSize,
+  UiFontWeight,
+} from '@shared/types';
+import {
+  UI_FONT_CATEGORY_FIELDS,
+  UI_FONT_OPTIONS,
+  UI_FONT_SIZE_OPTIONS,
+  UI_FONT_WEIGHT_OPTIONS,
+} from '../data';
+import {
+  UI_FONT_SIZE_SCALES,
+  UI_FONT_STACKS,
+  UI_FONT_WEIGHT_VALUES,
+} from '../../hooks/use-ui-fonts';
 
-/** The base face each category falls back to when its choice is `default` —
- *  the same per-surface base the stylesheets use, so the preview matches what
- *  the app renders. */
+/** The base face each category falls back to when its family is `default` — the
+ *  same per-surface base the stylesheets use, so the preview matches the app. */
 const CATEGORY_BASE: Record<UiFontCategory, string> = {
   cardTitle: 'var(--font-serif-base)',
   heading: 'var(--font-serif-base)',
@@ -15,76 +30,135 @@ const CATEGORY_BASE: Record<UiFontCategory, string> = {
   terminal: 'var(--font-mono-base)',
 };
 
-/** Resolve a (category, choice) pair to a concrete font-family for preview.
- *  `default` maps to the category's base face; the rest reuse the hook's
- *  canonical stacks so the preview never drifts from the applied CSS. */
-function faceOf(category: UiFontCategory, value: UiFont): string {
-  return UI_FONT_STACKS[value] ?? CATEGORY_BASE[category];
+/** A nominal base size (px) for each category's preview line, scaled by the
+ *  chosen relative size so the preview reflects the size variant too. */
+const PREVIEW_BASE_PX: Record<UiFontCategory, number> = {
+  cardTitle: 17,
+  heading: 18,
+  body: 13,
+  code: 12,
+  terminal: 12,
+};
+
+/** Resolve a (category, family) pair to a concrete font-family for preview. */
+function faceOf(category: UiFontCategory, family: UiFont): string {
+  return UI_FONT_STACKS[family] ?? CATEGORY_BASE[category];
 }
 
-/** Per-category UI-font pickers plus a live sample panel — a per-machine
- *  Appearance choice. Each category is one radio group over {@link
- *  UI_FONT_OPTIONS}; the sample panel above re-renders in the draft faces so the
- *  pick previews live before Save. */
+/** Build the inline style that previews a category's family + weight + size. */
+function previewStyle(
+  category: UiFontCategory,
+  prefs: Required<UiFontCategoryPrefs>,
+): JSX.CSSProperties {
+  const weight = UI_FONT_WEIGHT_VALUES[prefs.weight];
+  const scale = UI_FONT_SIZE_SCALES[prefs.size];
+  const base = PREVIEW_BASE_PX[category];
+  return {
+    'font-family': faceOf(category, prefs.family),
+    ...(weight ? { 'font-weight': weight } : {}),
+    'font-size': scale ? `calc(${base}px * ${scale})` : `${base}px`,
+  };
+}
+
+/** Per-category UI-font controls plus a live sample panel — a per-machine
+ *  Appearance choice. Each category has a family dropdown (each option drawn in
+ *  its own face) plus weight and size dropdowns; the sample panel above
+ *  re-renders in the draft family/weight/size so the pick previews before Save. */
 export function UiFontsFields(props: {
-  resolve: (category: UiFontCategory) => UiFont;
+  resolve: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   onChange: (patch: UiFontPrefs) => void;
 }): JSX.Element {
   return (
     <>
       <UiFontsPreview resolve={props.resolve} />
       <For each={UI_FONT_CATEGORY_FIELDS}>
-        {(field) => (
-          <div class="settings-field">
-            <span class="settings-field-label">{field.label}</span>
-            <div class="settings-radio-group" role="radiogroup">
-              <For each={UI_FONT_OPTIONS}>
-                {(opt) => (
-                  <label class="settings-radio">
-                    {/* Stable per-category name so each category is one real
-                        radio group with native arrow-key navigation. */}
-                    <input
-                      type="radio"
-                      name={`ui-font-${field.key}`}
-                      checked={props.resolve(field.key) === opt.value}
-                      onChange={() => props.onChange({ [field.key]: opt.value })}
-                    />
-                    {/* Preview the actual face this option selects. */}
-                    <span style={{ 'font-family': faceOf(field.key, opt.value) }}>{opt.label}</span>
-                  </label>
-                )}
-              </For>
+        {(field) => {
+          const current = (): Required<UiFontCategoryPrefs> => props.resolve(field.key);
+          return (
+            <div class="settings-field">
+              <span class="settings-field-label">{field.label}</span>
+              <div class="settings-font-row">
+                {/* Family — each option rendered in the face it selects. */}
+                <select
+                  class="settings-font-select settings-font-family"
+                  aria-label={`${field.label} font family`}
+                  value={current().family}
+                  onChange={(e) =>
+                    props.onChange({ [field.key]: { family: e.currentTarget.value as UiFont } })
+                  }
+                >
+                  <For each={UI_FONT_OPTIONS}>
+                    {(opt) => (
+                      <option
+                        value={opt.value}
+                        style={{ 'font-family': faceOf(field.key, opt.value) }}
+                      >
+                        {opt.label}
+                      </option>
+                    )}
+                  </For>
+                </select>
+                <select
+                  class="settings-font-select"
+                  aria-label={`${field.label} weight`}
+                  value={current().weight}
+                  onChange={(e) =>
+                    props.onChange({
+                      [field.key]: { weight: e.currentTarget.value as UiFontWeight },
+                    })
+                  }
+                >
+                  <For each={UI_FONT_WEIGHT_OPTIONS}>
+                    {(opt) => <option value={opt.value}>{opt.label}</option>}
+                  </For>
+                </select>
+                <select
+                  class="settings-font-select"
+                  aria-label={`${field.label} size`}
+                  value={current().size}
+                  onChange={(e) =>
+                    props.onChange({ [field.key]: { size: e.currentTarget.value as UiFontSize } })
+                  }
+                >
+                  <For each={UI_FONT_SIZE_OPTIONS}>
+                    {(opt) => <option value={opt.value}>{opt.label}</option>}
+                  </For>
+                </select>
+              </div>
+              <small class="settings-field-hint">{field.hint}</small>
             </div>
-            <small class="settings-field-hint">{field.hint}</small>
-          </div>
-        )}
+          );
+        }}
       </For>
     </>
   );
 }
 
-/** A representative mini-UI — a sample card (title, body line, id line), a
- *  section heading, and a terminal line — each drawn in its category's draft
- *  face so the whole set of choices previews together before Save. */
-function UiFontsPreview(props: { resolve: (category: UiFontCategory) => UiFont }): JSX.Element {
-  const face = (category: UiFontCategory): string => faceOf(category, props.resolve(category));
+/** A representative mini-UI — a section heading, a sample card (title, body,
+ *  id line), and a terminal line — each drawn in its category's draft family,
+ *  weight, and size so the whole set of choices previews together before Save. */
+function UiFontsPreview(props: {
+  resolve: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
+}): JSX.Element {
+  const style = (category: UiFontCategory): JSX.CSSProperties =>
+    previewStyle(category, props.resolve(category));
   return (
     <div class="settings-fonts-preview" aria-hidden="true">
-      <div class="settings-fonts-preview-heading" style={{ 'font-family': face('heading') }}>
+      <div class="settings-fonts-preview-heading" style={style('heading')}>
         Pane &amp; modal heading
       </div>
       <div class="settings-fonts-preview-card">
-        <div class="settings-fonts-preview-title" style={{ 'font-family': face('cardTitle') }}>
+        <div class="settings-fonts-preview-title" style={style('cardTitle')}>
           Sample card title
         </div>
-        <div class="settings-fonts-preview-body" style={{ 'font-family': face('body') }}>
+        <div class="settings-fonts-preview-body" style={style('body')}>
           A line of body &amp; UI text in the interface.
         </div>
-        <div class="settings-fonts-preview-code" style={{ 'font-family': face('code') }}>
+        <div class="settings-fonts-preview-code" style={style('code')}>
           task-slug-123 · main
         </div>
       </div>
-      <div class="settings-fonts-preview-terminal" style={{ 'font-family': face('terminal') }}>
+      <div class="settings-fonts-preview-terminal" style={style('terminal')}>
         $ condash sync run — terminal &amp; logs
       </div>
     </div>

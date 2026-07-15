@@ -2,7 +2,7 @@
 // it nests (tree expansion, card min-widths, skill scope) and the "open with"
 // editor slots.
 
-import type { Theme, UiFont } from './common';
+import type { Theme, UiFont, UiFontSize, UiFontWeight } from './common';
 import type { LayoutState } from './layout';
 import type { TerminalPrefs } from './terminal';
 import type { TaskConfigEntry } from './task-runs';
@@ -103,7 +103,7 @@ export interface BootstrapData {
   /** Effective theme (`getTheme`). */
   theme: Theme;
   /** Fully-resolved per-category UI fonts (`resolveUiFonts`). */
-  uiFonts: Required<UiFontPrefs>;
+  uiFonts: ResolvedUiFonts;
   /** Composite layout, DEFAULT_LAYOUT-backfilled by main (`getLayout`). */
   layout: LayoutState;
   /** First-launch welcome dismissed flag (`getWelcomeDismissed`). */
@@ -183,33 +183,44 @@ export const CARD_MIN_WIDTH_KEYS = Object.keys(
 export const UI_FONT_CATEGORIES = ['cardTitle', 'heading', 'body', 'code', 'terminal'] as const;
 export type UiFontCategory = (typeof UI_FONT_CATEGORIES)[number];
 
-/** Per-category font choice. Each field is optional — a missing (or `default`)
- *  category keeps the theme's face for that surface (`DEFAULT_UI_FONTS`). */
-export interface UiFontPrefs {
-  /** Project, knowledge, and task card/list titles. */
-  cardTitle?: UiFont;
-  /** Pane headers, section titles, modal titles, project-preview title. */
-  heading?: UiFont;
-  /** Sidebar, controls, and general body/UI text. */
-  body?: UiFont;
-  /** Task ids, code-pane names, deliverables, and code blocks. */
-  code?: UiFont;
-  /** Terminal chrome and log viewers (the xterm canvas keeps its own
-   *  Settings → Terminal font). */
-  terminal?: UiFont;
+/** One category's typography: a font family plus weight and relative-size
+ *  variants. Each field is optional — a missing (or `default`) field keeps the
+ *  face/weight/size the element's own stylesheet assigns. */
+export interface UiFontCategoryPrefs {
+  family?: UiFont;
+  weight?: UiFontWeight;
+  size?: UiFontSize;
 }
 
-/** Built-in default for every category: the theme's face for that surface.
- *  `default` sets no CSS variable, so an all-default prefs object renders
- *  exactly as before the picker existed — changing one deliberately restyles
- *  that whole category. */
-export const DEFAULT_UI_FONTS = {
-  cardTitle: 'default',
-  heading: 'default',
-  body: 'default',
-  code: 'default',
-  terminal: 'default',
-} as const satisfies Required<UiFontPrefs>;
+/** Per-category typography choices. Each category is optional — a missing (or
+ *  all-`default`) category keeps the theme's rendering for that surface
+ *  (`DEFAULT_UI_FONTS`). */
+export interface UiFontPrefs {
+  /** Project, knowledge, and task card/list titles. */
+  cardTitle?: UiFontCategoryPrefs;
+  /** Pane headers, section titles, modal titles, project-preview title. */
+  heading?: UiFontCategoryPrefs;
+  /** Sidebar, controls, and general body/UI text. */
+  body?: UiFontCategoryPrefs;
+  /** Task ids, code-pane names, deliverables, and code blocks. */
+  code?: UiFontCategoryPrefs;
+  /** Terminal chrome and log viewers (the xterm canvas keeps its own
+   *  Settings → Terminal font). */
+  terminal?: UiFontCategoryPrefs;
+}
+
+/** Built-in default for one category: keep the element's own face/weight/size.
+ *  Each `default` sets no CSS variable, so an all-default record renders
+ *  exactly as before the picker existed. */
+export const DEFAULT_UI_FONT_CATEGORY = {
+  family: 'default',
+  weight: 'default',
+  size: 'default',
+} as const satisfies Required<UiFontCategoryPrefs>;
+
+/** A fully-resolved font record — every category present, every field filled.
+ *  The bootstrap bundle and the live-apply hook work with this shape. */
+export type ResolvedUiFonts = Record<UiFontCategory, Required<UiFontCategoryPrefs>>;
 
 export type OpenWithSlotKey = 'main_ide' | 'secondary_ide' | 'terminal';
 

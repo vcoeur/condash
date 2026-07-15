@@ -55,15 +55,15 @@ export function migrateRawSettings(parsed: unknown): unknown {
     if (defunctKey in root) delete root[defunctKey];
   }
   // v4.86.0 → v4.87.0: the single `projectCardTitleFont` scalar became the
-  // per-category `uiFonts` record. Fold a saved value into `uiFonts.cardTitle`
-  // (the category that subsumes project-card titles) unless `uiFonts` already
-  // exists, then drop the legacy key so the strict schema accepts the file —
-  // otherwise every Settings save throws `Unrecognized key`. The next write
-  // removes the stale key from disk.
+  // per-category `uiFonts` record. Fold a saved value into
+  // `uiFonts.cardTitle.family` (the category that subsumes project-card titles)
+  // unless `uiFonts` already exists, then drop the legacy key so the strict
+  // schema accepts the file — otherwise every Settings save throws
+  // `Unrecognized key`. The next write removes the stale key from disk.
   if ('projectCardTitleFont' in root) {
     const legacy = root.projectCardTitleFont;
     if (!('uiFonts' in root) && typeof legacy === 'string') {
-      root.uiFonts = { cardTitle: legacy };
+      root.uiFonts = { cardTitle: { family: legacy } };
     }
     delete root.projectCardTitleFont;
   }

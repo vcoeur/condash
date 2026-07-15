@@ -14,9 +14,10 @@ import type {
   TerminalXtermColors,
   TerminalXtermPrefs,
   TreeExpansionPrefs,
+  UiFontCategoryPrefs,
   UiFontPrefs,
 } from '../shared/types';
-import { UI_FONTS } from '../shared/types';
+import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -406,16 +407,26 @@ const treeExpansionSchema = z
   } satisfies Record<keyof TreeExpansionPrefs, z.ZodTypeAny>)
   .strict();
 
+// One category's typography: family + weight + size, each optional and drawn
+// from its own enum. The `satisfies` guard makes a missing field a tsc error.
+const uiFontCategorySchema = z
+  .object({
+    family: z.enum(UI_FONTS).optional(),
+    weight: z.enum(UI_FONT_WEIGHTS).optional(),
+    size: z.enum(UI_FONT_SIZES).optional(),
+  } satisfies Record<keyof UiFontCategoryPrefs, z.ZodTypeAny>)
+  .strict();
+
 // Same exhaustiveness guard as cardMinWidthSchema above: adding a category to
 // UiFontPrefs without listing it here is a tsc error, not a silent
-// `Unrecognized key` at save time. Each category is one of the four UI_FONTS.
+// `Unrecognized key` at save time.
 const uiFontsSchema = z
   .object({
-    cardTitle: z.enum(UI_FONTS).optional(),
-    heading: z.enum(UI_FONTS).optional(),
-    body: z.enum(UI_FONTS).optional(),
-    code: z.enum(UI_FONTS).optional(),
-    terminal: z.enum(UI_FONTS).optional(),
+    cardTitle: uiFontCategorySchema.optional(),
+    heading: uiFontCategorySchema.optional(),
+    body: uiFontCategorySchema.optional(),
+    code: uiFontCategorySchema.optional(),
+    terminal: uiFontCategorySchema.optional(),
   } satisfies Record<keyof UiFontPrefs, z.ZodTypeAny>)
   .strict();
 

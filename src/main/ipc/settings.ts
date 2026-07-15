@@ -5,17 +5,18 @@ import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../s
 import type {
   CardMinWidthPrefs,
   LayoutState,
+  ResolvedUiFonts,
   Settings,
   SkillScope,
   Theme,
   TreeExpansionPrefs,
-  UiFontPrefs,
 } from '../../shared/types';
 import {
   CARD_MIN_WIDTH_KEYS,
   DEFAULT_CARD_MIN_WIDTH,
-  DEFAULT_UI_FONTS,
+  DEFAULT_UI_FONT_CATEGORY,
   SKILL_SCOPES,
+  UI_FONT_CATEGORIES,
 } from '../../shared/types';
 import {
   requireBoolean,
@@ -91,17 +92,24 @@ export async function resolveTheme(settings: Settings): Promise<Theme> {
 
 /** Effective per-category UI fonts. Global-only, but read through the same
  *  effective-config surface as `resolveTheme` so the bootstrap bundle takes
- *  one settings read. Every category is backfilled to its built-in `default`,
- *  so the renderer always receives a fully-resolved prefs object. Mirrors the
- *  theme resolver; there is no narrow `get*` handler — the value is read only at
- *  boot and re-applied from the Settings modal's live callback. */
-export async function resolveUiFonts(settings: Settings): Promise<Required<UiFontPrefs>> {
+ *  one settings read. Every category — and every field within it (family,
+ *  weight, size) — is backfilled to its built-in `default`, so the renderer
+ *  always receives a fully-resolved record. Mirrors the theme resolver; there
+ *  is no narrow `get*` handler — the value is read only at boot and re-applied
+ *  from the Settings modal's live callback. */
+export async function resolveUiFonts(settings: Settings): Promise<ResolvedUiFonts> {
   let prefs = settings.uiFonts;
   if (settings.lastConceptionPath) {
     const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
     if (effective.uiFonts) prefs = effective.uiFonts;
   }
-  return { ...DEFAULT_UI_FONTS, ...(prefs ?? {}) };
+  const raw = prefs ?? {};
+  return Object.fromEntries(
+    UI_FONT_CATEGORIES.map((category) => [
+      category,
+      { ...DEFAULT_UI_FONT_CATEGORY, ...(raw[category] ?? {}) },
+    ]),
+  ) as ResolvedUiFonts;
 }
 
 /** Persisted composite layout, or the built-in default. Mirrors `getLayout`. */

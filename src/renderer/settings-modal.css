@@ -972,6 +972,30 @@
   font-size: var(--text-2xs);
 }
 
+/* Per-category font controls: family + weight + size dropdowns on one row. */
+.settings-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-font-select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+/* The family select grows (names are longer) and each option renders in its
+ * own face; the weight/size selects stay compact. */
+.settings-font-family {
+  flex: 1 1 200px;
+  min-width: 170px;
+}
+
 /* ---- Path chip ([abs] / [rel]) -------------------------------------- */
 
 .settings-path-chip {

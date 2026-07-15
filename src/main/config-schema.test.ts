@@ -369,17 +369,17 @@ describe('migrateRawSettings — projectCardTitleFont → uiFonts.cardTitle', ()
       theme: 'dark',
     }) as Record<string, unknown>;
     expect('projectCardTitleFont' in migrated).toBe(false);
-    expect(migrated.uiFonts).toEqual({ cardTitle: 'mono' });
+    expect(migrated.uiFonts).toEqual({ cardTitle: { family: 'mono' } });
     expect(migrated.theme).toBe('dark');
   });
 
   it('keeps an existing uiFonts record and only drops the legacy key', () => {
     const migrated = migrateRawSettings({
       projectCardTitleFont: 'mono',
-      uiFonts: { cardTitle: 'sans', body: 'system' },
+      uiFonts: { cardTitle: { family: 'sans' }, body: { size: 'lg' } },
     }) as Record<string, unknown>;
     expect('projectCardTitleFont' in migrated).toBe(false);
-    expect(migrated.uiFonts).toEqual({ cardTitle: 'sans', body: 'system' });
+    expect(migrated.uiFonts).toEqual({ cardTitle: { family: 'sans' }, body: { size: 'lg' } });
   });
 
   it('lets a global save round-trip a legacy projectCardTitleFont body', () => {
@@ -387,7 +387,7 @@ describe('migrateRawSettings — projectCardTitleFont → uiFonts.cardTitle', ()
     const canon = validateAndCanonicaliseGlobalSettings(json);
     const parsed = JSON.parse(canon);
     expect('projectCardTitleFont' in parsed).toBe(false);
-    expect(parsed.uiFonts).toEqual({ cardTitle: 'system' });
+    expect(parsed.uiFonts).toEqual({ cardTitle: { family: 'system' } });
     expect(parsed.theme).toBe('light');
   });
 });
@@ -593,8 +593,15 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     // setTheme
     theme: 'dark',
     // uiFonts — no narrow setter; edited through the raw save. Every category
-    // present so the canonicaliser sees the whole record exercised.
-    uiFonts: { cardTitle: 'sans', heading: 'mono', body: 'sans', code: 'mono', terminal: 'system' },
+    // and every field (family/weight/size) exercised so the canonicaliser sees
+    // the whole record.
+    uiFonts: {
+      cardTitle: { family: 'serif', weight: 'bold', size: 'lg' },
+      heading: { family: 'georgia', weight: 'semibold' },
+      body: { family: 'sans', size: 'sm' },
+      code: { family: 'mono', weight: 'medium', size: 'xs' },
+      terminal: { family: 'courier', size: 'xl' },
+    },
     // setLayout
     layout: {
       projects: true,

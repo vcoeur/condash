@@ -1,0 +1,83 @@
+/* Per-category font-weight + font-size overrides for the UI-font system
+ * (use-ui-fonts). The font *family* rides the category role tokens
+ * (`--font-ui`/`--font-display`/`--font-mono`) and the carved `--ui-font-*`
+ * variables applied in the pane stylesheets, so it covers every element in a
+ * category. Weight and size are applied here instead, scoped by the
+ * `[data-ui-weight-*]` / `[data-ui-size-*]` attributes the hook sets only for a
+ * non-default choice — so an unset field leaves each element's own weight/size
+ * untouched. Size multiplies the element's real base size with calc(), so the
+ * scale composes with the theme's type ladder. Weight and size target each
+ * category's primary text surfaces (family covers the rest). */
+
+/* ---- Card & list titles ---- */
+:root[data-ui-weight-card-title] .row .title,
+:root[data-ui-weight-card-title] .project-preview .modal-title,
+:root[data-ui-weight-card-title] .knowledge-card-title,
+:root[data-ui-weight-card-title] .tasks-row-name {
+  font-weight: var(--ui-weight-card-title);
+}
+:root[data-ui-size-card-title] .row .title,
+:root[data-ui-size-card-title] .project-preview .modal-title {
+  font-size: calc(18px * var(--ui-size-card-title));
+}
+:root[data-ui-size-card-title] .knowledge-card-title {
+  font-size: calc(var(--text-lg) * var(--ui-size-card-title));
+}
+:root[data-ui-size-card-title] .tasks-row-name {
+  font-size: calc(var(--text-md) * var(--ui-size-card-title));
+}
+
+/* ---- Pane & modal headings ---- */
+:root[data-ui-weight-heading] .pane-header-title,
+:root[data-ui-weight-heading] .about-app-name,
+:root[data-ui-weight-heading] .settings-section h2 {
+  font-weight: var(--ui-weight-heading);
+}
+:root[data-ui-size-heading] .pane-header-title,
+:root[data-ui-size-heading] .about-app-name {
+  font-size: calc(var(--text-2xl) * var(--ui-size-heading));
+}
+:root[data-ui-size-heading] .settings-section h2 {
+  font-size: calc(var(--text-xl) * var(--ui-size-heading));
+}
+
+/* ---- Body & UI ----
+ * Ride the `body` cascade: this catches every UI element that inherits its
+ * weight/size (labels, controls, general text) without touching elements that
+ * set their own — which belong to the other categories anyway. */
+:root[data-ui-weight-body] body {
+  font-weight: var(--ui-weight-body);
+}
+:root[data-ui-size-body] body {
+  font-size: calc(var(--text-md) * var(--ui-size-body));
+}
+
+/* ---- Code & IDs ---- */
+:root[data-ui-weight-code] .tasks-agent,
+:root[data-ui-weight-code] .repo-name,
+:root[data-ui-weight-code] .repo-dirname,
+:root[data-ui-weight-code] .branch-name,
+:root[data-ui-weight-code] .deliverables-group-title {
+  font-weight: var(--ui-weight-code);
+}
+:root[data-ui-size-code] .tasks-agent,
+:root[data-ui-size-code] .repo-dirname,
+:root[data-ui-size-code] .deliverables-group-title {
+  font-size: calc(var(--text-2xs) * var(--ui-size-code));
+}
+:root[data-ui-size-code] .repo-name {
+  font-size: calc(var(--text-base) * var(--ui-size-code));
+}
+
+/* ---- Terminal & logs ---- */
+:root[data-ui-weight-terminal] .terminal-tab-label,
+:root[data-ui-weight-terminal] .terminal-tab-rename,
+:root[data-ui-weight-terminal] .logs-modal-title {
+  font-weight: var(--ui-weight-terminal);
+}
+:root[data-ui-size-terminal] .terminal-tab-rename {
+  font-size: calc(var(--text-2xs) * var(--ui-size-terminal));
+}
+:root[data-ui-size-terminal] .logs-modal-title {
+  font-size: calc(var(--text-xs) * var(--ui-size-terminal));
+}
