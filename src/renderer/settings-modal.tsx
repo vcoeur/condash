@@ -4,14 +4,16 @@ import type {
   CardMinWidthPrefs,
   Platform,
   AppScopeMemoryPrefs,
-  ProjectCardTitleFont,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
+  UiFont,
+  UiFontCategory,
+  UiFontPrefs,
 } from '@shared/types';
-import { DEFAULT_CARD_MIN_WIDTH, DEFAULT_PROJECT_CARD_TITLE_FONT } from '@shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, DEFAULT_UI_FONTS } from '@shared/types';
 import {
   addActionTemplate,
   buildSavePayload,
@@ -79,12 +81,12 @@ export function SettingsModal(props: {
   /** Commit a partial card-min-width patch. The renderer applies the new
    *  CSS variables and persists. */
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
-  /** Effective project-card title font. Drives the live value shown in the
-   *  Appearance section. */
-  projectCardTitleFont: ProjectCardTitleFont;
-  /** Commit a project-card title font choice. The renderer applies the new
-   *  CSS variable and persists. */
-  onChangeProjectCardTitleFont: (font: ProjectCardTitleFont) => void;
+  /** Fully-resolved per-category UI fonts. Drives the live values shown in
+   *  the Appearance section. */
+  uiFonts: Required<UiFontPrefs>;
+  /** Commit a partial per-category UI-font patch. The renderer applies the new
+   *  CSS variables and persists. */
+  onChangeUiFonts: (patch: UiFontPrefs) => void;
   onClose: () => void;
 }) {
   // Conception read path: `.condash/settings.json` (canonical) or a legacy
@@ -348,9 +350,7 @@ export function SettingsModal(props: {
               // so the rest of the app picks up the new CSS variables.
               const g = parseRawConfig(written);
               if (g.theme && g.theme !== props.theme) props.onChangeTheme(g.theme);
-              if (g.projectCardTitleFont && g.projectCardTitleFont !== props.projectCardTitleFont) {
-                props.onChangeProjectCardTitleFont(g.projectCardTitleFont);
-              }
+              if (g.uiFonts) props.onChangeUiFonts(g.uiFonts);
               if (g.cardMinWidth) props.onChangeCardMinWidth(g.cardMinWidth);
               setGlobalDraft(null);
             },
@@ -412,13 +412,11 @@ export function SettingsModal(props: {
       c.theme = next;
     });
 
-  const globalProjectCardTitleFont = (): ProjectCardTitleFont =>
-    globalParsed().projectCardTitleFont ??
-    props.projectCardTitleFont ??
-    DEFAULT_PROJECT_CARD_TITLE_FONT;
-  const setGlobalProjectCardTitleFont = (next: ProjectCardTitleFont): Promise<void> =>
+  const uiFontOf = (category: UiFontCategory): UiFont =>
+    globalParsed().uiFonts?.[category] ?? props.uiFonts[category] ?? DEFAULT_UI_FONTS[category];
+  const setGlobalUiFonts = (patch: UiFontPrefs): Promise<void> =>
     patchSettings((c) => {
-      c.projectCardTitleFont = next;
+      c.uiFonts = { ...(c.uiFonts ?? {}), ...patch };
     });
 
   const cardMinWidthGlobal = (key: keyof CardMinWidthPrefs): number =>
@@ -768,8 +766,8 @@ export function SettingsModal(props: {
               <AppearanceSection
                 theme={globalTheme}
                 setTheme={setGlobalTheme}
-                projectCardTitleFont={globalProjectCardTitleFont}
-                setProjectCardTitleFont={setGlobalProjectCardTitleFont}
+                uiFont={uiFontOf}
+                setUiFonts={setGlobalUiFonts}
                 cardMinWidth={cardMinWidthGlobal}
                 setCardMinWidth={setGlobalCardMinWidth}
               />

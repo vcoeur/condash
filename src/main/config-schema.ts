@@ -14,8 +14,9 @@ import type {
   TerminalXtermColors,
   TerminalXtermPrefs,
   TreeExpansionPrefs,
+  UiFontPrefs,
 } from '../shared/types';
-import { PROJECT_CARD_TITLE_FONTS } from '../shared/types';
+import { UI_FONTS } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -405,6 +406,19 @@ const treeExpansionSchema = z
   } satisfies Record<keyof TreeExpansionPrefs, z.ZodTypeAny>)
   .strict();
 
+// Same exhaustiveness guard as cardMinWidthSchema above: adding a category to
+// UiFontPrefs without listing it here is a tsc error, not a silent
+// `Unrecognized key` at save time. Each category is one of the four UI_FONTS.
+const uiFontsSchema = z
+  .object({
+    cardTitle: z.enum(UI_FONTS).optional(),
+    heading: z.enum(UI_FONTS).optional(),
+    body: z.enum(UI_FONTS).optional(),
+    code: z.enum(UI_FONTS).optional(),
+    terminal: z.enum(UI_FONTS).optional(),
+  } satisfies Record<keyof UiFontPrefs, z.ZodTypeAny>)
+  .strict();
+
 /**
  * Live terminal-tab summarization ("Dashboard"). Opt-in: a periodic main-process
  * loop summarizes the active terminal tabs by POSTing directly to an
@@ -550,9 +564,9 @@ const globalOnlyFields = {
    *  drives commits, not the tree. See {@link autoSyncSettings}. */
   autoSync: autoSyncSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
-  /** Font-family for project-card titles (Settings → Appearance). `default`
-   *  keeps the theme's editorial display face. See {@link ProjectCardTitleFont}. */
-  projectCardTitleFont: z.enum(PROJECT_CARD_TITLE_FONTS).optional(),
+  /** Per-category UI font choices (Settings → Appearance). Any category left
+   *  `default` keeps the theme's face for that surface. See {@link UiFontPrefs}. */
+  uiFonts: uiFontsSchema.optional(),
   layout: layoutSchema.optional(),
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
   cardMinWidth: cardMinWidthSchema.optional(),

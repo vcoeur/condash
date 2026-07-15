@@ -337,7 +337,7 @@
 }
 
 .terminal-tab-label {
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -371,7 +371,7 @@
  * cap). Only rendered for scoped, still-live tabs. */
 .terminal-tab-mem {
   flex-shrink: 0;
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-2xs);
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
@@ -420,7 +420,7 @@
 }
 
 .terminal-tab-rename {
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-2xs);
   /* The rename input overlays a coloured tab — give it a solid neutral
    * surface so the text stays legible against any palette slot. */
@@ -707,7 +707,7 @@
   border: none;
   outline: none;
   color: var(--text);
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-xs);
   min-width: 220px;
 }

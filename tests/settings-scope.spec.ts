@@ -136,3 +136,48 @@ test('settings modal: conception + global fields round-trip to their own files',
     await booted.cleanup();
   }
 });
+
+test('settings modal: a UI-font category applies live and round-trips to settings.json', async () => {
+  test.setTimeout(60_000);
+  const booted = await bootApp({ extraConfig: {} });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const modal = await openSettings(booted);
+
+    // Pick Monospace for the Card & list titles category. Scope to that
+    // category's field so we don't hit the identical 'Monospace' option in the
+    // other four categories.
+    const cardTitleField = modal.locator('#settings-section-appearance .settings-field', {
+      hasText: 'Card & list titles',
+    });
+    await cardTitleField.scrollIntoViewIfNeeded();
+    await cardTitleField
+      .locator('.settings-radio', { hasText: 'Monospace' })
+      .locator('input[type="radio"]')
+      .check();
+
+    await modal.locator('button.settings-save').click();
+
+    // Round-trips to the per-machine file under uiFonts.cardTitle.
+    await expect
+      .poll(async () => (await readJson(globalPath)).uiFonts)
+      .toEqual({ cardTitle: 'mono' });
+
+    // Applied live: the hook sets the category CSS variable + data attribute on
+    // :root (no reload), so card titles restyle immediately. The variable
+    // resolves to the monospace brand base, so the computed value matches
+    // `--font-mono-base` — card titles now render in the mono face.
+    await expect(booted.window.locator(':root')).toHaveAttribute('data-ui-font-card-title', 'mono');
+    const [cardTitleFace, monoBase] = await booted.window.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      return [
+        cs.getPropertyValue('--ui-font-card-title').trim(),
+        cs.getPropertyValue('--font-mono-base').trim(),
+      ];
+    });
+    expect(cardTitleFace).toBe(monoBase);
+    expect(cardTitleFace).toContain('monospace');
+  } finally {
+    await booted.cleanup();
+  }
+});

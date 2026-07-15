@@ -358,6 +358,40 @@ describe('migrateRawSettings — defunct top-level keys', () => {
   });
 });
 
+describe('migrateRawSettings — projectCardTitleFont → uiFonts.cardTitle', () => {
+  // The single-scalar font pref generalised into the per-category `uiFonts`
+  // record. A global settings.json upgraded across that version still carries
+  // `projectCardTitleFont`, and the strict schema rejects it — so without
+  // folding + stripping, every Settings save throws `Unrecognized key`.
+  it('folds a saved value into uiFonts.cardTitle and drops the legacy key', () => {
+    const migrated = migrateRawSettings({
+      projectCardTitleFont: 'mono',
+      theme: 'dark',
+    }) as Record<string, unknown>;
+    expect('projectCardTitleFont' in migrated).toBe(false);
+    expect(migrated.uiFonts).toEqual({ cardTitle: 'mono' });
+    expect(migrated.theme).toBe('dark');
+  });
+
+  it('keeps an existing uiFonts record and only drops the legacy key', () => {
+    const migrated = migrateRawSettings({
+      projectCardTitleFont: 'mono',
+      uiFonts: { cardTitle: 'sans', body: 'system' },
+    }) as Record<string, unknown>;
+    expect('projectCardTitleFont' in migrated).toBe(false);
+    expect(migrated.uiFonts).toEqual({ cardTitle: 'sans', body: 'system' });
+  });
+
+  it('lets a global save round-trip a legacy projectCardTitleFont body', () => {
+    const json = JSON.stringify({ projectCardTitleFont: 'system', theme: 'light' });
+    const canon = validateAndCanonicaliseGlobalSettings(json);
+    const parsed = JSON.parse(canon);
+    expect('projectCardTitleFont' in parsed).toBe(false);
+    expect(parsed.uiFonts).toEqual({ cardTitle: 'system' });
+    expect(parsed.theme).toBe('light');
+  });
+});
+
 describe('migrateRawSettings — dropped terminal.logging fields', () => {
   it('strips a stale `maxFileMb` left over from pre-v2.23.0 settings', () => {
     const migrated = migrateRawSettings({
@@ -558,8 +592,9 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
     // setTheme
     theme: 'dark',
-    // projectCardTitleFont — no narrow setter; edited through the raw save
-    projectCardTitleFont: 'sans',
+    // uiFonts — no narrow setter; edited through the raw save. Every category
+    // present so the canonicaliser sees the whole record exercised.
+    uiFonts: { cardTitle: 'sans', heading: 'mono', body: 'sans', code: 'mono', terminal: 'system' },
     // setLayout
     layout: {
       projects: true,

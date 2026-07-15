@@ -26,12 +26,9 @@ export type HelpDocName =
 
 export type Theme = 'light' | 'dark' | 'system';
 
-/** Font choices for project-card titles (Settings → Appearance). Each value
- *  maps to a font-family stack in the renderer's
- *  `use-project-card-title-font` hook. `default` leaves the theme's editorial
- *  display face (`--font-display`) in place, so an unset preference changes
- *  nothing. */
-export const PROJECT_CARD_TITLE_FONTS = ['default', 'sans', 'mono', 'system'] as const;
-export type ProjectCardTitleFont = (typeof PROJECT_CARD_TITLE_FONTS)[number];
-/** Built-in default: the theme's editorial display face. */
-export const DEFAULT_PROJECT_CARD_TITLE_FONT: ProjectCardTitleFont = 'default';
+/** Font choices offered per UI font category (Settings → Appearance). Each
+ *  value maps to a base font stack in the renderer's `use-ui-fonts` hook.
+ *  `default` sets no CSS variable, so the category's elements keep the theme's
+ *  face for that surface and an unset preference changes nothing. */
+export const UI_FONTS = ['default', 'sans', 'mono', 'system'] as const;
+export type UiFont = (typeof UI_FONTS)[number];

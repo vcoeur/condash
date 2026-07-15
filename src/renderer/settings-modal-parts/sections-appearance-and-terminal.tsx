@@ -10,27 +10,24 @@ import type {
   AppScopeMemoryPrefs,
   CardMinWidthPrefs,
   Platform,
-  ProjectCardTitleFont,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
+  UiFont,
+  UiFontCategory,
+  UiFontPrefs,
 } from '@shared/types';
 import { type BindTextFn, type ColorEntry, type TerminalStringFieldKey } from './data';
-import {
-  CardDensityFields,
-  ProjectCardTitleFontPicker,
-  TerminalFields,
-  ThemePicker,
-} from './fields';
+import { CardDensityFields, TerminalFields, ThemePicker, UiFontsFields } from './fields';
 import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
   setTheme: (theme: Theme) => Promise<void>;
-  projectCardTitleFont: () => ProjectCardTitleFont;
-  setProjectCardTitleFont: (font: ProjectCardTitleFont) => Promise<void>;
+  uiFont: (category: UiFontCategory) => UiFont;
+  setUiFonts: (patch: UiFontPrefs) => Promise<void>;
   cardMinWidth: (key: keyof CardMinWidthPrefs) => number;
   setCardMinWidth: (patch: CardMinWidthPrefs) => Promise<void>;
 }
@@ -43,16 +40,14 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
       scope="global"
       hint={
         <p class="settings-section-hint">
-          Theme and card density for this machine. Each grid keeps a row of <em>n</em> cards until
-          the pane is wide enough to fit <em>n+1</em> at this width, then reflows.
+          Theme, fonts, and card density for this machine. Each font category restyles every element
+          in it at once; each grid keeps a row of <em>n</em> cards until the pane is wide enough to
+          fit <em>n+1</em> at this width, then reflows.
         </p>
       }
     >
       <ThemePicker current={props.theme()} onChange={(t) => void props.setTheme(t)} />
-      <ProjectCardTitleFontPicker
-        current={props.projectCardTitleFont()}
-        onChange={(f) => void props.setProjectCardTitleFont(f)}
-      />
+      <UiFontsFields resolve={props.uiFont} onChange={(patch) => void props.setUiFonts(patch)} />
       <CardDensityFields
         resolve={props.cardMinWidth}
         onChange={(patch) => void props.setCardMinWidth(patch)}

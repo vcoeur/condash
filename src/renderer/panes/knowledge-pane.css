@@ -131,7 +131,9 @@
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-family: var(--font-display);
+  /* Card & list titles category (`--ui-font-card-title`); unset → editorial
+   * serif base, so the default is unchanged. */
+  font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-size: var(--text-lg);
   font-weight: 700;
   color: var(--text);

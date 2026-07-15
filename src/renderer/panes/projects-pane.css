@@ -442,14 +442,12 @@ body[data-dragging='project'] .row {
   gap: 9px;
   flex: 1 1 auto;
   min-width: 0;
-  /* Upright Cormorant serif (bold redesign, 2026-07): card titles share the
-   * editorial display face with the modal title; 700 weight at 18 px with a
-   * light stroke keeps the title prominent on the denser card. The kind glyph
-   * aligns with the first line. `--project-card-title-font` is the user's
-   * Settings → Appearance override (`use-project-card-title-font`); unset, the
-   * editorial `--font-display` face applies, so the default is unchanged. */
-  font-family:
-    var(--project-card-title-font, var(--font-display)), Georgia, 'Times New Roman', serif;
+  /* Upright Cormorant serif (bold redesign, 2026-07): 700 weight at 18 px with
+   * a light stroke keeps the title prominent on the denser card. The kind glyph
+   * aligns with the first line. `--ui-font-card-title` is the user's Settings →
+   * Appearance choice for the Card & list titles category (`use-ui-fonts`);
+   * unset, the editorial serif base applies, so the default is unchanged. */
+  font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
   font-size: 18px;
   line-height: 1.25;
@@ -463,8 +461,9 @@ body[data-dragging='project'] .row {
 /* The stroke + shadow above are a faux-weight tuned for the thin Cormorant
  * serif. The sans/mono/system overrides are already substantial at 700, so the
  * extra stroke muddies them and diverges from the Settings picker preview
- * (which draws no stroke) — drop it whenever a non-default face is active. */
-:root[data-project-card-title-font] .row .title {
+ * (which draws no stroke) — drop it whenever a non-default card-title face is
+ * active. */
+:root[data-ui-font-card-title] .row .title {
   -webkit-text-stroke: 0;
   text-shadow: none;
 }

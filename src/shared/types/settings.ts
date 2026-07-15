@@ -2,7 +2,7 @@
 // it nests (tree expansion, card min-widths, skill scope) and the "open with"
 // editor slots.
 
-import type { ProjectCardTitleFont, Theme } from './common';
+import type { Theme, UiFont } from './common';
 import type { LayoutState } from './layout';
 import type { TerminalPrefs } from './terminal';
 import type { TaskConfigEntry } from './task-runs';
@@ -25,10 +25,11 @@ export interface Settings {
    * submenu and the Global tab's recents list. */
   recentConceptionPaths: string[];
   theme: Theme;
-  /** Font-family for project-card titles. Unset (or `default`) keeps the
-   * theme's editorial display face, so doing nothing changes nothing.
-   * Per-machine, like `theme` — a readability/taste choice. */
-  projectCardTitleFont?: ProjectCardTitleFont;
+  /** Per-category UI font choices (card titles, headings, body, code,
+   * terminal). Unset — or any category left `default` — keeps the theme's
+   * face for that surface, so doing nothing changes nothing. Per-machine,
+   * like `theme` — a readability/taste choice. */
+  uiFonts?: UiFontPrefs;
   /** Per-machine terminal prefs. Moved here from condash.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
@@ -101,8 +102,8 @@ export interface BootstrapData {
   conceptionPath: string | null;
   /** Effective theme (`getTheme`). */
   theme: Theme;
-  /** Effective project-card title font (`resolveProjectCardTitleFont`). */
-  projectCardTitleFont: ProjectCardTitleFont;
+  /** Fully-resolved per-category UI fonts (`resolveUiFonts`). */
+  uiFonts: Required<UiFontPrefs>;
   /** Composite layout, DEFAULT_LAYOUT-backfilled by main (`getLayout`). */
   layout: LayoutState;
   /** First-launch welcome dismissed flag (`getWelcomeDismissed`). */
@@ -175,6 +176,40 @@ export const DEFAULT_CARD_MIN_WIDTH = {
 export const CARD_MIN_WIDTH_KEYS = Object.keys(
   DEFAULT_CARD_MIN_WIDTH,
 ) as (keyof CardMinWidthPrefs)[];
+
+/** The UI surfaces grouped into one font choice each. A category controls
+ *  every element in its group at once (e.g. `cardTitle` drives project,
+ *  knowledge, and task card titles together). */
+export const UI_FONT_CATEGORIES = ['cardTitle', 'heading', 'body', 'code', 'terminal'] as const;
+export type UiFontCategory = (typeof UI_FONT_CATEGORIES)[number];
+
+/** Per-category font choice. Each field is optional — a missing (or `default`)
+ *  category keeps the theme's face for that surface (`DEFAULT_UI_FONTS`). */
+export interface UiFontPrefs {
+  /** Project, knowledge, and task card/list titles. */
+  cardTitle?: UiFont;
+  /** Pane headers, section titles, modal titles, project-preview title. */
+  heading?: UiFont;
+  /** Sidebar, controls, and general body/UI text. */
+  body?: UiFont;
+  /** Task ids, code-pane names, deliverables, and code blocks. */
+  code?: UiFont;
+  /** Terminal chrome and log viewers (the xterm canvas keeps its own
+   *  Settings → Terminal font). */
+  terminal?: UiFont;
+}
+
+/** Built-in default for every category: the theme's face for that surface.
+ *  `default` sets no CSS variable, so an all-default prefs object renders
+ *  exactly as before the picker existed — changing one deliberately restyles
+ *  that whole category. */
+export const DEFAULT_UI_FONTS = {
+  cardTitle: 'default',
+  heading: 'default',
+  body: 'default',
+  code: 'default',
+  terminal: 'default',
+} as const satisfies Required<UiFontPrefs>;
 
 export type OpenWithSlotKey = 'main_ide' | 'secondary_ide' | 'terminal';
 

@@ -52,7 +52,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `dashboard`             | global      | object       | —        | Live terminal-tab summarization (direct OpenAI-compatible endpoint, DeepSeek by default): `{enabled, provider, apiKey, baseUrl, model, writerModel, cardReasoning, writerReasoning, cardInputChars, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
 | `autoSync`              | global      | object       | —        | GUI-driven periodic committer: `{enabled, intervalMinutes, quietPeriodSeconds, push}`. While a conception is open, runs `condash sync run` on a timer. Off by default; set it in **Settings → Auto-commit**. [↓](#auto-commit)                                                                                    |
 | `theme`                 | global      | enum         | `system`  | `light` \| `dark` \| `system`.                                                                                                                                                                                          |
-| `projectCardTitleFont`  | global      | enum         | `default` | `default` \| `sans` \| `mono` \| `system` — typeface for project-card titles. `default` keeps the theme's editorial face, so an unset value changes nothing.                                                             |
+| `uiFonts`               | global      | object       | —        | Per-category UI typefaces `{cardTitle, heading, body, code, terminal}`, each `default` \| `sans` \| `mono` \| `system`. Any category left `default` keeps the theme's face for that surface. [↓](#uifonts)                 |
 | `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | global      | object       | —        | `{ dismissed }` — first-launch welcome-screen state.                                                                                                                                                                     |
 | `cardMinWidth`          | global      | object       | —        | Per-surface minimum card width. [↓](#cardminwidth)                                                                                                                                                                       |
@@ -523,7 +523,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `lastConceptionPath`    | Absolute path to the conception tree condash should render. Replaces the older `conceptionPath` field — a one-shot migration on first read rewrites old files.                                                                                                                                                 |
 | `recentConceptionPaths` | Newest-first list of paths the user has opened (cap 5). Drives the **File → Open Recent** submenu and the Settings modal's recents section.                                                                                                                                                                    |
 | `theme`                 | `light`, `dark`, or `system`. Persisted by `setTheme`.                                                                                                                                                                                                                                                         |
-| `projectCardTitleFont`  | Typeface for project-card titles — `default` (the theme's editorial face), `sans`, `mono`, or `system`. Set in **Settings → Appearance**; applied live via the `--project-card-title-font` CSS variable. Unset ⇒ `default`.                                                                                       |
+| `uiFonts`               | Per-category UI typefaces. See [UiFonts](#uifonts) below. Set in **Settings → Appearance**; applied live via the `--ui-font-*` CSS variables. Any category unset ⇒ `default`.                                                                                                                                    |
 | `terminal.*`            | Embedded-terminal preferences. See [Terminal preferences](#terminal-preferences) above for every sub-key.                                                                                                                                                                                                      |
 | `layout`                | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                                                                                                                                                                                 |
 | `welcome`               | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                                                                                                                                                                                        |
@@ -533,7 +533,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `branchFilterStickyAll` | True ⇒ Code-pane filter is in **All (sticky)** mode: every branch is shown and new ones auto-pin. False ⇒ honour `selectedBranches` exactly (empty = main only). Defaults to true on first read when no explicit selection was ever made, false otherwise.                                                     |
 | `skillsActiveScope`     | Active scope in the Skills pane — `conception` or `user`. Defaults to `conception`. Persisted on every scope switch.                                                                                                                                                                                           |
 
-Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `dashboard`, `theme`, `projectCardTitleFont`, `layout`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`, `skillsActiveScope` — are valid **only** in `settings.json`; a conception file that carries one is rejected (and the [scope-partition migrator](#scope-partition-migrator) lifts it here on open). Conversely, the tree-shape keys `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, and `taskConfig` are conception-only and are **not** accepted in `settings.json`. `lastConceptionPath` / `recentConceptionPaths` are global-only too — a conception's file cannot set them, since those describe the tree's own location and the machine-local recents list.
+Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `dashboard`, `theme`, `uiFonts`, `layout`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`, `skillsActiveScope` — are valid **only** in `settings.json`; a conception file that carries one is rejected (and the [scope-partition migrator](#scope-partition-migrator) lifts it here on open). Conversely, the tree-shape keys `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, and `taskConfig` are conception-only and are **not** accepted in `settings.json`. `lastConceptionPath` / `recentConceptionPaths` are global-only too — a conception's file cannot set them, since those describe the tree's own location and the machine-local recents list.
 
 ### LayoutState
 
@@ -568,6 +568,24 @@ Lower numbers pack more cards per row at the same window size; higher numbers ke
 
 `getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`, `--card-min-logs`, `--card-min-tasks`, `--card-min-deliverables`) so live edits in the Settings modal reflow the grids without a reload.
 
+### UiFonts
+
+`uiFonts` groups the UI into five typographic categories, each a single choice that restyles every element in the group at once. Each category is one of `default`, `sans`, `mono`, or `system`; `default` leaves the theme's face for that surface untouched, so an all-`default` record (or an unset key) renders exactly as before the picker existed.
+
+| Category    | Elements                                                              | `default` face   |
+| ----------- | -------------------------------------------------------------------- | ---------------- |
+| `cardTitle` | Project, knowledge, and task card/list titles.                       | editorial serif  |
+| `heading`   | Pane headers, section titles, modal titles, project-preview title.   | editorial serif  |
+| `body`      | Sidebar, controls, and general UI/body text.                         | UI sans          |
+| `code`      | Task ids, code-pane names, deliverables, and code blocks.            | monospace        |
+| `terminal`  | Terminal chrome and log viewers.                                     | monospace        |
+
+The renderer applies each non-`default` category as a CSS variable on `:root` (`--ui-font-card-title`, `--ui-font-heading`, `--ui-font-body`, `--ui-font-code`, `--ui-font-terminal`) plus a matching `data-ui-font-*` attribute, so live edits in the Settings modal restyle the app without a reload. Each surface reads its category variable with a base-face fallback, which is why `default` preserves the current look even where one category spans faces (e.g. a project title in serif and a task name in sans both move together only when the choice is non-`default`).
+
+The embedded terminal's own canvas font is set separately in **Settings → Terminal** (`terminal.xterm`); the `terminal` category here governs the surrounding terminal/log chrome text.
+
+`uiFonts` supersedes the earlier single `projectCardTitleFont` scalar (v4.86.0). A saved `projectCardTitleFont` value is folded into `uiFonts.cardTitle` and the legacy key dropped on the next read (see [config migration](#scope-partition-migrator)).
+
 Resolution order for the conception path, checked in sequence:
 
 1. `CONDASH_CONCEPTION_PATH` env var (session-scoped override; doesn't touch `settings.json`).
@@ -584,7 +602,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 **Personal · this machine** — writes `settings.json`:
 
 - **Recent conceptions** — manage the recents list backing **File → Open Recent**.
-- **Appearance** — theme; project-card title font; per-pane card-grid min-widths.
+- **Appearance** — theme; per-category UI fonts (with a live preview); per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences (`terminal`, including `xterm`, `logging`, and the project-action templates).
 - **Launchers** — the `agents` list.
 - **Open with** — the three IDE/terminal launch slots.

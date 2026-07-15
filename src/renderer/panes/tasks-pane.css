@@ -117,6 +117,10 @@
 }
 
 .tasks-row-name {
+  /* Card & list titles category. The name inherits the sans UI face by
+   * default (no face was set here before), so the sans base keeps it unchanged
+   * while letting it move with the project/knowledge card titles. */
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--text);

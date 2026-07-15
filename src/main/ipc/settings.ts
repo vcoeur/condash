@@ -5,16 +5,16 @@ import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../s
 import type {
   CardMinWidthPrefs,
   LayoutState,
-  ProjectCardTitleFont,
   Settings,
   SkillScope,
   Theme,
   TreeExpansionPrefs,
+  UiFontPrefs,
 } from '../../shared/types';
 import {
   CARD_MIN_WIDTH_KEYS,
   DEFAULT_CARD_MIN_WIDTH,
-  DEFAULT_PROJECT_CARD_TITLE_FONT,
+  DEFAULT_UI_FONTS,
   SKILL_SCOPES,
 } from '../../shared/types';
 import {
@@ -89,19 +89,19 @@ export async function resolveTheme(settings: Settings): Promise<Theme> {
   return settings.theme;
 }
 
-/** Effective project-card title font. Global-only, but read through the same
+/** Effective per-category UI fonts. Global-only, but read through the same
  *  effective-config surface as `resolveTheme` so the bootstrap bundle takes
- *  one settings read. Falls back to the built-in editorial default when unset.
- *  Mirrors the theme resolver; there is no narrow `get*` handler — the value is
- *  read only at boot and re-applied from the Settings modal's live callback. */
-export async function resolveProjectCardTitleFont(
-  settings: Settings,
-): Promise<ProjectCardTitleFont> {
+ *  one settings read. Every category is backfilled to its built-in `default`,
+ *  so the renderer always receives a fully-resolved prefs object. Mirrors the
+ *  theme resolver; there is no narrow `get*` handler — the value is read only at
+ *  boot and re-applied from the Settings modal's live callback. */
+export async function resolveUiFonts(settings: Settings): Promise<Required<UiFontPrefs>> {
+  let prefs = settings.uiFonts;
   if (settings.lastConceptionPath) {
     const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
-    if (effective.projectCardTitleFont) return effective.projectCardTitleFont;
+    if (effective.uiFonts) prefs = effective.uiFonts;
   }
-  return settings.projectCardTitleFont ?? DEFAULT_PROJECT_CARD_TITLE_FONT;
+  return { ...DEFAULT_UI_FONTS, ...(prefs ?? {}) };
 }
 
 /** Persisted composite layout, or the built-in default. Mirrors `getLayout`. */

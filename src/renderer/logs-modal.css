@@ -20,7 +20,7 @@
 }
 
 .logs-modal-title {
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-xs);
   color: var(--text);
   white-space: nowrap;
@@ -91,7 +91,7 @@
   overflow: auto;
   margin: 0;
   padding: 0;
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-sm);
   line-height: 1.4;
   background: var(--bg);

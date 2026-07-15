@@ -917,6 +917,61 @@
   font-size: var(--text-3xs);
 }
 
+/* ---- UI-font live preview ------------------------------------------- */
+
+/* A representative mini-UI that re-renders in the draft faces as each category
+ * picker changes, so the whole set of font choices previews before Save. Each
+ * line's font-family is set inline per category (see fields/ui-fonts.tsx). */
+.settings-fonts-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 16px;
+  padding: 14px 16px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.settings-fonts-preview-heading {
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+
+.settings-fonts-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.settings-fonts-preview-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.settings-fonts-preview-body {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings-fonts-preview-code {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.settings-fonts-preview-terminal {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
 /* ---- Path chip ([abs] / [rel]) -------------------------------------- */
 
 .settings-path-chip {
