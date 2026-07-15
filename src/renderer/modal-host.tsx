@@ -43,6 +43,9 @@ import type { UseLayout } from './hooks/use-layout';
 export interface ModalHostProps {
   // --- Project preview (always mounted) + its row callbacks ---
   previewProject: () => Project | null;
+  /** Full project list — the preview resolves parent + subprojects from it. */
+  projects: () => readonly Project[];
+  handleOpenProject: UseProjectActions['handleOpenProject'];
   previewPath: UseModals['previewPath'];
   setPreviewPath: UseModals['setPreviewPath'];
   handleToggleStep: UseProjectActions['handleToggleStep'];
@@ -128,6 +131,8 @@ export interface ModalHostProps {
 export function ModalHost(props: ModalHostProps) {
   const {
     previewProject,
+    projects,
+    handleOpenProject,
     previewPath,
     setPreviewPath,
     handleToggleStep,
@@ -200,6 +205,8 @@ export function ModalHost(props: ModalHostProps) {
     <>
       <ProjectPreview
         project={previewProject()}
+        allProjects={projects}
+        onOpenProject={handleOpenProject}
         onClose={() => setPreviewPath(null)}
         onToggleStep={handleToggleStep}
         onEditStepText={handleEditStepText}

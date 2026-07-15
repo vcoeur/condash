@@ -73,6 +73,7 @@ function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderF
     apps: header.apps,
     branch: header.branch,
     base: header.base,
+    parent: header.parent,
     summary,
     steps,
     stepCounts,

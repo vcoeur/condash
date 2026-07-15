@@ -36,7 +36,7 @@ export type { CreateProjectInput, CreateProjectResult };
 // errors come before missing-required, and (b) build NOUN_FLAGS — the
 // suggestion pool used by `assertNoExtraFlags(args, NOUN_FLAGS)` so a typo
 // of a sibling-verb flag still gets a `(did you mean --X?)` hint.
-export const KNOWN_FLAGS_LIST = ['status', 'kind', 'apps', 'branch', 'sort'] as const;
+export const KNOWN_FLAGS_LIST = ['status', 'kind', 'apps', 'branch', 'parent', 'sort'] as const;
 export const KNOWN_FLAGS_READ = ['with-notes'] as const;
 export const KNOWN_FLAGS_ACTIVITY = ['begin', 'end', 'format'] as const;
 export const KNOWN_FLAGS_RESOLVE: readonly string[] = [];
@@ -55,6 +55,7 @@ export const KNOWN_FLAGS_CREATE = [
   'title',
   'branch',
   'base',
+  'parent',
   'date',
   'status',
   'severity',
@@ -121,7 +122,7 @@ function printHelp(verb: string | null): void {
   switch (verb) {
     case 'list':
       writeBlock([
-        'condash projects list [--status <s>] [--kind <k>] [--apps <a,b>] [--branch <br>] [--sort <s>]',
+        'condash projects list [--status <s>] [--kind <k>] [--apps <a,b>] [--branch <br>] [--parent <slug>] [--sort <s>]',
         '',
         'List projects, filtered + sorted.',
         '',
@@ -130,11 +131,13 @@ function printHelp(verb: string | null): void {
         '  --kind     CSV of {project, incident, document}.',
         '  --apps     CSV of app names; matches if any overlap.',
         '  --branch   Exact branch match.',
+        '  --parent   Slug of a parent item; lists its spin-off subprojects.',
         '  --sort     status (default) | slug | date',
         '',
         'Examples:',
         '  condash projects list',
         '  condash projects list --status now,review --sort date',
+        '  condash projects list --parent 2026-07-15-checkout-revamp',
       ]);
       return;
     case 'read':
@@ -300,6 +303,7 @@ function printHelp(verb: string | null): void {
         'Optional:',
         '  --branch              git branch name',
         '  --base                base branch for PRs (default: main)',
+        '  --parent              slug of the parent plan this spins off from',
         '  --status              now | review | later | backlog  (default: now)',
         '  --date                YYYY-MM-DD (default: today)',
         '  --severity            low | medium | high           (incidents only)',

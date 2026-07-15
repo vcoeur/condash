@@ -101,6 +101,9 @@ export interface HeaderFields {
    *  is authoritative per `projects/SKILL.md` — trailing prose is ignored. */
   branch: string | null;
   base: string | null;
+  /** Parent item slug from `parent:` — the item this one is a spin-off of.
+   *  Null when the header has no `parent` line. */
+  parent: string | null;
   /** Anything else surfaced under `**Key**` we didn't break out by name —
    *  preserves Environment / Severity / Verified / etc. */
   extra: Record<string, string>;
@@ -171,10 +174,15 @@ function parseBoldProseHeader(raw: string): HeaderFields {
   const apps = extractBackticked(meta.get('apps') ?? '');
   const branch = extractBackticked(meta.get('branch') ?? '')[0] ?? null;
   const base = extractBackticked(meta.get('base') ?? '')[0] ?? null;
+  // `parent` holds a bare item slug, not a backticked token, so accept either:
+  // the first backticked token if present, else the trimmed raw value. Legacy
+  // bold-prose is never emitted for `parent` — this only reads hand-written files.
+  const parentRaw = meta.get('parent')?.trim();
+  const parent = parentRaw ? (extractBackticked(parentRaw)[0] ?? parentRaw) : null;
 
   const extra: Record<string, string> = {};
   for (const [k, v] of meta) {
-    if (['date', 'status', 'kind', 'apps', 'branch', 'base'].includes(k)) continue;
+    if (['date', 'status', 'kind', 'apps', 'branch', 'base', 'parent'].includes(k)) continue;
     extra[k] = v;
   }
 
@@ -186,6 +194,7 @@ function parseBoldProseHeader(raw: string): HeaderFields {
     apps,
     branch,
     base,
+    parent,
     extra,
   };
 }
@@ -230,11 +239,12 @@ function parseYamlFrontmatterHeader(yamlBody: string, body: string): HeaderField
   const apps = normaliseAppsValue(data.apps);
   const branch = scalarToString(data.branch);
   const base = scalarToString(data.base);
+  const parent = scalarToString(data.parent);
   const date = scalarToString(data.date);
   const status = scalarToString(data.status)?.toLowerCase() ?? null;
   const kind = scalarToString(data.kind)?.toLowerCase() ?? null;
 
-  const KNOWN = new Set(['date', 'kind', 'status', 'apps', 'branch', 'base']);
+  const KNOWN = new Set(['date', 'kind', 'status', 'apps', 'branch', 'base', 'parent']);
   const extra: Record<string, string> = {};
   for (const [key, value] of Object.entries(data)) {
     if (KNOWN.has(key)) continue;
@@ -256,7 +266,7 @@ function parseYamlFrontmatterHeader(yamlBody: string, body: string): HeaderField
     if (sev && impact) extra.severity = `${sev} — ${impact}`;
   }
 
-  return { title, date, status, kind, apps, branch, base, extra };
+  return { title, date, status, kind, apps, branch, base, parent, extra };
 }
 
 function scalarToString(value: unknown): string | null {
@@ -358,6 +368,16 @@ export function validateHeader(fields: HeaderFields, readmePath: string): Header
 
   if (!fields.apps.length) {
     warnings.push({ field: 'apps', message: '**Apps** is empty or missing' });
+  }
+
+  // A `parent` that points at the item's own folder is a cycle — cheap to catch
+  // here (pure, no fs). Whether the slug resolves to a real item needs the tree
+  // and is checked at create time in the CLI instead.
+  if (fields.parent && fields.parent === folderName) {
+    errors.push({
+      field: 'parent',
+      message: `parent '${fields.parent}' refers to the item itself`,
+    });
   }
 
   return { errors, warnings };

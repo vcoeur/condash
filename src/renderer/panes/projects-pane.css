@@ -806,3 +806,36 @@ body[data-dragging='project'] .row {
   font-size: 16px;
   line-height: 1;
 }
+
+/* "Part of <plan>" banner at the top of a spin-off card. A pill hugging the
+ * top-left, accent-tinted so it reads as a relationship marker rather than
+ * meta text. Ellipsises rather than wrapping. */
+.row .parent-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-body);
+  font-size: var(--text-2xs);
+}
+.row .parent-banner-icon {
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.row .parent-banner-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Count of spin-off subprojects on a parent card, in the compact meta row. */
+.row .meta-icon.subprojects {
+  color: var(--accent);
+}

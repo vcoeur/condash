@@ -62,6 +62,7 @@ const sampleProject: Project = {
   path: '/home/alice/src/vcoeur/conception/projects/2026-05/2026-05-17-foo-bar',
   branch: 'feat-foo',
   base: 'main',
+  parent: null,
   steps: [],
   stepCounts: { todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 },
   deliverables: [],

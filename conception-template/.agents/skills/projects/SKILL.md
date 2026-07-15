@@ -17,7 +17,7 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 
 | Action     | Trigger                                                                     | Details file               |
 |------------|-----------------------------------------------------------------------------|----------------------------|
-| `list`     | `/projects list [kind=<k>] [status=<s>] [apps=<a>] [branch=<b>]`            | [retrieve.md](retrieve.md) |
+| `list`     | `/projects list [kind=<k>] [status=<s>] [apps=<a>] [branch=<b>] [parent=<slug>]` | [retrieve.md](retrieve.md) |
 | `read`     | `/projects read <slug>`                                                     | [retrieve.md](retrieve.md) |
 | `search`   | `/projects search <keyword>`                                                | [retrieve.md](retrieve.md) |
 | `validate` | `/projects validate [<slug>]` — header sanity check                         | [retrieve.md](retrieve.md) |
@@ -45,6 +45,7 @@ apps:
   - app2/sub-path
 branch: branch-name   # optional
 base: branch-name     # optional
+parent: 2026-07-15-plan-slug   # optional — the plan this project spins off from
 ---
 
 # <Title>
@@ -63,6 +64,8 @@ Status meanings:
 Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `severity: <low/medium/high — impact>`.
 
 `apps` is a YAML list (one entry per line). `branch`'s value is authoritative. `date` always matches the month directory — changing it requires a `git mv`.
+
+`parent` links a spin-off implementation project to the plan it derives from — its value is the parent item's slug (short or full dated form; `condash projects create --parent <slug>` resolves and stores the canonical dated slug, rejecting a slug that doesn't resolve). The reverse edge is never stored: a plan's subprojects are derived by scanning, shown in the dashboard as a "Subprojects" section on the parent and a "Part of …" banner on each child. List a plan's children with `condash projects list --parent <slug>`.
 
 ## Deliverables
 

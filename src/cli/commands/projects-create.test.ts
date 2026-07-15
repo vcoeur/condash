@@ -296,3 +296,73 @@ describe('B3 — --status on create', () => {
     expect((caught as Error).message).toMatch(/banana/);
   });
 });
+
+describe('--parent on create', () => {
+  async function readCreatedReadme(slugTail: string): Promise<string> {
+    const months = await fs.readdir(join(conceptionPath, 'projects'));
+    const month = months.find((m) => /^\d{4}-\d{2}$/.test(m))!;
+    const dir = (await fs.readdir(join(conceptionPath, 'projects', month))).find((d) =>
+      d.endsWith(`-${slugTail}`),
+    )!;
+    return fs.readFile(join(conceptionPath, 'projects', month, dir, 'README.md'), 'utf8');
+  }
+
+  it('resolves --parent to the parent’s canonical dated slug and writes it', async () => {
+    await createCommand(
+      {
+        noun: 'projects',
+        verb: 'create',
+        positional: [],
+        flags: { apps: 'condash', kind: 'project', slug: 'checkout-revamp', title: 'Checkout' },
+      },
+      ctx(),
+      conceptionPath,
+    );
+    await createCommand(
+      {
+        noun: 'projects',
+        verb: 'create',
+        positional: [],
+        // Short parent slug — createCommand must resolve it to the dated form.
+        flags: {
+          apps: 'condash',
+          kind: 'project',
+          slug: 'cart',
+          title: 'Cart',
+          parent: 'checkout-revamp',
+        },
+      },
+      ctx(),
+      conceptionPath,
+    );
+    const childReadme = await readCreatedReadme('cart');
+    expect(childReadme).toMatch(/parent: \d{4}-\d{2}-\d{2}-checkout-revamp/);
+  });
+
+  it('rejects --parent that does not resolve to an existing item', async () => {
+    let caught: unknown;
+    try {
+      await createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: {
+            apps: 'condash',
+            kind: 'project',
+            slug: 'orphan',
+            title: 'Orphan',
+            parent: 'no-such-plan',
+          },
+        },
+        ctx(),
+        conceptionPath,
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(CliError);
+    // resolveSlug throws NOT_FOUND (exit 4) for an unresolvable parent.
+    expect((caught as CliError).exitCode).toBe(4);
+  });
+});

@@ -2,6 +2,7 @@ import { For, Show, createResource, createSignal, onCleanup, onMount } from 'sol
 import type { JSX } from 'solid-js';
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
+import { compareByStatusThenSlug } from '@shared/projects';
 import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
@@ -223,6 +224,12 @@ export function ProjectPreview(props: {
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
   onCreateNote?: (project: Project) => void;
+  /** Full project list — used to resolve this item's parent (for the "Part
+   * of" banner) and its spin-off children (for the Subprojects widget). */
+  allProjects?: () => readonly Project[];
+  /** Open another project's preview — the banner (→ parent) and each
+   * Subprojects row (→ child) call this. */
+  onOpenProject?: (project: Project) => void;
 }) {
   const [statusMenu, setStatusMenu] = createSignal(false);
   const [activityExpanded, setActivityExpanded] = createSignal(false);
@@ -276,6 +283,27 @@ export function ProjectPreview(props: {
   const apps = (): string[] => props.project?.apps ?? [];
 
   const statusKnown = (s: string): boolean => (KNOWN_STATUSES as readonly string[]).includes(s);
+
+  // Parent slug this item spins off from, and the resolved parent project (null
+  // when unset or dangling). The banner still renders on a dangling reference,
+  // showing the raw slug rather than a title.
+  const parentSlug = (): string | null => props.project?.parent ?? null;
+  const parentProject = (): Project | null => {
+    const slug = parentSlug();
+    const all = props.allProjects?.();
+    if (!slug || !all) return null;
+    return all.find((p) => p.slug === slug) ?? null;
+  };
+  // Spin-off children of this item, status-ordered — derived, never stored.
+  const subprojects = (): Project[] => {
+    const current = props.project;
+    const all = props.allProjects?.();
+    if (!current || !all) return [];
+    return all
+      .filter((p) => p.parent === current.slug)
+      .slice()
+      .sort(compareByStatusThenSlug);
+  };
 
   const beginEdit = (step: Step) => {
     setEditingLineIndex(step.lineIndex);
@@ -337,6 +365,29 @@ export function ProjectPreview(props: {
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
+            <Show when={parentSlug()}>
+              <div class="parent-banner" title="This project spins off from a parent plan">
+                <span class="parent-banner-icon" aria-hidden="true">
+                  ↑
+                </span>
+                <span class="parent-banner-label">Part of</span>
+                <Show
+                  when={parentProject()}
+                  fallback={<span class="parent-banner-name muted">{parentSlug()}</span>}
+                >
+                  {(parent) => (
+                    <button
+                      type="button"
+                      class="parent-banner-name"
+                      onClick={() => props.onOpenProject?.(parent())}
+                      title={`Open ${parent().title}`}
+                    >
+                      {parent().title}
+                    </button>
+                  )}
+                </Show>
+              </div>
+            </Show>
             <header class="modal-head">
               {/* Lead group: kind glyph + status select. Status is the
                   most-changed property for active projects, so it earns
@@ -637,6 +688,34 @@ export function ProjectPreview(props: {
                     </div>
                   </section>
                 </div>
+
+                <Show when={subprojects().length > 0}>
+                  <section class="widget subprojects-widget">
+                    <h3 class="widget-title">Subprojects</h3>
+                    <ul class="subprojects-list">
+                      <For each={subprojects()}>
+                        {(child) => (
+                          <li>
+                            <button
+                              type="button"
+                              class="subproject-row"
+                              classList={{
+                                warn: !statusKnown(child.status),
+                                [`status-${child.status}`]: statusKnown(child.status),
+                              }}
+                              onClick={() => props.onOpenProject?.(child)}
+                              title={`Open ${child.title}`}
+                            >
+                              <span class="subproject-dot" aria-hidden="true" />
+                              <span class="subproject-title">{child.title}</span>
+                              <span class="subproject-status-pill">{child.status}</span>
+                            </button>
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </section>
+                </Show>
 
                 <section class="widget">
                   <h3 class="widget-title">Activity</h3>

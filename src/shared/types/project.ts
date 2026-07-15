@@ -72,6 +72,11 @@ export interface Project {
   branch: string | null;
   /** Auth value from `**Base**`. Null when the header has no `**Base**` line. */
   base: string | null;
+  /** Parent project slug from the `parent:` frontmatter — the item this one is
+   * a spin-off of (a plan → implementation edge). Null when unset. The reverse
+   * edge (a parent's children / "subprojects") is derived by scanning the
+   * project list, never stored, so there is one source of truth. */
+  parent: string | null;
   summary?: string;
   steps: Step[];
   stepCounts: StepCounts;

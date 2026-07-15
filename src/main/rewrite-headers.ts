@@ -108,6 +108,7 @@ function renderFrontmatterLines(fields: HeaderFields): string[] {
   }
   if (fields.branch) out.push(`branch: ${yamlScalar(fields.branch)}`);
   if (fields.base) out.push(`base: ${yamlScalar(fields.base)}`);
+  if (fields.parent) out.push(`parent: ${yamlScalar(fields.parent)}`);
   for (const [key, value] of Object.entries(fields.extra)) {
     if (!value) continue;
     out.push(`${key}: ${yamlScalar(value)}`);

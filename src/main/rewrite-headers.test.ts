@@ -62,6 +62,30 @@ describe('rewriteHeaderToYaml', () => {
     expect(parsed.extra.severity).toBe('high — checkout broken');
   });
 
+  it('emits parent once and round-trips it without leaking into extra', () => {
+    const raw = [
+      '# Cart',
+      '',
+      '**Date**: 2026-07-20',
+      '**Kind**: project',
+      '**Status**: now',
+      '**Apps**: `condash`',
+      '**Parent**: `2026-07-15-checkout-revamp`',
+      '',
+      '## Goal',
+      '',
+    ].join('\n');
+    const r = rewriteHeaderToYaml(raw);
+    expect(r.changed).toBe(true);
+    const out = r.newContent!;
+    // Exactly one `parent:` line, and it round-trips as a first-class field.
+    expect(out.match(/^parent:/gm)?.length).toBe(1);
+    expect(out).toContain('parent: 2026-07-15-checkout-revamp');
+    const parsed = parseHeader(out);
+    expect(parsed.parent).toBe('2026-07-15-checkout-revamp');
+    expect(parsed.extra.parent).toBeUndefined();
+  });
+
   it('is a no-op when the file already has YAML frontmatter', () => {
     const raw = ['---', 'status: now', '---', '', '# T', '', '## Goal'].join('\n');
     const r = rewriteHeaderToYaml(raw);

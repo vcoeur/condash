@@ -25,6 +25,7 @@ interface ProjectListRow {
   apps: string[];
   branch: string | null;
   base: string | null;
+  parent: string | null;
   date: string | null;
   closedAt: string | null;
   stepCounts: { todo: number; doing: number; done: number; blocked: number; dropped: number };
@@ -41,8 +42,18 @@ export async function listProjects(
   const kindFilter = parseCsvFlag(args.flags.kind);
   const appsFilter = parseCsvFlag(args.flags.apps);
   const branchFilter = typeof args.flags.branch === 'string' ? args.flags.branch : null;
+  // Resolve --parent leniently: a short slug maps to its canonical dated form,
+  // an unresolvable value is matched literally (so filtering by a bogus parent
+  // yields no rows rather than erroring the whole list).
+  let parentFilter: string | null = null;
+  if (typeof args.flags.parent === 'string' && args.flags.parent.trim()) {
+    const raw = args.flags.parent.trim();
+    parentFilter = await resolveSlug(conceptionPath, raw)
+      .then((c) => c.slug)
+      .catch(() => raw);
+  }
   const sort = (args.flags.sort as string | undefined) ?? 'status';
-  for (const k of ['status', 'kind', 'apps', 'branch', 'sort']) delete args.flags[k];
+  for (const k of ['status', 'kind', 'apps', 'branch', 'parent', 'sort']) delete args.flags[k];
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const readmes = await findProjectReadmes(conceptionPath);
@@ -62,6 +73,7 @@ export async function listProjects(
     if (kindFilter && !kindFilter.includes(project.kind)) continue;
     if (appsFilter && !appsFilter.some((app) => project.apps.includes(app))) continue;
     if (branchFilter && project.branch !== branchFilter) continue;
+    if (parentFilter && project.parent !== parentFilter) continue;
 
     // Build the CLI row from the shared `Project` shape (the GUI uses the same
     // one), decorated with the three fields the parser exposes only via the
@@ -81,6 +93,7 @@ export async function listProjects(
       apps: project.apps,
       branch: project.branch,
       base: project.base,
+      parent: project.parent,
       date: headerFields.date,
       closedAt: project.closedAt,
       stepCounts: project.stepCounts,
@@ -144,6 +157,7 @@ export async function readProject(
     apps: header.apps,
     branch: header.branch,
     base: header.base,
+    parent: header.parent,
     summary: project.summary,
     stepCounts: project.stepCounts,
     steps: project.steps,
@@ -184,6 +198,7 @@ function formatReadHuman(data: Record<string, unknown>): string {
   }
   if (data.branch) lines.push(`Branch: ${data.branch}`);
   if (data.base) lines.push(`Base:   ${data.base}`);
+  if (data.parent) lines.push(`Parent: ${data.parent}`);
   lines.push(`Path:   ${data.path}`);
   const counts = data.stepCounts as {
     todo: number;
