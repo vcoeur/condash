@@ -52,14 +52,25 @@
   border-radius: var(--radius);
   contain: layout paint;
   transition: background 120ms ease;
-  padding: 4px 0 16px;
+  padding: 4px 0 10px;
 }
 
 /* Section spacing comes from negative space, not from a horizontal rule.
- * Non-empty sections get extra breathing room above so each block reads
- * as its own group without needing a graphic separator. */
+ * Non-empty sections get a little breathing room above so each block reads
+ * as its own group without needing a graphic separator. Kept tight so the
+ * status sections stack compactly. */
 .group-block:not([data-empty='true']) {
-  margin-top: 16px;
+  margin-top: 4px;
+}
+
+/* Status-coloured left rail running the full height of each populated
+ * section — the status signal moved off the cards (which now colour by
+ * project family) and onto this vertical line to the left of the cards.
+ * Scoped to top-level sections so the nested Done subgroups keep their own
+ * subtle neutral rail. */
+.projects-stack > .group-block:not([data-empty='true']) {
+  border-left: 3px solid var(--col-status, var(--border-strong));
+  padding-left: 14px;
 }
 
 .group-block:first-child {
@@ -286,16 +297,21 @@ body[data-dragging='project'] .row {
 }
 
 .row {
+  /* Fallback only — every card carries a `.proj-family-<n>` class that sets
+   * --row-stripe to its stable per-project-family colour (shared/project-color.ts). */
   --row-stripe: var(--col-status, var(--border-strong));
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px 10px 16px;
-  border: 1px solid var(--border-strong);
-  /* Asymmetric card — flat left edge (where the full-height status rail
-   * sits, see .row::before) + rounded right, the vcoeur project-card
-   * silhouette (bold redesign, 2026-07). */
+  /* Full family-coloured frame. The card's colour is the project family, not
+   * the status (status lives on the section's left rail). Border-style and a
+   * thicker left edge encode the relationship: solid = standalone/parent,
+   * dashed = subproject, thick left = parent (see .row.is-* below). */
+  border: 2px solid var(--row-stripe);
+  /* Asymmetric card — flat left edge (carries the family frame / thick parent
+   * spine) + rounded right, the vcoeur project-card silhouette. */
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -309,21 +325,9 @@ body[data-dragging='project'] .row {
     transform 140ms ease;
 }
 
-.row::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 10px;
-  bottom: 10px;
-  width: 5px;
-  border-radius: 999px;
-  background: var(--row-stripe);
-  opacity: 0.85;
-}
-
 .row:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
+  border-color: var(--row-stripe);
   box-shadow: var(--shadow-lift);
 }
 
@@ -338,48 +342,86 @@ body[data-dragging='project'] .row {
   outline-offset: 2px;
 }
 
-.row::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  /* Full-height flush-left status rail — the structural accent of the
-   * asymmetric card (was an inset rounded pill; the bold redesign turns it
-   * into the vcoeur 3 px border-left so the stripe *is* the left edge). */
-  border-radius: 0;
-  background: var(--row-stripe);
-  opacity: 1;
-}
-
+/* The card's status is kept available as --col-status (used by the drag
+ * chrome and the relationship pills), but no longer drives the card's frame
+ * colour — that is the project-family colour (--row-stripe, set by the
+ * .proj-family-<n> class below). The status colour now lives on the section's
+ * left rail instead. */
 [data-status-card='now'] {
-  --row-stripe: var(--col-now);
   --col-status: var(--col-now);
 }
 [data-status-card='later'] {
-  --row-stripe: var(--col-later);
   --col-status: var(--col-later);
 }
 [data-status-card='backlog'] {
-  --row-stripe: var(--col-backlog);
   --col-status: var(--col-backlog);
 }
 [data-status-card='review'] {
-  --row-stripe: var(--col-review);
   --col-status: var(--col-review);
 }
 [data-status-card='done'] {
-  --row-stripe: var(--col-done);
   --col-status: var(--col-done);
 }
 [data-status-card='?'] {
-  --row-stripe: var(--col-unknown);
   --col-status: var(--col-unknown);
 }
 
+/* Per-project family colour palette for the card frame (--row-stripe). The
+ * slot is a stable hash of the project family — a subproject shares its
+ * parent's slot — resolved in shared/project-color.ts. 16 vivid hues stepped
+ * around the wheel; mid-tone so a thin frame reads on both the light and dark
+ * card background. Keep the slot count in sync with PROJECT_COLOR_SLOT_COUNT. */
+.row.proj-family-0 {
+  --row-stripe: hsl(4 72% 57%);
+}
+.row.proj-family-1 {
+  --row-stripe: hsl(24 74% 54%);
+}
+.row.proj-family-2 {
+  --row-stripe: hsl(42 70% 50%);
+}
+.row.proj-family-3 {
+  --row-stripe: hsl(66 55% 47%);
+}
+.row.proj-family-4 {
+  --row-stripe: hsl(96 46% 48%);
+}
+.row.proj-family-5 {
+  --row-stripe: hsl(140 45% 47%);
+}
+.row.proj-family-6 {
+  --row-stripe: hsl(168 55% 43%);
+}
+.row.proj-family-7 {
+  --row-stripe: hsl(188 62% 46%);
+}
+.row.proj-family-8 {
+  --row-stripe: hsl(205 68% 54%);
+}
+.row.proj-family-9 {
+  --row-stripe: hsl(222 68% 61%);
+}
+.row.proj-family-10 {
+  --row-stripe: hsl(246 58% 65%);
+}
+.row.proj-family-11 {
+  --row-stripe: hsl(266 55% 63%);
+}
+.row.proj-family-12 {
+  --row-stripe: hsl(286 52% 59%);
+}
+.row.proj-family-13 {
+  --row-stripe: hsl(312 55% 59%);
+}
+.row.proj-family-14 {
+  --row-stripe: hsl(332 66% 59%);
+}
+.row.proj-family-15 {
+  --row-stripe: hsl(350 70% 61%);
+}
+
 .row:hover {
-  border-color: var(--border-strong);
+  border-color: var(--row-stripe);
   background: var(--bg-hover);
   transform: translateY(-2px);
   /* Accent glow on hover — the alicepeintures painting-card lift (bold
@@ -399,40 +441,26 @@ body[data-dragging='project'] .row {
 .row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-color: var(--border-strong);
-}
-
-/* Relationship border decoration (2026-07). A card's border completes into a
- * full status-coloured frame when it takes part in the parent/subproject
- * relationship: a parent (has spin-off children) gets a bold 2 px SOLID status
- * border; a subproject (has a `parent:`) a 2 px DASHED status border — solid
- * vs dashed reads as the parent/child pair. Both drop the left status rail
- * (.row::before), since the frame now carries the status colour all the way
- * around. --row-stripe is the status colour (neutral --border-strong fallback
- * for an unknown status). A mid-tree node that is both parent and subproject
- * reads as a parent: the .row.is-parent rule follows .row.is-subproject at
- * equal specificity, so its solid border-style wins. */
-.row.is-parent,
-.row.is-subproject {
-  border-width: 2px;
   border-color: var(--row-stripe);
 }
+
+/* Relationship / hierarchy decoration (2026-07). Every card already wears a
+ * full family-coloured frame (see .row above, --row-stripe = the project-family
+ * colour); this only varies that frame to encode the parent/subproject edge:
+ *   • standalone project     → solid frame (the .row default)
+ *   • subproject (`parent:`)  → dashed frame, reading as the child of a pair
+ *   • parent (has children)   → solid frame with a thick left edge, marking it
+ *     as the family root the subprojects belong to
+ * A mid-tree node that is both parent and subproject reads as a parent: the
+ * .row.is-parent rule follows .row.is-subproject at equal specificity, so its
+ * solid border-style + thick left edge win. Hover/focus keep the family frame
+ * via the base .row:hover / :focus-visible rules (both use --row-stripe). */
 .row.is-subproject {
   border-style: dashed;
 }
 .row.is-parent {
   border-style: solid;
-}
-.row.is-parent::before,
-.row.is-subproject::before {
-  content: none;
-}
-/* Keep the status frame — not the neutral hover/focus border — on interaction. */
-.row.is-parent:hover,
-.row.is-subproject:hover,
-.row.is-parent:focus-visible,
-.row.is-subproject:focus-visible {
-  border-color: var(--row-stripe);
+  border-left-width: 6px;
 }
 
 .projects-empty {
