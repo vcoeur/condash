@@ -406,3 +406,78 @@ test('the active terminal tracks its host size (ResizeObserver refit)', async ()
     await booted.cleanup();
   }
 });
+
+// Regression for the auto-refresh on tab switch path leaving the newly-active
+// terminal at the default 80×24 grid. The nudge restore has a finite window to
+// fit; if the host is not fully laid out, the second delayed fit/ResizeObserver
+// must still get the terminal wider than the default 80 columns.
+test('auto-refresh on tab switch restores the terminal to full size', async () => {
+  const booted = await bootApp({
+    globalConfig: {
+      layout: { terminal: true },
+      terminal: { autoRefreshOnTabSwitch: true },
+    },
+  });
+  booted.window.on('console', (msg) => console.log('RENDERER CONSOLE:', msg.text()));
+  try {
+    await booted.window.evaluate(() => {
+      document.body.setAttribute('data-test-xterm-registry', '');
+    });
+
+    // Two plain shells in the left column. The last spawned ('b') is active;
+    // 'a' parses in the worker until we switch to it.
+    const a = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "ALFA\n"; sleep 30' }),
+    );
+    const b = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "BRAVO\n"; sleep 30' }),
+    );
+    await wait(500);
+    await booted.window.waitForSelector(`[data-sid="${a.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await booted.window.waitForSelector(`[data-sid="${b.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await waitForDomTerm(booted.window, b.id);
+
+    // Force the column host narrow. This makes the active tab's grid smaller
+    // than the full width and sets up a narrow→wide transition when we switch.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.width = '420px';
+    });
+    await expect
+      .poll(() => colsOf(booted.window, b.id), { timeout: 5000 })
+      .toBeLessThan(80);
+
+    // Switch to the hidden tab. The auto-refresh nudge must fire, and the
+    // newly-active terminal must end up fitted to the restored host rather than
+    // stranded at the 80-column default.
+    const before = await refreshLog(booted.window);
+    await booted.window.click(`[data-sid="${a.id}"]`);
+    await waitForDomTerm(booted.window, a.id);
+
+    await expect
+      .poll(async () => (await refreshLog(booted.window)).slice(before.length), {
+        timeout: 5000,
+      })
+      .toContain(a.id);
+
+    // Restore the host to its full width. The terminal should grow with it.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.removeProperty('width');
+    });
+    await expect
+      .poll(() => colsOf(booted.window, a.id), { timeout: 5000 })
+      .toBeGreaterThan(80);
+
+    await booted.window.evaluate((id) => window.condash.termClose(id), a.id);
+    await booted.window.evaluate((id) => window.condash.termClose(id), b.id);
+  } finally {
+    await booted.cleanup();
+  }
+});

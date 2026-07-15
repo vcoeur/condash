@@ -843,10 +843,18 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (activeIdIn(tab.column) !== id) setActiveIn(tab.column, id);
     if (activeColumn() !== tab.column) setActiveColumn(tab.column);
     // Chain after any in-flight promote/demote so the DOM Terminal for this
-    // session exists (and is settled) before we resize it.
+    // session exists before we resize it, then wait one animation frame so the
+    // host layout can settle before the nudge starts.
     visibilityChain = visibilityChain
       .then(async () => {
         await syncVisibility();
+        // Give the host one animation frame to settle before the nudge begins.
+        // The visibility transition just promoted the tab and started a
+        // fitWhenReady retry; if the nudge starts immediately it adds the id to
+        // `nudging`, which cancels that retry and leaves a terminal that has not
+        // yet reached its real size. A short beat lets the in-flight fit finish
+        // before we deliberately resize the terminal one row shorter.
+        await new Promise((resolve) => requestAnimationFrame(resolve));
         const handle = xterms.get(id);
         // The pure decision: skip (no live terminal — demoted / closed /
         // re-mounted mid-hydration), focus-only (the alt-buffer opt-out excluded a
@@ -892,6 +900,15 @@ export function createTerminalController(props: TerminalPaneProps) {
           // host is not laid out at its real size by REPAINT_NUDGE_MS — it retries
           // across frames instead of no-opping and stranding the grid.
           fitWhenReady(id);
+          // One more delayed fit as a backstop: the host may settle a frame or
+          // two after the nudge window, or a ResizeObserver callback may have
+          // fired while `nudging` blocked it and will not fire again (the host
+          // size did not change). The second attempt is a no-op if the first
+          // restore already succeeded.
+          setTimeout(() => {
+            if (xterms.get(id) !== live) return;
+            fitWhenReady(id);
+          }, 150);
           try {
             live.term.focus();
           } catch {
