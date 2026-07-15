@@ -150,17 +150,25 @@ describe('bootstrap IPC', () => {
         'conceptionPath',
         'layout',
         'openWith',
-        'projectCardTitleFont',
         'selectedBranches',
         'skillsActiveScope',
         'terminalPrefs',
         'theme',
         'treeExpansion',
+        'uiFonts',
         'welcomeDismissed',
       ].sort(),
     );
-    // projectCardTitleFont falls back to the built-in default when unset.
-    expect(boot.projectCardTitleFont).toBe('default');
+    // uiFonts is fully resolved — every category present, and every field
+    // (family/weight/size) defaulting to `default` when unset.
+    const allDefault = { family: 'default', weight: 'default', size: 'default' };
+    expect(boot.uiFonts).toEqual({
+      cardTitle: allDefault,
+      heading: allDefault,
+      body: allDefault,
+      code: allDefault,
+      terminal: allDefault,
+    });
     // Deduped selectedBranches, exactly as getSelectedBranches returns.
     expect(boot.selectedBranches).toEqual(['feat-1', 'feat-2']);
     // cardMinWidth is fully resolved (every pane present, missing keys defaulted).

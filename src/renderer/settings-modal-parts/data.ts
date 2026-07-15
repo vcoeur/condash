@@ -5,10 +5,14 @@ import type {
   CardMinWidthPrefs,
   DashboardSettings,
   Platform,
-  ProjectCardTitleFont,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
+  UiFont,
+  UiFontCategory,
+  UiFontPrefs,
+  UiFontSize,
+  UiFontWeight,
 } from '@shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '@shared/config-types';
 
@@ -67,7 +71,7 @@ export const SECTIONS: SectionMeta[] = [
  */
 export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   recents: [],
-  appearance: ['theme', 'projectCardTitleFont', 'cardMinWidth'],
+  appearance: ['theme', 'uiFonts', 'cardMinWidth'],
   terminal: ['terminal'],
   agents: ['agents'],
   'open-with': ['open_with'],
@@ -136,27 +140,95 @@ export const THEME_OPTIONS: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ];
 
-/** Project-card title-font choices, in picker order. `default` first so the
- *  no-op choice reads as the baseline. Labels name the face; the picker renders
- *  each in its own typeface for a live preview. */
-export const PROJECT_CARD_TITLE_FONT_OPTIONS = [
-  { value: 'default', label: 'Editorial (default)' },
-  { value: 'sans', label: 'Sans-serif' },
+/** Font-family choices offered for every category, in dropdown order. `default`
+ *  first so the no-op choice reads as the baseline. Labels name the face; the
+ *  select renders each option in the face it selects for a live preview. */
+export const UI_FONT_OPTIONS = [
+  { value: 'default', label: 'Theme default' },
+  { value: 'sans', label: 'Sans-serif (Figtree)' },
+  { value: 'serif', label: 'Serif (Cormorant)' },
   { value: 'mono', label: 'Monospace' },
   { value: 'system', label: 'System UI' },
-] as const satisfies readonly { value: ProjectCardTitleFont; label: string }[];
+  { value: 'georgia', label: 'Georgia' },
+  { value: 'times', label: 'Times New Roman' },
+  { value: 'helvetica', label: 'Helvetica' },
+  { value: 'verdana', label: 'Verdana' },
+  { value: 'trebuchet', label: 'Trebuchet MS' },
+  { value: 'palatino', label: 'Palatino' },
+  { value: 'courier', label: 'Courier New' },
+] as const satisfies readonly { value: UiFont; label: string }[];
 
-// Compile-time completeness: every ProjectCardTitleFont value must have a
-// picker option here, so a new font added to the enum (and forced into the
-// hook's STACKS Record) can't be silently unreachable in Settings. A missing
-// value makes `_MissingFontOption` that value (not `never`), failing this
-// assignment — the same guard shape as card-density's `_MissingDensityField`.
-type _MissingFontOption = Exclude<
-  ProjectCardTitleFont,
-  (typeof PROJECT_CARD_TITLE_FONT_OPTIONS)[number]['value']
->;
+// Compile-time completeness: every UiFont value must have a picker option here,
+// so a new font added to the enum (and forced into the hook's STACKS Record)
+// can't be silently unreachable in Settings. A missing value makes
+// `_MissingFontOption` that value (not `never`), failing this assignment — the
+// same guard shape as card-density's `_MissingDensityField`.
+type _MissingFontOption = Exclude<UiFont, (typeof UI_FONT_OPTIONS)[number]['value']>;
 const _assertAllFontOptionsPresent: _MissingFontOption extends never ? true : false = true;
 void _assertAllFontOptionsPresent;
+
+/** Font-weight choices per category, in dropdown order. */
+export const UI_FONT_WEIGHT_OPTIONS = [
+  { value: 'default', label: 'Default weight' },
+  { value: 'light', label: 'Light' },
+  { value: 'regular', label: 'Regular' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'semibold', label: 'Semibold' },
+  { value: 'bold', label: 'Bold' },
+] as const satisfies readonly { value: UiFontWeight; label: string }[];
+
+type _MissingWeightOption = Exclude<UiFontWeight, (typeof UI_FONT_WEIGHT_OPTIONS)[number]['value']>;
+const _assertAllWeightOptionsPresent: _MissingWeightOption extends never ? true : false = true;
+void _assertAllWeightOptionsPresent;
+
+/** Relative font-size choices per category, in dropdown order. */
+export const UI_FONT_SIZE_OPTIONS = [
+  { value: 'default', label: 'Default size' },
+  { value: 'xs', label: 'Smallest (85%)' },
+  { value: 'sm', label: 'Smaller (92%)' },
+  { value: 'lg', label: 'Larger (112%)' },
+  { value: 'xl', label: 'Largest (128%)' },
+] as const satisfies readonly { value: UiFontSize; label: string }[];
+
+type _MissingSizeOption = Exclude<UiFontSize, (typeof UI_FONT_SIZE_OPTIONS)[number]['value']>;
+const _assertAllSizeOptionsPresent: _MissingSizeOption extends never ? true : false = true;
+void _assertAllSizeOptionsPresent;
+
+/** The font categories shown in Settings → Appearance, in display order. Each
+ *  renders one picker (from {@link UI_FONT_OPTIONS}) that restyles every element
+ *  in the category at once. */
+export const UI_FONT_CATEGORY_FIELDS = [
+  {
+    key: 'cardTitle',
+    label: 'Card & list titles',
+    hint: 'Project, knowledge, and task card titles.',
+  },
+  {
+    key: 'heading',
+    label: 'Pane & modal headings',
+    hint: 'Pane headers, section titles, and modal titles.',
+  },
+  { key: 'body', label: 'Body & UI text', hint: 'Sidebar, controls, and general interface text.' },
+  {
+    key: 'code',
+    label: 'Code & IDs',
+    hint: 'Task ids, code-pane names, deliverables, and code blocks.',
+  },
+  {
+    key: 'terminal',
+    label: 'Terminal & logs',
+    hint: 'Terminal chrome and log viewers (the terminal canvas keeps its own font in Terminal settings).',
+  },
+] as const satisfies readonly { key: UiFontCategory; label: string; hint: string }[];
+
+// Compile-time completeness: every UiFontCategory must have a field above, so a
+// new category can't ship without a picker (same guard shape as the options).
+type _MissingFontCategory = Exclude<
+  UiFontCategory,
+  (typeof UI_FONT_CATEGORY_FIELDS)[number]['key']
+>;
+const _assertAllFontCategoriesPresent: _MissingFontCategory extends never ? true : false = true;
+void _assertAllFontCategoriesPresent;
 
 export const OPEN_WITH_SLOTS: { key: 'main_ide' | 'secondary_ide' | 'terminal'; label: string }[] =
   [
@@ -273,7 +345,7 @@ export interface RawConfig {
   open_with?: Record<string, { label?: string; command?: string }>;
   pdf_viewer?: string[];
   theme?: Theme;
-  projectCardTitleFont?: ProjectCardTitleFont;
+  uiFonts?: UiFontPrefs;
   cardMinWidth?: CardMinWidthPrefs;
   terminal?: TerminalPrefs;
   /** Live terminal-tab summarization. Personal/global key (the `apiKey`
@@ -306,7 +378,7 @@ export const RAW_CONFIG_KEYS = [
   'open_with',
   'pdf_viewer',
   'theme',
-  'projectCardTitleFont',
+  'uiFonts',
   'cardMinWidth',
   'terminal',
   'dashboard',

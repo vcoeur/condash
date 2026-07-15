@@ -115,6 +115,7 @@
 }
 
 .welcome-card-title {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-weight: 600;
   font-size: var(--text-lg);
 }

@@ -14,8 +14,10 @@ import type {
   TerminalXtermColors,
   TerminalXtermPrefs,
   TreeExpansionPrefs,
+  UiFontCategoryPrefs,
+  UiFontPrefs,
 } from '../shared/types';
-import { PROJECT_CARD_TITLE_FONTS } from '../shared/types';
+import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -405,6 +407,29 @@ const treeExpansionSchema = z
   } satisfies Record<keyof TreeExpansionPrefs, z.ZodTypeAny>)
   .strict();
 
+// One category's typography: family + weight + size, each optional and drawn
+// from its own enum. The `satisfies` guard makes a missing field a tsc error.
+const uiFontCategorySchema = z
+  .object({
+    family: z.enum(UI_FONTS).optional(),
+    weight: z.enum(UI_FONT_WEIGHTS).optional(),
+    size: z.enum(UI_FONT_SIZES).optional(),
+  } satisfies Record<keyof UiFontCategoryPrefs, z.ZodTypeAny>)
+  .strict();
+
+// Same exhaustiveness guard as cardMinWidthSchema above: adding a category to
+// UiFontPrefs without listing it here is a tsc error, not a silent
+// `Unrecognized key` at save time.
+const uiFontsSchema = z
+  .object({
+    cardTitle: uiFontCategorySchema.optional(),
+    heading: uiFontCategorySchema.optional(),
+    body: uiFontCategorySchema.optional(),
+    code: uiFontCategorySchema.optional(),
+    terminal: uiFontCategorySchema.optional(),
+  } satisfies Record<keyof UiFontPrefs, z.ZodTypeAny>)
+  .strict();
+
 /**
  * Live terminal-tab summarization ("Dashboard"). Opt-in: a periodic main-process
  * loop summarizes the active terminal tabs by POSTing directly to an
@@ -550,9 +575,9 @@ const globalOnlyFields = {
    *  drives commits, not the tree. See {@link autoSyncSettings}. */
   autoSync: autoSyncSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
-  /** Font-family for project-card titles (Settings → Appearance). `default`
-   *  keeps the theme's editorial display face. See {@link ProjectCardTitleFont}. */
-  projectCardTitleFont: z.enum(PROJECT_CARD_TITLE_FONTS).optional(),
+  /** Per-category UI font choices (Settings → Appearance). Any category left
+   *  `default` keeps the theme's face for that surface. See {@link UiFontPrefs}. */
+  uiFonts: uiFontsSchema.optional(),
   layout: layoutSchema.optional(),
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
   cardMinWidth: cardMinWidthSchema.optional(),

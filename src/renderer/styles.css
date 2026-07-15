@@ -175,12 +175,26 @@
    * the command-palette headline. The bold redesign (2026-07) reintroduces a
    * serif display split: the sans stays for dense UI, the serif does the
    * crafted-identity work. Georgia/Times are the local-fallback serifs. */
-  --font-ui:
+  /* Brand base stacks — the @font-face-backed families. Never overridden; the
+   * category-aware role tokens below resolve to these by default, and the
+   * per-category Settings → Appearance choices (use-ui-fonts) map onto them. */
+  --font-sans-base:
     'Figtree Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'Helvetica Neue', 'Liberation Sans', system-ui, sans-serif;
-  --font-display: 'Cormorant', Georgia, 'Times New Roman', serif;
-  --font-mono:
+  --font-serif-base: 'Cormorant', Georgia, 'Times New Roman', serif;
+  --font-mono-base:
     ui-monospace, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+  --font-system-base: system-ui, -apple-system, 'Segoe UI', 'Liberation Sans', sans-serif;
+
+  /* Role tokens every surface references. Each honours its font category (set
+   * live by use-ui-fonts) and falls back to the brand base, so an unset
+   * preference renders exactly as before. `body` drives all UI text, `heading`
+   * pane/modal headings, `code` IDs/code/mono. Card titles and terminal chrome
+   * split off these tokens by reading their own `--ui-font-*` vars directly, so
+   * they stay independent of the body/heading/code choices. */
+  --font-ui: var(--ui-font-body, var(--font-sans-base));
+  --font-display: var(--ui-font-heading, var(--font-serif-base));
+  --font-mono: var(--ui-font-code, var(--font-mono-base));
 
   /* Type scale — the single source of truth for every font-size across the
    * whole renderer, not just the four card surfaces. One unit (px) and one

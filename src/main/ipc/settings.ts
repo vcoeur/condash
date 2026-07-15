@@ -5,7 +5,7 @@ import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../s
 import type {
   CardMinWidthPrefs,
   LayoutState,
-  ProjectCardTitleFont,
+  ResolvedUiFonts,
   Settings,
   SkillScope,
   Theme,
@@ -14,8 +14,9 @@ import type {
 import {
   CARD_MIN_WIDTH_KEYS,
   DEFAULT_CARD_MIN_WIDTH,
-  DEFAULT_PROJECT_CARD_TITLE_FONT,
+  DEFAULT_UI_FONT_CATEGORY,
   SKILL_SCOPES,
+  UI_FONT_CATEGORIES,
 } from '../../shared/types';
 import {
   requireBoolean,
@@ -89,19 +90,26 @@ export async function resolveTheme(settings: Settings): Promise<Theme> {
   return settings.theme;
 }
 
-/** Effective project-card title font. Global-only, but read through the same
+/** Effective per-category UI fonts. Global-only, but read through the same
  *  effective-config surface as `resolveTheme` so the bootstrap bundle takes
- *  one settings read. Falls back to the built-in editorial default when unset.
- *  Mirrors the theme resolver; there is no narrow `get*` handler — the value is
- *  read only at boot and re-applied from the Settings modal's live callback. */
-export async function resolveProjectCardTitleFont(
-  settings: Settings,
-): Promise<ProjectCardTitleFont> {
+ *  one settings read. Every category — and every field within it (family,
+ *  weight, size) — is backfilled to its built-in `default`, so the renderer
+ *  always receives a fully-resolved record. Mirrors the theme resolver; there
+ *  is no narrow `get*` handler — the value is read only at boot and re-applied
+ *  from the Settings modal's live callback. */
+export async function resolveUiFonts(settings: Settings): Promise<ResolvedUiFonts> {
+  let prefs = settings.uiFonts;
   if (settings.lastConceptionPath) {
     const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
-    if (effective.projectCardTitleFont) return effective.projectCardTitleFont;
+    if (effective.uiFonts) prefs = effective.uiFonts;
   }
-  return settings.projectCardTitleFont ?? DEFAULT_PROJECT_CARD_TITLE_FONT;
+  const raw = prefs ?? {};
+  return Object.fromEntries(
+    UI_FONT_CATEGORIES.map((category) => [
+      category,
+      { ...DEFAULT_UI_FONT_CATEGORY, ...(raw[category] ?? {}) },
+    ]),
+  ) as ResolvedUiFonts;
 }
 
 /** Persisted composite layout, or the built-in default. Mirrors `getLayout`. */

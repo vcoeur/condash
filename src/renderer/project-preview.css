@@ -3,17 +3,26 @@
   max-height: min(85vh, 900px);
 }
 
-/* Project preview modal title matches the project card title: the same
- * Cormorant display face and bold weight so the two titles read as one family. */
+/* Project preview modal title matches the project card title: the same face
+ * and bold weight so the two titles read as one family. It therefore follows
+ * the Card & list titles category (`--ui-font-card-title`), not the heading
+ * category — unset, the editorial serif base applies. */
 .project-preview .modal-title {
-  font-family: var(--font-display), Georgia, 'Times New Roman', serif;
+  font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1.25;
   color: var(--text);
   -webkit-text-stroke: 0.45px currentColor;
   text-shadow: 0 0 0.6px currentColor;
   -webkit-font-smoothing: auto;
+}
+
+/* Drop the thin-serif faux-weight when a non-default card-title face is active,
+ * matching `.row .title` on the Projects pane. */
+:root[data-ui-font-card-title] .project-preview .modal-title {
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 /* Two-column body — sidebar (apps, summary, files) on the left,

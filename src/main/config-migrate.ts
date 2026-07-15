@@ -24,6 +24,10 @@
  *   favour of the DEFAULT_RESOURCES_PATH / DEFAULT_SKILLS_PATH constants; and
  *   `skillsActiveTab` — a defunct UI-state key. Stripped so older files keep
  *   saving (otherwise every write fails with `Unrecognized key`).
+ * - `projectCardTitleFont` (top-level) — the single-scalar font pref folded
+ *   into the `uiFonts.cardTitle` category when the picker generalised to
+ *   per-category fonts. Migrated into `uiFonts` (unless already present) then
+ *   dropped, so an older global `settings.json` keeps saving.
  * - `terminal.launchers` / `terminal.launcher_command` — legacy tab-strip
  *   launcher keys. Removed silently so existing `settings.json` / `condash.json`
  *   files keep saving; the next write drops them from disk. (Their successor is
@@ -49,6 +53,19 @@ export function migrateRawSettings(parsed: unknown): unknown {
   // the user can't persist any change. The next write drops them from disk.
   for (const defunctKey of ['resources_path', 'skills_path', 'skillsActiveTab']) {
     if (defunctKey in root) delete root[defunctKey];
+  }
+  // v4.86.0 → v4.87.0: the single `projectCardTitleFont` scalar became the
+  // per-category `uiFonts` record. Fold a saved value into
+  // `uiFonts.cardTitle.family` (the category that subsumes project-card titles)
+  // unless `uiFonts` already exists, then drop the legacy key so the strict
+  // schema accepts the file — otherwise every Settings save throws
+  // `Unrecognized key`. The next write removes the stale key from disk.
+  if ('projectCardTitleFont' in root) {
+    const legacy = root.projectCardTitleFont;
+    if (!('uiFonts' in root) && typeof legacy === 'string') {
+      root.uiFonts = { cardTitle: { family: legacy } };
+    }
+    delete root.projectCardTitleFont;
   }
   // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
   if (root.layout && typeof root.layout === 'object') {

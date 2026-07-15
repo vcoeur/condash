@@ -136,3 +136,53 @@ test('settings modal: conception + global fields round-trip to their own files',
     await booted.cleanup();
   }
 });
+
+test('settings modal: a UI-font category applies live and round-trips to settings.json', async () => {
+  test.setTimeout(60_000);
+  const booted = await bootApp({ extraConfig: {} });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const modal = await openSettings(booted);
+
+    // Pick a Monospace family and Bold weight for the Card & list titles
+    // category from that category's family/weight <select>s.
+    const cardTitleField = modal.locator('#settings-section-appearance .settings-field', {
+      hasText: 'Card & list titles',
+    });
+    await cardTitleField.scrollIntoViewIfNeeded();
+    await cardTitleField
+      .locator('[aria-label="Card & list titles font family"]')
+      .selectOption('mono');
+    await cardTitleField.locator('[aria-label="Card & list titles weight"]').selectOption('bold');
+
+    await modal.locator('button.settings-save').click();
+
+    // Round-trips to the per-machine file under uiFonts.cardTitle as a
+    // {family, weight} object.
+    await expect
+      .poll(async () => (await readJson(globalPath)).uiFonts)
+      .toEqual({ cardTitle: { family: 'mono', weight: 'bold' } });
+
+    // Applied live: the hook sets the family + weight CSS variables and data
+    // attributes on :root (no reload), so card titles restyle immediately. The
+    // family variable resolves to the monospace brand base; weight is 700.
+    await expect(booted.window.locator(':root')).toHaveAttribute('data-ui-font-card-title', 'mono');
+    await expect(booted.window.locator(':root')).toHaveAttribute(
+      'data-ui-weight-card-title',
+      'bold',
+    );
+    const [cardTitleFace, monoBase, cardTitleWeight] = await booted.window.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      return [
+        cs.getPropertyValue('--ui-font-card-title').trim(),
+        cs.getPropertyValue('--font-mono-base').trim(),
+        cs.getPropertyValue('--ui-weight-card-title').trim(),
+      ];
+    });
+    expect(cardTitleFace).toBe(monoBase);
+    expect(cardTitleFace).toContain('monospace');
+    expect(cardTitleWeight).toBe('700');
+  } finally {
+    await booted.cleanup();
+  }
+});

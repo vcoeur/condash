@@ -26,12 +26,44 @@ export type HelpDocName =
 
 export type Theme = 'light' | 'dark' | 'system';
 
-/** Font choices for project-card titles (Settings → Appearance). Each value
- *  maps to a font-family stack in the renderer's
- *  `use-project-card-title-font` hook. `default` leaves the theme's editorial
- *  display face (`--font-display`) in place, so an unset preference changes
- *  nothing. */
-export const PROJECT_CARD_TITLE_FONTS = ['default', 'sans', 'mono', 'system'] as const;
-export type ProjectCardTitleFont = (typeof PROJECT_CARD_TITLE_FONTS)[number];
-/** Built-in default: the theme's editorial display face. */
-export const DEFAULT_PROJECT_CARD_TITLE_FONT: ProjectCardTitleFont = 'default';
+/** Font-family choices offered per UI font category (Settings → Appearance).
+ *  Each value maps to a font stack in the renderer's `use-ui-fonts` hook.
+ *  `default` sets no CSS variable, so the category's elements keep the theme's
+ *  face for that surface and an unset preference changes nothing. The named
+ *  families beyond the three theme faces are cross-platform system fonts (no
+ *  bundling), so the option renders in its own face in the picker. */
+export const UI_FONTS = [
+  'default',
+  'sans',
+  'serif',
+  'mono',
+  'system',
+  'georgia',
+  'times',
+  'helvetica',
+  'verdana',
+  'trebuchet',
+  'palatino',
+  'courier',
+] as const;
+export type UiFont = (typeof UI_FONTS)[number];
+
+/** Font-weight choices offered per category. `default` sets no CSS variable, so
+ *  each element keeps the weight its own stylesheet assigns; the rest map to a
+ *  numeric `font-weight` in `use-ui-fonts`. */
+export const UI_FONT_WEIGHTS = [
+  'default',
+  'light',
+  'regular',
+  'medium',
+  'semibold',
+  'bold',
+] as const;
+export type UiFontWeight = (typeof UI_FONT_WEIGHTS)[number];
+
+/** Relative font-size choices offered per category. `default` sets no CSS
+ *  variable (the element keeps its own size); the rest map to a scale factor
+ *  the stylesheet multiplies the element's base size by (`calc(base * scale)`)
+ *  in `use-ui-fonts`. */
+export const UI_FONT_SIZES = ['default', 'xs', 'sm', 'lg', 'xl'] as const;
+export type UiFontSize = (typeof UI_FONT_SIZES)[number];

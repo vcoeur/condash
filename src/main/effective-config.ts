@@ -7,11 +7,11 @@ import type {
   CardMinWidthPrefs,
   DashboardSettings,
   LayoutState,
-  ProjectCardTitleFont,
   TaskConfigEntry,
   TerminalPrefs,
   Theme,
   TreeExpansionPrefs,
+  UiFontPrefs,
 } from '../shared/types';
 import { conceptionConfigCandidates, condashSettingsPath, isTombstone } from './condash-dir';
 import { quarantineCorruptSettings, settingsPath } from './settings';
@@ -47,7 +47,7 @@ export interface EffectiveConfig extends ConfigShape {
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;
   theme?: Theme;
-  projectCardTitleFont?: ProjectCardTitleFont;
+  uiFonts?: UiFontPrefs;
   cardMinWidth?: CardMinWidthPrefs;
   layout?: LayoutState;
   treeExpansion?: TreeExpansionPrefs;

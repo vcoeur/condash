@@ -233,6 +233,7 @@
 }
 
 .code-run-head .repo {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-weight: 600;
   font-size: var(--text-sm);
   letter-spacing: -0.005em;
@@ -369,7 +370,7 @@
 }
 
 .repo-dirname {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--font-mono);
   font-weight: 500;
   font-size: var(--text-2xs);
   color: var(--text);

@@ -646,6 +646,7 @@
 
 .settings-recents-path {
   flex: 1 1 auto;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   word-break: break-all;
 }
@@ -840,7 +841,7 @@
   color: var(--preview-fg);
   border-radius: 6px;
   border: 1px solid var(--border);
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-xs);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -915,6 +916,85 @@
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: var(--text-3xs);
+}
+
+/* ---- UI-font live preview ------------------------------------------- */
+
+/* A representative mini-UI that re-renders in the draft faces as each category
+ * picker changes, so the whole set of font choices previews before Save. Each
+ * line's font-family is set inline per category (see fields/ui-fonts.tsx). */
+.settings-fonts-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 16px;
+  padding: 14px 16px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.settings-fonts-preview-heading {
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+
+.settings-fonts-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.settings-fonts-preview-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.settings-fonts-preview-body {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings-fonts-preview-code {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.settings-fonts-preview-terminal {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+/* Per-category font controls: family + weight + size dropdowns on one row. */
+.settings-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-font-select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+/* The family select grows (names are longer) and each option renders in its
+ * own face; the weight/size selects stay compact. */
+.settings-font-family {
+  flex: 1 1 200px;
+  min-width: 170px;
 }
 
 /* ---- Path chip ([abs] / [rel]) -------------------------------------- */
@@ -1058,6 +1138,7 @@
 }
 
 .settings-agent-card-title {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   display: inline-flex;
   align-items: center;
   gap: 6px;
