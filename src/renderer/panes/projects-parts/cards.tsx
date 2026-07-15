@@ -3,6 +3,7 @@ import type { Accessor } from 'solid-js';
 import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
+import { projectColorClass } from '@shared/project-color';
 import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
@@ -409,9 +410,14 @@ export function Card(props: {
       class="row"
       classList={{
         draggable: isDraggable(),
-        // Relationship border decoration: a parent (has spin-off children)
-        // gets a solid full status border, a subproject (has a `parent:`) a
-        // dashed one — see .row.is-parent / .row.is-subproject in the CSS.
+        // Per-project family colour class (proj-family-<n>): sets --row-stripe
+        // to a stable hue for the project's family, so a card, its parent, and
+        // its sibling subprojects all share one colour. See project-color.ts.
+        [projectColorClass(props.item)]: true,
+        // Relationship decoration: a parent (has spin-off children) gets a
+        // solid frame with a thick left edge, a subproject (has a `parent:`) a
+        // dashed frame; a standalone card keeps the solid default frame — see
+        // .row.is-parent / .row.is-subproject in the CSS.
         'is-parent': children().length > 0,
         'is-subproject': !!props.item.parent,
       }}
