@@ -18,6 +18,13 @@ const [overStatus, setOverStatus] = createSignal<string | null>(null);
 // press stays a click so cards still open on a plain click.
 const DRAG_THRESHOLD_PX = 4;
 
+/** One spin-off child rendered as a row in a parent card's subprojects banner. */
+export interface ChildRow {
+  slug: string;
+  title: string;
+  status: string;
+}
+
 /** Parent/subproject lookups a Card needs but that depend on the whole project
  *  list. Provided once by ProjectsView so cards read them without threading
  *  props through GroupBlock/SubGroup. */
@@ -25,9 +32,18 @@ export interface ParentInfo {
   /** Title for a child's "Part of" banner, or undefined when the parent slug
    *  doesn't resolve (the card then falls back to the raw slug). */
   parentTitleOf: (parentSlug: string) => string | undefined;
-  /** How many items declare this slug as their `parent` — the count-chip value. */
-  childCountOf: (slug: string) => number;
+  /** Status of a child's parent, for the status pill on the "Part of" banner;
+   *  undefined when the parent slug doesn't resolve. */
+  parentStatusOf: (parentSlug: string) => string | undefined;
+  /** Every item declaring this slug as its `parent`, status-ordered — the rows
+   *  of the parent card's subprojects banner. Empty for a leaf item. */
+  childrenOf: (slug: string) => ChildRow[];
 }
+
+/** Whether `status` is one of the canonical KNOWN_STATUSES (drives the
+ *  status-`<x>` colour class shared by the parent banner and child rows). */
+const isKnownStatus = (status: string): boolean =>
+  (KNOWN_STATUSES as readonly string[]).includes(status);
 
 /** Accessor-typed so cards re-derive their banner/chip when the list changes. */
 export const ParentInfoContext = createContext<Accessor<ParentInfo>>();
@@ -377,7 +393,16 @@ export function Card(props: {
     if (!slug) return null;
     return parentInfo?.().parentTitleOf(slug) ?? slug;
   };
-  const childCount = (): number => parentInfo?.().childCountOf(props.item.slug) ?? 0;
+  // Parent's status, for the pill on the "Part of" banner. Undefined when the
+  // parent slug doesn't resolve, in which case the pill is omitted.
+  const parentStatus = (): string | undefined => {
+    const slug = props.item.parent;
+    if (!slug) return undefined;
+    return parentInfo?.().parentStatusOf(slug);
+  };
+  // Spin-off children of this card's item, status-ordered — one row each in the
+  // bottom subprojects banner. Empty for a leaf card.
+  const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
 
   return (
     <article
@@ -394,11 +419,21 @@ export function Card(props: {
       onKeyDown={handleKeyDown}
     >
       <Show when={parentLabel()}>
-        <div class="parent-banner" title={`Part of: ${parentLabel()}`}>
+        <div
+          class="parent-banner"
+          classList={{
+            warn: !!parentStatus() && !isKnownStatus(parentStatus()!),
+            [`status-${parentStatus()}`]: !!parentStatus() && isKnownStatus(parentStatus()!),
+          }}
+          title={`Part of: ${parentLabel()}${parentStatus() ? ` (${parentStatus()})` : ''}`}
+        >
           <span class="parent-banner-icon" aria-hidden="true">
             ↑
           </span>
           <span class="parent-banner-name">{parentLabel()}</span>
+          <Show when={parentStatus()}>
+            <span class="rel-status-pill">{parentStatus()}</span>
+          </Show>
         </div>
       </Show>
       <div class="row-head" onClick={handleHeaderClick}>
@@ -448,14 +483,6 @@ export function Card(props: {
               {props.item.branch}
             </span>
           </Show>
-          <Show when={childCount() > 0}>
-            <span
-              class="meta-icon subprojects"
-              title={`${childCount()} spin-off subproject${childCount() === 1 ? '' : 's'}`}
-            >
-              ↓ {childCount()}
-            </span>
-          </Show>
           <For each={prsForProject(props.item)}>
             {(pr) => (
               <button
@@ -488,6 +515,31 @@ export function Card(props: {
           </span>
         </div>
       </div>
+      {/* Subprojects banner at the bottom of a parent card: one display-only
+          row per spin-off child (↓ icon + title + status pill), mirroring the
+          "Part of" banner at the top of each child. */}
+      <Show when={children().length > 0}>
+        <div class="children-banner">
+          <For each={children()}>
+            {(child) => (
+              <div
+                class="child-row"
+                classList={{
+                  warn: !isKnownStatus(child.status),
+                  [`status-${child.status}`]: isKnownStatus(child.status),
+                }}
+                title={`Subproject: ${child.title} (${child.status})`}
+              >
+                <span class="child-row-icon" aria-hidden="true">
+                  ↓
+                </span>
+                <span class="child-row-name">{child.title}</span>
+                <span class="rel-status-pill">{child.status}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
     </article>
   );
 }
