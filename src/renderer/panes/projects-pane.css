@@ -402,6 +402,39 @@ body[data-dragging='project'] .row {
   border-color: var(--border-strong);
 }
 
+/* Relationship border decoration (2026-07). A card's border completes into a
+ * full status-coloured frame when it takes part in the parent/subproject
+ * relationship: a parent (has spin-off children) gets a bold 2 px SOLID status
+ * border; a subproject (has a `parent:`) a 2 px DASHED status border — solid
+ * vs dashed reads as the parent/child pair. Both drop the left status rail
+ * (.row::before), since the frame now carries the status colour all the way
+ * around. --row-stripe is the status colour (neutral --border-strong fallback
+ * for an unknown status). A mid-tree node that is both parent and subproject
+ * reads as a parent: the .row.is-parent rule follows .row.is-subproject at
+ * equal specificity, so its solid border-style wins. */
+.row.is-parent,
+.row.is-subproject {
+  border-width: 2px;
+  border-color: var(--row-stripe);
+}
+.row.is-subproject {
+  border-style: dashed;
+}
+.row.is-parent {
+  border-style: solid;
+}
+.row.is-parent::before,
+.row.is-subproject::before {
+  content: none;
+}
+/* Keep the status frame — not the neutral hover/focus border — on interaction. */
+.row.is-parent:hover,
+.row.is-subproject:hover,
+.row.is-parent:focus-visible,
+.row.is-subproject:focus-visible {
+  border-color: var(--row-stripe);
+}
+
 .projects-empty {
   padding: 14px 16px;
   color: var(--text-muted);
