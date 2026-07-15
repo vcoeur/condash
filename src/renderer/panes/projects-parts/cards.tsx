@@ -407,7 +407,14 @@ export function Card(props: {
   return (
     <article
       class="row"
-      classList={{ draggable: isDraggable() }}
+      classList={{
+        draggable: isDraggable(),
+        // Relationship border decoration: a parent (has spin-off children)
+        // gets a solid full status border, a subproject (has a `parent:`) a
+        // dashed one — see .row.is-parent / .row.is-subproject in the CSS.
+        'is-parent': children().length > 0,
+        'is-subproject': !!props.item.parent,
+      }}
       title={props.item.path}
       aria-label={`${props.item.title}, ${props.item.status}`}
       data-status-card={props.item.status}
