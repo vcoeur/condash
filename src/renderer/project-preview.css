@@ -10,7 +10,7 @@
 .project-preview .modal-title {
   font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1.25;
   color: var(--text);
   -webkit-text-stroke: 0.45px currentColor;

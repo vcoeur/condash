@@ -646,6 +646,7 @@
 
 .settings-recents-path {
   flex: 1 1 auto;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   word-break: break-all;
 }
@@ -840,7 +841,7 @@
   color: var(--preview-fg);
   border-radius: 6px;
   border: 1px solid var(--border);
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-xs);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1137,6 +1138,7 @@
 }
 
 .settings-agent-card-title {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   display: inline-flex;
   align-items: center;
   gap: 6px;

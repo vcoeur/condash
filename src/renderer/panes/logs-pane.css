@@ -239,7 +239,7 @@
   border-radius: 4px;
   cursor: pointer;
   text-align: left;
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
 }
 
 .logs-session-card:hover {

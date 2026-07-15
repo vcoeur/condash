@@ -43,6 +43,7 @@
 
 .prompt-slug-preview code {
   font: inherit;
+  font-family: var(--font-mono);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;

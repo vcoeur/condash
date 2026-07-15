@@ -178,6 +178,7 @@
 
 .skills-card-title {
   flex: 1;
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
@@ -206,6 +207,7 @@
 }
 
 .skills-card-relpath {
+  font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--text-muted);
   margin: 0;

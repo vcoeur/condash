@@ -448,6 +448,7 @@
 }
 
 .tasks-run-head .slug {
+  font-family: var(--font-mono);
   font-weight: 600;
   color: var(--text);
   overflow: hidden;
@@ -479,7 +480,7 @@
 }
 
 .tasks-run-log {
-  font-family: var(--font-mono);
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
   font-size: var(--text-xs);
   white-space: pre-wrap;
   word-break: break-word;

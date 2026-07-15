@@ -30,6 +30,7 @@
  * colour comes from the pill palette (overrides .repo-name's
  * `color: var(--text)`). */
 .repo-name.app-pill {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: -0.005em;

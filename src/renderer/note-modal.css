@@ -175,6 +175,7 @@
 }
 
 .modal-banner code {
+  font-family: var(--font-mono);
   background: color-mix(in srgb, currentColor 10%, transparent);
   padding: 0 4px;
   border-radius: 3px;

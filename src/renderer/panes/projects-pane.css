@@ -449,7 +449,7 @@ body[data-dragging='project'] .row {
    * unset, the editorial serif base applies, so the default is unchanged. */
   font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1.25;
   color: var(--text);
   word-break: break-word;

@@ -18,7 +18,7 @@
 }
 :root[data-ui-size-card-title] .row .title,
 :root[data-ui-size-card-title] .project-preview .modal-title {
-  font-size: calc(18px * var(--ui-size-card-title));
+  font-size: calc(var(--text-xl) * var(--ui-size-card-title));
 }
 :root[data-ui-size-card-title] .knowledge-card-title {
   font-size: calc(var(--text-lg) * var(--ui-size-card-title));

@@ -217,6 +217,7 @@
 
 .tree-special-title {
   flex: 1;
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-weight: 600;
   font-size: var(--text-xs);
   color: var(--text);
