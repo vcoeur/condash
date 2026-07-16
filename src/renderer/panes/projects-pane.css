@@ -524,7 +524,10 @@ body[data-dragging='project'] .row {
   font-weight: 700;
   font-size: var(--text-xl);
   line-height: 1.25;
-  color: var(--text);
+  /* A hint of the card's family colour (--row-stripe = the frame hue) mixed
+   * into the near-white title, so the title reads as belonging to its family.
+   * currentColor carries the same tint into the faux-weight stroke/shadow. */
+  color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
   word-break: break-word;
   -webkit-text-stroke: 0.45px currentColor;
   text-shadow: 0 0 0.6px currentColor;
