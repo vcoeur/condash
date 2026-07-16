@@ -609,8 +609,11 @@
  * the most prominent signal on the row. */
 .branch-row[data-primary='true'] {
   background: color-mix(in srgb, var(--text) 4%, var(--bg-elevated));
-  padding-left: 4px;
-  padding-right: 4px;
+  /* The -4px margins bleed the tint past the row edges; the padding grows by
+   * the same 4px so the content (dot, name, buttons) stays aligned with the
+   * non-primary rows instead of shifting left/right by 4px. */
+  padding-left: 8px;
+  padding-right: 8px;
   margin-left: -4px;
   margin-right: -4px;
 }
