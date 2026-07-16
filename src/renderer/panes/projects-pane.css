@@ -63,14 +63,16 @@
   margin-top: 4px;
 }
 
-/* Status-coloured left rail running the full height of each populated
- * section — the status signal moved off the cards (which now colour by
- * project family) and onto this vertical line to the left of the cards.
- * Scoped to top-level sections so the nested Done subgroups keep their own
- * subtle neutral rail. */
+/* Status-coloured section wash — the status signal moved off the cards
+ * (which now colour by project family) and onto a light full-section
+ * tint of the status colour, replacing the former 3px left rail. Scoped to
+ * top-level sections so the nested Done subgroups keep their own subtle
+ * neutral rail. Symmetric horizontal padding insets the cards from the
+ * rounded tint panel. */
 .projects-stack > .group-block:not([data-empty='true']) {
-  border-left: 3px solid var(--col-status, var(--border-strong));
+  background: color-mix(in srgb, var(--col-status, var(--border-strong)) 16%, transparent);
   padding-left: 14px;
+  padding-right: 14px;
 }
 
 .group-block:first-child {
@@ -107,7 +109,10 @@
   visibility: hidden;
 }
 
-.group-block.drag-over {
+/* Scoped to top-level sections (the only drop targets) so this stronger
+ * drop-target tint keeps precedence over the resting section wash above,
+ * which shares the same (0,3,0) specificity. */
+.projects-stack > .group-block.drag-over {
   background: color-mix(in srgb, var(--col-status, var(--accent)) 18%, transparent);
   outline: 2px solid var(--col-status, var(--accent));
   outline-offset: 2px;
@@ -448,15 +453,22 @@ body[data-dragging='project'] .row {
  * full family-coloured frame (see .row above, --row-stripe = the project-family
  * colour); this only varies that frame to encode the parent/subproject edge:
  *   • standalone project     → solid frame (the .row default)
- *   • subproject (`parent:`)  → dashed frame, reading as the child of a pair
+ *   • subproject (`parent:`)  → dashed top/right/bottom with the same thick
+ *     solid left edge as its parent, tying the child to the family root while
+ *     the dashed sides keep it reading as the child of a pair
  *   • parent (has children)   → solid frame with a thick left edge, marking it
  *     as the family root the subprojects belong to
  * A mid-tree node that is both parent and subproject reads as a parent: the
  * .row.is-parent rule follows .row.is-subproject at equal specificity, so its
- * solid border-style + thick left edge win. Hover/focus keep the family frame
- * via the base .row:hover / :focus-visible rules (both use --row-stripe). */
+ * solid border-style wins for all four sides (both already share the thick left
+ * edge). Hover/focus keep the family frame via the base .row:hover /
+ * :focus-visible rules (both use --row-stripe). */
 .row.is-subproject {
   border-style: dashed;
+  /* Left edge matches the parent's thick solid spine — declared after the
+   * border-style shorthand so it overrides the dashed left. */
+  border-left-style: solid;
+  border-left-width: 6px;
 }
 .row.is-parent {
   border-style: solid;
@@ -512,7 +524,10 @@ body[data-dragging='project'] .row {
   font-weight: 700;
   font-size: var(--text-xl);
   line-height: 1.25;
-  color: var(--text);
+  /* A hint of the card's family colour (--row-stripe = the frame hue) mixed
+   * into the near-white title, so the title reads as belonging to its family.
+   * currentColor carries the same tint into the faux-weight stroke/shadow. */
+  color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
   word-break: break-word;
   -webkit-text-stroke: 0.45px currentColor;
   text-shadow: 0 0 0.6px currentColor;
