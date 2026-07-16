@@ -67,18 +67,18 @@
   --accent-soft: #f6e4ef;
   --warn: #b03020;
 
-  /* Status palette — saturated red→green temperature scale so the six
-   * statuses are still distinguishable at 8 px. The previous mauve-to-
+  /* Status palette — a saturated green→blue→gray temperature scale so the
+   * six statuses are still distinguishable at 8 px. The previous mauve-to-
    * gray gradient read as one hue at small sizes. The arc:
-   *   now      = saturated red (urgent — work this now)
-   *   review   = orange (attention needed, next-up)
+   *   now      = green (urgent — work this now)
+   *   review   = gold-yellow (attention needed, next-up)
    *   soon     = amber (queued for the near term)
    *   later    = blue (cool, planned but parked)
    *   backlog  = blue-gray (cold storage)
    *   done     = neutral gray (archived)
    * Light-mode values; dark-mode mirrors below. */
-  --col-now: #c0392b;
-  --col-review: #c96e1c;
+  --col-now: #2e9e4a;
+  --col-review: #ba9921;
   --col-soon: #c09010;
   --col-later: #3a78c2;
   --col-backlog: #5b7088;
@@ -86,11 +86,11 @@
   --col-unknown: #8e44ad;
 
   /* Code-pane semantic accents — separate from the status gradient so a
-   * "running" or "dirty" indicator never collides with a project status.
-   *   running = saturated green (live, "go") — separated from the new
-   *             red --col-now so a running repo doesn't read as urgent.
-   *   dirty   = warm orange — clearly warmer than the cool blue of
-   *             --col-later, distinct from --col-now's red. */
+   * "running" or "dirty" indicator reads on its own terms. running shares a
+   * hue with the new green --col-now but they never co-occur (Code pane vs
+   * Projects pane).
+   *   running = saturated green (live, "go").
+   *   dirty   = warm orange — clearly warmer than the cool blue --col-later. */
   --col-running: #2d8a4e;
   --col-dirty: #b87035;
 
@@ -249,7 +249,7 @@
   /* Warm gallery dark — the alicepeintures gold-on-warm-black palette (bold
    * redesign, 2026-07, LEAD theme). Replaces the old cold blue-black + blue
    * accent: the surface family is a warm brown-black, the accent is warm gold,
-   * borders are gold-tinted alpha. The status arc keeps its red→amber→blue→gray
+   * borders are gold-tinted alpha. The status arc keeps its green→yellow→blue→gray
    * temperature coding, desaturated a touch so it sits beside the gold without
    * clashing. The live/"running" signal adopts the gold accent (gold *is* the
    * life of the page) — see --dark-col-running below. */
@@ -268,8 +268,8 @@
   --dark-accent-soft: rgba(200, 168, 130, 0.14);
   --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --dark-shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
-  --dark-col-now: #e07a7a;
-  --dark-col-review: #e0a06a;
+  --dark-col-now: #6cc47e;
+  --dark-col-review: #e0c766;
   --dark-col-soon: #d8c47a;
   --dark-col-later: #7aa0d8;
   --dark-col-backlog: #8a96a4;
