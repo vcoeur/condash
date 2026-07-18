@@ -176,9 +176,9 @@ for (const theme of THEMES) {
   });
 }
 
-test('capture the Settings theme picker and its hover preview', async () => {
+test('capture the Settings theme picker and its selection preview', async () => {
   test.setTimeout(180_000);
-  // Boot on warm-gallery so the hover preview has something to change *to*.
+  // Boot on warm-gallery so the preview has something to change *to*.
   const b = await boot('dark');
   const { page } = b;
   try {
@@ -200,20 +200,21 @@ test('capture the Settings theme picker and its hover preview', async () => {
       .evaluate((el) => el.getBoundingClientRect().width);
     expect(swatchWidth).toBeGreaterThan(40);
 
-    // Hover the Console card: the whole modal (and the app behind it) should
+    // Select the Console card: the whole modal (and the app behind it) should
     // repaint in Console without anything being saved.
     const consoleCard = page.locator('.theme-card[data-theme-id="console"]');
-    await consoleCard.hover();
+    await consoleCard.click();
     await settle(page, 300);
     const previewed = await page.evaluate(() => document.documentElement.dataset.theme);
     expect(previewed).toBe('console');
     await shoot(page, 'theme-picker-preview-console');
 
-    // Moving away reverts to the saved theme — the preview leaves no state.
+    // The pointer is inert — only the selection previews. Moving away holds
+    // Console, and it is still unsaved until Save.
     await page.locator('.settings-field-label').first().hover();
     await settle(page, 300);
-    const reverted = await page.evaluate(() => document.documentElement.dataset.theme);
-    expect(reverted).toBe('dark');
+    const held = await page.evaluate(() => document.documentElement.dataset.theme);
+    expect(held).toBe('console');
   } finally {
     await shutdown(b);
   }
