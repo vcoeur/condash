@@ -51,7 +51,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
   leftView: 'projects',
   working: 'code',
   terminal: true,
-  projectsWidth: 320,
+  projectsSplit: 0.32,
 };
 
 const empty: Settings = {

@@ -10,8 +10,39 @@ const DEFAULT_LAYOUT: LayoutState = {
   leftView: 'projects',
   working: 'code',
   terminal: true,
-  projectsWidth: 320,
+  projectsSplit: 0.32,
 };
+
+/** Splitter thickness in px — mirrored in the grid template. */
+const SPLITTER_PX = 4;
+
+/** Neither pane may be squeezed below this. It is also what guarantees the
+ *  splitter stays on screen: capping the Projects column at
+ *  `100% - MIN_PANE_PX - SPLITTER_PX` keeps the handle at least that far from
+ *  the right edge, so a narrowed window can always be dragged back. */
+const MIN_PANE_PX = 200;
+
+/** Keep a stored fraction inside the schema's bounds — cheap insurance against
+ *  a hand-edited settings.json, and the same clamp the drag commit applies. */
+export function clampSplit(fraction: number): number {
+  if (!Number.isFinite(fraction)) return DEFAULT_LAYOUT.projectsSplit;
+  return Math.min(0.9, Math.max(0.1, fraction));
+}
+
+/**
+ * Grid template for the top band's split state.
+ *
+ * The Projects column is a **percentage** so the split holds its proportions
+ * across a window resize, wrapped in `clamp()` so neither pane collapses. When
+ * the band is too narrow to honour both minimums, CSS `clamp()` resolves to its
+ * minimum — Projects gets `MIN_PANE_PX` and the working surface takes what is
+ * left, which still leaves the splitter visible and grabbable.
+ */
+export function splitColumns(fraction: number): string {
+  const percent = (clampSplit(fraction) * 100).toFixed(4);
+  const cap = `calc(100% - ${MIN_PANE_PX + SPLITTER_PX}px)`;
+  return `clamp(${MIN_PANE_PX}px, ${percent}%, ${cap}) ${SPLITTER_PX}px 1fr`;
+}
 
 /**
  * Apply the modal auto-collapse mask to a persisted layout for display: while
@@ -126,7 +157,7 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   const topBandStyle = (): Record<string, string> => {
     const l = layout();
     if (l.projects && l.working !== null) {
-      return { 'grid-template-columns': `${l.projectsWidth}px 4px 1fr` };
+      return { 'grid-template-columns': splitColumns(l.projectsSplit) };
     }
     return { 'grid-template-columns': '1fr' };
   };
@@ -138,17 +169,21 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     if (event.button !== 0) return;
     event.preventDefault();
     const rect = band.getBoundingClientRect();
-    const min = 160;
     let pendingX: number | null = null;
     let rafId: number | null = null;
-    let lastWidth = layout().projectsWidth;
+    let lastWidth = clampSplit(layout().projectsSplit) * rect.width;
     const flush = (): void => {
       rafId = null;
       if (pendingX === null) return;
       const desired = pendingX - rect.left;
-      const clamped = Math.max(min, Math.min(rect.width - min - 4, desired));
+      const cap = rect.width - MIN_PANE_PX - SPLITTER_PX;
+      // `cap` can fall below MIN_PANE_PX on a very narrow window; Math.max wins
+      // that tie, matching how CSS clamp() resolves an inverted range.
+      const clamped = Math.max(MIN_PANE_PX, Math.min(cap, desired));
       lastWidth = Math.round(clamped);
-      band.style.gridTemplateColumns = `${lastWidth}px 4px 1fr`;
+      // Straight to the DOM in px during the drag — the pointer is the source
+      // of truth here, and skipping the signal keeps INP bounded.
+      band.style.gridTemplateColumns = `${lastWidth}px ${SPLITTER_PX}px 1fr`;
     };
     const onMove = (e: MouseEvent): void => {
       pendingX = e.clientX;
@@ -160,7 +195,15 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
       if (rafId !== null) cancelAnimationFrame(rafId);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      updateLayout({ projectsWidth: lastWidth });
+      // Commit as a fraction of the band so the split survives a resize. Write
+      // the resolved template back explicitly too: the drag left a px value on
+      // the element, and relying on Solid to diff it away would leave the pane
+      // pinned if the new fraction happened to render the same string.
+      const split = clampSplit(
+        rect.width > 0 ? lastWidth / rect.width : DEFAULT_LAYOUT.projectsSplit,
+      );
+      band.style.gridTemplateColumns = splitColumns(split);
+      updateLayout({ projectsSplit: split });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);

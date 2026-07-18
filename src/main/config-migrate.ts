@@ -36,6 +36,10 @@
  *   label) → `agent` (names an agent `id`). The old value is unlikely to match
  *   an agent id, so the action degrades to focused-tab behaviour until the user
  *   re-points it — strictly better than failing the strict-mode parse.
+ * - `layout.projectsWidth` (CSS px) → `layout.projectsSplit` (fraction of the
+ *   band), converted against a nominal 1280px window. The pixel form pinned the
+ *   Projects pane to an absolute width, so narrowing the window pushed the
+ *   splitter off the right edge where it couldn't be dragged back.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
@@ -71,6 +75,18 @@ export function migrateRawSettings(parsed: unknown): unknown {
   if (root.layout && typeof root.layout === 'object') {
     const layout = root.layout as Record<string, unknown>;
     if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
+    // The splitter position went from CSS pixels to a fraction of the band, so
+    // it survives a window resize. The real band width isn't knowable here, so
+    // convert against a nominal 1280px window — approximate but deterministic,
+    // and the user re-drags once if it lands wrong. Clamped to the schema's
+    // bounds so an absurd stored width can't fail the strict parse.
+    if ('projectsWidth' in layout) {
+      const legacy = layout.projectsWidth;
+      if (!('projectsSplit' in layout) && typeof legacy === 'number' && legacy > 0) {
+        layout.projectsSplit = Math.min(0.9, Math.max(0.1, legacy / 1280));
+      }
+      delete layout.projectsWidth;
+    }
   }
   const terminal = root.terminal;
   if (!terminal || typeof terminal !== 'object') return parsed;

@@ -498,7 +498,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "leftView": "projects",
     "working": "code",
     "terminal": false,
-    "projectsWidth": 420
+    "projectsSplit": 0.42
   },
   "welcome": { "dismissed": true },
   "cardMinWidth": {
@@ -545,7 +545,7 @@ Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `
 | `leftView`      | `'projects' \| 'tasks' \| 'deliverables'`                            | Which pane fills the left band — the Projects list, the Tasks list, or the Deliverables aggregation of every project's `## Deliverables`. Selected by the left activity rail. Defaults to `'projects'`. A persisted `'outputs'` (v3.20.0) is migrated to `'deliverables'`. |
 | `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all.                                                                                                                                          |
 | `terminal`      | bool                                                                 | Show or hide the Terminal pane at the bottom.                                                                                                                                                                                                                                   |
-| `projectsWidth` | positive int                                                         | Pixel width of the Projects pane after the user drags the splitter.                                                                                                                                                                                                             |
+| `projectsSplit` | number 0.1 – 0.9                                                     | Splitter position as a fraction of the band width, set by dragging. A fraction (not a pixel width) so the split stays proportional when the window is resized; the renderer clamps it in px terms so neither pane collapses and the handle is always reachable. |
 
 The IPC verbs `getLayout` / `setLayout` read and write this block atomically — toggling a pane via the View menu (or its keyboard shortcut) round-trips through `setLayout` so the change survives a restart.
 

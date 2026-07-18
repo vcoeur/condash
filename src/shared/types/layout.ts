@@ -32,7 +32,12 @@ export interface LayoutState {
   /** Code / Knowledge / hidden — single right-slot tristate. */
   working: WorkingSurface;
   terminal: boolean;
-  /** Width of the Projects pane in CSS pixels when both Projects and the
-   * working surface are visible. The working surface fills the rest. */
-  projectsWidth: number;
+  /** Where the Projects ↔ working-surface splitter sits, as a **fraction of the
+   * band width** (0–1), when both panes are visible. A fraction rather than CSS
+   * pixels so the split holds its proportions when the window is resized — a
+   * stored pixel width silently pushed the splitter (and the whole working
+   * surface) off the right edge of a narrowed window, where it could not be
+   * dragged back. The renderer clamps it so neither pane can be squeezed below
+   * a usable minimum. */
+  projectsSplit: number;
 }

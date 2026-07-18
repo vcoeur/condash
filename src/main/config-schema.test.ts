@@ -392,6 +392,52 @@ describe('migrateRawSettings — projectCardTitleFont → uiFonts.cardTitle', ()
   });
 });
 
+describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit', () => {
+  // The splitter position moved from CSS pixels to a fraction of the band, so
+  // it stays proportional across a window resize. A pixel width pinned the
+  // Projects pane to an absolute size, pushing the splitter off the right edge
+  // of a narrowed window where it could not be dragged back.
+  it('converts a legacy pixel width against the nominal reference', () => {
+    const migrated = migrateRawSettings({
+      layout: { projects: true, working: 'code', terminal: true, projectsWidth: 640 },
+    }) as Record<string, unknown>;
+    const layout = migrated.layout as Record<string, unknown>;
+    expect('projectsWidth' in layout).toBe(false);
+    expect(layout.projectsSplit).toBe(0.5);
+  });
+
+  it('clamps an extreme stored width into the schema bounds', () => {
+    const wide = migrateRawSettings({ layout: { projectsWidth: 4000 } }) as Record<string, unknown>;
+    expect((wide.layout as Record<string, unknown>).projectsSplit).toBe(0.9);
+    const narrow = migrateRawSettings({ layout: { projectsWidth: 20 } }) as Record<string, unknown>;
+    expect((narrow.layout as Record<string, unknown>).projectsSplit).toBe(0.1);
+  });
+
+  it('keeps an existing fraction and only drops the legacy key', () => {
+    const migrated = migrateRawSettings({
+      layout: { projectsWidth: 640, projectsSplit: 0.25 },
+    }) as Record<string, unknown>;
+    const layout = migrated.layout as Record<string, unknown>;
+    expect('projectsWidth' in layout).toBe(false);
+    expect(layout.projectsSplit).toBe(0.25);
+  });
+
+  it('lets a global save round-trip a legacy layout body', () => {
+    const json = JSON.stringify({
+      layout: {
+        projects: true,
+        leftView: 'projects',
+        working: 'code',
+        terminal: true,
+        projectsWidth: 320,
+      },
+    });
+    const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
+    expect('projectsWidth' in parsed.layout).toBe(false);
+    expect(parsed.layout.projectsSplit).toBeCloseTo(0.25, 5);
+  });
+});
+
 describe('migrateRawSettings — dropped terminal.logging fields', () => {
   it('strips a stale `maxFileMb` left over from pre-v2.23.0 settings', () => {
     const migrated = migrateRawSettings({
@@ -608,7 +654,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       leftView: 'deliverables',
       working: 'logs',
       terminal: true,
-      projectsWidth: 320,
+      projectsSplit: 0.32,
     },
     // setWelcomeDismissed
     welcome: { dismissed: true },

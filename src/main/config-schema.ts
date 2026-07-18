@@ -376,7 +376,11 @@ export const layoutSchema = z
       z.null(),
     ]),
     terminal: z.boolean(),
-    projectsWidth: z.number().int().positive(),
+    /** Splitter position as a fraction of the band width. Bounded well inside
+     *  0–1 so a hand-edited file can't hide a pane entirely; the renderer
+     *  clamps again in px terms. Legacy `projectsWidth` is folded into this by
+     *  `migrateRawSettings`. */
+    projectsSplit: z.number().min(0.1).max(0.9),
   } satisfies Record<keyof LayoutState, z.ZodTypeAny>)
   .strict();
 
