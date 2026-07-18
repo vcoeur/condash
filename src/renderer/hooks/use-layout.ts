@@ -181,19 +181,28 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     const rect = band.getBoundingClientRect();
     let pendingX: number | null = null;
     let rafId: number | null = null;
-    let lastWidth = clampSplit(layout().projectsSplit) * rect.width;
+    let lastSplit = clampSplit(layout().projectsSplit);
     const flush = (): void => {
       rafId = null;
       if (pendingX === null) return;
       const desired = pendingX - rect.left;
+      // What gets *persisted* is the pointer's position as a fraction of the
+      // band, taken before the px floors are applied. Those floors are a
+      // rendering concern: on a band narrower than 2*MIN_PANE_PX + SPLITTER_PX
+      // the two minimums cannot both be honoured, so `cap` drops below
+      // MIN_PANE_PX and every pointer position pins to the same width.
+      // Deriving the committed fraction from that pinned width would store a
+      // split the user never expressed — dragging hard left to shrink Projects
+      // on a 350px band would persist 200/350 = 57%, and re-maximising would
+      // show a pane twice the size they asked for.
+      lastSplit = clampSplit(rect.width > 0 ? desired / rect.width : lastSplit);
       const cap = rect.width - MIN_PANE_PX - SPLITTER_PX;
       // `cap` can fall below MIN_PANE_PX on a very narrow window; Math.max wins
       // that tie, matching how CSS clamp() resolves an inverted range.
       const clamped = Math.max(MIN_PANE_PX, Math.min(cap, desired));
-      lastWidth = Math.round(clamped);
       // Straight to the DOM in px during the drag — the pointer is the source
       // of truth here, and skipping the signal keeps INP bounded.
-      band.style.gridTemplateColumns = `${lastWidth}px ${SPLITTER_PX}px 1fr`;
+      band.style.gridTemplateColumns = `${Math.round(clamped)}px ${SPLITTER_PX}px 1fr`;
     };
     const onMove = (e: MouseEvent): void => {
       pendingX = e.clientX;
@@ -205,15 +214,13 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
       if (rafId !== null) cancelAnimationFrame(rafId);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      // Commit as a fraction of the band so the split survives a resize. Write
-      // the resolved template back explicitly too: the drag left a px value on
-      // the element, and relying on Solid to diff it away would leave the pane
-      // pinned if the new fraction happened to render the same string.
-      const split = clampSplit(
-        rect.width > 0 ? lastWidth / rect.width : DEFAULT_LAYOUT.projectsSplit,
-      );
-      band.style.gridTemplateColumns = splitColumns(split);
-      updateLayout({ projectsSplit: split });
+      // Commit the fraction the pointer asked for so the split survives a
+      // resize. Write the resolved template back explicitly too: the drag left
+      // a px value on the element, and relying on Solid to diff it away would
+      // leave the pane pinned if the new fraction happened to render the same
+      // string.
+      band.style.gridTemplateColumns = splitColumns(lastSplit);
+      updateLayout({ projectsSplit: lastSplit });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);

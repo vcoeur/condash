@@ -74,6 +74,7 @@ When changing the dev port, update **every** file:
 A Playwright run launches the **real Electron app**, which on a Wayland desktop renders to the live compositor (or XWayland) and **steals focus mid-run**. The headless guarantee lives in `npm run test` → `scripts/run-playwright.mjs`, which wraps the whole run in a throwaway **Xvfb** display with `WAYLAND_DISPLAY` dropped and the **X11 Ozone backend pinned** (`--ozone-platform=headless` is not usable — Electron can't attach Playwright to it). A *direct* `npx playwright test` that skips the wrapper is **aborted by the globalSetup guard** (`tests/fixtures/headless-guard.ts`) before any window opens.
 
 - **Always run the suite via `npm run test` / `make test`** (or `npm run test -- <spec>` for one file). Never `npx playwright test` / `xvfb-run npx playwright test` directly — the first aborts, the second double-wraps.
+- **After touching `src/`, use `make test` (or `npm run build` first).** The fixture launches the *built* app (`main` → `dist-electron/`), and bare `npm run test` has no build step — so it silently exercises the previous build and reports green on code that is not the code you changed. Only `npm run test -- <spec>` on an already-current build is safe.
 - A visible run (to watch it) is the explicit opt-in `CONDASH_TEST_HEADED=1` (`make test-visible`).
 
 ## Configuration

@@ -586,9 +586,11 @@ distinction lives, and it is what every binary subsystem (xterm, CodeMirror,
 highlight.js, mermaid) reads.
 
 Pick a theme in **Settings → Appearance**, where each preset renders as a card
-with a swatch of its own colours; hovering a card previews it across the whole
-app, and the selection is applied on Save like every other setting. The
-status-bar moon/sun button cycles through the list. Note that the ids `light`
+with a swatch of its own colours. **Selecting a card previews it immediately**
+across the whole app — that is how you see a theme before committing to it — but
+nothing is written until you press Save, so closing the modal without saving
+puts the current theme back. The status-bar moon/sun button cycles through the
+list and persists straight away. Note that the ids `light`
 and `dark` predate the registry and are kept so existing `settings.json` files
 keep working — they are the *ids* of Paper and Warm Gallery, not a mode.
 
@@ -637,7 +639,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 **Personal · this machine** — writes `settings.json`:
 
 - **Recent conceptions** — manage the recents list backing **File → Open Recent**.
-- **Appearance** — theme (preset cards with swatches and hover preview); per-category UI fonts (with a live preview); per-pane card-grid min-widths.
+- **Appearance** — theme (preset cards with swatches; selecting one previews it live); per-category UI fonts (with a live preview); per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences (`terminal`, including `xterm`, `logging`, and the project-action templates).
 - **Launchers** — the `agents` list.
 - **Open with** — the three IDE/terminal launch slots.

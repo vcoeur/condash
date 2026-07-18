@@ -26,7 +26,7 @@ import { SectionShell } from './section-shell';
 interface AppearanceSectionProps {
   theme: () => Theme;
   /** Overlay a theme on the running UI without committing it, or `null` to drop
-   *  the overlay (the picker's hover preview). */
+   *  the overlay. The picker drives this from its staged selection. */
   previewTheme: (theme: Theme | null) => void;
   setTheme: (theme: Theme) => Promise<void>;
   uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;

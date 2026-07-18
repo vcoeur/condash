@@ -476,10 +476,10 @@
   border-radius: var(--radius-pill);
 }
 
-/* System has no palette of its own — show the two it chooses between. */
-.theme-card-swatch--system {
-  background: linear-gradient(115deg, #faf6f8 0%, #faf6f8 50%, #151412 50%, #151412 100%);
-}
+/* System has no palette of its own — show the two it chooses between. The
+   gradient is built inline from the registry (see the `Swatch` fallback in
+   settings-modal-parts/fields/theme.tsx), so re-colouring a preset or
+   repointing SYSTEM_PAIR updates this card with every other one. */
 
 .theme-card-label {
   font-size: var(--text-sm);

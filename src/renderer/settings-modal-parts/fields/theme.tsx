@@ -1,7 +1,7 @@
 import { For, Show, createEffect, onCleanup } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Theme } from '@shared/types';
-import { THEME_PRESETS, themePreset } from '@shared/themes';
+import { SYSTEM_PAIR, THEME_PRESETS, themePreset } from '@shared/themes';
 
 /** No `: ThemeCard[]` annotation and no `as Theme` cast — both would widen
  *  `value` back to `Theme` and make the exhaustiveness guard at the bottom of
@@ -85,7 +85,17 @@ export function ThemePicker(props: {
     event.preventDefault();
     const next = (index + step + CARDS.length) % CARDS.length;
     cardRefs[next]?.focus();
-    props.onChange(CARDS[next].value);
+    select(CARDS[next].value);
+  };
+
+  /** Stage a selection, but only when it actually differs. `<input
+   *  type="radio">` never fired `onChange` for the already-checked option; a
+   *  `<button>`'s `onClick` always fires, so without this guard re-picking the
+   *  active card (a click to confirm, or arrowing away and back) stages a draft,
+   *  lights the dirty pip, and makes Escape raise the "Discard and close" gate
+   *  for a change that does not exist. */
+  const select = (next: Theme): void => {
+    if (next !== props.current) props.onChange(next);
   };
 
   return (
@@ -103,7 +113,7 @@ export function ThemePicker(props: {
               class="theme-card"
               data-theme-id={card.value}
               classList={{ 'is-active': props.current === card.value }}
-              onClick={() => props.onChange(card.value)}
+              onClick={() => select(card.value)}
               onKeyDown={(event) => onKeyDown(event, index())}
             >
               <Swatch value={card.value} />
@@ -121,14 +131,28 @@ export function ThemePicker(props: {
   );
 }
 
-/** Miniature of a theme's own surfaces. System has no palette of its own, so the
- *  CSS paints the two presets it chooses between. */
+/** Miniature of a theme's own surfaces. System has no palette of its own, so it
+ *  renders a split of the two presets it chooses between — built from the same
+ *  registry swatches as every other card, so re-colouring a preset (or
+ *  repointing `SYSTEM_PAIR`) can never leave this one painting stale hexes. */
 function Swatch(props: { value: Theme }): JSX.Element {
   const preset = () => themePreset(props.value);
+  const systemGradient = (): string => {
+    // Non-null: SYSTEM_PAIR only ever names ids that exist in THEME_PRESETS.
+    const light = themePreset(SYSTEM_PAIR.light)!.swatch[0];
+    const dark = themePreset(SYSTEM_PAIR.dark)!.swatch[0];
+    return `linear-gradient(115deg, ${light} 0%, ${light} 50%, ${dark} 50%, ${dark} 100%)`;
+  };
   return (
     <Show
       when={preset()}
-      fallback={<span class="theme-card-swatch theme-card-swatch--system" aria-hidden="true" />}
+      fallback={
+        <span
+          class="theme-card-swatch theme-card-swatch--system"
+          aria-hidden="true"
+          style={{ background: systemGradient() }}
+        />
+      }
     >
       {(found) => (
         <span

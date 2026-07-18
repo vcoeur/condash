@@ -10,6 +10,8 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { bootApp, type BootedApp } from './fixtures/electron-app';
 
 /** Left edge and width of the splitter, in viewport coordinates. */
@@ -19,10 +21,25 @@ async function splitterBox(booted: BootedApp): Promise<{ x: number; width: numbe
   return { x: box.x, width: box.width };
 }
 
-async function bandWidth(booted: BootedApp): Promise<number> {
+async function bandBox(booted: BootedApp): Promise<{ x: number; width: number }> {
   const box = await booted.window.locator('.top-band').boundingBox();
   if (!box) throw new Error('top band has no bounding box');
-  return box.width;
+  return { x: box.x, width: box.width };
+}
+
+/**
+ * Where the handle sits *within the band*, 0–1.
+ *
+ * Must subtract the band's own left edge: the splitter's `x` is viewport-
+ * absolute, so dividing it by the band width folds in ~73px of fixed left chrome
+ * (activity rail + workspace padding). That offset does not scale with the
+ * viewport, so it lands differently at each width — it showed up as a ~0.047
+ * drift on a splitter that was in fact exactly proportional, consuming almost
+ * the whole tolerance below and leaving the assertion unable to see real drift.
+ */
+async function splitFraction(booted: BootedApp): Promise<number> {
+  const [splitter, band] = await Promise.all([splitterBox(booted), bandBox(booted)]);
+  return (splitter.x - band.x) / band.width;
 }
 
 test('the splitter stays proportional and on screen across a window resize', async () => {
@@ -46,19 +63,23 @@ test('the splitter stays proportional and on screen across a window resize', asy
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.waitForTimeout(300);
     const wide = await splitterBox(booted);
-    const wideBand = await bandWidth(booted);
-    // Seeded at 0.5, so the handle sits near the middle of the band.
-    expect(wide.x / wideBand).toBeGreaterThan(0.4);
-    expect(wide.x / wideBand).toBeLessThan(0.6);
+    const wideFraction = await splitFraction(booted);
+    // Seeded at 0.5, so the handle sits at the middle of the band. Tight bounds:
+    // with the coordinate basis correct this should be 0.5 within rounding, and
+    // a loose window here is what let the old assertion pass on a wrong metric.
+    expect(wideFraction).toBeGreaterThan(0.48);
+    expect(wideFraction).toBeLessThan(0.52);
 
     // Narrow hard — this is the case that used to strand the splitter.
     await page.setViewportSize({ width: 800, height: 900 });
     await page.waitForTimeout(300);
     const narrow = await splitterBox(booted);
-    const narrowBand = await bandWidth(booted);
+    const narrowFraction = await splitFraction(booted);
 
-    // Proportional: the handle holds roughly the same relative position…
-    expect(narrow.x / narrowBand).toBeCloseTo(wide.x / wideBand, 1);
+    // Proportional: the handle holds the same relative position. Two decimal
+    // places — the fraction is exact by construction, so the only slack needed
+    // is sub-pixel rounding.
+    expect(narrowFraction).toBeCloseTo(wideFraction, 2);
     // …and therefore actually moved left in absolute terms.
     expect(narrow.x).toBeLessThan(wide.x);
 
@@ -69,6 +90,52 @@ test('the splitter stays proportional and on screen across a window resize', asy
     // The working surface keeps a usable width rather than collapsing.
     const codePane = await page.locator('.top-band > *').last().boundingBox();
     expect(codePane?.width ?? 0).toBeGreaterThan(100);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('dragging left on a band too narrow for both minimums still stores a narrow split', async () => {
+  // Regression guard: below 2*MIN_PANE_PX + SPLITTER_PX the px clamp pins the
+  // rendered width to MIN_PANE_PX for every pointer position. The commit used
+  // to derive its fraction from that pinned width, so a drag hard LEFT to
+  // shrink Projects persisted MIN_PANE_PX / band — a *larger* split than the
+  // 0.5 it started from. Re-maximising then showed a pane roughly twice the
+  // size the user had asked for. The fraction now comes from the pointer.
+  test.setTimeout(90_000);
+  const booted = await bootApp({
+    extraConfig: {},
+    globalConfig: {
+      layout: {
+        projects: true,
+        leftView: 'projects',
+        working: 'code',
+        terminal: false,
+        projectsSplit: 0.5,
+      },
+    },
+  });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const page = booted.window;
+    await page.locator('.top-band-splitter').waitFor({ state: 'visible', timeout: 15_000 });
+    // Band lands near 350px — narrower than the 404px both minimums need.
+    await page.setViewportSize({ width: 440, height: 800 });
+    await page.waitForTimeout(300);
+
+    const band = await bandBox(booted);
+    expect(band.width).toBeLessThan(2 * 200 + 4);
+
+    const handle = await splitterBox(booted);
+    await page.mouse.move(handle.x + handle.width / 2, 400);
+    await page.mouse.down();
+    // Drag hard left — unambiguously "make Projects small".
+    await page.mouse.move(band.x + 20, 400, { steps: 10 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).layout?.projectsSplit)
+      .toBeLessThan(0.3);
   } finally {
     await booted.cleanup();
   }

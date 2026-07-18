@@ -48,6 +48,18 @@ test('selecting a card previews it across the app without persisting', async () 
 
     await modal.locator('.theme-card[data-theme-id="console"]').click();
     expect(await activeTheme(booted)).toEqual({ id: 'console', kind: 'dark' });
+
+    // Negative assertion, so it needs a settling window to have any force: a
+    // regression that persisted the selection would do so across the IPC
+    // boundary and behind the main-process settings queue, landing a few ms
+    // later. An immediate read would miss it and report success while the app
+    // was in fact writing every click to disk, defeating the whole
+    // cancel-restores-the-committed-theme contract.
+    //
+    // A settle, not `expect.poll` — poll returns on its first passing sample,
+    // and the file already reads 'light', so it would exit instantly and wait
+    // for nothing.
+    await booted.window.waitForTimeout(750);
     expect(await readTheme()).toBe('light');
   } finally {
     await booted.cleanup();
@@ -69,6 +81,28 @@ test('the preview follows every selection, including after the first one', async
 
     await modal.locator('.theme-card[data-theme-id="light"]').click();
     expect((await activeTheme(booted)).id).toBe('light');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('re-selecting the active card does not make the modal dirty', async () => {
+  // Regression guard: `<input type="radio">` never fired onChange for the
+  // already-checked option, but a `<button>`'s onClick always fires. Without an
+  // equality guard, clicking the active card — to confirm it, or arrowing away
+  // and back — staged a draft and made Escape raise the "Discard and close"
+  // gate for a change that does not exist.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="light"]').click();
+    // Save stays disabled — nothing was staged.
+    await expect(modal.locator('button.settings-save')).toBeDisabled();
+
+    // And Escape closes straight out rather than gating on unsaved edits.
+    await booted.window.keyboard.press('Escape');
+    await expect(modal).toBeHidden();
+    await expect(booted.window.locator('.settings-confirm')).toHaveCount(0);
   } finally {
     await booted.cleanup();
   }

@@ -107,8 +107,18 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     resetMermaidTheme();
   });
 
+  // The last theme known to be on disk. Seeded from the bootstrap read and
+  // advanced only when a write actually resolves, so it is the only safe
+  // rollback target for `cycleTheme`: `theme()` may hold an optimistic value
+  // from an earlier cycle whose write has not settled (or has already failed),
+  // and rolling back to *that* restores a theme which was never persisted.
+  let confirmed: Theme = 'system';
+
   void getBootstrap()
-    .then((boot) => setTheme(boot.theme))
+    .then((boot) => {
+      confirmed = boot.theme;
+      setTheme(boot.theme);
+    })
     .catch((err) => deps.flashToast(`Could not load theme: ${(err as Error).message}`, 'error'));
 
   // Deliberately does NOT clear the overlay. The picker owns the overlay's whole
@@ -132,23 +142,26 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
   // restart before this — pre-existing on main, surfaced by review here.)
   let cycleSeq = 0;
   const cycleTheme = (next: Theme): void => {
-    const previous = theme();
     const seq = ++cycleSeq;
     handleThemeChange(next);
-    void window.condash.setTheme(next).catch((err) => {
-      // Optimistic UI with rollback on IPC failure, per the repo convention.
-      // Without it a failed write leaves the app painted in a theme that is not
-      // on disk: the toast reads as spurious because the change visibly
-      // happened, and the next launch silently reverts it.
-      //
-      // Only the newest cycle may roll back, and only if nothing has moved the
-      // theme since. Two fast clicks whose writes settle out of order, or a
-      // Settings save landing while a cycle is in flight, would otherwise let a
-      // stale rejection stomp a newer choice that did reach disk — recreating
-      // the very desync this rollback exists to prevent.
-      if (seq === cycleSeq && theme() === next) handleThemeChange(previous);
-      deps.flashToast(`Could not save theme: ${(err as Error).message}`, 'error');
-    });
+    void window.condash
+      .setTheme(next)
+      .then(() => {
+        confirmed = next;
+      })
+      .catch((err) => {
+        // Optimistic UI with rollback on IPC failure, per the repo convention.
+        // Without it a failed write leaves the app painted in a theme that is
+        // not on disk: the toast reads as spurious because the change visibly
+        // happened, and the next launch silently reverts it.
+        //
+        // Only the newest cycle may roll back, and only if nothing has moved
+        // the theme since. Two fast clicks whose writes settle out of order, or
+        // a Settings save landing while a cycle is in flight, would otherwise
+        // let a stale rejection stomp a newer choice that did reach disk.
+        if (seq === cycleSeq && theme() === next) handleThemeChange(confirmed);
+        deps.flashToast(`Could not save theme: ${(err as Error).message}`, 'error');
+      });
   };
 
   return { theme, setTheme, isDark, handleThemeChange, previewTheme, cycleTheme };
