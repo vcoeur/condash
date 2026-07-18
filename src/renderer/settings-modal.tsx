@@ -76,6 +76,10 @@ export function SettingsModal(props: {
   conceptionPath: string;
   theme: Theme;
   onChangeTheme: (theme: Theme) => void;
+  /** Overlay a theme on the running UI without committing it (the theme
+   *  picker's hover preview); `null` drops the overlay. Distinct from
+   *  `onChangeTheme` so a preview never becomes the staged selection. */
+  onPreviewTheme: (theme: Theme | null) => void;
   /** Resolved card-min-width prefs (every key filled). Drives the live
    *  values shown in the Appearance section. */
   cardMinWidth: Required<CardMinWidthPrefs>;
@@ -775,8 +779,7 @@ export function SettingsModal(props: {
 
               <AppearanceSection
                 theme={globalTheme}
-                appliedTheme={() => props.theme}
-                previewTheme={props.onChangeTheme}
+                previewTheme={props.onPreviewTheme}
                 setTheme={setGlobalTheme}
                 uiFont={uiFontOf}
                 setUiFonts={setGlobalUiFonts}

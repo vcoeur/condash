@@ -81,7 +81,7 @@ function App() {
 
   // --- Self-contained hooks (no cross-deps) -----------------------------
   const { promptState, setPromptState, openPrompt } = usePromptModal();
-  const { theme, isDark, handleThemeChange } = useTheme({ flashToast });
+  const { theme, isDark, handleThemeChange, previewTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
   const {
@@ -846,6 +846,7 @@ function App() {
         conceptionPath={conceptionPath}
         theme={theme}
         handleThemeChange={handleThemeChange}
+        previewTheme={previewTheme}
         cardMinWidth={cardMinWidth}
         handleCardMinWidthChange={handleCardMinWidthChange}
         uiFonts={uiFonts}

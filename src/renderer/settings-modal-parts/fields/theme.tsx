@@ -1,61 +1,72 @@
-import { For, createSignal, onCleanup } from 'solid-js';
+import { For } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Theme } from '@shared/types';
-import { THEME_PRESETS, THEME_VALUES } from '@shared/themes';
+import { THEME_PRESETS } from '@shared/themes';
+
+interface ThemeCard {
+  value: Theme;
+  label: string;
+  description: string;
+}
+
+const CARDS: ThemeCard[] = [
+  {
+    value: 'system',
+    label: 'System',
+    description: 'Follow the OS between Paper and Warm Gallery.',
+  },
+  ...THEME_PRESETS.map((preset) => ({
+    value: preset.id as Theme,
+    label: preset.label,
+    description: preset.description,
+  })),
+];
 
 /**
  * Theme picker — one card per preset plus a System card, each painting its own
- * palette as a swatch. Shared between the Global and Conception tabs.
+ * palette as a swatch.
  *
  * Hovering (or keyboard-focusing) a card previews that theme across the whole
- * app; leaving the picker restores the theme in force. Selecting a card only
- * *stages* it — like every other field here, the choice is written on Save, and
- * the hint under the grid says so.
+ * app; leaving the picker drops the preview. Selecting a card only *stages* it —
+ * like every other field here the choice is written on Save, and the hint under
+ * the grid says so.
  *
- * The preview goes through `onPreview` (the app's own theme setter) rather than
- * poking `<html>` directly. The attributes alone would restyle the CSS-driven
- * chrome while leaving every JS-side consumer behind — xterm reads its palette
- * from the computed tokens on refresh, CodeMirror takes a boolean `dark` prop,
- * and mermaid bakes its theme at init — so a "preview" would show a dark app
- * containing a white terminal and a light-themed editor.
+ * The preview goes through `onPreview`, which sets a dedicated overlay signal in
+ * `use-theme` rather than the committed theme. Two reasons, both learned the
+ * hard way: writing `<html>` attributes directly restyled the CSS chrome but
+ * left xterm, CodeMirror and mermaid on the old theme, while writing the
+ * *committed* signal made the hovered card render as checked (`globalTheme()`
+ * falls back to it) and made the restore target move while previewing. An
+ * overlay is neither — and since restoring is just "clear the overlay", there is
+ * no captured target to go stale against an in-modal Save.
  */
 export function ThemePicker(props: {
   /** The staged selection — what the modal will write on Save. */
   current: Theme;
-  /** The theme actually in force. Read once, at mount: `onPreview` moves it, so
-   *  reading it live would make the restore target follow the preview. */
-  applied: Theme;
   /** Stage a selection (persisted on Save). */
   onChange: (theme: Theme) => void;
-  /** Apply a theme to the running UI without persisting it. */
-  onPreview: (theme: Theme) => void;
+  /** Overlay a theme on the running UI, or `null` to drop the overlay. */
+  onPreview: (theme: Theme | null) => void;
 }): JSX.Element {
-  // The theme to put back when the pointer leaves. Captured at mount so a
-  // preview can't move the target; `props.applied` is not read again.
-  const inForce = props.applied;
-  const [previewing, setPreviewing] = createSignal(false);
+  const cardRefs: HTMLButtonElement[] = [];
 
-  const preview = (theme: Theme): void => {
-    setPreviewing(true);
-    props.onPreview(theme);
+  /** The card that owns the group's single tab stop. Falls back to the first
+   *  card when the staged value matches none — a hand-edited or newer-build
+   *  theme id would otherwise leave every card at `-1`, making the picker
+   *  unreachable by keyboard, which is exactly the value you need to fix. */
+  const tabStopIndex = (): number => {
+    const index = CARDS.findIndex((card) => card.value === props.current);
+    return index === -1 ? 0 : index;
   };
 
-  // Restoring on leave — rather than on unmount unconditionally — is what keeps
-  // this race-free with Save: clicking Save means the pointer already left the
-  // grid, so `previewing` is false and the saved theme is left alone.
-  const restore = (): void => {
-    if (!previewing()) return;
-    setPreviewing(false);
-    props.onPreview(inForce);
-  };
-
-  // Esc can close the modal with the pointer still resting on a card, which
-  // would otherwise strand the preview as the live theme.
-  onCleanup(restore);
-
-  /** Roving tabindex: the checked card is the group's single tab stop, and the
-   *  arrow keys move between cards — the semantics native radios gave for free
-   *  before this became a grid of buttons. */
+  /**
+   * Arrows move focus only; Space/Enter (native button activation) selects.
+   *
+   * WAI-ARIA allows either this or select-on-arrow for a radiogroup. Manual
+   * selection is the right one here: auto-selecting would stage a draft on
+   * every keypress, so merely arrowing across the four cards to look at them
+   * would mark the modal dirty and arm its unsaved-edits Esc gate.
+   */
   const onKeyDown = (event: KeyboardEvent, index: number): void => {
     const step =
       event.key === 'ArrowRight' || event.key === 'ArrowDown'
@@ -65,67 +76,46 @@ export function ThemePicker(props: {
           : 0;
     if (step === 0) return;
     event.preventDefault();
-    const next = (index + step + THEME_VALUES.length) % THEME_VALUES.length;
-    const target = event.currentTarget as HTMLElement;
-    const card = target.parentElement?.children[next] as HTMLElement | undefined;
-    card?.focus();
-    const value = THEME_VALUES[next];
-    if (value !== undefined) props.onChange(value);
+    cardRefs[(index + step + CARDS.length) % CARDS.length]?.focus();
   };
 
-  const cards = (): { value: Theme; label: string; description: string; index: number }[] => [
-    {
-      value: 'system',
-      label: 'System',
-      description: 'Follow the OS between Paper and Warm Gallery.',
-      index: 0,
-    },
-    ...THEME_PRESETS.map((preset, offset) => ({
-      value: preset.id as Theme,
-      label: preset.label,
-      description: preset.description,
-      index: offset + 1,
-    })),
-  ];
-
-  const swatchFor = (value: Theme): JSX.Element => {
-    const preset = THEME_PRESETS.find((entry) => entry.id === value);
-    if (!preset) {
-      // System has no palette of its own — the CSS paints the two it picks between.
-      return <span class="theme-card-swatch theme-card-swatch--system" aria-hidden="true" />;
-    }
-    return (
-      <span class="theme-card-swatch" aria-hidden="true" style={{ background: preset.swatch[0] }}>
-        <span class="theme-card-swatch-panel" style={{ background: preset.swatch[1] }} />
-        <span class="theme-card-swatch-dot" style={{ background: preset.swatch[2] }} />
-      </span>
-    );
+  /** Drop the preview only when focus/pointer leaves the grid entirely. Per-card
+   *  handlers fired on every hop between cards — crossing the 10px gap, or
+   *  arrowing from one card to the next (blur-then-focus) — which round-tripped
+   *  the whole app through the committed theme twice per step. */
+  const onFocusOut = (event: FocusEvent): void => {
+    const next = event.relatedTarget as Node | null;
+    if (next && event.currentTarget instanceof Node && event.currentTarget.contains(next)) return;
+    props.onPreview(null);
   };
 
   return (
     <div class="settings-field">
       <span class="settings-field-label">Theme</span>
-      {/* The leave handler sits on the grid, not the cards: per-card it fired
-          every time the pointer crossed the 10px gap, flashing the whole app
-          back to the in-force theme between each pair. */}
-      <div class="theme-picker" role="radiogroup" aria-label="Theme" onMouseLeave={restore}>
-        <For each={cards()}>
-          {(card) => (
+      <div
+        class="theme-picker"
+        role="radiogroup"
+        aria-label="Theme"
+        onMouseLeave={() => props.onPreview(null)}
+        onFocusOut={onFocusOut}
+      >
+        <For each={CARDS}>
+          {(card, index) => (
             <button
               type="button"
+              ref={(el) => (cardRefs[index()] = el)}
               role="radio"
               aria-checked={props.current === card.value}
-              tabindex={props.current === card.value ? 0 : -1}
+              tabindex={tabStopIndex() === index() ? 0 : -1}
               class="theme-card"
               data-theme-id={card.value}
               classList={{ 'is-active': props.current === card.value }}
               onClick={() => props.onChange(card.value)}
-              onMouseEnter={() => preview(card.value)}
-              onFocus={() => preview(card.value)}
-              onBlur={restore}
-              onKeyDown={(event) => onKeyDown(event, card.index)}
+              onMouseEnter={() => props.onPreview(card.value)}
+              onFocus={() => props.onPreview(card.value)}
+              onKeyDown={(event) => onKeyDown(event, index())}
             >
-              {swatchFor(card.value)}
+              <Swatch value={card.value} />
               <span class="theme-card-label">{card.label}</span>
               <span class="theme-card-desc">{card.description}</span>
             </button>
@@ -138,3 +128,31 @@ export function ThemePicker(props: {
     </div>
   );
 }
+
+/** Miniature of a theme's own surfaces. System has no palette of its own, so the
+ *  CSS paints the two presets it chooses between. */
+function Swatch(props: { value: Theme }): JSX.Element {
+  const preset = (): (typeof THEME_PRESETS)[number] | undefined =>
+    THEME_PRESETS.find((entry) => entry.id === props.value);
+  return (
+    <>
+      {preset() ? (
+        <span
+          class="theme-card-swatch"
+          aria-hidden="true"
+          style={{ background: preset()!.swatch[0] }}
+        >
+          <span class="theme-card-swatch-panel" style={{ background: preset()!.swatch[1] }} />
+          <span class="theme-card-swatch-dot" style={{ background: preset()!.swatch[2] }} />
+        </span>
+      ) : (
+        <span class="theme-card-swatch theme-card-swatch--system" aria-hidden="true" />
+      )}
+    </>
+  );
+}
+
+/** Compile-time guard: every accepted `Theme` value has a card. */
+type _MissingThemeCard = Exclude<Theme, (typeof CARDS)[number]['value']>;
+const _assertAllThemesHaveCards: _MissingThemeCard extends never ? true : false = true;
+void _assertAllThemesHaveCards;

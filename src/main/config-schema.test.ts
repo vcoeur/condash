@@ -421,12 +421,28 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
   // Without the backfill, dropping the legacy key would leave `layout` missing
   // a field the strict schema requires — rejecting the WHOLE settings file
   // (repos, terminal prefs, fonts, everything) over a pane width.
-  it('backfills a malformed or missing fraction so the strict parse survives', () => {
-    for (const bad of [undefined, 0, -3, 'wide', null, Number.NaN]) {
+  it('backfills a missing or non-numeric fraction so the strict parse survives', () => {
+    for (const bad of [undefined, 'wide', null, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
       const migrated = migrateRawSettings({
-        layout: { projectsWidth: bad, projectsSplit: undefined },
+        layout: { projectsSplit: bad },
       }) as Record<string, unknown>;
       expect((migrated.layout as Record<string, unknown>).projectsSplit).toBe(0.32);
+    }
+  });
+
+  // Numeric-but-out-of-range is clamped rather than reset — 0 and -3 are real
+  // numbers, so they take the clamp branch, not the backfill branch.
+  it('clamps a numeric out-of-range fraction rather than resetting it', () => {
+    for (const [input, expected] of [
+      [0, 0.02],
+      [-3, 0.02],
+      [7, 0.98],
+    ] as const) {
+      const migrated = migrateRawSettings({ layout: { projectsSplit: input } }) as Record<
+        string,
+        unknown
+      >;
+      expect((migrated.layout as Record<string, unknown>).projectsSplit).toBe(expected);
     }
   });
 

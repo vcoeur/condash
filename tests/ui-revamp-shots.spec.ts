@@ -1,15 +1,18 @@
 /**
  * Theme-system live screenshots.
  *
- * Same launch pattern as screenshots.spec.ts, but pointed at the REAL
- * conception tree (/home/alice/src/vcoeur/conception) so each theme is judged
- * against real data rather than a fixture. Boots once per theme preset and
+ * Same launch pattern as screenshots.spec.ts, but pointed at a REAL conception
+ * tree (set CONDASH_SHOTS_CONCEPTION) so each theme is judged against real data
+ * rather than a fixture. Skipped when that is unset. Boots once per preset and
  * captures the dashboard in it, then captures the Settings → Appearance theme
  * picker. Strictly read-only towards the conception: render + screenshot only,
  * no mutating clicks (no sync-now, no new-project, no stop/run, and the
  * settings modal is opened but never saved).
  *
- * Run as `npm run test -- --reporter=list ui-revamp-shots.spec.ts`. Output
+ * These are visual captures only — the picker's behavioural contract lives in
+ * theme-picker.spec.ts, which runs against the standard fixture every time.
+ *
+ * Run as `CONDASH_SHOTS_CONCEPTION=<tree> npm run test -- ui-revamp-shots.spec.ts`. Output
  * lands in `tests/screenshots-out/ui-revamp/<name>.png` at 3200×2200
  * (1600×1100 logical, deviceScaleFactor=2), mirroring screenshots.spec.ts.
  */

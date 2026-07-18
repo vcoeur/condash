@@ -25,12 +25,9 @@ import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
-  /** The theme actually in force, as opposed to `theme()`'s staged draft — the
-   *  picker restores it when a preview ends. */
-  appliedTheme: () => Theme;
-  /** Apply a theme to the running UI without persisting it (the picker's
-   *  hover preview). */
-  previewTheme: (theme: Theme) => void;
+  /** Overlay a theme on the running UI without committing it, or `null` to drop
+   *  the overlay (the picker's hover preview). */
+  previewTheme: (theme: Theme | null) => void;
   setTheme: (theme: Theme) => Promise<void>;
   uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   setUiFonts: (patch: UiFontPrefs) => Promise<void>;
@@ -54,7 +51,6 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
     >
       <ThemePicker
         current={props.theme()}
-        applied={props.appliedTheme()}
         onChange={(t) => void props.setTheme(t)}
         onPreview={props.previewTheme}
       />
