@@ -95,13 +95,14 @@ test('the splitter stays proportional and on screen across a window resize', asy
   }
 });
 
-test('dragging left on a band too narrow for both minimums still stores a narrow split', async () => {
-  // Regression guard: below 2*MIN_PANE_PX + SPLITTER_PX the px clamp pins the
-  // rendered width to MIN_PANE_PX for every pointer position. The commit used
-  // to derive its fraction from that pinned width, so a drag hard LEFT to
-  // shrink Projects persisted MIN_PANE_PX / band — a *larger* split than the
-  // 0.5 it started from. Re-maximising then showed a pane roughly twice the
-  // size the user had asked for. The fraction now comes from the pointer.
+test('a drag on a band too narrow for both minimums leaves the stored split alone', async () => {
+  // Regression guard, both directions. Below 2*MIN_PANE_PX + SPLITTER_PX the px
+  // clamp pins the rendered width to MIN_PANE_PX for every pointer position, so
+  // the pane does not move and the gesture expresses nothing. Deriving a
+  // fraction from it is wrong whichever value you pick: from the clamped width,
+  // a leftward drag stored 200/350 = 57%; from the raw pointer, a rightward
+  // drag stored ~0.93, which on re-maximising squeezes the working surface to
+  // its 200px minimum. The stored preference must simply survive.
   test.setTimeout(90_000);
   const booted = await bootApp({
     extraConfig: {},
@@ -126,16 +127,84 @@ test('dragging left on a band too narrow for both minimums still stores a narrow
     const band = await bandBox(booted);
     expect(band.width).toBeLessThan(2 * 200 + 4);
 
-    const handle = await splitterBox(booted);
-    await page.mouse.move(handle.x + handle.width / 2, 400);
-    await page.mouse.down();
-    // Drag hard left — unambiguously "make Projects small".
-    await page.mouse.move(band.x + 20, 400, { steps: 10 });
-    await page.mouse.up();
+    const storedSplit = async (): Promise<number | undefined> =>
+      JSON.parse(await readFile(globalPath, 'utf8')).layout?.projectsSplit;
+
+    const dragTo = async (targetX: number): Promise<void> => {
+      const handle = await splitterBox(booted);
+      await page.mouse.move(handle.x + handle.width / 2, 400);
+      await page.mouse.down();
+      await page.mouse.move(targetX, 400, { steps: 10 });
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+    };
+
+    // Hard left — "make Projects small". Used to store 0.571.
+    await dragTo(band.x + 20);
+    expect(await storedSplit()).toBe(0.5);
+
+    // Hard right — "make Projects big". Used to store ~0.93, which collapses
+    // the working surface once the window is widened again.
+    await dragTo(band.x + band.width - 20);
+    expect(await storedSplit()).toBe(0.5);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a drag released before the next frame still commits where it ended', async () => {
+  // Regression guard: `onMove` only records the pointer and schedules `flush`,
+  // and the committed fraction moves only inside `flush`. `onUp` used to cancel
+  // the queued frame outright, so a nudge that started and finished inside one
+  // ~16ms frame — an ordinary small adjustment — never flushed: the handle
+  // snapped back and nothing was persisted. `mouse.move` with no `steps`
+  // dispatches a single event, which is the tightest version of that race.
+  test.setTimeout(90_000);
+  const booted = await bootApp({
+    extraConfig: {},
+    globalConfig: {
+      layout: {
+        projects: true,
+        leftView: 'projects',
+        working: 'code',
+        terminal: false,
+        projectsSplit: 0.5,
+      },
+    },
+  });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const page = booted.window;
+    await page.locator('.top-band-splitter').waitFor({ state: 'visible', timeout: 15_000 });
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.waitForTimeout(300);
+
+    // Dispatched synchronously inside one task, so no animation frame can run
+    // between the move and the release. Playwright's own mouse API cannot
+    // express this — each action is a separate round-trip, which always leaves
+    // room for a frame, so a test driven through it passes even with the bug.
+    await page.evaluate(() => {
+      const handle = document.querySelector('.top-band-splitter');
+      const band = document.querySelector('.top-band');
+      if (!handle || !band) throw new Error('splitter or band missing');
+      const bandRect = band.getBoundingClientRect();
+      const handleRect = handle.getBoundingClientRect();
+      const target = bandRect.left + bandRect.width * 0.25;
+      handle.dispatchEvent(
+        new MouseEvent('mousedown', {
+          bubbles: true,
+          button: 0,
+          clientX: handleRect.left + handleRect.width / 2,
+          clientY: 400,
+        }),
+      );
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: target, clientY: 400 }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: target, clientY: 400 }));
+    });
 
     await expect
       .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).layout?.projectsSplit)
-      .toBeLessThan(0.3);
+      .toBeLessThan(0.4);
   } finally {
     await booted.cleanup();
   }

@@ -186,20 +186,23 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
       rafId = null;
       if (pendingX === null) return;
       const desired = pendingX - rect.left;
-      // What gets *persisted* is the pointer's position as a fraction of the
-      // band, taken before the px floors are applied. Those floors are a
-      // rendering concern: on a band narrower than 2*MIN_PANE_PX + SPLITTER_PX
-      // the two minimums cannot both be honoured, so `cap` drops below
-      // MIN_PANE_PX and every pointer position pins to the same width.
-      // Deriving the committed fraction from that pinned width would store a
-      // split the user never expressed — dragging hard left to shrink Projects
-      // on a 350px band would persist 200/350 = 57%, and re-maximising would
-      // show a pane twice the size they asked for.
-      lastSplit = clampSplit(rect.width > 0 ? desired / rect.width : lastSplit);
       const cap = rect.width - MIN_PANE_PX - SPLITTER_PX;
       // `cap` can fall below MIN_PANE_PX on a very narrow window; Math.max wins
       // that tie, matching how CSS clamp() resolves an inverted range.
       const clamped = Math.max(MIN_PANE_PX, Math.min(cap, desired));
+      // Persist what was actually *rendered*, and only while the band is wide
+      // enough for the gesture to say anything.
+      //
+      // Below 2*MIN_PANE_PX + SPLITTER_PX the two minimums cannot both be
+      // honoured: `cap` drops under MIN_PANE_PX, the floor wins for every
+      // pointer position, and the pane does not move during the drag. Nothing
+      // derived from such a gesture is a preference the user expressed, and
+      // both ways of deriving one are wrong in opposite directions — from the
+      // clamped width, dragging left to shrink stores 200/350 = 57%; from the
+      // raw pointer, dragging right stores ~0.93, which on re-maximising
+      // squeezes the working surface to its minimum. So keep the stored split
+      // and let the drag be the no-op it visibly was.
+      if (cap > MIN_PANE_PX && rect.width > 0) lastSplit = clampSplit(clamped / rect.width);
       // Straight to the DOM in px during the drag — the pointer is the source
       // of truth here, and skipping the signal keeps INP bounded.
       band.style.gridTemplateColumns = `${Math.round(clamped)}px ${SPLITTER_PX}px 1fr`;
@@ -211,14 +214,23 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     const onUp = (): void => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      // Run the queued frame rather than dropping it. `onMove` only records the
+      // pointer and schedules `flush`, and `lastSplit` moves *only* inside
+      // `flush` — so a small nudge completed inside a single ~16ms frame has
+      // never flushed, and cancelling outright would commit the pre-drag split
+      // and snap the handle back. On longer drags this is the difference
+      // between committing where the pointer was released and where it was one
+      // frame earlier.
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        flush();
+      }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      // Commit the fraction the pointer asked for so the split survives a
-      // resize. Write the resolved template back explicitly too: the drag left
-      // a px value on the element, and relying on Solid to diff it away would
-      // leave the pane pinned if the new fraction happened to render the same
-      // string.
+      // Commit as a fraction of the band so the split survives a resize. Write
+      // the resolved template back explicitly too: the drag left a px value on
+      // the element, and relying on Solid to diff it away would leave the pane
+      // pinned if the new fraction happened to render the same string.
       band.style.gridTemplateColumns = splitColumns(lastSplit);
       updateLayout({ projectsSplit: lastSplit });
     };

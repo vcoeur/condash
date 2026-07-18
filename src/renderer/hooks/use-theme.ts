@@ -15,10 +15,9 @@ export interface UseTheme {
    *  Settings picker's checked card, its keyboard tab stop, `globalTheme()`'s
    *  fallback — can read it without following the pointer around. */
   theme: () => Theme;
-  setTheme: (next: Theme) => void;
   isDark: () => boolean;
   /** UI-only theme update for the Settings modal callback. The modal
-   *  persists via patchSettings / patchConfig — calling setTheme here
+   *  persists via patchSettings / patchConfig — writing from here too
    *  would queue a second write that races the modal's CAS baseline. */
   handleThemeChange: (next: Theme) => void;
   /**
@@ -164,5 +163,5 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     });
   };
 
-  return { theme, setTheme, isDark, handleThemeChange, previewTheme, cycleTheme };
+  return { theme, isDark, handleThemeChange, previewTheme, cycleTheme };
 }
