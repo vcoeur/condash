@@ -1,10 +1,15 @@
 /**
- * Settings → Appearance theme picker: preview, selection, and keyboard.
+ * Settings → Appearance theme picker: selection, preview, and keyboard.
  *
  * Runs against the standard fixture conception (not a personal tree), so these
  * assertions execute in every suite run — including the tag-time release run.
  * The visual captures in `ui-revamp-shots.spec.ts` are opt-in and skipped by
  * default; the behavioural contract lives here.
+ *
+ * The picker previews the **staged selection**, not whatever the pointer is
+ * over. Four attempts at a hover preview each shipped a new stranded-overlay
+ * bug, because pointer position and focus position are independent inputs with
+ * no correct precedence — see the note on ThemePicker.
  */
 
 import { test, expect } from '@playwright/test';
@@ -32,152 +37,112 @@ async function activeTheme(booted: BootedApp): Promise<{ id?: string; kind?: str
   }));
 }
 
-test('hovering a card previews it; leaving the grid restores the saved theme', async () => {
-  const booted = await bootApp({ globalConfig: { theme: 'light' } });
-  try {
-    const modal = await openSettings(booted);
-    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
-
-    await modal.locator('.theme-card[data-theme-id="console"]').hover();
-    expect(await activeTheme(booted)).toEqual({ id: 'console', kind: 'dark' });
-
-    // Off the grid entirely — the preview is dropped.
-    await modal.locator('.settings-field-label').first().hover();
-    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
-  } finally {
-    await booted.cleanup();
-  }
-});
-
-test('previewing does not move the checked card or the keyboard tab stop', async () => {
-  // Regression guard: routing the preview through the *committed* theme signal
-  // made the hovered card render as checked and become the group's only tab
-  // stop while nothing was selected.
-  //
-  // It only reproduces with **no `theme` key on disk**: the modal's
-  // `globalTheme()` prefers the parsed file and falls back to the live signal
-  // only when the key is absent, so seeding a theme would mask the bug.
-  // `undefined` here drops the fixture's default key — JSON.stringify omits it.
-  const booted = await bootApp({ globalConfig: { theme: undefined } });
-  try {
-    const modal = await openSettings(booted);
-    const consoleCard = modal.locator('.theme-card[data-theme-id="console"]');
-    const systemCard = modal.locator('.theme-card[data-theme-id="system"]');
-    await expect(systemCard).toHaveAttribute('aria-checked', 'true');
-
-    await consoleCard.hover();
-    // The preview is in force…
-    expect((await activeTheme(booted)).id).toBe('console');
-    // …but the selection and the tab stop have not moved.
-    await expect(consoleCard).toHaveAttribute('aria-checked', 'false');
-    await expect(systemCard).toHaveAttribute('aria-checked', 'true');
-    await expect(consoleCard).toHaveAttribute('tabindex', '-1');
-    await expect(systemCard).toHaveAttribute('tabindex', '0');
-  } finally {
-    await booted.cleanup();
-  }
-});
-
-test('a hovered preview is not persisted, and a selection persists on Save', async () => {
+test('selecting a card previews it across the app without persisting', async () => {
   const booted = await bootApp({ globalConfig: { theme: 'light' } });
   const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
   const readTheme = async (): Promise<unknown> =>
     JSON.parse(await readFile(globalPath, 'utf8')).theme;
   try {
     const modal = await openSettings(booted);
-    await modal.locator('.theme-card[data-theme-id="console"]').hover();
-    await modal.locator('.settings-field-label').first().hover();
-    expect(await readTheme()).toBe('light');
+    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
 
     await modal.locator('.theme-card[data-theme-id="console"]').click();
-    // Staged only — nothing reaches disk until Save.
-    expect(await readTheme()).toBe('light');
-
-    await modal.locator('button.settings-save').click();
-    await expect.poll(readTheme).toBe('console');
     expect(await activeTheme(booted)).toEqual({ id: 'console', kind: 'dark' });
-    // Deliberately no "and the overlay is cleared" assertion here: Playwright's
-    // pointer transit to the Save button already fires mouseleave, so the
-    // overlay is gone before Save runs and the check could never fail. The
-    // commit-clears-overlay guard in use-theme is defensive; asserting it would
-    // need a commit path that keeps the pointer inside the grid, which the UI
-    // does not have.
+    expect(await readTheme()).toBe('light');
   } finally {
     await booted.cleanup();
   }
 });
 
-test('arrow keys move focus between cards without staging a change', async () => {
-  // Regression guard: auto-selecting on arrow marked the modal dirty just from
-  // browsing, arming its unsaved-edits Esc gate.
+test('the preview follows every selection, including after the first one', async () => {
+  // Regression guard: with the preview driven by (focus ?? hover), the first
+  // click pinned focus on that card and every later hover was outranked, so
+  // the picker stopped previewing entirely after one selection.
   const booted = await bootApp({ globalConfig: { theme: 'light' } });
   try {
     const modal = await openSettings(booted);
-    const paperCard = modal.locator('.theme-card[data-theme-id="light"]');
-    await paperCard.focus();
-    await expect(paperCard).toHaveAttribute('aria-checked', 'true');
+    await modal.locator('.theme-card[data-theme-id="dark"]').click();
+    expect((await activeTheme(booted)).id).toBe('dark');
 
-    await booted.window.keyboard.press('ArrowRight');
-    const focused = await booted.window.evaluate(
-      () => (document.activeElement as HTMLElement | null)?.dataset.themeId,
-    );
-    expect(focused).toBe('dark');
-    // Focus moved and previews, but the selection is untouched.
-    await expect(paperCard).toHaveAttribute('aria-checked', 'true');
-    expect(await activeTheme(booted)).toEqual({ id: 'dark', kind: 'dark' });
-  } finally {
-    await booted.cleanup();
-  }
-});
-
-test('a focused card outranks the pointer, and survives the pointer leaving', async () => {
-  // Guarding mouseleave with "focus wins" was not enough on its own: nothing
-  // re-asserted the focused card, so a hover set over a *different* card stayed
-  // in force after the pointer left — focus ring on one theme, app in another.
-  // Deriving the preview from (focus ?? hover) makes both directions fall out.
-  const booted = await bootApp({ globalConfig: { theme: 'light' } });
-  try {
-    const modal = await openSettings(booted);
-    await modal.locator('.theme-card[data-theme-id="console"]').focus();
+    await modal.locator('.theme-card[data-theme-id="console"]').click();
     expect((await activeTheme(booted)).id).toBe('console');
 
-    // Pointer drifts over a different card — focus still owns the preview.
-    await modal.locator('.theme-card[data-theme-id="dark"]').hover();
-    expect((await activeTheme(booted)).id).toBe('console');
-
-    // …and the pointer leaving does not cancel the keyboard preview.
-    await modal.locator('.settings-field-label').first().hover();
-    expect((await activeTheme(booted)).id).toBe('console');
-    await expect(modal.locator('.theme-card[data-theme-id="console"]')).toBeFocused();
-  } finally {
-    await booted.cleanup();
-  }
-});
-
-test('focus leaving falls back to the hovered card, not to nothing', async () => {
-  // The symmetric hole: focusout cleared the overlay outright, dropping a live
-  // hover preview while the pointer still rested on a card, with nothing to
-  // restore it until the pointer moved to a different card.
-  //
-  // Committed theme is Warm Gallery so the expected fallback (Paper) is
-  // distinguishable from a cleared overlay.
-  const booted = await bootApp({ globalConfig: { theme: 'dark' } });
-  try {
-    const modal = await openSettings(booted);
-    await modal.locator('.theme-card[data-theme-id="console"]').focus();
-    await modal.locator('.theme-card[data-theme-id="light"]').hover();
-    // Focus outranks hover while both are inside the grid.
-    expect((await activeTheme(booted)).id).toBe('console');
-
-    // Move focus out of the grid without disturbing the pointer. Not Save (it
-    // is disabled until something is staged, so .focus() would silently no-op)
-    // and not Tab (focusing the next control scrolls it into view, sliding the
-    // grid out from under the stationary pointer and firing a real mouseleave).
-    // The search box is sticky at the top of the modal, so focusing it moves
-    // nothing.
-    await modal.locator('input.settings-search').focus();
-    await expect(modal.locator('.theme-card:focus')).toHaveCount(0);
+    await modal.locator('.theme-card[data-theme-id="light"]').click();
     expect((await activeTheme(booted)).id).toBe('light');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the pointer alone never changes the theme', async () => {
+  // The whole class of stranded-overlay bugs came from the pointer owning the
+  // preview. Hovering must now be inert.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').hover();
+    expect((await activeTheme(booted)).id).toBe('light');
+    // Including the gutter between cards, which fires no card-level event.
+    await modal.locator('.theme-picker').hover({ position: { x: 2, y: 2 } });
+    expect((await activeTheme(booted)).id).toBe('light');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('closing without saving restores the committed theme', async () => {
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').click();
+    expect((await activeTheme(booted)).id).toBe('console');
+
+    // Esc with a staged edit raises the unsaved-edits gate; discard through it.
+    await booted.window.keyboard.press('Escape');
+    const gate = booted.window.locator('.settings-confirm');
+    await expect(gate).toBeVisible();
+    await gate.locator('button', { hasText: 'Discard and close' }).click();
+    await expect(modal).toBeHidden();
+    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a selection persists on Save and stays in force after the modal closes', async () => {
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').click();
+    await modal.locator('button.settings-save').click();
+    await expect
+      .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).theme)
+      .toBe('console');
+
+    await booted.window.keyboard.press('Escape');
+    await expect(modal).toBeHidden();
+    // The overlay dropped on unmount; the committed theme underneath is the one
+    // just saved, so nothing visibly changes.
+    expect(await activeTheme(booted)).toEqual({ id: 'console', kind: 'dark' });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('arrow keys move the selection, the preview, and the tab stop together', async () => {
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="light"]').focus();
+    await booted.window.keyboard.press('ArrowRight');
+
+    const warmGallery = modal.locator('.theme-card[data-theme-id="dark"]');
+    await expect(warmGallery).toBeFocused();
+    await expect(warmGallery).toHaveAttribute('aria-checked', 'true');
+    await expect(warmGallery).toHaveAttribute('tabindex', '0');
+    await expect(modal.locator('.theme-card[tabindex="0"]')).toHaveCount(1);
+    expect((await activeTheme(booted)).id).toBe('dark');
   } finally {
     await booted.cleanup();
   }
@@ -201,43 +166,6 @@ test('the status-bar cycle persists its choice', async () => {
   }
 });
 
-test('closing the modal mid-preview does not strand the app on the previewed theme', async () => {
-  // The overlay is renderer-global state owned by a component that can vanish:
-  // removing a focused or hovered node fires neither focusout nor mouseleave,
-  // so without an unmount cleanup an Esc-close left the whole app wearing a
-  // theme the user never selected, with no way back but re-entering the picker.
-  const booted = await bootApp({ globalConfig: { theme: 'light' } });
-  try {
-    const modal = await openSettings(booted);
-    await modal.locator('.theme-card[data-theme-id="console"]').focus();
-    expect((await activeTheme(booted)).id).toBe('console');
-
-    await booted.window.keyboard.press('Escape');
-    await expect(modal).toBeHidden();
-    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
-  } finally {
-    await booted.cleanup();
-  }
-});
-
-test('the roving tab stop follows arrow-key focus', async () => {
-  // Arrows moved focus but the tab stop stayed on the staged selection, so the
-  // focused card carried tabindex="-1" and tabbing back landed elsewhere.
-  const booted = await bootApp({ globalConfig: { theme: 'light' } });
-  try {
-    const modal = await openSettings(booted);
-    await modal.locator('.theme-card[data-theme-id="light"]').focus();
-    await booted.window.keyboard.press('ArrowRight');
-
-    const warmGallery = modal.locator('.theme-card[data-theme-id="dark"]');
-    await expect(warmGallery).toBeFocused();
-    await expect(warmGallery).toHaveAttribute('tabindex', '0');
-    await expect(modal.locator('.theme-card[tabindex="0"]')).toHaveCount(1);
-  } finally {
-    await booted.cleanup();
-  }
-});
-
 test('an unrecognised stored theme still leaves the picker keyboard-reachable', async () => {
   // A hand-edited or newer-build theme id matches no card; without a fallback
   // every card would render tabindex="-1" and the picker would be unreachable
@@ -252,4 +180,3 @@ test('an unrecognised stored theme still leaves the picker keyboard-reachable', 
     await booted.cleanup();
   }
 });
-

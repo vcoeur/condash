@@ -1,4 +1,4 @@
-import { batch, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { resolveThemePreset } from '@shared/themes';
 import { resetMermaidTheme } from '../markdown';
@@ -22,16 +22,16 @@ export interface UseTheme {
    *  would queue a second write that races the modal's CAS baseline. */
   handleThemeChange: (next: Theme) => void;
   /**
-   * Overlay a theme on the running UI without committing it — the Settings
-   * picker's hover preview. Pass `null` to drop the overlay and fall back to
-   * the committed theme.
+   * Overlay a theme on the running UI without committing it — how the Settings
+   * picker shows an unsaved selection. Pass `null` to drop the overlay and fall
+   * back to the committed theme.
    *
    * A separate signal rather than a temporary `setTheme`, because a preview has
-   * to reach the JS-side consumers (xterm, CodeMirror, mermaid) *without*
-   * becoming the answer to "what is selected?". Routing it through the
-   * committed signal made the hovered card render as checked and made the
-   * restore target move while previewing; clearing an overlay needs no captured
-   * target at all, so it also can't race a Save.
+   * to reach the JS-side consumers (xterm, CodeMirror) *without* becoming the
+   * answer to "what is selected?" — routing it through the committed signal
+   * made the previewed card render as checked, since the modal reads that
+   * signal back. The picker owns this overlay's whole lifecycle and drops it on
+   * unmount, so a cancelled edit cannot leave it stranded.
    */
   previewTheme: (next: Theme | null) => void;
   /** Commit a theme **and persist it**. The status-bar cycle's entry point —
@@ -111,18 +111,14 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     .then((boot) => setTheme(boot.theme))
     .catch((err) => deps.flashToast(`Could not load theme: ${(err as Error).message}`, 'error'));
 
+  // Deliberately does NOT clear the overlay. The picker owns the overlay's whole
+  // lifecycle (set from its selection, dropped on unmount), so clearing it here
+  // would drop a live preview that nothing re-asserts — the picker's effect
+  // tracks its own selection and would not re-run. While a preview is up it is
+  // what the user is looking at, and it outranks a commit underneath it; the
+  // commit becomes visible the moment the picker goes away.
   const handleThemeChange = (next: Theme): void => {
-    // Batched so the preset effect runs once per commit. Unbatched, clearing
-    // the overlay first would resolve one intermediate preset off the *stale*
-    // committed theme and re-theme every open terminal against it.
-    //
-    // Clearing the overlay is defensive — the picker drops it on the way out,
-    // and every observed commit path leaves the grid first — but a commit must
-    // win over a preview by construction, not by call ordering.
-    batch(() => {
-      setPreviewed(null);
-      setTheme(next);
-    });
+    setTheme(next);
   };
 
   const previewTheme = (next: Theme | null): void => {
@@ -134,15 +130,23 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
   // Settings modal owns its own write, and a second one from here would race
   // its compare-and-set baseline. (The cycle silently lost its choice on
   // restart before this — pre-existing on main, surfaced by review here.)
+  let cycleSeq = 0;
   const cycleTheme = (next: Theme): void => {
     const previous = theme();
+    const seq = ++cycleSeq;
     handleThemeChange(next);
     void window.condash.setTheme(next).catch((err) => {
       // Optimistic UI with rollback on IPC failure, per the repo convention.
       // Without it a failed write leaves the app painted in a theme that is not
       // on disk: the toast reads as spurious because the change visibly
       // happened, and the next launch silently reverts it.
-      handleThemeChange(previous);
+      //
+      // Only the newest cycle may roll back, and only if nothing has moved the
+      // theme since. Two fast clicks whose writes settle out of order, or a
+      // Settings save landing while a cycle is in flight, would otherwise let a
+      // stale rejection stomp a newer choice that did reach disk — recreating
+      // the very desync this rollback exists to prevent.
+      if (seq === cycleSeq && theme() === next) handleThemeChange(previous);
       deps.flashToast(`Could not save theme: ${(err as Error).message}`, 'error');
     });
   };

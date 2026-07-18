@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onCleanup } from 'solid-js';
+import { For, Show, createEffect, onCleanup } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { THEME_PRESETS, themePreset } from '@shared/themes';
@@ -23,26 +23,25 @@ const CARDS = [
  * Theme picker — one card per preset plus a System card, each painting its own
  * palette as a swatch.
  *
- * Hovering (or keyboard-focusing) a card previews that theme across the whole
- * app; leaving the picker drops the preview. Selecting a card only *stages* it —
- * like every other field here the choice is written on Save, and the hint under
- * the grid says so.
+ * **Selecting a theme previews it**: the staged selection is applied to the
+ * running app immediately, and closing the modal without saving puts the
+ * committed theme back. Save persists it like every other field here.
  *
- * The preview goes through `onPreview`, which sets a dedicated overlay signal in
- * `use-theme` rather than the committed theme. Two earlier attempts got this
- * wrong in instructive ways: writing `<html>` attributes directly restyled the
- * CSS chrome but left xterm and CodeMirror on the old theme, and writing the
- * *committed* signal made the hovered card render as checked (the modal reads
- * that signal back) and made the restore target go stale against a Save. An
- * overlay is neither, and restoring is just clearing it.
- *
- * The overlay is renderer-global state owned by a component that can be
- * unmounted at any moment, so **every** exit path has to clear it: pointer out,
- * focus out, and unmount (Esc-closing the modal destroys these nodes without
- * firing either DOM event).
+ * There is deliberately no *hover* preview. Four attempts at one all failed the
+ * same way: the overlay is renderer-global state driven by two independent
+ * inputs (pointer position and focus position) whose precedence has no correct
+ * answer. Making focus win stranded the hovered card's theme and stopped hover
+ * previewing entirely once a click had pinned focus; making hover win cancelled
+ * keyboard previews on an incidental mouse movement; and the pointer has states
+ * — resting on the grid's gutter, or over a card that scrolled away — that emit
+ * no event at all. Driving the preview from the one thing the user has actually
+ * asserted (the selection) removes every one of those cases, and still answers
+ * "let me see what this theme looks like": clicking or arrowing to a card shows
+ * it across the whole app, with no commitment until Save.
  */
 export function ThemePicker(props: {
-  /** The staged selection — what the modal will write on Save. */
+  /** The staged selection — what the modal will write on Save, and what the
+   *  running app is previewing meanwhile. */
   current: Theme;
   /** Stage a selection (persisted on Save). */
   onChange: (theme: Theme) => void;
@@ -50,51 +49,31 @@ export function ThemePicker(props: {
   onPreview: (theme: Theme | null) => void;
 }): JSX.Element {
   const cardRefs: HTMLButtonElement[] = [];
-  // Pointer and keyboard positions are tracked separately and the preview is
-  // *derived* from them, rather than each handler mutating a shared overlay.
-  // Mutating it needed a guard per direction and kept leaving symmetric holes:
-  // deferring mouseleave to focus stranded the last hovered card's theme, and
-  // clearing on focusout dropped a live hover preview that nothing restored.
-  // With one derived value there is no ordering to get wrong.
-  const [hoveredIndex, setHoveredIndex] = createSignal<number | null>(null);
-  const [focusedIndex, setFocusedIndex] = createSignal<number | null>(null);
 
-  /** Focus beats hover: a focused card is an explicit keyboard assertion, and a
-   *  pointer drifting across the grid must not override it. */
-  const activeIndex = (): number | null => focusedIndex() ?? hoveredIndex();
+  // The staged selection *is* the preview. On mount it equals the theme already
+  // in force, so this is a no-op until the user picks something.
+  createEffect(() => props.onPreview(props.current));
 
-  createEffect(() => {
-    const index = activeIndex();
-    props.onPreview(index === null ? null : CARDS[index].value);
-  });
+  // Every way out of this component — Save, Cancel, Esc, the modal being torn
+  // down from elsewhere — ends here. Dropping the overlay reveals the committed
+  // theme underneath: correct after a Save (the commit already moved it) and
+  // correct after a cancel (the staged pick was never persisted).
+  onCleanup(() => props.onPreview(null));
 
-  /** The card owning the group's single tab stop: the focused one while the
-   *  group has focus, else the staged selection, else the first card. The last
-   *  fallback matters — an unrecognised theme id (hand-edited, or written by a
-   *  newer build) matches no card, and leaving every card at `-1` would make the
-   *  picker unreachable by keyboard, which is exactly the state you need to get
-   *  to in order to fix the bad value. */
+  /** The card owning the group's single tab stop. Falls back to the first card
+   *  when the staged value matches none — an unrecognised theme id (hand-edited,
+   *  or written by a newer build) would otherwise leave every card at `-1`,
+   *  making the picker unreachable by keyboard, which is exactly the state you
+   *  need to get to in order to fix the bad value. */
   const tabStopIndex = (): number => {
-    const focused = focusedIndex();
-    if (focused !== null) return focused;
     const selected = CARDS.findIndex((card) => card.value === props.current);
     return selected === -1 ? 0 : selected;
   };
 
-  // Unmount is the one exit the DOM events cannot cover: removing a focused or
-  // hovered node dispatches neither `focusout` nor `mouseleave`, so Esc-closing
-  // the modal mid-preview would otherwise strand the whole app on a theme the
-  // user never selected, with no way back except re-entering the picker.
-  onCleanup(() => props.onPreview(null));
-
-  /**
-   * Arrows move focus only; Space/Enter (native button activation) selects.
-   *
-   * WAI-ARIA allows either this or select-on-arrow for a radiogroup. Manual
-   * selection is the right one here: auto-selecting would stage a draft on
-   * every keypress, so merely arrowing across the cards to look at them would
-   * mark the modal dirty and arm its unsaved-edits Esc gate.
-   */
+  /** Arrow keys move focus *and* select, the standard radiogroup behaviour.
+   *  Selecting is no longer a hidden cost: it is what previews the theme, so
+   *  arrowing across the cards is the keyboard equivalent of looking at each
+   *  one. The modal going dirty is honest — the selection really did change. */
   const onKeyDown = (event: KeyboardEvent, index: number): void => {
     const step =
       event.key === 'ArrowRight' || event.key === 'ArrowDown'
@@ -104,41 +83,15 @@ export function ThemePicker(props: {
           : 0;
     if (step === 0) return;
     event.preventDefault();
-    cardRefs[(index + step + CARDS.length) % CARDS.length]?.focus();
-  };
-
-  /**
-   * Forget the keyboard position only when focus really left the grid.
-   *
-   * One rule, asked after the event settles: is `document.activeElement` still
-   * inside the grid? That covers a hop between cards (arrowing or tabbing
-   * within, which fires blur-then-focus), a window blur (the card keeps DOM
-   * focus, so the roving tab stop must not desync), and a genuine departure.
-   * Reading it *during* `focusout` does not work — the event fires before focus
-   * lands, so `activeElement` is still the old node — and `relatedTarget` is
-   * null both on window blur and on some programmatic focus moves, so it cannot
-   * tell those two apart either.
-   */
-  const onFocusOut = (event: FocusEvent): void => {
-    const grid = event.currentTarget as HTMLElement;
-    queueMicrotask(() => {
-      // Unmounting: onCleanup already drops the overlay.
-      if (!grid.isConnected) return;
-      if (grid.contains(document.activeElement)) return;
-      setFocusedIndex(null);
-    });
+    const next = (index + step + CARDS.length) % CARDS.length;
+    cardRefs[next]?.focus();
+    props.onChange(CARDS[next].value);
   };
 
   return (
     <div class="settings-field">
       <span class="settings-field-label">Theme</span>
-      <div
-        class="theme-picker"
-        role="radiogroup"
-        aria-label="Theme"
-        onMouseLeave={() => setHoveredIndex(null)}
-        onFocusOut={onFocusOut}
-      >
+      <div class="theme-picker" role="radiogroup" aria-label="Theme">
         <For each={CARDS}>
           {(card, index) => (
             <button
@@ -151,8 +104,6 @@ export function ThemePicker(props: {
               data-theme-id={card.value}
               classList={{ 'is-active': props.current === card.value }}
               onClick={() => props.onChange(card.value)}
-              onMouseEnter={() => setHoveredIndex(index())}
-              onFocus={() => setFocusedIndex(index())}
               onKeyDown={(event) => onKeyDown(event, index())}
             >
               <Swatch value={card.value} />
@@ -163,7 +114,8 @@ export function ThemePicker(props: {
         </For>
       </div>
       <p class="settings-field-hint">
-        Hover a theme to preview it. The selected theme is applied on Save.
+        Selecting a theme applies it straight away. Save to keep it — closing without saving puts
+        the current theme back.
       </p>
     </div>
   );
