@@ -130,6 +130,59 @@ test('arrow keys move focus between cards without staging a change', async () =>
   }
 });
 
+test('a focused card outranks the pointer, and survives the pointer leaving', async () => {
+  // Guarding mouseleave with "focus wins" was not enough on its own: nothing
+  // re-asserted the focused card, so a hover set over a *different* card stayed
+  // in force after the pointer left — focus ring on one theme, app in another.
+  // Deriving the preview from (focus ?? hover) makes both directions fall out.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').focus();
+    expect((await activeTheme(booted)).id).toBe('console');
+
+    // Pointer drifts over a different card — focus still owns the preview.
+    await modal.locator('.theme-card[data-theme-id="dark"]').hover();
+    expect((await activeTheme(booted)).id).toBe('console');
+
+    // …and the pointer leaving does not cancel the keyboard preview.
+    await modal.locator('.settings-field-label').first().hover();
+    expect((await activeTheme(booted)).id).toBe('console');
+    await expect(modal.locator('.theme-card[data-theme-id="console"]')).toBeFocused();
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('focus leaving falls back to the hovered card, not to nothing', async () => {
+  // The symmetric hole: focusout cleared the overlay outright, dropping a live
+  // hover preview while the pointer still rested on a card, with nothing to
+  // restore it until the pointer moved to a different card.
+  //
+  // Committed theme is Warm Gallery so the expected fallback (Paper) is
+  // distinguishable from a cleared overlay.
+  const booted = await bootApp({ globalConfig: { theme: 'dark' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').focus();
+    await modal.locator('.theme-card[data-theme-id="light"]').hover();
+    // Focus outranks hover while both are inside the grid.
+    expect((await activeTheme(booted)).id).toBe('console');
+
+    // Move focus out of the grid without disturbing the pointer. Not Save (it
+    // is disabled until something is staged, so .focus() would silently no-op)
+    // and not Tab (focusing the next control scrolls it into view, sliding the
+    // grid out from under the stationary pointer and firing a real mouseleave).
+    // The search box is sticky at the top of the modal, so focusing it moves
+    // nothing.
+    await modal.locator('input.settings-search').focus();
+    await expect(modal.locator('.theme-card:focus')).toHaveCount(0);
+    expect((await activeTheme(booted)).id).toBe('light');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('the status-bar cycle persists its choice', async () => {
   // Pre-existing before this branch: the cycle only moved the in-memory signal,
   // so the app came back on the old theme after a restart. It has no modal
@@ -138,9 +191,11 @@ test('the status-bar cycle persists its choice', async () => {
   const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
   try {
     await booted.window.locator('[aria-label="Cycle theme"]').click();
+    // Deterministic: the cycle order is THEME_VALUES, so light → dark. A
+    // `.not.toBe('light')` here would also pass on an absent or garbage value.
     await expect
       .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).theme)
-      .not.toBe('light');
+      .toBe('dark');
   } finally {
     await booted.cleanup();
   }
@@ -197,3 +252,4 @@ test('an unrecognised stored theme still leaves the picker keyboard-reachable', 
     await booted.cleanup();
   }
 });
+

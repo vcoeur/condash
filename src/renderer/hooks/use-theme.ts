@@ -135,8 +135,14 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
   // its compare-and-set baseline. (The cycle silently lost its choice on
   // restart before this — pre-existing on main, surfaced by review here.)
   const cycleTheme = (next: Theme): void => {
+    const previous = theme();
     handleThemeChange(next);
     void window.condash.setTheme(next).catch((err) => {
+      // Optimistic UI with rollback on IPC failure, per the repo convention.
+      // Without it a failed write leaves the app painted in a theme that is not
+      // on disk: the toast reads as spurious because the change visibly
+      // happened, and the next launch silently reverts it.
+      handleThemeChange(previous);
       deps.flashToast(`Could not save theme: ${(err as Error).message}`, 'error');
     });
   };

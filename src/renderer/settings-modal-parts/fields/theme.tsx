@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup } from 'solid-js';
+import { For, Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { THEME_PRESETS, themePreset } from '@shared/themes';
@@ -50,11 +50,23 @@ export function ThemePicker(props: {
   onPreview: (theme: Theme | null) => void;
 }): JSX.Element {
   const cardRefs: HTMLButtonElement[] = [];
-  // Which card currently has keyboard focus, if any. Arrow keys move focus
-  // without selecting, so the roving tab stop has to track this rather than the
-  // staged selection — otherwise the focused card ends up `tabindex="-1"` and
-  // tabbing back into the group lands somewhere else.
+  // Pointer and keyboard positions are tracked separately and the preview is
+  // *derived* from them, rather than each handler mutating a shared overlay.
+  // Mutating it needed a guard per direction and kept leaving symmetric holes:
+  // deferring mouseleave to focus stranded the last hovered card's theme, and
+  // clearing on focusout dropped a live hover preview that nothing restored.
+  // With one derived value there is no ordering to get wrong.
+  const [hoveredIndex, setHoveredIndex] = createSignal<number | null>(null);
   const [focusedIndex, setFocusedIndex] = createSignal<number | null>(null);
+
+  /** Focus beats hover: a focused card is an explicit keyboard assertion, and a
+   *  pointer drifting across the grid must not override it. */
+  const activeIndex = (): number | null => focusedIndex() ?? hoveredIndex();
+
+  createEffect(() => {
+    const index = activeIndex();
+    props.onPreview(index === null ? null : CARDS[index].value);
+  });
 
   /** The card owning the group's single tab stop: the focused one while the
    *  group has focus, else the staged selection, else the first card. The last
@@ -69,16 +81,11 @@ export function ThemePicker(props: {
     return selected === -1 ? 0 : selected;
   };
 
-  const clearPreview = (): void => {
-    setFocusedIndex(null);
-    props.onPreview(null);
-  };
-
   // Unmount is the one exit the DOM events cannot cover: removing a focused or
   // hovered node dispatches neither `focusout` nor `mouseleave`, so Esc-closing
   // the modal mid-preview would otherwise strand the whole app on a theme the
   // user never selected, with no way back except re-entering the picker.
-  onCleanup(clearPreview);
+  onCleanup(() => props.onPreview(null));
 
   /**
    * Arrows move focus only; Space/Enter (native button activation) selects.
@@ -100,22 +107,26 @@ export function ThemePicker(props: {
     cardRefs[(index + step + CARDS.length) % CARDS.length]?.focus();
   };
 
-  /** Drop the preview only when focus leaves the grid entirely — a hop between
-   *  cards (arrowing, or tabbing within) fires blur-then-focus and must not
-   *  round-trip the whole app through the committed theme in between. */
+  /**
+   * Forget the keyboard position only when focus really left the grid.
+   *
+   * One rule, asked after the event settles: is `document.activeElement` still
+   * inside the grid? That covers a hop between cards (arrowing or tabbing
+   * within, which fires blur-then-focus), a window blur (the card keeps DOM
+   * focus, so the roving tab stop must not desync), and a genuine departure.
+   * Reading it *during* `focusout` does not work — the event fires before focus
+   * lands, so `activeElement` is still the old node — and `relatedTarget` is
+   * null both on window blur and on some programmatic focus moves, so it cannot
+   * tell those two apart either.
+   */
   const onFocusOut = (event: FocusEvent): void => {
-    const next = event.relatedTarget as Node | null;
-    if (next && event.currentTarget instanceof Node && event.currentTarget.contains(next)) return;
-    clearPreview();
-  };
-
-  /** The pointer leaving must not cancel a *keyboard* preview: a focused card is
-   *  still asserting its theme, and an incidental mouse movement across the grid
-   *  would otherwise leave the focus ring on one theme and the app painted in
-   *  another. */
-  const onMouseLeave = (): void => {
-    if (focusedIndex() !== null) return;
-    clearPreview();
+    const grid = event.currentTarget as HTMLElement;
+    queueMicrotask(() => {
+      // Unmounting: onCleanup already drops the overlay.
+      if (!grid.isConnected) return;
+      if (grid.contains(document.activeElement)) return;
+      setFocusedIndex(null);
+    });
   };
 
   return (
@@ -125,7 +136,7 @@ export function ThemePicker(props: {
         class="theme-picker"
         role="radiogroup"
         aria-label="Theme"
-        onMouseLeave={onMouseLeave}
+        onMouseLeave={() => setHoveredIndex(null)}
         onFocusOut={onFocusOut}
       >
         <For each={CARDS}>
@@ -140,11 +151,8 @@ export function ThemePicker(props: {
               data-theme-id={card.value}
               classList={{ 'is-active': props.current === card.value }}
               onClick={() => props.onChange(card.value)}
-              onMouseEnter={() => props.onPreview(card.value)}
-              onFocus={() => {
-                setFocusedIndex(index());
-                props.onPreview(card.value);
-              }}
+              onMouseEnter={() => setHoveredIndex(index())}
+              onFocus={() => setFocusedIndex(index())}
               onKeyDown={(event) => onKeyDown(event, index())}
             >
               <Swatch value={card.value} />
