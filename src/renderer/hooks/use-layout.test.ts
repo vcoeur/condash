@@ -46,11 +46,25 @@ describe('clampSplit', () => {
     expect(clampSplit(0.5)).toBe(0.5);
   });
 
-  it('bounds a hand-edited extreme so neither pane can be hidden', () => {
-    expect(clampSplit(0)).toBe(0.1);
-    expect(clampSplit(1)).toBe(0.9);
-    expect(clampSplit(-4)).toBe(0.1);
-    expect(clampSplit(99)).toBe(0.9);
+  it('bounds a hand-edited extreme', () => {
+    expect(clampSplit(0)).toBe(0.02);
+    expect(clampSplit(1)).toBe(0.98);
+    expect(clampSplit(-4)).toBe(0.02);
+    expect(clampSplit(99)).toBe(0.98);
+  });
+
+  // The fraction bound must stay looser than the px clamp in `splitColumns`,
+  // which is what actually decides where the splitter may sit. If the fraction
+  // were the tighter of the two, dragging fully left on a wide band would pin
+  // the pane at 200px during the drag and then snap it right on mouseup — the
+  // user could never park it where they released.
+  it('does not bind at the pixel floor on a wide band', () => {
+    for (const bandWidth of [1600, 2560, 3440, 5120]) {
+      const atPixelFloor = 200 / bandWidth;
+      expect(clampSplit(atPixelFloor)).toBe(atPixelFloor);
+      const atPixelCap = (bandWidth - 204) / bandWidth;
+      expect(clampSplit(atPixelCap)).toBe(atPixelCap);
+    }
   });
 
   it('falls back to the default for a non-finite value', () => {
@@ -79,6 +93,6 @@ describe('splitColumns', () => {
   });
 
   it('clamps an out-of-range fraction before rendering', () => {
-    expect(splitColumns(5)).toContain('90.0000%');
+    expect(splitColumns(5)).toContain('98.0000%');
   });
 });

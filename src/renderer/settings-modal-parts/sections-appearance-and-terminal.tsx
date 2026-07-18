@@ -25,9 +25,12 @@ import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
-  /** The saved theme, as opposed to `theme()`'s staged draft — the picker
-   *  restores it when the modal closes without saving. */
+  /** The theme actually in force, as opposed to `theme()`'s staged draft — the
+   *  picker restores it when a preview ends. */
   appliedTheme: () => Theme;
+  /** Apply a theme to the running UI without persisting it (the picker's
+   *  hover preview). */
+  previewTheme: (theme: Theme) => void;
   setTheme: (theme: Theme) => Promise<void>;
   uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   setUiFonts: (patch: UiFontPrefs) => Promise<void>;
@@ -53,6 +56,7 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
         current={props.theme()}
         applied={props.appliedTheme()}
         onChange={(t) => void props.setTheme(t)}
+        onPreview={props.previewTheme}
       />
       <UiFontsFields resolve={props.uiFont} onChange={(patch) => void props.setUiFonts(patch)} />
       <CardDensityFields

@@ -13,6 +13,13 @@
  * zod, and re-exports it so unrelated importers keep resolving.
  */
 
+// Type-only module of plain constants — no zod, so the read path stays cheap.
+import {
+  DEFAULT_PROJECTS_SPLIT,
+  MAX_PROJECTS_SPLIT,
+  MIN_PROJECTS_SPLIT,
+} from '../shared/types/layout';
+
 /**
  * In-place migration of legacy settings shapes ahead of strict-mode zod
  * parsing. Runs on every parse so old `settings.json` / `condash.json`
@@ -36,10 +43,14 @@
  *   label) → `agent` (names an agent `id`). The old value is unlikely to match
  *   an agent id, so the action degrades to focused-tab behaviour until the user
  *   re-points it — strictly better than failing the strict-mode parse.
- * - `layout.projectsWidth` (CSS px) → `layout.projectsSplit` (fraction of the
- *   band), converted against a nominal 1280px window. The pixel form pinned the
- *   Projects pane to an absolute width, so narrowing the window pushed the
- *   splitter off the right edge where it couldn't be dragged back.
+ * - `layout.projectsWidth` (CSS px) — dropped, and `layout.projectsSplit`
+ *   (fraction of the band) defaulted in if absent or malformed. The pixel form
+ *   pinned the Projects pane to an absolute width, so narrowing the window
+ *   pushed the splitter off the right edge where it couldn't be dragged back.
+ *   The old value is not converted: the band width it was measured against is
+ *   unknowable at parse time, and guessing one mis-scales the pane badly on any
+ *   other display. Backfilling the default is what keeps the whole settings
+ *   file parseable — `projectsSplit` is required whenever `layout` exists.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
@@ -76,16 +87,22 @@ export function migrateRawSettings(parsed: unknown): unknown {
     const layout = root.layout as Record<string, unknown>;
     if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
     // The splitter position went from CSS pixels to a fraction of the band, so
-    // it survives a window resize. The real band width isn't knowable here, so
-    // convert against a nominal 1280px window — approximate but deterministic,
-    // and the user re-drags once if it lands wrong. Clamped to the schema's
-    // bounds so an absurd stored width can't fail the strict parse.
-    if ('projectsWidth' in layout) {
-      const legacy = layout.projectsWidth;
-      if (!('projectsSplit' in layout) && typeof legacy === 'number' && legacy > 0) {
-        layout.projectsSplit = Math.min(0.9, Math.max(0.1, legacy / 1280));
-      }
-      delete layout.projectsWidth;
+    // it survives a window resize. The pixel value is deliberately NOT
+    // converted: the band width it was measured against is unknowable here, and
+    // dividing by a nominal window turns a 900px pane on a 3440px ultrawide
+    // into 70% of the band — a far worse first launch than simply starting from
+    // the default. One drag restores the preference permanently.
+    delete layout.projectsWidth;
+    // `projectsSplit` is required by the strict layout schema, so it must exist
+    // whenever `layout` does — otherwise dropping the legacy key would reject
+    // the entire settings file (losing repos, terminal prefs, fonts, all of it)
+    // rather than just the pane width. Covers a missing, malformed, or
+    // out-of-range value alike.
+    const split = layout.projectsSplit;
+    if (typeof split !== 'number' || !Number.isFinite(split)) {
+      layout.projectsSplit = DEFAULT_PROJECTS_SPLIT;
+    } else {
+      layout.projectsSplit = Math.min(MAX_PROJECTS_SPLIT, Math.max(MIN_PROJECTS_SPLIT, split));
     }
   }
   const terminal = root.terminal;

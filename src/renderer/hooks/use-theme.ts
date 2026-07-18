@@ -64,10 +64,15 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     root.setAttribute('data-theme-kind', active.kind);
   });
 
-  // Repaint live xterms whenever the dark/light flag flips. Runs once on mount
-  // with the initial value — harmless, since CSS tokens already match.
+  // Repaint live xterms on every preset change — tracking the *preset*, not
+  // `isDark()`. xterm reads its colours out of the computed CSS tokens
+  // (`themeFromCss` in xterm-mount.ts) and only re-reads on refresh, so a
+  // dark→dark switch (Warm Gallery ↔ Console) changes every one of those tokens
+  // while the boolean stays `true`; keying on `isDark()` let the memo swallow
+  // the change and left open terminals painting the old theme's background
+  // inside the new theme's panel. Runs once on mount — harmless, tokens match.
   createEffect(() => {
-    isDark();
+    preset();
     refreshAllXtermThemes();
   });
 

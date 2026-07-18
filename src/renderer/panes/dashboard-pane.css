@@ -532,19 +532,13 @@
 }
 
 /* Dark "control room": live-state bars glow so a working / awaiting / error
- * card reads as a lit indicator on the dark surface. Mirrors the two dark
- * activation paths used app-wide (explicit toggle + OS preference). */
+ * card reads as a lit indicator on the dark surface. Keyed on the resolved
+ * kind, so every dark preset gets it — the OS-preference twin this rule used to
+ * carry is gone with the rest of them (use-theme stamps the attribute). */
 [data-theme-kind='dark'] .dashboard-card[data-state='working']::before,
 [data-theme-kind='dark'] .dashboard-card[data-state='awaiting']::before,
 [data-theme-kind='dark'] .dashboard-card[data-state='error']::before {
   box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .dashboard-card[data-state='working']::before,
-  :root:not([data-theme='light']) .dashboard-card[data-state='awaiting']::before,
-  :root:not([data-theme='light']) .dashboard-card[data-state='error']::before {
-    box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
-  }
 }
 
 /* Honour reduced-motion: drop the pulsing markers. */

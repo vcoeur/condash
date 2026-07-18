@@ -776,6 +776,7 @@ export function SettingsModal(props: {
               <AppearanceSection
                 theme={globalTheme}
                 appliedTheme={() => props.theme}
+                previewTheme={props.onChangeTheme}
                 setTheme={setGlobalTheme}
                 uiFont={uiFontOf}
                 setUiFonts={setGlobalUiFonts}

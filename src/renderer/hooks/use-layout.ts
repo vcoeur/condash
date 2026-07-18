@@ -1,5 +1,6 @@
 import { createMemo, createSignal } from 'solid-js';
 import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
+import { DEFAULT_PROJECTS_SPLIT, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '@shared/types';
 import { getBootstrap } from '../bootstrap';
 
 /** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used both
@@ -10,7 +11,7 @@ const DEFAULT_LAYOUT: LayoutState = {
   leftView: 'projects',
   working: 'code',
   terminal: true,
-  projectsSplit: 0.32,
+  projectsSplit: DEFAULT_PROJECTS_SPLIT,
 };
 
 /** Splitter thickness in px — mirrored in the grid template. */
@@ -22,11 +23,20 @@ const SPLITTER_PX = 4;
  *  the right edge, so a narrowed window can always be dragged back. */
 const MIN_PANE_PX = 200;
 
-/** Keep a stored fraction inside the schema's bounds — cheap insurance against
- *  a hand-edited settings.json, and the same clamp the drag commit applies. */
+/**
+ * Keep a stored fraction inside the schema's bounds.
+ *
+ * These bounds must stay **looser** than the px clamp in `splitColumns`, which
+ * is the constraint that actually decides where the splitter can sit. If the
+ * fraction bound were the tighter of the two they would disagree on any band
+ * wider than ~2000px: dragging fully left pins the pane at 200px, but 200/2560
+ * is 0.078, and rounding that up to a 0.1 floor would re-render the pane at
+ * 256px — the handle visibly jumping ~56px the instant the mouse is released,
+ * with the user unable to park it at the minimum they were just shown.
+ */
 export function clampSplit(fraction: number): number {
-  if (!Number.isFinite(fraction)) return DEFAULT_LAYOUT.projectsSplit;
-  return Math.min(0.9, Math.max(0.1, fraction));
+  if (!Number.isFinite(fraction)) return DEFAULT_PROJECTS_SPLIT;
+  return Math.min(MAX_PROJECTS_SPLIT, Math.max(MIN_PROJECTS_SPLIT, fraction));
 }
 
 /**

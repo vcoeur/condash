@@ -397,20 +397,16 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
   // it stays proportional across a window resize. A pixel width pinned the
   // Projects pane to an absolute size, pushing the splitter off the right edge
   // of a narrowed window where it could not be dragged back.
-  it('converts a legacy pixel width against the nominal reference', () => {
+  it('drops the legacy width and backfills the default fraction', () => {
     const migrated = migrateRawSettings({
       layout: { projects: true, working: 'code', terminal: true, projectsWidth: 640 },
     }) as Record<string, unknown>;
     const layout = migrated.layout as Record<string, unknown>;
     expect('projectsWidth' in layout).toBe(false);
-    expect(layout.projectsSplit).toBe(0.5);
-  });
-
-  it('clamps an extreme stored width into the schema bounds', () => {
-    const wide = migrateRawSettings({ layout: { projectsWidth: 4000 } }) as Record<string, unknown>;
-    expect((wide.layout as Record<string, unknown>).projectsSplit).toBe(0.9);
-    const narrow = migrateRawSettings({ layout: { projectsWidth: 20 } }) as Record<string, unknown>;
-    expect((narrow.layout as Record<string, unknown>).projectsSplit).toBe(0.1);
+    // Deliberately NOT converted: the band width the pixel value was measured
+    // against is unknowable here, and guessing one mis-scales the pane badly on
+    // any other display (900px on a 3440px ultrawide would become 70% of it).
+    expect(layout.projectsSplit).toBe(0.32);
   });
 
   it('keeps an existing fraction and only drops the legacy key', () => {
@@ -420,6 +416,25 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
     const layout = migrated.layout as Record<string, unknown>;
     expect('projectsWidth' in layout).toBe(false);
     expect(layout.projectsSplit).toBe(0.25);
+  });
+
+  // Without the backfill, dropping the legacy key would leave `layout` missing
+  // a field the strict schema requires — rejecting the WHOLE settings file
+  // (repos, terminal prefs, fonts, everything) over a pane width.
+  it('backfills a malformed or missing fraction so the strict parse survives', () => {
+    for (const bad of [undefined, 0, -3, 'wide', null, Number.NaN]) {
+      const migrated = migrateRawSettings({
+        layout: { projectsWidth: bad, projectsSplit: undefined },
+      }) as Record<string, unknown>;
+      expect((migrated.layout as Record<string, unknown>).projectsSplit).toBe(0.32);
+    }
+  });
+
+  it('clamps an out-of-range stored fraction into the schema bounds', () => {
+    const wide = migrateRawSettings({ layout: { projectsSplit: 4 } }) as Record<string, unknown>;
+    expect((wide.layout as Record<string, unknown>).projectsSplit).toBe(0.98);
+    const narrow = migrateRawSettings({ layout: { projectsSplit: -1 } }) as Record<string, unknown>;
+    expect((narrow.layout as Record<string, unknown>).projectsSplit).toBe(0.02);
   });
 
   it('lets a global save round-trip a legacy layout body', () => {
@@ -434,7 +449,7 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
     });
     const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
     expect('projectsWidth' in parsed.layout).toBe(false);
-    expect(parsed.layout.projectsSplit).toBeCloseTo(0.25, 5);
+    expect(parsed.layout.projectsSplit).toBe(0.32);
   });
 });
 

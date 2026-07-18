@@ -22,17 +22,31 @@ import {
   type Page,
 } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const repoRoot = resolve(__dirname, '..');
 const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
 
-/** The real tree — never copied, never deleted, never mutated by this spec. */
-const REAL_CONCEPTION = '/home/alice/src/vcoeur/conception';
+/**
+ * The real tree — never copied, never deleted, never mutated by this spec.
+ *
+ * Overridable so this isn't pinned to one machine, and the whole file skips
+ * when the path is absent. That matters beyond developer convenience: the full
+ * Playwright suite runs on CI **at tag time**, where no conception tree exists,
+ * and a failing leg there cascades to a skipped `publish` — an orphan tag with
+ * no Release. These are local visual captures; they must never gate a release.
+ */
+const REAL_CONCEPTION = process.env.CONDASH_SHOTS_CONCEPTION ?? '';
 
 /** Registry ids from src/shared/themes.ts. */
 const THEMES = ['light', 'dark', 'console'] as const;
+
+test.skip(
+  !REAL_CONCEPTION || !existsSync(REAL_CONCEPTION),
+  'set CONDASH_SHOTS_CONCEPTION to an existing conception tree to capture theme shots',
+);
 
 interface Booted {
   app: ElectronApplication;

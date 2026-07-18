@@ -41,3 +41,16 @@ export interface LayoutState {
    * a usable minimum. */
   projectsSplit: number;
 }
+
+/**
+ * Bounds for `projectsSplit`. Deliberately far wider than any position the UI
+ * can produce: the *real* constraint is the renderer's px clamp (a 200px floor
+ * on each pane), and these exist only so a hand-edited settings.json can't
+ * store something absurd. Keeping them loose is load-bearing — a tighter
+ * fraction bound would disagree with the px clamp on a wide monitor and snap
+ * the splitter away from where the user released it. 0.02 stays out of the way
+ * up to a ~10000px band.
+ */
+export const MIN_PROJECTS_SPLIT = 0.02;
+export const MAX_PROJECTS_SPLIT = 0.98;
+export const DEFAULT_PROJECTS_SPLIT = 0.32;

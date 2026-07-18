@@ -20,6 +20,7 @@ import type {
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { THEME_VALUES } from '../shared/themes';
+import { MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -376,11 +377,11 @@ export const layoutSchema = z
       z.null(),
     ]),
     terminal: z.boolean(),
-    /** Splitter position as a fraction of the band width. Bounded well inside
-     *  0–1 so a hand-edited file can't hide a pane entirely; the renderer
-     *  clamps again in px terms. Legacy `projectsWidth` is folded into this by
-     *  `migrateRawSettings`. */
-    projectsSplit: z.number().min(0.1).max(0.9),
+    /** Splitter position as a fraction of the band width. The bounds are loose
+     *  on purpose — the renderer's px clamp is the real constraint, and a
+     *  tighter fraction bound would fight it on a wide monitor. See
+     *  {@link MIN_PROJECTS_SPLIT}. */
+    projectsSplit: z.number().min(MIN_PROJECTS_SPLIT).max(MAX_PROJECTS_SPLIT),
   } satisfies Record<keyof LayoutState, z.ZodTypeAny>)
   .strict();
 
