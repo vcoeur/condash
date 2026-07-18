@@ -51,7 +51,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, `memory` containment, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
 | `dashboard`             | global      | object       | —        | Live terminal-tab summarization (direct OpenAI-compatible endpoint, DeepSeek by default): `{enabled, provider, apiKey, baseUrl, model, writerModel, cardReasoning, writerReasoning, cardInputChars, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
 | `autoSync`              | global      | object       | —        | GUI-driven periodic committer: `{enabled, intervalMinutes, quietPeriodSeconds, push}`. While a conception is open, runs `condash sync run` on a timer. Off by default; set it in **Settings → Auto-commit**. [↓](#auto-commit)                                                                                    |
-| `theme`                 | global      | enum         | `system`  | `light` \| `dark` \| `system`.                                                                                                                                                                                          |
+| `theme`                 | global      | enum         | `system`  | Colour theme: `light` (Paper) \| `dark` (Warm Gallery) \| `console` (Console) \| `system` (follow the OS between Paper and Warm Gallery). [↓](#theme)                                                                     |
 | `uiFonts`               | global      | object       | —        | Per-category UI typography `{cardTitle, heading, body, code, terminal}`, each a `{family, weight, size}` object. Any field left `default` keeps the theme's value for that surface. [↓](#uifonts)                            |
 | `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | global      | object       | —        | `{ dismissed }` — first-launch welcome-screen state.                                                                                                                                                                     |
@@ -498,7 +498,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "leftView": "projects",
     "working": "code",
     "terminal": false,
-    "projectsWidth": 420
+    "projectsSplit": 0.42
   },
   "welcome": { "dismissed": true },
   "cardMinWidth": {
@@ -522,7 +522,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lastConceptionPath`    | Absolute path to the conception tree condash should render. Replaces the older `conceptionPath` field — a one-shot migration on first read rewrites old files.                                                                                                                                                 |
 | `recentConceptionPaths` | Newest-first list of paths the user has opened (cap 5). Drives the **File → Open Recent** submenu and the Settings modal's recents section.                                                                                                                                                                    |
-| `theme`                 | `light`, `dark`, or `system`. Persisted by `setTheme`.                                                                                                                                                                                                                                                         |
+| `theme`                 | A theme preset id (`light`, `dark`, `console`) or `system`. Persisted by `setTheme`. See [Theme](#theme).                                                                                                                                                                                                      |
 | `uiFonts`               | Per-category UI typography (family, weight, size). See [UiFonts](#uifonts) below. Set in **Settings → Appearance**; applied live via the `--ui-font-*` / `--ui-weight-*` / `--ui-size-*` CSS variables. Any field unset ⇒ `default`.                                                                              |
 | `terminal.*`            | Embedded-terminal preferences. See [Terminal preferences](#terminal-preferences) above for every sub-key.                                                                                                                                                                                                      |
 | `layout`                | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                                                                                                                                                                                 |
@@ -545,7 +545,7 @@ Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `
 | `leftView`      | `'projects' \| 'tasks' \| 'deliverables'`                            | Which pane fills the left band — the Projects list, the Tasks list, or the Deliverables aggregation of every project's `## Deliverables`. Selected by the left activity rail. Defaults to `'projects'`. A persisted `'outputs'` (v3.20.0) is migrated to `'deliverables'`. |
 | `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all.                                                                                                                                          |
 | `terminal`      | bool                                                                 | Show or hide the Terminal pane at the bottom.                                                                                                                                                                                                                                   |
-| `projectsWidth` | positive int                                                         | Pixel width of the Projects pane after the user drags the splitter.                                                                                                                                                                                                             |
+| `projectsSplit` | number 0.02 – 0.98                                                   | Splitter position as a fraction of the band width, set by dragging. A fraction (not a pixel width) so the split stays proportional when the window is resized. The bounds are loose on purpose — the renderer's px clamp (a 200px floor per pane) is the real constraint, and a tighter fraction bound would disagree with it on a wide monitor and snap the handle away from where it was released. Upgrading from the older `projectsWidth` drops that key; an existing `projectsSplit` is kept, and only an absent or non-numeric one falls back to the default. The pixel value is not converted — the band width it was measured against is unknowable at parse time. |
 
 The IPC verbs `getLayout` / `setLayout` read and write this block atomically — toggling a pane via the View menu (or its keyboard shortcut) round-trips through `setLayout` so the change survives a restart.
 
@@ -567,6 +567,37 @@ The IPC verbs `getLayout` / `setLayout` read and write this block atomically —
 Lower numbers pack more cards per row at the same window size; higher numbers keep cards roomy. Values outside the `120–2400` range are silently dropped back to the default. Keys equal to the default are removed from disk so the bundled defaults can change in a future release without leaving stale literals on every machine.
 
 `getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`, `--card-min-logs`, `--card-min-tasks`, `--card-min-deliverables`) so live edits in the Settings modal reflow the grids without a reload.
+
+### Theme
+
+`theme` names one of the presets in the registry (`src/shared/themes.ts`), or `system`.
+
+| Value     | Name         | Kind  | Character                                                        |
+| --------- | ------------ | ----- | ---------------------------------------------------------------- |
+| `light`   | Paper        | light | Warm paper light — the vcoeur editorial palette.                   |
+| `dark`    | Warm Gallery | dark  | Gold on warm black — the gallery-dark lead theme.                  |
+| `console` | Console      | dark  | Terminal-native: deep ink, phosphor green, monospace throughout.   |
+| `system`  | System       | —     | Follows the OS preference between Paper and Warm Gallery.          |
+
+Each preset is **self-contained**: it carries its own palette, and `console` also
+tightens the radius scale and re-points the brand font stacks at JetBrains Mono.
+There is no separate dark/light switch — a preset's `kind` is the only place the
+distinction lives, and it is what every binary subsystem (xterm, CodeMirror,
+highlight.js, mermaid) reads.
+
+Pick a theme in **Settings → Appearance**, where each preset renders as a card
+with a swatch of its own colours. **Selecting a card previews it immediately**
+across the whole app — that is how you see a theme before committing to it — but
+nothing is written until you press Save, so closing the modal without saving
+puts the current theme back. The status-bar moon/sun button cycles through the
+list and persists straight away. Note that the ids `light`
+and `dark` predate the registry and are kept so existing `settings.json` files
+keep working — they are the *ids* of Paper and Warm Gallery, not a mode.
+
+The renderer resolves the choice in JS and stamps two attributes on `<html>`:
+`data-theme` (the preset id, selecting the palette block in `styles.css`) and
+`data-theme-kind` (`dark` or `light`, which every dark-only CSS rule keys on).
+Adding a preset is one registry entry plus one `[data-theme='<id>']` block.
 
 ### UiFonts
 
@@ -608,7 +639,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 **Personal · this machine** — writes `settings.json`:
 
 - **Recent conceptions** — manage the recents list backing **File → Open Recent**.
-- **Appearance** — theme; per-category UI fonts (with a live preview); per-pane card-grid min-widths.
+- **Appearance** — theme (preset cards with swatches; selecting one previews it live); per-category UI fonts (with a live preview); per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences (`terminal`, including `xterm`, `logging`, and the project-action templates).
 - **Launchers** — the `agents` list.
 - **Open with** — the three IDE/terminal launch slots.

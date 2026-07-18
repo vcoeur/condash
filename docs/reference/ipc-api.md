@@ -181,8 +181,8 @@ The three tree panes (Knowledge / Resources / Skills) expose create-file / creat
 
 | Verb | What it does |
 |---|---|
-| `getTheme()` / `setTheme(theme)` | Persist `'light' \| 'dark' \| 'system'` in `settings.json`. |
-| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null`, `terminal: bool`, `projectsWidth: int`). See [Config — LayoutState](config.md#layoutstate). |
+| `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'dark'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
+| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
 | `getWelcomeDismissed()` / `setWelcomeDismissed(value)` | Persistent first-launch welcome-screen flag (`welcome.dismissed` in `settings.json`). |
 | `getCardMinWidth()` / `setCardMinWidth(prefs)` | Read or write the per-pane card-grid min-width block (`projects`, `code`, `knowledge`, `resources`, `skills`, `logs`, `tasks`, `deliverables`). See [Config — CardMinWidth](config.md#cardminwidth). |
 | `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (Knowledge / Resources / Skills tabs). Empty values mean every directory is collapsed — the on-purpose first-load state. |

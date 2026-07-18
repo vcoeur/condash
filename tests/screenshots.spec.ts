@@ -59,7 +59,7 @@ async function boot(theme: Theme): Promise<Booted> {
           projects: true,
           working: 'code',
           terminal: false,
-          projectsWidth: 798,
+          projectsSplit: 0.5,
         },
       },
       null,

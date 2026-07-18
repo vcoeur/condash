@@ -25,6 +25,9 @@ import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
+  /** Overlay a theme on the running UI without committing it, or `null` to drop
+   *  the overlay. The picker drives this from its staged selection. */
+  previewTheme: (theme: Theme | null) => void;
   setTheme: (theme: Theme) => Promise<void>;
   uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   setUiFonts: (patch: UiFontPrefs) => Promise<void>;
@@ -46,7 +49,11 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
         </p>
       }
     >
-      <ThemePicker current={props.theme()} onChange={(t) => void props.setTheme(t)} />
+      <ThemePicker
+        current={props.theme()}
+        onChange={(t) => void props.setTheme(t)}
+        onPreview={props.previewTheme}
+      />
       <UiFontsFields resolve={props.uiFont} onChange={(patch) => void props.setUiFonts(patch)} />
       <CardDensityFields
         resolve={props.cardMinWidth}

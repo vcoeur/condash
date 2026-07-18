@@ -60,7 +60,7 @@ describe('setLayout (lazily-imported config-schema seam)', () => {
     leftView: 'projects',
     working: 'code',
     terminal: true,
-    projectsWidth: 320,
+    projectsSplit: 0.32,
   };
 
   it('persists a valid layout via the lazily-loaded schema', async () => {

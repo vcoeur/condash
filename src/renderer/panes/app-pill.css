@@ -126,83 +126,83 @@
 
 /* Dark-theme palette — same 20 hues with a saturated dark bg and a
  * pale-tint fg so contrast survives the inverted base. */
-[data-theme='dark'] .app-pill-0 {
+[data-theme-kind='dark'] .app-pill-0 {
   --app-pill-bg: #5b2a28;
   --app-pill-fg: #ffcecb;
 }
-[data-theme='dark'] .app-pill-1 {
+[data-theme-kind='dark'] .app-pill-1 {
   --app-pill-bg: #5e3018;
   --app-pill-fg: #ffd1b8;
 }
-[data-theme='dark'] .app-pill-2 {
+[data-theme-kind='dark'] .app-pill-2 {
   --app-pill-bg: #5e3713;
   --app-pill-fg: #ffd9a8;
 }
-[data-theme='dark'] .app-pill-3 {
+[data-theme-kind='dark'] .app-pill-3 {
   --app-pill-bg: #5e4612;
   --app-pill-fg: #fae0a3;
 }
-[data-theme='dark'] .app-pill-4 {
+[data-theme-kind='dark'] .app-pill-4 {
   --app-pill-bg: #5a4d10;
   --app-pill-fg: #fae89a;
 }
-[data-theme='dark'] .app-pill-5 {
+[data-theme-kind='dark'] .app-pill-5 {
   --app-pill-bg: #4f5012;
   --app-pill-fg: #ece6a0;
 }
-[data-theme='dark'] .app-pill-6 {
+[data-theme-kind='dark'] .app-pill-6 {
   --app-pill-bg: #434a14;
   --app-pill-fg: #d6e0a3;
 }
-[data-theme='dark'] .app-pill-7 {
+[data-theme-kind='dark'] .app-pill-7 {
   --app-pill-bg: #344715;
   --app-pill-fg: #c2db9d;
 }
-[data-theme='dark'] .app-pill-8 {
+[data-theme-kind='dark'] .app-pill-8 {
   --app-pill-bg: #1c4a21;
   --app-pill-fg: #b9e3bb;
 }
-[data-theme='dark'] .app-pill-9 {
+[data-theme-kind='dark'] .app-pill-9 {
   --app-pill-bg: #1a4837;
   --app-pill-fg: #b3e3ce;
 }
-[data-theme='dark'] .app-pill-10 {
+[data-theme-kind='dark'] .app-pill-10 {
   --app-pill-bg: #194a47;
   --app-pill-fg: #aeded5;
 }
-[data-theme='dark'] .app-pill-11 {
+[data-theme-kind='dark'] .app-pill-11 {
   --app-pill-bg: #16515b;
   --app-pill-fg: #b0dde8;
 }
-[data-theme='dark'] .app-pill-12 {
+[data-theme-kind='dark'] .app-pill-12 {
   --app-pill-bg: #1c3f70;
   --app-pill-fg: #b9d5f0;
 }
-[data-theme='dark'] .app-pill-13 {
+[data-theme-kind='dark'] .app-pill-13 {
   --app-pill-bg: #20356a;
   --app-pill-fg: #c0c9ef;
 }
-[data-theme='dark'] .app-pill-14 {
+[data-theme-kind='dark'] .app-pill-14 {
   --app-pill-bg: #2a2c66;
   --app-pill-fg: #c5c6f0;
 }
-[data-theme='dark'] .app-pill-15 {
+[data-theme-kind='dark'] .app-pill-15 {
   --app-pill-bg: #36256e;
   --app-pill-fg: #d4c4f0;
 }
-[data-theme='dark'] .app-pill-16 {
+[data-theme-kind='dark'] .app-pill-16 {
   --app-pill-bg: #46235e;
   --app-pill-fg: #e0c5ee;
 }
-[data-theme='dark'] .app-pill-17 {
+[data-theme-kind='dark'] .app-pill-17 {
   --app-pill-bg: #50205e;
   --app-pill-fg: #ecc5ee;
 }
-[data-theme='dark'] .app-pill-18 {
+[data-theme-kind='dark'] .app-pill-18 {
   --app-pill-bg: #5a1d38;
   --app-pill-fg: #f1c6dc;
 }
-[data-theme='dark'] .app-pill-19 {
+[data-theme-kind='dark'] .app-pill-19 {
   --app-pill-bg: #5e1c27;
   --app-pill-fg: #f8c2ca;
 }

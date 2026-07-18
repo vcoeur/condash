@@ -392,6 +392,76 @@ describe('migrateRawSettings — projectCardTitleFont → uiFonts.cardTitle', ()
   });
 });
 
+describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit', () => {
+  // The splitter position moved from CSS pixels to a fraction of the band, so
+  // it stays proportional across a window resize. A pixel width pinned the
+  // Projects pane to an absolute size, pushing the splitter off the right edge
+  // of a narrowed window where it could not be dragged back.
+  it('drops the legacy width and backfills the default fraction', () => {
+    const migrated = migrateRawSettings({
+      layout: { projects: true, working: 'code', terminal: true, projectsWidth: 640 },
+    }) as Record<string, unknown>;
+    const layout = migrated.layout as Record<string, unknown>;
+    expect('projectsWidth' in layout).toBe(false);
+    // Deliberately NOT converted: the band width the pixel value was measured
+    // against is unknowable here, and guessing one mis-scales the pane badly on
+    // any other display (900px on a 3440px ultrawide would become 70% of it).
+    expect(layout.projectsSplit).toBe(0.32);
+  });
+
+  it('keeps an existing fraction and only drops the legacy key', () => {
+    const migrated = migrateRawSettings({
+      layout: { projectsWidth: 640, projectsSplit: 0.25 },
+    }) as Record<string, unknown>;
+    const layout = migrated.layout as Record<string, unknown>;
+    expect('projectsWidth' in layout).toBe(false);
+    expect(layout.projectsSplit).toBe(0.25);
+  });
+
+  // Without the backfill, dropping the legacy key would leave `layout` missing
+  // a field the strict schema requires — rejecting the WHOLE settings file
+  // (repos, terminal prefs, fonts, everything) over a pane width.
+  it('backfills a missing or non-numeric fraction so the strict parse survives', () => {
+    for (const bad of [undefined, 'wide', null, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
+      const migrated = migrateRawSettings({
+        layout: { projectsSplit: bad },
+      }) as Record<string, unknown>;
+      expect((migrated.layout as Record<string, unknown>).projectsSplit).toBe(0.32);
+    }
+  });
+
+  // Numeric-but-out-of-range is clamped rather than reset — 0 and -3 are real
+  // numbers, so they take the clamp branch, not the backfill branch.
+  it('clamps a numeric out-of-range fraction rather than resetting it', () => {
+    for (const [input, expected] of [
+      [0, 0.02],
+      [-3, 0.02],
+      [7, 0.98],
+    ] as const) {
+      const migrated = migrateRawSettings({ layout: { projectsSplit: input } }) as Record<
+        string,
+        unknown
+      >;
+      expect((migrated.layout as Record<string, unknown>).projectsSplit).toBe(expected);
+    }
+  });
+
+  it('lets a global save round-trip a legacy layout body', () => {
+    const json = JSON.stringify({
+      layout: {
+        projects: true,
+        leftView: 'projects',
+        working: 'code',
+        terminal: true,
+        projectsWidth: 320,
+      },
+    });
+    const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
+    expect('projectsWidth' in parsed.layout).toBe(false);
+    expect(parsed.layout.projectsSplit).toBe(0.32);
+  });
+});
+
 describe('migrateRawSettings — dropped terminal.logging fields', () => {
   it('strips a stale `maxFileMb` left over from pre-v2.23.0 settings', () => {
     const migrated = migrateRawSettings({
@@ -608,7 +678,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       leftView: 'deliverables',
       working: 'logs',
       terminal: true,
-      projectsWidth: 320,
+      projectsSplit: 0.32,
     },
     // setWelcomeDismissed
     welcome: { dismissed: true },

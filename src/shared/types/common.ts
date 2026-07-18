@@ -24,7 +24,10 @@ export type HelpDocName =
   | 'cli'
   | 'why-markdown';
 
-export type Theme = 'light' | 'dark' | 'system';
+/** Re-exported so `@shared/types` stays the one import site for the union while
+ *  the theme registry (`shared/themes.ts`) stays its single source of truth —
+ *  adding a theme there widens this automatically. */
+export type { Theme } from '../themes';
 
 /** Font-family choices offered per UI font category (Settings → Appearance).
  *  Each value maps to a font stack in the renderer's `use-ui-fonts` hook.

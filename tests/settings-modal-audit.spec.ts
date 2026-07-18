@@ -307,13 +307,13 @@ test('settings modal: representative fields render and round-trip to the right f
 
     // ======================= GLOBAL — settings.json =======================
 
-    // Appearance · Theme radio (global-only; no per-conception override).
+    // Appearance · Theme card (global-only; no per-conception override).
     {
-      const darkRadio = modal
-        .locator('#settings-section-appearance .settings-radio', { hasText: 'Dark' })
-        .locator('input[type="radio"]');
-      await safeScroll(darkRadio);
-      await darkRadio.check({ timeout: 3000 });
+      const darkCard = modal.locator(
+        '#settings-section-appearance .theme-card[data-theme-id="dark"]',
+      );
+      await safeScroll(darkCard);
+      await darkCard.click({ timeout: 3000 });
       await commitSave(booted.window);
       const parsed = await waitForFile(settingsPath, (p) => p.theme === 'dark');
       findings.push({

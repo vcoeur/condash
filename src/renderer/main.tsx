@@ -9,6 +9,7 @@ import {
   Switch,
 } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
+import { nextTheme, themeLabel } from '@shared/themes';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
@@ -80,7 +81,7 @@ function App() {
 
   // --- Self-contained hooks (no cross-deps) -----------------------------
   const { promptState, setPromptState, openPrompt } = usePromptModal();
-  const { theme, isDark, handleThemeChange } = useTheme({ flashToast });
+  const { theme, isDark, handleThemeChange, previewTheme, cycleTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
   const {
@@ -501,16 +502,11 @@ function App() {
           <button
             type="button"
             class="status-bar-action icon-only"
-            onClick={() => {
-              const current = theme();
-              const next: typeof current =
-                current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
-              handleThemeChange(next);
-            }}
-            title="Toggle theme"
-            aria-label="Toggle theme"
+            onClick={() => cycleTheme(nextTheme(theme()))}
+            title={`Theme: ${themeLabel(theme())} — click to cycle`}
+            aria-label="Cycle theme"
           >
-            {theme() === 'dark' || (theme() === 'system' && isDark()) ? '☀' : '☾'}
+            {isDark() ? '☀' : '☾'}
           </button>
           <button
             type="button"
@@ -850,6 +846,7 @@ function App() {
         conceptionPath={conceptionPath}
         theme={theme}
         handleThemeChange={handleThemeChange}
+        previewTheme={previewTheme}
         cardMinWidth={cardMinWidth}
         handleCardMinWidthChange={handleCardMinWidthChange}
         uiFonts={uiFonts}

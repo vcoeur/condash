@@ -16,9 +16,9 @@ function escapeHtml(text: string): string {
  * window. Carries everything inline: the freshly-rendered note body (mermaid
  * pre-rendered to SVG — the hidden window runs no scripts), the code-fence
  * palette, and the print stylesheet. `data-theme="light"` pins the bundled
- * code-theme palette to its light arm regardless of OS dark preference (its
- * dark arms key on `[data-theme='dark']` or `prefers-color-scheme: dark`
- * without a `light` override).
+ * code-theme palette to its light arm: the dark arm keys on
+ * `[data-theme-kind='dark']`, an attribute only the live renderer stamps, so
+ * this document can never match it regardless of OS dark preference.
  */
 export async function buildNotePdfHtml(
   markdown: string,

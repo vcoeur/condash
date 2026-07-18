@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
+import { THEME_VALUES } from '../../shared/themes';
 import type {
   CardMinWidthPrefs,
   LayoutState,
@@ -36,7 +37,7 @@ type TreeExpansionKey = (typeof TREE_EXPANSION_KEYS)[number];
 
 const SKILL_SCOPE_SET: ReadonlySet<SkillScope> = new Set(SKILL_SCOPES);
 
-const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
+const THEMES: ReadonlySet<Theme> = new Set(THEME_VALUES);
 
 // Canonical card-grid key list (shared/types/settings.ts), not a local copy — so the
 // read/write/prune paths below always cover every pane the type knows about.

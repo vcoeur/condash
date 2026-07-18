@@ -73,7 +73,7 @@ describe('bootstrap IPC', () => {
       leftView: 'tasks',
       working: 'code',
       terminal: false,
-      projectsWidth: 400,
+      projectsSplit: 0.4,
     },
     welcome: { dismissed: true },
     cardMinWidth: { projects: 700 },

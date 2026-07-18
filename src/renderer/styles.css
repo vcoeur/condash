@@ -41,6 +41,20 @@
   src: url('./vendor/fonts/cormorant-latin.woff2') format('woff2');
 }
 
+/* UI REVAMP EXPERIMENT (ui-modern-revamp, throwaway preview): vendored
+   JetBrains Mono variable — the console-native direction's UI face. Same
+   fontsource/latin pattern as Figtree above. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('./vendor/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   /* Warm-paper light theme — the vcoeur editorial page palette (bold
    * redesign, 2026-07): warm pink-paper page, purple primary, pink accent.
@@ -289,12 +303,16 @@
   --dark-kind-document: #c9b35a;
 }
 
-/* The single remap, applied to BOTH activation paths via one grouped
- * selector. `system` theme removes [data-theme] (see use-theme.ts), so the
- * OS-preference arm is needed for that cohort; the explicit toggle sets
- * [data-theme='dark']. Both now read from the one --dark-* source above. */
+/* Pre-hydration fallback ONLY. `use-theme.ts` resolves `system` to a concrete
+ * preset in JS and always sets [data-theme], so by the time the renderer has
+ * booted this arm never matches — its whole job is to paint the first frame
+ * dark on a dark-preferring OS, before the bootstrap IPC resolves, so the app
+ * doesn't flash white. Keyed on the *absence* of [data-theme] rather than
+ * `:not([data-theme='light'])`: the old form outranked `[data-theme='console']`
+ * on specificity (0,2,0 vs 0,1,0) and would have clobbered any non-`dark` dark
+ * preset on an OS-dark machine. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-theme]) {
     --bg: var(--dark-bg);
     --bg-panel: var(--dark-bg-panel);
     --bg-elevated: var(--dark-bg-elevated);
@@ -367,19 +385,92 @@
 
 /* Dark-mode ::selection (the OS-preference block previously nested this). */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) ::selection {
+  :root:not([data-theme]) ::selection {
     background: var(--accent);
     color: var(--dark-bg);
   }
 }
 
-[data-theme='dark'] ::selection {
+/* Keyed on the resolved kind, not the preset id, so every dark theme gets it
+ * without a new selector — `--bg` is whichever dark theme is active. */
+[data-theme-kind='dark'] ::selection {
   background: var(--accent);
-  color: var(--dark-bg);
+  color: var(--bg);
 }
 
 [data-theme='light'] {
   color-scheme: light;
+}
+
+/* ── Console ────────────────────────────────────────────────────────────────
+ * Terminal-native dark (the "modern TUI" register: Zed / lazygit / btop).
+ * Unlike `dark`, this preset declares its own final tokens rather than
+ * remapping the `--dark-*` set — the two dark themes share no hues, so there is
+ * nothing to factor out. Deep cool ink surfaces, SOLID slate borders (the
+ * signature move: structure is drawn, not whispered by a 10 %-alpha hairline),
+ * one phosphor-green accent that is also the live/running signal, an ANSI-bright
+ * status arc, and flat shadowless elevation.
+ *
+ * Beyond colour, Console also tightens the radius scale and goes mono-led. Both
+ * are scoped to this block so they cannot leak into the other two themes. */
+[data-theme='console'] {
+  /* --bg-base / --bg-tertiary / --text-primary are not re-declared here: they
+   * are `var()` aliases on `:root` and re-resolve against whatever this block
+   * sets, exactly as they do for `[data-theme='dark']`. */
+  --bg: #090b0f;
+  --bg-panel: #0d1117;
+  --bg-elevated: #12161e;
+  --bg-subtle: #141a23;
+  --bg-hover: #181e29;
+  --text: #e6edf5;
+  --text-body: #a2aec0;
+  --text-muted: #74819a;
+  --text-faint: #4d586c;
+  --border: #222a36;
+  --border-strong: #344052;
+  --accent: #4ade80;
+  --accent-hover: #6ee79b;
+  --accent-soft: rgba(74, 222, 128, 0.14);
+  --shadow-card: none;
+  --shadow-lift: none;
+  --col-now: #4ade80;
+  --col-review: #e3b341;
+  --col-soon: #c9a13a;
+  --col-later: #6cb6ff;
+  --col-backlog: #8b949e;
+  --col-done: #6e7681;
+  --warn: #f47067;
+  --success: #4ade80;
+  --col-unknown: #f47067;
+  /* Live = the phosphor accent, so "alive" and "accent" are one colour — the
+   * same one-signal move gallery-dark makes with its gold. */
+  --col-running: var(--accent);
+  --col-dirty: #e3b341;
+  --col-added: #4ade80;
+  --col-removed: #f47067;
+  --kind-project: #4aa37a;
+  --kind-incident: #f0883e;
+  --kind-document: #e3b341;
+
+  /* Console crispness: a TUI draws boxes, not pills. */
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+
+  /* Mono-led. Overriding the two *base* stacks (rather than the `--font-*`
+   * role tokens) is what reaches the card-title and terminal surfaces too —
+   * those read `var(--ui-font-<category>, var(--font-sans-base))` directly in a
+   * dozen pane stylesheets, so re-pointing the base is the one edit that covers
+   * every fallback site. Trade-off, accepted: under Console an explicit
+   * Settings → Appearance choice of "Sans" or "Serif" also resolves to mono.
+   * The other named families (System, Georgia, Courier, …) are literal stacks
+   * and still override normally. */
+  --font-sans-base: var(--font-mono-base);
+  --font-serif-base: var(--font-mono-base);
+  --font-mono-base:
+    'JetBrains Mono', ui-monospace, 'SF Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+
+  color-scheme: dark;
 }
 
 /* Kind glyph — inline coloured SVG (no tile, no chrome) used at the

@@ -74,7 +74,7 @@ describe('read-path legacy migration', () => {
           leftView: 'outputs',
           working: 'code',
           terminal: true,
-          projectsWidth: 320,
+          projectsSplit: 0.32,
         },
       }),
     );

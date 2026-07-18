@@ -274,10 +274,20 @@ let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
 // Monotonic, DOM-safe id for each mermaid.render target (see runMermaidIn).
 let mermaidRenderSeq = 0;
 
+/** Reads the resolved dark/light kind rather than the preset id, so every dark
+ *  theme gets the dark mermaid palette. `use-theme.ts` stamps `data-theme-kind`
+ *  on `<html>` once the renderer hydrates; the OS-preference fallback covers the
+ *  pre-hydration window only.
+ *
+ *  It does **not** cover the note-PDF export: that document renders no mermaid
+ *  of its own (the hidden print window runs no scripts), so the diagrams reach
+ *  it as SVG already rendered here in the live renderer. What keeps those light
+ *  is the explicit `theme: 'default'` override in `renderMarkdownForExport`
+ *  below — not this function. Do not drop that override as redundant. */
 function activeMermaidTheme(): 'default' | 'dark' {
-  const explicit = document.documentElement.dataset.theme;
-  if (explicit === 'dark') return 'dark';
-  if (explicit === 'light') return 'default';
+  const kind = document.documentElement.dataset.themeKind;
+  if (kind === 'dark') return 'dark';
+  if (kind === 'light') return 'default';
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
 }
 

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { LayoutState, Settings } from '../shared/types';
+import { DEFAULT_PROJECTS_SPLIT } from '../shared/types';
 import { atomicWrite } from './atomic-write';
 import { migrateRawSettings } from './config-migrate';
 import { userDataDir } from './user-data-dir';
@@ -51,7 +52,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
   leftView: 'projects',
   working: 'code',
   terminal: true,
-  projectsWidth: 320,
+  projectsSplit: DEFAULT_PROJECTS_SPLIT,
 };
 
 const empty: Settings = {

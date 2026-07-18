@@ -1,5 +1,6 @@
 import { createMemo, createSignal } from 'solid-js';
 import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
+import { DEFAULT_PROJECTS_SPLIT, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '@shared/types';
 import { getBootstrap } from '../bootstrap';
 
 /** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used both
@@ -10,8 +11,48 @@ const DEFAULT_LAYOUT: LayoutState = {
   leftView: 'projects',
   working: 'code',
   terminal: true,
-  projectsWidth: 320,
+  projectsSplit: DEFAULT_PROJECTS_SPLIT,
 };
+
+/** Splitter thickness in px — mirrored in the grid template. */
+const SPLITTER_PX = 4;
+
+/** Neither pane may be squeezed below this. It is also what guarantees the
+ *  splitter stays on screen: capping the Projects column at
+ *  `100% - MIN_PANE_PX - SPLITTER_PX` keeps the handle at least that far from
+ *  the right edge, so a narrowed window can always be dragged back. */
+const MIN_PANE_PX = 200;
+
+/**
+ * Keep a stored fraction inside the schema's bounds.
+ *
+ * These bounds must stay **looser** than the px clamp in `splitColumns`, which
+ * is the constraint that actually decides where the splitter can sit. If the
+ * fraction bound were the tighter of the two they would disagree on any band
+ * wider than ~2000px: dragging fully left pins the pane at 200px, but 200/2560
+ * is 0.078, and rounding that up to a 0.1 floor would re-render the pane at
+ * 256px — the handle visibly jumping ~56px the instant the mouse is released,
+ * with the user unable to park it at the minimum they were just shown.
+ */
+export function clampSplit(fraction: number): number {
+  if (!Number.isFinite(fraction)) return DEFAULT_PROJECTS_SPLIT;
+  return Math.min(MAX_PROJECTS_SPLIT, Math.max(MIN_PROJECTS_SPLIT, fraction));
+}
+
+/**
+ * Grid template for the top band's split state.
+ *
+ * The Projects column is a **percentage** so the split holds its proportions
+ * across a window resize, wrapped in `clamp()` so neither pane collapses. When
+ * the band is too narrow to honour both minimums, CSS `clamp()` resolves to its
+ * minimum — Projects gets `MIN_PANE_PX` and the working surface takes what is
+ * left, which still leaves the splitter visible and grabbable.
+ */
+export function splitColumns(fraction: number): string {
+  const percent = (clampSplit(fraction) * 100).toFixed(4);
+  const cap = `calc(100% - ${MIN_PANE_PX + SPLITTER_PX}px)`;
+  return `clamp(${MIN_PANE_PX}px, ${percent}%, ${cap}) ${SPLITTER_PX}px 1fr`;
+}
 
 /**
  * Apply the modal auto-collapse mask to a persisted layout for display: while
@@ -126,7 +167,7 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   const topBandStyle = (): Record<string, string> => {
     const l = layout();
     if (l.projects && l.working !== null) {
-      return { 'grid-template-columns': `${l.projectsWidth}px 4px 1fr` };
+      return { 'grid-template-columns': splitColumns(l.projectsSplit) };
     }
     return { 'grid-template-columns': '1fr' };
   };
@@ -138,17 +179,33 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     if (event.button !== 0) return;
     event.preventDefault();
     const rect = band.getBoundingClientRect();
-    const min = 160;
     let pendingX: number | null = null;
     let rafId: number | null = null;
-    let lastWidth = layout().projectsWidth;
+    let lastSplit = clampSplit(layout().projectsSplit);
     const flush = (): void => {
       rafId = null;
       if (pendingX === null) return;
       const desired = pendingX - rect.left;
-      const clamped = Math.max(min, Math.min(rect.width - min - 4, desired));
-      lastWidth = Math.round(clamped);
-      band.style.gridTemplateColumns = `${lastWidth}px 4px 1fr`;
+      const cap = rect.width - MIN_PANE_PX - SPLITTER_PX;
+      // `cap` can fall below MIN_PANE_PX on a very narrow window; Math.max wins
+      // that tie, matching how CSS clamp() resolves an inverted range.
+      const clamped = Math.max(MIN_PANE_PX, Math.min(cap, desired));
+      // Persist what was actually *rendered*, and only while the band is wide
+      // enough for the gesture to say anything.
+      //
+      // Below 2*MIN_PANE_PX + SPLITTER_PX the two minimums cannot both be
+      // honoured: `cap` drops under MIN_PANE_PX, the floor wins for every
+      // pointer position, and the pane does not move during the drag. Nothing
+      // derived from such a gesture is a preference the user expressed, and
+      // both ways of deriving one are wrong in opposite directions — from the
+      // clamped width, dragging left to shrink stores 200/350 = 57%; from the
+      // raw pointer, dragging right stores ~0.93, which on re-maximising
+      // squeezes the working surface to its minimum. So keep the stored split
+      // and let the drag be the no-op it visibly was.
+      if (cap > MIN_PANE_PX && rect.width > 0) lastSplit = clampSplit(clamped / rect.width);
+      // Straight to the DOM in px during the drag — the pointer is the source
+      // of truth here, and skipping the signal keeps INP bounded.
+      band.style.gridTemplateColumns = `${Math.round(clamped)}px ${SPLITTER_PX}px 1fr`;
     };
     const onMove = (e: MouseEvent): void => {
       pendingX = e.clientX;
@@ -157,10 +214,25 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     const onUp = (): void => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      // Run the queued frame rather than dropping it. `onMove` only records the
+      // pointer and schedules `flush`, and `lastSplit` moves *only* inside
+      // `flush` — so a small nudge completed inside a single ~16ms frame has
+      // never flushed, and cancelling outright would commit the pre-drag split
+      // and snap the handle back. On longer drags this is the difference
+      // between committing where the pointer was released and where it was one
+      // frame earlier.
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        flush();
+      }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      updateLayout({ projectsWidth: lastWidth });
+      // Commit as a fraction of the band so the split survives a resize. Write
+      // the resolved template back explicitly too: the drag left a px value on
+      // the element, and relying on Solid to diff it away would leave the pane
+      // pinned if the new fraction happened to render the same string.
+      band.style.gridTemplateColumns = splitColumns(lastSplit);
+      updateLayout({ projectsSplit: lastSplit });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);

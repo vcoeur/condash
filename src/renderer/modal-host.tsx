@@ -99,6 +99,7 @@ export interface ModalHostProps {
   conceptionPath: () => string | null;
   theme: UseTheme['theme'];
   handleThemeChange: UseTheme['handleThemeChange'];
+  previewTheme: UseTheme['previewTheme'];
   cardMinWidth: UseCardMinWidth['cardMinWidth'];
   handleCardMinWidthChange: UseCardMinWidth['handleCardMinWidthChange'];
   uiFonts: UseUiFonts['uiFonts'];
@@ -180,6 +181,7 @@ export function ModalHost(props: ModalHostProps) {
     conceptionPath,
     theme,
     handleThemeChange,
+    previewTheme,
     cardMinWidth,
     handleCardMinWidthChange,
     uiFonts,
@@ -330,6 +332,7 @@ export function ModalHost(props: ModalHostProps) {
           conceptionPath={conceptionPath()!}
           theme={theme()}
           onChangeTheme={handleThemeChange}
+          onPreviewTheme={previewTheme}
           cardMinWidth={cardMinWidth()}
           onChangeCardMinWidth={handleCardMinWidthChange}
           uiFonts={uiFonts()}
