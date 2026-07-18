@@ -81,7 +81,7 @@ function App() {
 
   // --- Self-contained hooks (no cross-deps) -----------------------------
   const { promptState, setPromptState, openPrompt } = usePromptModal();
-  const { theme, isDark, handleThemeChange, previewTheme } = useTheme({ flashToast });
+  const { theme, isDark, handleThemeChange, previewTheme, cycleTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
   const {
@@ -502,7 +502,7 @@ function App() {
           <button
             type="button"
             class="status-bar-action icon-only"
-            onClick={() => handleThemeChange(nextTheme(theme()))}
+            onClick={() => cycleTheme(nextTheme(theme()))}
             title={`Theme: ${themeLabel(theme())} — click to cycle`}
             aria-label="Cycle theme"
           >

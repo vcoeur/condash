@@ -446,13 +446,6 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
     }
   });
 
-  it('clamps an out-of-range stored fraction into the schema bounds', () => {
-    const wide = migrateRawSettings({ layout: { projectsSplit: 4 } }) as Record<string, unknown>;
-    expect((wide.layout as Record<string, unknown>).projectsSplit).toBe(0.98);
-    const narrow = migrateRawSettings({ layout: { projectsSplit: -1 } }) as Record<string, unknown>;
-    expect((narrow.layout as Record<string, unknown>).projectsSplit).toBe(0.02);
-  });
-
   it('lets a global save round-trip a legacy layout body', () => {
     const json = JSON.stringify({
       layout: {

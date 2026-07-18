@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { resolveThemePreset } from '@shared/themes';
 import { resetMermaidTheme } from '../markdown';
@@ -34,6 +34,10 @@ export interface UseTheme {
    * target at all, so it also can't race a Save.
    */
   previewTheme: (next: Theme | null) => void;
+  /** Commit a theme **and persist it**. The status-bar cycle's entry point —
+   *  unlike `handleThemeChange`, which leaves persistence to the Settings
+   *  modal's own write. */
+  cycleTheme: (next: Theme) => void;
 }
 
 export function useTheme(deps: UseThemeDeps): UseTheme {
@@ -85,14 +89,18 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
 
   // Re-theme the JS-side consumers on every preset change — tracking the
   // *preset*, not `isDark()`. xterm reads its colours out of the computed CSS
-  // tokens (`themeFromCss` in xterm-mount.ts) and only re-reads on refresh, and
-  // mermaid bakes its theme at init; a dark→dark switch (Warm Gallery ↔
-  // Console) changes every one of those tokens while the boolean stays `true`,
-  // so keying on `isDark()` let the memo swallow the change and left open
-  // terminals painting the old theme's background inside the new theme's panel.
-  // Sits here rather than in `handleThemeChange` so the preview overlay gets
-  // the same treatment as a committed change. Runs once on mount — harmless,
-  // the tokens already match.
+  // tokens (`themeFromCss` in xterm-mount.ts) and only re-reads on refresh, so a
+  // dark→dark switch (Warm Gallery ↔ Console) changes every one of those tokens
+  // while the boolean stays `true`; keying on `isDark()` let the memo swallow
+  // the change and left open terminals painting the old theme's background
+  // inside the new theme's panel. Sits here rather than in `handleThemeChange`
+  // so the preview overlay gets the same treatment as a committed change. Runs
+  // once on mount — harmless, the tokens already match.
+  //
+  // `resetMermaidTheme()` only drops the cached engine so the *next* render
+  // picks up the new palette — already-rendered SVGs keep their old colours
+  // either way (pre-existing, and true on the committed path too). It is not a
+  // repaint.
   createEffect(() => {
     preset();
     refreshAllXtermThemes();
@@ -104,15 +112,34 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     .catch((err) => deps.flashToast(`Could not load theme: ${(err as Error).message}`, 'error'));
 
   const handleThemeChange = (next: Theme): void => {
-    // Committing supersedes any overlay: without this, saving from inside the
-    // picker would leave the preview sitting on top of the new choice.
-    setPreviewed(null);
-    setTheme(next);
+    // Batched so the preset effect runs once per commit. Unbatched, clearing
+    // the overlay first would resolve one intermediate preset off the *stale*
+    // committed theme and re-theme every open terminal against it.
+    //
+    // Clearing the overlay is defensive — the picker drops it on the way out,
+    // and every observed commit path leaves the grid first — but a commit must
+    // win over a preview by construction, not by call ordering.
+    batch(() => {
+      setPreviewed(null);
+      setTheme(next);
+    });
   };
 
   const previewTheme = (next: Theme | null): void => {
     setPreviewed(next);
   };
 
-  return { theme, setTheme, isDark, handleThemeChange, previewTheme };
+  // The status-bar cycle has no modal behind it to persist the choice, so it
+  // writes settings.json itself. `handleThemeChange` deliberately does not: the
+  // Settings modal owns its own write, and a second one from here would race
+  // its compare-and-set baseline. (The cycle silently lost its choice on
+  // restart before this — pre-existing on main, surfaced by review here.)
+  const cycleTheme = (next: Theme): void => {
+    handleThemeChange(next);
+    void window.condash.setTheme(next).catch((err) => {
+      deps.flashToast(`Could not save theme: ${(err as Error).message}`, 'error');
+    });
+  };
+
+  return { theme, setTheme, isDark, handleThemeChange, previewTheme, cycleTheme };
 }

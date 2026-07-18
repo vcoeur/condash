@@ -83,10 +83,17 @@ export const THEME_VALUES: readonly Theme[] = [
   ...THEME_PRESETS.map((preset) => preset.id),
 ];
 
+/** The preset with this id, or `undefined` for `system` and any unknown value.
+ *  The single by-id lookup — callers that need a guaranteed preset (rather than
+ *  "is this a concrete preset?") want {@link resolveThemePreset}. */
+export function themePreset(theme: Theme): ThemePreset | undefined {
+  return THEME_PRESETS.find((preset) => preset.id === theme);
+}
+
 /** Display name for a stored choice, including the `system` pseudo-theme. */
 export function themeLabel(theme: Theme): string {
   if (theme === 'system') return 'System';
-  return THEME_PRESETS.find((preset) => preset.id === theme)?.label ?? theme;
+  return themePreset(theme)?.label ?? theme;
 }
 
 /** The next choice in `THEME_VALUES` order — what the status-bar button cycles
@@ -101,7 +108,7 @@ export function nextTheme(theme: Theme): Theme {
  *  build, or a hand-edit) falls back to the same OS-following behaviour rather
  *  than throwing — a bad theme name must never leave the app unstyled. */
 export function resolveThemePreset(theme: Theme, systemPrefersDark: boolean): ThemePreset {
-  const match = THEME_PRESETS.find((preset) => preset.id === theme);
+  const match = themePreset(theme);
   if (match) return match;
   const fallbackId = systemPrefersDark ? SYSTEM_PAIR.dark : SYSTEM_PAIR.light;
   // Non-null: SYSTEM_PAIR only ever names ids that exist in THEME_PRESETS.

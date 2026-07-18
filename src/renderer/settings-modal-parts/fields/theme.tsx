@@ -1,26 +1,23 @@
-import { For } from 'solid-js';
+import { For, Show, createSignal, onCleanup } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Theme } from '@shared/types';
-import { THEME_PRESETS } from '@shared/themes';
+import { THEME_PRESETS, themePreset } from '@shared/themes';
 
-interface ThemeCard {
-  value: Theme;
-  label: string;
-  description: string;
-}
-
-const CARDS: ThemeCard[] = [
+/** No `: ThemeCard[]` annotation and no `as Theme` cast — both would widen
+ *  `value` back to `Theme` and make the exhaustiveness guard at the bottom of
+ *  this file vacuous (`Exclude<Theme, Theme>` is always `never`). */
+const CARDS = [
   {
     value: 'system',
     label: 'System',
     description: 'Follow the OS between Paper and Warm Gallery.',
   },
   ...THEME_PRESETS.map((preset) => ({
-    value: preset.id as Theme,
+    value: preset.id,
     label: preset.label,
     description: preset.description,
   })),
-];
+] as const;
 
 /**
  * Theme picker — one card per preset plus a System card, each painting its own
@@ -32,13 +29,17 @@ const CARDS: ThemeCard[] = [
  * the grid says so.
  *
  * The preview goes through `onPreview`, which sets a dedicated overlay signal in
- * `use-theme` rather than the committed theme. Two reasons, both learned the
- * hard way: writing `<html>` attributes directly restyled the CSS chrome but
- * left xterm, CodeMirror and mermaid on the old theme, while writing the
- * *committed* signal made the hovered card render as checked (`globalTheme()`
- * falls back to it) and made the restore target move while previewing. An
- * overlay is neither — and since restoring is just "clear the overlay", there is
- * no captured target to go stale against an in-modal Save.
+ * `use-theme` rather than the committed theme. Two earlier attempts got this
+ * wrong in instructive ways: writing `<html>` attributes directly restyled the
+ * CSS chrome but left xterm and CodeMirror on the old theme, and writing the
+ * *committed* signal made the hovered card render as checked (the modal reads
+ * that signal back) and made the restore target go stale against a Save. An
+ * overlay is neither, and restoring is just clearing it.
+ *
+ * The overlay is renderer-global state owned by a component that can be
+ * unmounted at any moment, so **every** exit path has to clear it: pointer out,
+ * focus out, and unmount (Esc-closing the modal destroys these nodes without
+ * firing either DOM event).
  */
 export function ThemePicker(props: {
   /** The staged selection — what the modal will write on Save. */
@@ -49,23 +50,43 @@ export function ThemePicker(props: {
   onPreview: (theme: Theme | null) => void;
 }): JSX.Element {
   const cardRefs: HTMLButtonElement[] = [];
+  // Which card currently has keyboard focus, if any. Arrow keys move focus
+  // without selecting, so the roving tab stop has to track this rather than the
+  // staged selection — otherwise the focused card ends up `tabindex="-1"` and
+  // tabbing back into the group lands somewhere else.
+  const [focusedIndex, setFocusedIndex] = createSignal<number | null>(null);
 
-  /** The card that owns the group's single tab stop. Falls back to the first
-   *  card when the staged value matches none — a hand-edited or newer-build
-   *  theme id would otherwise leave every card at `-1`, making the picker
-   *  unreachable by keyboard, which is exactly the value you need to fix. */
+  /** The card owning the group's single tab stop: the focused one while the
+   *  group has focus, else the staged selection, else the first card. The last
+   *  fallback matters — an unrecognised theme id (hand-edited, or written by a
+   *  newer build) matches no card, and leaving every card at `-1` would make the
+   *  picker unreachable by keyboard, which is exactly the state you need to get
+   *  to in order to fix the bad value. */
   const tabStopIndex = (): number => {
-    const index = CARDS.findIndex((card) => card.value === props.current);
-    return index === -1 ? 0 : index;
+    const focused = focusedIndex();
+    if (focused !== null) return focused;
+    const selected = CARDS.findIndex((card) => card.value === props.current);
+    return selected === -1 ? 0 : selected;
   };
+
+  const clearPreview = (): void => {
+    setFocusedIndex(null);
+    props.onPreview(null);
+  };
+
+  // Unmount is the one exit the DOM events cannot cover: removing a focused or
+  // hovered node dispatches neither `focusout` nor `mouseleave`, so Esc-closing
+  // the modal mid-preview would otherwise strand the whole app on a theme the
+  // user never selected, with no way back except re-entering the picker.
+  onCleanup(clearPreview);
 
   /**
    * Arrows move focus only; Space/Enter (native button activation) selects.
    *
    * WAI-ARIA allows either this or select-on-arrow for a radiogroup. Manual
    * selection is the right one here: auto-selecting would stage a draft on
-   * every keypress, so merely arrowing across the four cards to look at them
-   * would mark the modal dirty and arm its unsaved-edits Esc gate.
+   * every keypress, so merely arrowing across the cards to look at them would
+   * mark the modal dirty and arm its unsaved-edits Esc gate.
    */
   const onKeyDown = (event: KeyboardEvent, index: number): void => {
     const step =
@@ -79,14 +100,22 @@ export function ThemePicker(props: {
     cardRefs[(index + step + CARDS.length) % CARDS.length]?.focus();
   };
 
-  /** Drop the preview only when focus/pointer leaves the grid entirely. Per-card
-   *  handlers fired on every hop between cards — crossing the 10px gap, or
-   *  arrowing from one card to the next (blur-then-focus) — which round-tripped
-   *  the whole app through the committed theme twice per step. */
+  /** Drop the preview only when focus leaves the grid entirely — a hop between
+   *  cards (arrowing, or tabbing within) fires blur-then-focus and must not
+   *  round-trip the whole app through the committed theme in between. */
   const onFocusOut = (event: FocusEvent): void => {
     const next = event.relatedTarget as Node | null;
     if (next && event.currentTarget instanceof Node && event.currentTarget.contains(next)) return;
-    props.onPreview(null);
+    clearPreview();
+  };
+
+  /** The pointer leaving must not cancel a *keyboard* preview: a focused card is
+   *  still asserting its theme, and an incidental mouse movement across the grid
+   *  would otherwise leave the focus ring on one theme and the app painted in
+   *  another. */
+  const onMouseLeave = (): void => {
+    if (focusedIndex() !== null) return;
+    clearPreview();
   };
 
   return (
@@ -96,7 +125,7 @@ export function ThemePicker(props: {
         class="theme-picker"
         role="radiogroup"
         aria-label="Theme"
-        onMouseLeave={() => props.onPreview(null)}
+        onMouseLeave={onMouseLeave}
         onFocusOut={onFocusOut}
       >
         <For each={CARDS}>
@@ -112,7 +141,10 @@ export function ThemePicker(props: {
               classList={{ 'is-active': props.current === card.value }}
               onClick={() => props.onChange(card.value)}
               onMouseEnter={() => props.onPreview(card.value)}
-              onFocus={() => props.onPreview(card.value)}
+              onFocus={() => {
+                setFocusedIndex(index());
+                props.onPreview(card.value);
+              }}
               onKeyDown={(event) => onKeyDown(event, index())}
             >
               <Swatch value={card.value} />
@@ -132,27 +164,29 @@ export function ThemePicker(props: {
 /** Miniature of a theme's own surfaces. System has no palette of its own, so the
  *  CSS paints the two presets it chooses between. */
 function Swatch(props: { value: Theme }): JSX.Element {
-  const preset = (): (typeof THEME_PRESETS)[number] | undefined =>
-    THEME_PRESETS.find((entry) => entry.id === props.value);
+  const preset = () => themePreset(props.value);
   return (
-    <>
-      {preset() ? (
+    <Show
+      when={preset()}
+      fallback={<span class="theme-card-swatch theme-card-swatch--system" aria-hidden="true" />}
+    >
+      {(found) => (
         <span
           class="theme-card-swatch"
           aria-hidden="true"
-          style={{ background: preset()!.swatch[0] }}
+          style={{ background: found().swatch[0] }}
         >
-          <span class="theme-card-swatch-panel" style={{ background: preset()!.swatch[1] }} />
-          <span class="theme-card-swatch-dot" style={{ background: preset()!.swatch[2] }} />
+          <span class="theme-card-swatch-panel" style={{ background: found().swatch[1] }} />
+          <span class="theme-card-swatch-dot" style={{ background: found().swatch[2] }} />
         </span>
-      ) : (
-        <span class="theme-card-swatch theme-card-swatch--system" aria-hidden="true" />
       )}
-    </>
+    </Show>
   );
 }
 
-/** Compile-time guard: every accepted `Theme` value has a card. */
+/** Compile-time guard: every accepted `Theme` value has a card. Load-bearing
+ *  only because `CARDS` is `as const` — an annotated array would widen the
+ *  literals and make this always pass. */
 type _MissingThemeCard = Exclude<Theme, (typeof CARDS)[number]['value']>;
 const _assertAllThemesHaveCards: _MissingThemeCard extends never ? true : false = true;
 void _assertAllThemesHaveCards;

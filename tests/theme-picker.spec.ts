@@ -95,8 +95,13 @@ test('a hovered preview is not persisted, and a selection persists on Save', asy
 
     await modal.locator('button.settings-save').click();
     await expect.poll(readTheme).toBe('console');
-    // And the committed theme is in force, with no preview left on top of it.
     expect(await activeTheme(booted)).toEqual({ id: 'console', kind: 'dark' });
+    // Deliberately no "and the overlay is cleared" assertion here: Playwright's
+    // pointer transit to the Save button already fires mouseleave, so the
+    // overlay is gone before Save runs and the check could never fail. The
+    // commit-clears-overlay guard in use-theme is defensive; asserting it would
+    // need a commit path that keeps the pointer inside the grid, which the UI
+    // does not have.
   } finally {
     await booted.cleanup();
   }
@@ -120,6 +125,59 @@ test('arrow keys move focus between cards without staging a change', async () =>
     // Focus moved and previews, but the selection is untouched.
     await expect(paperCard).toHaveAttribute('aria-checked', 'true');
     expect(await activeTheme(booted)).toEqual({ id: 'dark', kind: 'dark' });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the status-bar cycle persists its choice', async () => {
+  // Pre-existing before this branch: the cycle only moved the in-memory signal,
+  // so the app came back on the old theme after a restart. It has no modal
+  // behind it to do the write.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    await booted.window.locator('[aria-label="Cycle theme"]').click();
+    await expect
+      .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).theme)
+      .not.toBe('light');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('closing the modal mid-preview does not strand the app on the previewed theme', async () => {
+  // The overlay is renderer-global state owned by a component that can vanish:
+  // removing a focused or hovered node fires neither focusout nor mouseleave,
+  // so without an unmount cleanup an Esc-close left the whole app wearing a
+  // theme the user never selected, with no way back but re-entering the picker.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').focus();
+    expect((await activeTheme(booted)).id).toBe('console');
+
+    await booted.window.keyboard.press('Escape');
+    await expect(modal).toBeHidden();
+    expect(await activeTheme(booted)).toEqual({ id: 'light', kind: 'light' });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the roving tab stop follows arrow-key focus', async () => {
+  // Arrows moved focus but the tab stop stayed on the staged selection, so the
+  // focused card carried tabindex="-1" and tabbing back landed elsewhere.
+  const booted = await bootApp({ globalConfig: { theme: 'light' } });
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="light"]').focus();
+    await booted.window.keyboard.press('ArrowRight');
+
+    const warmGallery = modal.locator('.theme-card[data-theme-id="dark"]');
+    await expect(warmGallery).toBeFocused();
+    await expect(warmGallery).toHaveAttribute('tabindex', '0');
+    await expect(modal.locator('.theme-card[tabindex="0"]')).toHaveCount(1);
   } finally {
     await booted.cleanup();
   }
