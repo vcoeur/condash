@@ -25,6 +25,9 @@ import { SectionShell } from './section-shell';
 
 interface AppearanceSectionProps {
   theme: () => Theme;
+  /** The saved theme, as opposed to `theme()`'s staged draft — the picker
+   *  restores it when the modal closes without saving. */
+  appliedTheme: () => Theme;
   setTheme: (theme: Theme) => Promise<void>;
   uiFont: (category: UiFontCategory) => Required<UiFontCategoryPrefs>;
   setUiFonts: (patch: UiFontPrefs) => Promise<void>;
@@ -46,7 +49,11 @@ export function AppearanceSection(props: AppearanceSectionProps): JSX.Element {
         </p>
       }
     >
-      <ThemePicker current={props.theme()} onChange={(t) => void props.setTheme(t)} />
+      <ThemePicker
+        current={props.theme()}
+        applied={props.appliedTheme()}
+        onChange={(t) => void props.setTheme(t)}
+      />
       <UiFontsFields resolve={props.uiFont} onChange={(patch) => void props.setUiFonts(patch)} />
       <CardDensityFields
         resolve={props.cardMinWidth}

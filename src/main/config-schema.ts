@@ -8,6 +8,7 @@ import type {
   DashboardSettings,
   LayoutState,
   TaskConfigEntry,
+  Theme,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
   TerminalPrefs,
@@ -18,6 +19,7 @@ import type {
   UiFontPrefs,
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
+import { THEME_VALUES } from '../shared/themes';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -574,7 +576,10 @@ const globalOnlyFields = {
   /** GUI-driven periodic committer. Per-machine — describes how this machine
    *  drives commits, not the tree. See {@link autoSyncSettings}. */
   autoSync: autoSyncSettings.optional(),
-  theme: z.enum(['light', 'dark', 'system']).optional(),
+  /** Colour theme: a preset id from the registry, or `system` to follow the OS.
+   *  The enum is derived from `shared/themes.ts` so a new preset needs no edit
+   *  here. See {@link THEME_VALUES}. */
+  theme: z.enum(THEME_VALUES as readonly [Theme, ...Theme[]]).optional(),
   /** Per-category UI font choices (Settings → Appearance). Any category left
    *  `default` keeps the theme's face for that surface. See {@link UiFontPrefs}. */
   uiFonts: uiFontsSchema.optional(),

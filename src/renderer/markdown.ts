@@ -274,10 +274,16 @@ let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
 // Monotonic, DOM-safe id for each mermaid.render target (see runMermaidIn).
 let mermaidRenderSeq = 0;
 
+/** Reads the resolved dark/light kind rather than the preset id, so every dark
+ *  theme gets the dark mermaid palette. `use-theme.ts` stamps `data-theme-kind`
+ *  on `<html>` once the renderer hydrates; the OS-preference fallback covers
+ *  the pre-hydration window and the note-PDF export document (which pins
+ *  `data-theme="light"` with no kind and must render light). */
 function activeMermaidTheme(): 'default' | 'dark' {
-  const explicit = document.documentElement.dataset.theme;
-  if (explicit === 'dark') return 'dark';
-  if (explicit === 'light') return 'default';
+  const kind = document.documentElement.dataset.themeKind;
+  if (kind === 'dark') return 'dark';
+  if (kind === 'light') return 'default';
+  if (document.documentElement.dataset.theme === 'light') return 'default';
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
 }
 

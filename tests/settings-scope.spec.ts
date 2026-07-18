@@ -107,12 +107,9 @@ test('settings modal: conception + global fields round-trip to their own files',
     await workspaceInput.fill('/tmp/scope-workspace');
     await workspaceInput.blur();
 
-    // GLOBAL field — the Dark theme radio writes the per-machine settings.json.
-    // Theme is global-only now: there is no per-conception override.
-    const darkRadio = modal
-      .locator('#settings-section-appearance .settings-radio', { hasText: 'Dark' })
-      .locator('input[type="radio"]');
-    await darkRadio.check();
+    // GLOBAL field — picking the Warm Gallery theme card writes the per-machine
+    // settings.json. Theme is global-only: there is no per-conception override.
+    await modal.locator('#settings-section-appearance .theme-card[data-theme-id="dark"]').click();
 
     // Nothing reaches disk until Save — one click flushes both drafts, each
     // through its own file's CAS write.

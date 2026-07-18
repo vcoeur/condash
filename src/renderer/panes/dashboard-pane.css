@@ -534,9 +534,9 @@
 /* Dark "control room": live-state bars glow so a working / awaiting / error
  * card reads as a lit indicator on the dark surface. Mirrors the two dark
  * activation paths used app-wide (explicit toggle + OS preference). */
-[data-theme='dark'] .dashboard-card[data-state='working']::before,
-[data-theme='dark'] .dashboard-card[data-state='awaiting']::before,
-[data-theme='dark'] .dashboard-card[data-state='error']::before {
+[data-theme-kind='dark'] .dashboard-card[data-state='working']::before,
+[data-theme-kind='dark'] .dashboard-card[data-state='awaiting']::before,
+[data-theme-kind='dark'] .dashboard-card[data-state='error']::before {
   box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
 }
 @media (prefers-color-scheme: dark) {

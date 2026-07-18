@@ -134,12 +134,6 @@ export const CURSOR_STYLES: { value: 'block' | 'underline' | 'bar'; label: strin
   { value: 'bar', label: 'Bar' },
 ];
 
-export const THEME_OPTIONS: { value: Theme; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
-
 /** Font-family choices offered for every category, in dropdown order. `default`
  *  first so the no-op choice reads as the baseline. Labels name the face; the
  *  select renders each option in the face it selects for a live preview. */
