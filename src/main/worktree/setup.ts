@@ -21,6 +21,7 @@ import {
   repoLookupMap,
   resolveTargetRepos,
   validateBranchName,
+  type RepoLookupExtended,
 } from './shared';
 
 export interface SetupOptions {
@@ -31,8 +32,9 @@ export interface SetupOptions {
    *  `condash.json` always have those files copied; this flag only
    *  affects repos *without* an `env:` declaration. */
   copyEnv?: boolean;
-  /** Skip env-file copy for repos that declare `env:` in condash.json.
-   *  Per-repo `env:` is otherwise applied unconditionally. Closes #87. */
+  /** Skip env-file copy for repos that declare `env:` in condash.json —
+   *  both on creation and on the already-present backfill. Per-repo `env:`
+   *  is otherwise applied unconditionally. Closes #87, #450. */
   skipEnv?: boolean;
   /** Skip running the per-repo `install:` from condash.json. The
    *  install step otherwise runs unconditionally for repos that declare
@@ -51,7 +53,10 @@ export interface SetupResult {
   /** Repos we couldn't set up — primary checkout already on the branch, a
    *  flattened-path collision with another branch's worktree, etc. */
   blocked: { repo: string; reason: string }[];
-  /** `.env` files copied (relative to the worktree root). */
+  /** `.env` files copied (relative to the worktree root) — on creation, and
+   *  on the non-clobbering backfill into an already-present worktree. Only
+   *  files actually written are listed, so a backfill that found everything
+   *  already in place contributes no entry. */
   envCopied: { repo: string; files: string[] }[];
   /** Install commands run. `stderrTail` carries the last few stderr lines
    *  when the command failed, so a FAILED row is diagnosable. */
@@ -130,6 +135,24 @@ export async function setupBranchWorktrees(
         });
       } else {
         result.alreadyPresent.push({ repo: name, path: target });
+        // Backfill declared env files the worktree is missing (#450).
+        // They're gitignored by definition, so a worktree acquired them at
+        // creation or never: one made by a raw `git worktree add`, or made
+        // before `env:` was declared, or set up once with --no-env, could
+        // not be repaired — re-running setup stopped here and copied
+        // nothing. Non-clobbering, unlike the creation path: a worktree's
+        // env file is often deliberately divergent (different ports so two
+        // branches can run side by side), and mirroring the primary over it
+        // would destroy that silently. `install:` deliberately does NOT run
+        // here — an unrequested `npm ci` on every re-run is a far larger
+        // behavioural change than this repair needs.
+        const missing = declaredEnvFiles(lookup, options);
+        if (missing.length > 0) {
+          const copied = await copyDeclaredFiles(lookup.cwd, target, missing, {
+            overwrite: false,
+          });
+          if (copied.length > 0) result.envCopied.push({ repo: name, files: copied });
+        }
       }
       continue;
     }
@@ -185,16 +208,14 @@ export async function setupBranchWorktrees(
       });
       continue;
     }
-    // Copy declared env files. Per-repo `env: [...]` is the canonical source
-    // and applied unconditionally so a forgotten flag no longer leaves a Vite
-    // SPA reading `import.meta.env.VITE_*` as undefined (#82, #87). Pass
-    // --no-env to skip. Repos without `env:` declared can still opt into the
-    // legacy `.env` / `.env.local` blanket copy via --copy-env.
-    const filesToCopy = options.skipEnv
-      ? []
-      : (lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []));
+    // Copy declared env files into the freshly created worktree. Overwriting
+    // is kept here (unlike the backfill above): the worktree was created a
+    // moment ago, so anything at the destination came out of the git
+    // checkout rather than from a user, and mirroring the primary is exactly
+    // what the `env:` declaration asks for.
+    const filesToCopy = declaredEnvFiles(lookup, options);
     if (filesToCopy.length > 0) {
-      const copied = await copyDeclaredFiles(lookup.cwd, target, filesToCopy);
+      const copied = await copyDeclaredFiles(lookup.cwd, target, filesToCopy, { overwrite: true });
       if (copied.length > 0) result.envCopied.push({ repo: name, files: copied });
     }
     // Per-repo `install:` runs unconditionally now (#87) — the presence of
@@ -294,24 +315,41 @@ export function resolveBase(
 }
 
 /**
- * Copy each declared file from the primary checkout to the new worktree.
+ * The files to copy from the primary checkout for one repo. Per-repo
+ * `env: [...]` is the canonical source and applies unconditionally so a
+ * forgotten flag no longer leaves a Vite SPA reading `import.meta.env.VITE_*`
+ * as undefined (#82, #87); `--no-env` skips it. Repos without `env:` declared
+ * can still opt into the legacy `.env` / `.env.local` blanket copy via
+ * `--copy-env`.
+ */
+function declaredEnvFiles(lookup: RepoLookupExtended, options: SetupOptions): readonly string[] {
+  if (options.skipEnv) return [];
+  return lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []);
+}
+
+/**
+ * Copy each declared file from the primary checkout into the worktree.
  * Best-effort: missing files are silently skipped (typical: `.env.local`
  * not present), but anything declared with a path-traversal segment is
- * rejected outright. Returns the list of files actually copied (each as
- * the relative path declared in `env:`).
+ * rejected outright. With `overwrite: false` a file the worktree already has
+ * is left untouched, so a backfill never destroys a deliberately divergent
+ * copy. Returns the list of files actually copied (each as the relative path
+ * declared in `env:`).
  */
 async function copyDeclaredFiles(
   source: string,
   target: string,
   files: readonly string[],
+  options: { overwrite: boolean },
 ): Promise<string[]> {
   const out: string[] = [];
   for (const rel of files) {
     if (!isSafeRelativePath(rel)) continue;
     const src = join(source, rel);
     if (!(await pathExists(src))) continue;
+    const dest = join(target, rel);
+    if (!options.overwrite && (await pathExists(dest))) continue;
     try {
-      const dest = join(target, rel);
       await fs.mkdir(dirname(dest), { recursive: true });
       await fs.copyFile(src, dest);
       out.push(rel);
