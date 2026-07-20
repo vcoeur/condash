@@ -26,10 +26,12 @@ export type { TransitionResult } from '../shared/types';
 export interface TransitionOpts {
   /**
    * Free-text appended to the `Closed.` / `Reopened.` timeline entry written
-   * on a done-edge. Trimmed; an empty result lands the bare form. Ignored on
-   * transitions that write no timeline entry. Must be single-line — a CR or
-   * LF surviving the trim throws, because the entry is written as one
-   * physical line.
+   * on a done-edge. Trimmed; an empty result lands the bare form. Its
+   * *content* is used only on a done-edge — other transitions write no
+   * timeline entry — but it is *validated* on every transition, so a
+   * multi-line summary throws even when nothing would have been written.
+   * Must be single-line: a CR, LF, or U+2028/U+2029 line separator surviving
+   * the trim throws, because the entry is written as one physical line.
    */
   summary?: string;
   /** Inject the date for tests. Defaults to today, ISO. */
@@ -79,10 +81,21 @@ export async function transitionStatus(
   // silently rewriting it would file text the caller never wrote. Hoisted
   // above the queue so both done-edges are covered once and nothing is
   // written on the reject.
+  //
+  // The class covers all four ECMAScript LineTerminators, not just CR/LF.
+  // U+2028/U+2029 forge nothing (the readers `split(/\r?\n/)`, so they never
+  // start a new line) but they break the *reverse* direction: `CLOSED_ENTRY`
+  // and `parseTimelineEntries` both end in `(.*)$` / `(.+?)\s*$`, and `.`
+  // does not cross a LineTerminator, so an entry carrying one stops matching.
+  // A genuine close then goes invisible — the sweeper mints `<item>: sync`
+  // instead of a close milestone, and `backfill-closed` later appends a
+  // second `Closed.` entry because its already-closed check sees nothing.
+  // Swept empirically: of every C0/C1 control and Unicode space/format
+  // character, only these four break either direction.
   const summary = opts.summary?.trim();
-  if (summary !== undefined && /[\r\n]/.test(summary)) {
+  if (summary !== undefined && /[\r\n\u2028\u2029]/.test(summary)) {
     throw new Error(
-      'transitionStatus: summary must be a single line (no carriage return or newline)',
+      'transitionStatus: summary must be a single line (no carriage return, newline, or U+2028/U+2029 line separator)',
     );
   }
   return withFileQueue(readmePath, async () => {
