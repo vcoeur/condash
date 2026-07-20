@@ -49,6 +49,19 @@
  * the very thing being shown. Only top-level blocks are freed — a wireframe
  * nested in a column or a tab stays bounded by its container.
  *
+ * The test for membership is whether the content actually grows into the freed
+ * width. The API blocks fail it and are deliberately absent: `.plan-endpoint` is
+ * a bordered `details` card whose body is a summary line, a `width: 100%`
+ * four-column params table and JSON explorers — freeing it stretched text
+ * columns rather than revealing anything, and stretched the nested description
+ * prose too (a `RichTextBlock`, which the measure rule above cannot reach: it
+ * only matches direct children). Visible chrome made the resulting offset from
+ * the prose column unmissable. `.plan-openapi` is a list of short path rows plus
+ * a scrolling JSON explorer, so it grows no further either. Both read as prose
+ * and stay on the measure. `.plan-data-model` does belong here: `.plan-entities`
+ * is a `flex-wrap` of `min-width: 200px` cards, so extra width means more cards
+ * per row.
+ *
  * Wireframes are freed per surface, not wholesale. Only `desktop` / `browser`
  * have a fluid frame (`.wf-frame { width: 100% }` below) that actually grows
  * into the freed space — the same pair `columnsMustStack` in containers.tsx
@@ -65,12 +78,29 @@
 .plan-doc > .plan-diagram,
 .plan-doc > .plan-mermaid,
 .plan-doc > .plan-data-model,
-.plan-doc > .plan-endpoint,
-.plan-doc > .plan-openapi,
 .plan-doc > .plan-diff,
 .plan-doc > .plan-custom-html,
 .plan-doc > .plan-columns {
   max-width: none;
+}
+
+/* Mermaid is freed above, but unlike the other freed blocks its content is
+ * self-limiting: mermaid sizes the rendered SVG `width="100%"` with an inline
+ * `max-width: {natural}px` (`useMaxWidth`, on by default and not overridden by
+ * `markdown.ts`'s `initialize` calls), so a small diagram keeps its natural
+ * width and would otherwise sit hard against the left edge of a full-width
+ * figure while every prose block stayed centred on the measure. Centring the
+ * figure's contents puts a narrow diagram over the prose column and leaves a
+ * wide one spanning everything.
+ *
+ * `text-align` is the mechanism because the SVG is inline-level: mermaid's
+ * generated stylesheet sets only font and fill on the svg root, never `display`,
+ * and no rule here does either. It also carries the `figcaption` onto the same
+ * axis as the diagram. This is the treatment `note-modal.css` already gives
+ * mermaid via `.md-rendered .mermaid` — the figure `MermaidBlock` renders is a
+ * direct child of `.plan-doc`, so that selector never reaches it. */
+.plan-doc > .plan-mermaid {
+  text-align: center;
 }
 
 .plan-block {
