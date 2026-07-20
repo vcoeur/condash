@@ -174,6 +174,25 @@ describe('editStepText', () => {
   });
 });
 
+/** Minimal YAML-frontmatter README with a `## Timeline` section, seeded at
+ *  `status`. Used by the done-edge (close / reopen) cases. */
+function doneEdgeReadme(status: string): string {
+  return [
+    '---',
+    'date: 2026-05-08',
+    'kind: project',
+    `status: ${status}`,
+    '---',
+    '',
+    '# T',
+    '',
+    '## Timeline',
+    '',
+    '- 2026-05-08 — Created.',
+    '',
+  ].join('\n');
+}
+
 describe('transitionStatus', () => {
   let dir: string;
   let path: string;
@@ -274,6 +293,54 @@ describe('transitionStatus', () => {
     const out = await fs.readFile(path, 'utf8');
     expect(result.timelineAppended).toBe('- 2026-05-09 — Closed.');
     expect(out).toContain('- 2026-05-09 — Closed.');
+  });
+
+  it('appends a summary-annotated Closed line when opts.summary is given', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'done', {
+      today: '2026-05-09',
+      summary: 'Shipped as v3.14.1',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+    expect(out).toContain('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+  });
+
+  it('appends a bare Reopened line on the reopen edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'now', { today: '2026-05-10' });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened.');
+    expect(out).toContain('- 2026-05-10 — Reopened.');
+  });
+
+  it('appends a summary-annotated Reopened line, mirroring the close edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'review', {
+      today: '2026-05-10',
+      summary: 'PR #42 reverted upstream',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened. PR #42 reverted upstream.');
+    expect(out).toContain('- 2026-05-10 — Reopened. PR #42 reverted upstream.');
+    expect(out).toMatch(/^status: review$/m);
+  });
+
+  it('trims the summary and falls back to the bare form when it is blank', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'now', { today: '2026-05-10', summary: '   ' });
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened.');
+  });
+
+  it('writes no timeline entry on a non-done-edge, even with a summary', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'review', {
+      today: '2026-05-10',
+      summary: 'ignored',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBeNull();
+    expect(out).not.toContain('ignored');
   });
 
   it('handles a BOM-prefixed frontmatter file and drops the BOM on write', async () => {

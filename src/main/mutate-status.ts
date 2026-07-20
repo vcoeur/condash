@@ -24,7 +24,11 @@ const YAML_STATUS_LINE_RE = /^(status:\s*)(["']?)([A-Za-z]+)\2\s*$/i;
 export type { TransitionResult } from '../shared/types';
 
 export interface TransitionOpts {
-  /** Free-text appended to a `Closed.` timeline entry. Ignored on reopen. */
+  /**
+   * Free-text appended to the `Closed.` / `Reopened.` timeline entry written
+   * on a done-edge. Trimmed; an empty result lands the bare form. Ignored on
+   * transitions that write no timeline entry.
+   */
   summary?: string;
   /** Inject the date for tests. Defaults to today, ISO. */
   today?: string;
@@ -39,8 +43,11 @@ export interface TransitionOpts {
  *
  * Edge rules:
  *   prev != 'done', next == 'done'   → "- <today> — Closed. <summary>."
- *   prev == 'done', next != 'done'   → "- <today> — Reopened."
+ *   prev == 'done', next != 'done'   → "- <today> — Reopened. <summary>."
  *   any other transition (incl. no-op): no timeline write.
+ *
+ * Both done-edges honour `opts.summary` the same way — omit it and the entry
+ * lands in its bare "- <today> — Closed." / "- <today> — Reopened." form.
  *
  * Throws when the README has no **Status** line in its metadata block.
  */
@@ -105,12 +112,12 @@ export async function transitionStatus(
 
     let timelineAppended: string | null = null;
     const today = opts.today ?? isoToday();
+    const summary = opts.summary?.trim();
     if (previous !== 'done' && newStatus === 'done') {
-      const summary = opts.summary?.trim();
       timelineAppended = summary ? `- ${today} — Closed. ${summary}.` : `- ${today} — Closed.`;
       lines = appendTimelineLines(lines, timelineAppended);
     } else if (previous === 'done' && newStatus !== 'done') {
-      timelineAppended = `- ${today} — Reopened.`;
+      timelineAppended = summary ? `- ${today} — Reopened. ${summary}.` : `- ${today} — Reopened.`;
       lines = appendTimelineLines(lines, timelineAppended);
     }
 

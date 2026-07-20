@@ -309,6 +309,58 @@ describe('reopenProject', () => {
     expect(updated).toMatch(/status: now/);
   });
 
+  it('accepts --summary and writes it into the Reopened timeline entry', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'done',
+      title: 'Alpha',
+      body: '## Timeline\n\n- 2026-05-02 — Closed.\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      reopenProject(
+        {
+          noun: 'projects',
+          verb: 'reopen',
+          positional: ['alpha'],
+          flags: { status: 'now', summary: 'why it came back' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    // The documented flag must be accepted, not rejected by assertNoExtraFlags.
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ newStatus: string; timelineAppended: string }>(stdout).data!;
+    expect(data.newStatus).toBe('now');
+    expect(data.timelineAppended).toMatch(/^- \d{4}-\d{2}-\d{2} — Reopened\. why it came back\.$/);
+    const updated = await fs.readFile(readme, 'utf8');
+    expect(updated).toMatch(/status: now/);
+    expect(updated).toMatch(/—\s+Reopened\.\s+why it came back\./);
+  });
+
+  it('lands a bare Reopened entry when --summary is omitted', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'done',
+      title: 'Alpha',
+      body: '## Timeline\n\n- 2026-05-02 — Closed.\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      reopenProject(
+        { noun: 'projects', verb: 'reopen', positional: ['alpha'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ timelineAppended: string }>(stdout).data!;
+    expect(data.timelineAppended).toMatch(/^- \d{4}-\d{2}-\d{2} — Reopened\.$/);
+    const updated = await fs.readFile(readme, 'utf8');
+    expect(updated).toMatch(/-\s+\d{4}-\d{2}-\d{2}\s+—\s+Reopened\.\s*$/m);
+  });
+
   it('rejects reopening a project that is not done', async () => {
     await writeProjectReadme(conceptionPath, 'alpha', {
       date: '2026-05-01',

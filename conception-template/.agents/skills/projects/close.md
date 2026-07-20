@@ -99,7 +99,7 @@ Trigger: `/projects close <slug>`.
 Trigger: `/projects reopen <slug>` or "reopen <slug>".
 
 ```bash
-condash projects reopen <slug> [--status <now|review|later|backlog>] --summary "<reason>" --json
+condash projects reopen <slug> [--status <now|review|later|backlog>] [--summary "<reason>"] --json
 ```
 
-Default target status is `now`. The CLI flips the status (in either YAML or bold-prose form), appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. If the item carried a `branch` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.
+Default target status is `now`. The CLI flips the status (in either YAML or bold-prose form), appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. Skip `--summary` to land a bare `- YYYY-MM-DD — Reopened.` — but a reopen almost always has a reason (a deferred follow-up came due, an external signal landed, the close was premature), so pass one. If the item carried a `branch` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.
