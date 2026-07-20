@@ -26,7 +26,7 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
    condash worktrees setup <branch> [--no-env] [--no-install] [--copy-env] [--base <ref>] --json
    ```
 
-   **Per-repo `env: [...]`** in `.condash/settings.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied **unconditionally when set** — pass `--no-env` to skip. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
+   **Per-repo `env: [...]`** in `.condash/settings.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the worktree. Applied **unconditionally when set** — pass `--no-env` to skip. Re-running setup on an already-present worktree is **not** a no-op: it backfills only the declared files that worktree is missing, leaving a deliberately divergent copy (different ports so two branches run side by side) untouched. That is the repair for a worktree made by a raw `git worktree add`, made before `env:` was declared, or set up once with `--no-env`. `--no-env` suppresses both paths; `install:` deliberately does not re-run on the already-present path. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration, on both paths alike.
 
    **Per-repo `install: <cmd>`** in `.condash/settings.json` runs after the worktree is created (npm/pnpm/uv/etc.). Run **unconditionally when set** — pass `--no-install` to skip. Repos without an `install:` declaration are silently no-op.
 
@@ -39,7 +39,7 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
    - skips repos with `pinned_branch:` (those track a different axis),
    - calls `git worktree add` per repo (creates the branch with `-b <branch> <base>` when missing),
    - blocks any repo whose declared `<base>` doesn't resolve locally — the reason field tells you to `git fetch` or create the base first,
-   - returns `{created[], alreadyPresent[], blocked[], envCopied[], installRan[], base}`.
+   - returns `{created[], alreadyPresent[], blocked[], envCopied[], installRan[], base}` — `envCopied[]` covers the creation copy and the already-present backfill alike, and lists only files actually written, so a backfill that found everything in place contributes no entry.
 
 5. **Final report.** End with the absolute worktree path on its own line, ready to paste:
 
