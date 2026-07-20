@@ -585,6 +585,50 @@ describe('declared env: file copy', () => {
     expect(again.alreadyPresent).toHaveLength(1);
     expect(again.envCopied).toEqual([]);
     expect(existsSync(join(target, '.env'))).toBe(false);
+
+    // Control run: without the flag the same already-present worktree *is*
+    // backfilled. Without this, the assertion above holds trivially — the
+    // backfill would be a no-op on code that has no backfill at all, so the
+    // "and the backfill" half of the name could not fail.
+    const unskipped = await setupBranchWorktrees(conception, 'env-skip', { repos: ['demo'] });
+    expect(unskipped.alreadyPresent).toHaveLength(1);
+    expect(unskipped.envCopied).toEqual([{ repo: 'demo', files: ['.env'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+  });
+
+  // The backfill sits strictly inside the genuine-already-present branch, so a
+  // repo whose target directory is *blocked* must come away with no env file.
+  // Nothing else pins that boundary: the collision / stale-dir cases above run
+  // on a config with no `env:` at all.
+  it('does not backfill into a directory blocked as a non-worktree', async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const target = join(worktreesRoot, 'env-stale-dir', 'demo');
+    mkdirSync(target, { recursive: true });
+
+    const result = await setupBranchWorktrees(conception, 'env-stale-dir', { repos: ['demo'] });
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain('not a registered worktree');
+    expect(result.envCopied).toEqual([]);
+    expect(existsSync(join(target, '.env'))).toBe(false);
+  });
+
+  it("does not backfill into another branch's worktree on a flattened-path collision", async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    // `coll/ision` and `coll-ision` share the directory key `coll-ision`.
+    await setupBranchWorktrees(conception, 'coll/ision', { repos: ['demo'], skipEnv: true });
+    const target = join(worktreesRoot, 'coll-ision', 'demo');
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    const result = await setupBranchWorktrees(conception, 'coll-ision', { repos: ['demo'] });
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain('flattened-path collision');
+    expect(result.envCopied).toEqual([]);
+    // The other branch's worktree keeps its own (absent) env state.
+    expect(existsSync(join(target, '.env'))).toBe(false);
   });
 });
 
