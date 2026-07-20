@@ -27,7 +27,9 @@ export interface TransitionOpts {
   /**
    * Free-text appended to the `Closed.` / `Reopened.` timeline entry written
    * on a done-edge. Trimmed; an empty result lands the bare form. Ignored on
-   * transitions that write no timeline entry.
+   * transitions that write no timeline entry. Must be single-line — a CR or
+   * LF surviving the trim throws, because the entry is written as one
+   * physical line.
    */
   summary?: string;
   /** Inject the date for tests. Defaults to today, ISO. */
@@ -49,7 +51,8 @@ export interface TransitionOpts {
  * Both done-edges honour `opts.summary` the same way — omit it and the entry
  * lands in its bare "- <today> — Closed." / "- <today> — Reopened." form.
  *
- * Throws when the README has no **Status** line in its metadata block.
+ * Throws when the README has no **Status** line in its metadata block, when
+ * `newStatus` is not a known status, or when `opts.summary` is not single-line.
  */
 export async function transitionStatus(
   readmePath: string,
@@ -63,6 +66,23 @@ export async function transitionStatus(
   if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
     throw new Error(
       `transitionStatus: unknown status (expected one of ${KNOWN_STATUSES.join(', ')})`,
+    );
+  }
+  // Same threat model as `newStatus` above, one line down: `summary` is
+  // interpolated verbatim into a `## Timeline` bullet, and
+  // `appendTimelineLines` splices it as a single array element that
+  // `join(eol)` then flattens into however many physical lines it carries. An
+  // embedded newline therefore forges timeline entries — a *reopen* summary
+  // carrying a `- <date> — Closed. …` line makes the sweeper's
+  // `closeMilestoneSubject` mint a close milestone for a reopen. Rejected
+  // rather than collapsed to spaces: a timeline entry is a durable record, so
+  // silently rewriting it would file text the caller never wrote. Hoisted
+  // above the queue so both done-edges are covered once and nothing is
+  // written on the reject.
+  const summary = opts.summary?.trim();
+  if (summary !== undefined && /[\r\n]/.test(summary)) {
+    throw new Error(
+      'transitionStatus: summary must be a single line (no carriage return or newline)',
     );
   }
   return withFileQueue(readmePath, async () => {
@@ -112,7 +132,6 @@ export async function transitionStatus(
 
     let timelineAppended: string | null = null;
     const today = opts.today ?? isoToday();
-    const summary = opts.summary?.trim();
     if (previous !== 'done' && newStatus === 'done') {
       timelineAppended = summary ? `- ${today} — Closed. ${summary}.` : `- ${today} — Closed.`;
       lines = appendTimelineLines(lines, timelineAppended);
