@@ -45,11 +45,25 @@ export const THEME_PRESETS = [
     swatch: ['#faf6f8', '#ffffff', '#672167'],
   },
   {
+    id: 'mist',
+    label: 'Mist',
+    kind: 'light',
+    description: 'Cool morning light — fog gray-blue, ink text, steel-blue accent.',
+    swatch: ['#edf1f5', '#fcfdfe', '#275e80'],
+  },
+  {
     id: 'dark',
     label: 'Warm Gallery',
     kind: 'dark',
     description: 'Gold on warm black — the gallery-dark lead theme.',
     swatch: ['#151412', '#1a1815', '#c8a882'],
+  },
+  {
+    id: 'nocturne',
+    label: 'Nocturne',
+    kind: 'dark',
+    description: 'Moonlit indigo night — periwinkle on deep blue-black.',
+    swatch: ['#10131d', '#151a28', '#91a7f2'],
   },
   {
     id: 'console',

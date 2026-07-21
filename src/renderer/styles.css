@@ -402,6 +402,57 @@
   color-scheme: light;
 }
 
+/* ── Mist ───────────────────────────────────────────────────────────────────
+ * Cool morning light — the overcast counterpart to Paper's warm pink page.
+ * Fog gray-blue surfaces, blue-black ink text, one steel-blue accent (harbour
+ * water under a white sky). Where Paper is warm editorial print, Mist is cool
+ * and unornamented: quiet blue-gray borders, cool-tinted shadows, and the
+ * status arc re-tuned a step darker so it holds on the cooler, brighter cards.
+ * Declares its final tokens directly — it shares no hues with Paper. */
+[data-theme='mist'] {
+  /* --bg-base / --bg-tertiary / --text-primary are `var()` aliases on `:root`
+   * and re-resolve against whatever this block sets, exactly as they do for
+   * the other presets. */
+  --bg: #edf1f5;
+  /* Panel = page, the same flat light-theme layering Paper uses; cards get
+   * their lift from --bg-elevated. */
+  --bg-panel: var(--bg);
+  --bg-elevated: #fcfdfe;
+  --bg-subtle: #e4e9ee;
+  --bg-hover: #dbe2e8;
+  --text: #16202b;
+  --text-body: #3d4854;
+  --text-muted: #5f6b78;
+  /* Holds the same ~3.9:1 bar Paper's faint clears over its warm bg. */
+  --text-faint: #6f7a87;
+  --border: #dce3e9;
+  --border-strong: #c3cdd6;
+  --accent: #275e80;
+  --accent-hover: #3181ad;
+  --accent-soft: #dbe7ee;
+  --shadow-card: 0 1px 2px rgba(18, 26, 36, 0.05), 0 1px 0 rgba(18, 26, 36, 0.03);
+  --shadow-lift: 0 4px 14px rgba(18, 26, 36, 0.09), 0 2px 4px rgba(18, 26, 36, 0.05);
+  --col-now: #27904a;
+  --col-review: #a68b1c;
+  --col-soon: #b07d12;
+  --col-later: #3a70c4;
+  --col-backlog: #5e7186;
+  --col-done: #626a74;
+  --warn: #b3323c;
+  --success: #22764c;
+  --col-unknown: #7a4fb0;
+  --col-running: #24875a;
+  /* Dirty stays warm orange — the one deliberately warm signal in the cool
+   * palette, so "uncommitted changes" cannot fade into the fog. */
+  --col-dirty: #b06d2c;
+  --col-added: #1e7d3d;
+  --col-removed: #c22b3d;
+  --kind-project: #276f56;
+  --kind-incident: #a4551e;
+  --kind-document: #7e6f1e;
+  color-scheme: light;
+}
+
 /* ── Console ────────────────────────────────────────────────────────────────
  * Terminal-native dark (the "modern TUI" register: Zed / lazygit / btop).
  * Unlike `dark`, this preset declares its own final tokens rather than
@@ -470,6 +521,56 @@
   --font-mono-base:
     'JetBrains Mono', ui-monospace, 'SF Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
 
+  color-scheme: dark;
+}
+
+/* ── Nocturne ───────────────────────────────────────────────────────────────
+ * Cool indigo night — the cold mirror of Warm Gallery: where gallery-dark is
+ * gold on warm brown-black, Nocturne is moonlit periwinkle on deep blue-black.
+ * It makes the same structural moves as its warm sibling — accent-tinted
+ * alpha borders, a soft-shadowed two-layer surface stack, live/"running" = the
+ * accent (moonlight is the life of the page) — carried out in a cool register.
+ * Declares its final tokens directly; the `--dark-*` set on `:root` belongs to
+ * Warm Gallery alone. */
+[data-theme='nocturne'] {
+  --bg: #10131d;
+  --bg-panel: #151a28;
+  --bg-elevated: #181e2e;
+  --bg-subtle: #1d2436;
+  --bg-hover: #222a40;
+  --text: #e9ecf6;
+  --text-body: #b4bcd3;
+  --text-muted: #8791ad;
+  --text-faint: #5f6885;
+  --border: rgba(145, 167, 242, 0.12);
+  --border-strong: rgba(145, 167, 242, 0.26);
+  --accent: #91a7f2;
+  --accent-hover: #aebff7;
+  --accent-soft: rgba(145, 167, 242, 0.15);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.42), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --col-now: #5dcb8c;
+  --col-review: #d9bd55;
+  --col-soon: #c8ab5e;
+  /* Later is a clearly cyan-leaning sky blue so it never blurs into the
+   * violet-leaning periwinkle accent. */
+  --col-later: #6fb3e8;
+  --col-backlog: #8b96b0;
+  --col-done: #717689;
+  --warn: #ef7189;
+  --success: #5dcb8c;
+  /* Unknown pops violet-magenta — clear of both the pink-red --warn and the
+   * blue accent family. */
+  --col-unknown: #c887e8;
+  /* Live = the periwinkle accent — the same one-signal move both dark
+   * siblings make (gallery's gold, console's phosphor green). */
+  --col-running: var(--accent);
+  --col-dirty: #d39a5e;
+  --col-added: #57d288;
+  --col-removed: #f2747e;
+  --kind-project: #5cae90;
+  --kind-incident: #db8d55;
+  --kind-document: #bfa964;
   color-scheme: dark;
 }
 

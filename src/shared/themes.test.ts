@@ -11,7 +11,7 @@ import type { Theme } from './themes';
 
 describe('theme registry', () => {
   it('exposes every preset id plus system, with no duplicates', () => {
-    expect(THEME_VALUES).toEqual(['system', 'light', 'dark', 'console']);
+    expect(THEME_VALUES).toEqual(['system', 'light', 'mist', 'dark', 'nocturne', 'console']);
     expect(new Set(THEME_VALUES).size).toBe(THEME_VALUES.length);
   });
 
@@ -76,7 +76,9 @@ describe('themeLabel', () => {
   it('labels system and each preset', () => {
     expect(themeLabel('system')).toBe('System');
     expect(themeLabel('light')).toBe('Paper');
+    expect(themeLabel('mist')).toBe('Mist');
     expect(themeLabel('dark')).toBe('Warm Gallery');
+    expect(themeLabel('nocturne')).toBe('Nocturne');
     expect(themeLabel('console')).toBe('Console');
   });
 });

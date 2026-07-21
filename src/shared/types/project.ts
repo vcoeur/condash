@@ -104,6 +104,9 @@ export interface Project {
   lastActivity?: string | null;
 }
 
+/** Whether a {@link ProjectFileEntry} is a file or a directory. */
+export type ProjectFileKind = 'file' | 'dir';
+
 export interface ProjectFileEntry {
   /** Absolute path on disk. */
   path: string;
@@ -111,6 +114,9 @@ export interface ProjectFileEntry {
   relPath: string;
   /** Last segment of relPath. */
   name: string;
+  /** File vs. directory. Directories are emitted alongside their contents so
+   * the preview's file tree can render structure — including empty dirs. */
+  kind: ProjectFileKind;
 }
 
 /**

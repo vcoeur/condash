@@ -80,6 +80,10 @@ const api: CondashApi = {
     ipcRenderer.invoke('editStepText', path, lineIndex, expectedText, newText),
   addStep: (path, text) => ipcRenderer.invoke('addStep', path, text),
   listProjectFiles: (path) => ipcRenderer.invoke('listProjectFiles', path),
+  createProjectFile: (projectPath, dirRelPath, name) =>
+    ipcRenderer.invoke('createProjectFile', projectPath, dirRelPath, name),
+  createProjectDir: (projectPath, dirRelPath, name) =>
+    ipcRenderer.invoke('createProjectDir', projectPath, dirRelPath, name),
   setStatus: (path, newStatus, opts) => ipcRenderer.invoke('setStatus', path, newStatus, opts),
   createProject: (input) => ipcRenderer.invoke('createProject', input),
   readNote: (path) => ipcRenderer.invoke('readNote', path),

@@ -49,7 +49,9 @@ All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`
 | Read a note | `readNote` | Click a file in the card | Returns plain bytes — no write |
 | Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `.condash/settings.json` (or the legacy `condash.json`), the bytes written may differ from the input (Zod canonicalisation reorders keys). |
 | Create a note | `createProjectNote` | Click "+ Note" in the card | Creates `<projectPath>/notes/NN-<slug>.md` with the next zero-padded counter; returns the new path. |
-| List item files | `listProjectFiles` | Open the notes panel | Lists files under the item's `notes/` directory — no write |
+| Create a file | `createProjectFile` | "New file" in the preview's file tree (root buttons or a dir's hover "+") | Creates an empty file with the given name inside the chosen project subdirectory. Refuses existing targets and names with path separators / leading dots; the target is realpath-bounded under the conception's `projects/` tree. |
+| Create a folder | `createProjectDir` | "New folder" in the preview's file tree | Same bounding and name rules as `createProjectFile`; non-recursive `mkdir`, so an existing entry (symlinks included) is refused. |
+| List item files | `listProjectFiles` | Open the item's preview popup | Lists the item directory's files **and** directories recursively (`kind` distinguishes them) — no write. Feeds the popup's collapsible file tree. |
 
 The `writeNote` verb takes `(path, expectedContent, newContent)`. If `expectedContent` no longer matches what's on disk, the renderer surfaces a "reload before saving" toast and the write is refused. No merge — the user re-opens the note and redoes their edit.
 

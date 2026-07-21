@@ -136,35 +136,163 @@
   margin: 0;
 }
 
+/* Files widget — a collapsible tree of the project directory (dirs + files).
+ * Rows are full-width hover targets; the per-row actions (new file / new
+ * folder / open externally) reveal on hover. */
 .widget-files {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.widget-file {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  padding: 5px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-family: var(--font-mono);
-  color: var(--text);
-  cursor: pointer;
+.file-tree,
+.file-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.widget-file:hover {
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 5px;
+  padding-right: 4px;
+}
+
+.file-tree-row:hover {
   background: var(--bg-hover);
 }
 
-.widget-file.add-note {
-  color: var(--text-muted);
-  border-style: dashed;
+.file-tree-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
 }
 
-.widget-file.add-note:hover {
+/* Dir rows read as structure: UI face + weight against the mono file names. */
+.file-tree-dir .file-tree-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: var(--text-body);
+}
+
+.file-tree-glyph,
+.file-tree-draft-glyph {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.file-tree-glyph svg,
+.file-tree-draft-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hover-revealed row actions. `visibility` (not `display`) so row height is
+ * stable and the reveal costs no layout; focus-within keeps them visible
+ * for keyboard users. */
+.file-tree-actions {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  visibility: hidden;
+  flex-shrink: 0;
+}
+
+.file-tree-row:hover .file-tree-actions,
+.file-tree-actions:focus-within {
+  visibility: visible;
+}
+
+.file-tree-action {
+  --btn-size: 22px;
+  --btn-icon: 13px;
+}
+
+/* Gitignored scratch (`local/`): dimmed subtree + an explanatory badge on
+ * the top-level row (tooltip carries the long form). */
+.file-tree-local .file-tree-main,
+.file-tree-local.file-tree-dir .file-tree-name {
+  color: var(--text-muted);
+}
+
+.gitignored-badge {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+/* Inline create row (Enter commits, Esc cancels). */
+.file-tree-draft:hover {
+  background: none;
+}
+
+.file-tree-draft-glyph {
+  padding-left: 4px;
+}
+
+.file-tree-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  margin: 2px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
   color: var(--text);
+}
+
+.file-tree-input:focus {
+  outline: none;
   border-color: var(--accent);
+}
+
+.file-tree-error {
+  color: var(--danger);
+  font-size: var(--text-2xs);
+  padding: 1px 4px 3px;
+}
+
+/* Footer: add-note + root-level create actions, dashed "add here" cue
+ * (same idiom as .add-step-button). */
+.file-tree-footer {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.file-tree-add {
+  border-style: dashed;
+  border-color: var(--border);
 }
 
 .widget-progress {

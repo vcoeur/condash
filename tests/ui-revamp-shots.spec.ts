@@ -44,7 +44,7 @@ const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
 const REAL_CONCEPTION = process.env.CONDASH_SHOTS_CONCEPTION ?? '';
 
 /** Registry ids from src/shared/themes.ts. */
-const THEMES = ['light', 'dark', 'console'] as const;
+const THEMES = ['light', 'mist', 'dark', 'nocturne', 'console'] as const;
 
 test.skip(
   !REAL_CONCEPTION || !existsSync(REAL_CONCEPTION),

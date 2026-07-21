@@ -19,6 +19,15 @@ export function requireNonEmptyString(channel: string, value: unknown): string {
   return value;
 }
 
+/** Require a string, empty allowed — e.g. a dir-relative path where `''`
+ * stands for the root. Use `requireNonEmptyString` when empty is invalid. */
+export function requireString(channel: string, value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error(`${channel}: expected a string`);
+  }
+  return value;
+}
+
 /** Require a boolean argument. */
 export function requireBoolean(channel: string, value: unknown): boolean {
   if (typeof value !== 'boolean') {

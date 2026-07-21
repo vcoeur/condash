@@ -140,7 +140,7 @@ One line per event, dated, imperative, linkable. Useful when re-reading the item
 
 ## Notes and subdirectories
 
-Anything not in the README goes in `notes/<name>.md` (or any other subdirectory you create from the dashboard — `logs/`, `drafts/`, whatever). The card's **Files** section lists every non-README file in the item directory, grouped by subdirectory up to three levels deep. Hidden entries (leading `.`) and the top-level `README.md` are skipped.
+Anything not in the README goes in `notes/<name>.md` (or any other subdirectory you create from the dashboard — `scripts/`, `drafts/`, whatever). The item preview's **Files** section renders the whole item directory as a collapsible tree: directories (empty ones included) toggle open/closed, files open in the in-app viewers, and every row has a hover affordance to open it with the OS. New files and folders can be created inline — at the item root or inside any directory. Hidden entries (leading `.`) and the top-level `README.md` are skipped. Top-level directories start expanded, except `local/` — the gitignored scratch dir by conception convention — which renders dimmed with a "gitignored" badge, sorts last, and starts collapsed.
 
 See [mutations](mutations.md) for the create/rename/upload routes, and [Linking items with wikilinks](../guides/wikilinks.md) for the in-note link syntax.
 

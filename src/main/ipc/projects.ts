@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { promises as fsp } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { parseHeader } from '../../shared/header';
 import { compareByStatusThenSlug } from '../../shared/projects';
 import type {
@@ -10,7 +11,12 @@ import type {
 } from '../../shared/types';
 import { createProjectCore } from '../create-project';
 import { touchDirtyMarker } from '../dirty';
-import { listProjectFiles } from '../files';
+import {
+  cleanDirRelPath,
+  createProjectEntry,
+  listProjectFiles,
+  requireCreatableName,
+} from '../files';
 import { addStep, editStepText, toggleStep, transitionStatus, writeNote } from '../mutate';
 import { createProjectNote, readNote } from '../note';
 import { parseReadmeCached } from '../parse-cache';
@@ -18,7 +24,7 @@ import { requirePathUnder } from '../path-bounds';
 import { readSettings, settingsPath } from '../settings';
 import { findProjectReadmes } from '../walk';
 import { checkBranchState } from '../worktree-ops';
-import { requireMainWindowSender } from './utils';
+import { requireMainWindowSender, requireNonEmptyString, requireString } from './utils';
 
 /**
  * Defence-in-depth: every IPC handler that accepts a `path` from the
@@ -32,6 +38,32 @@ async function assertUnderConception(path: string): Promise<void> {
     throw new Error('no conception path is set');
   }
   await requirePathUnder(path, conceptionPath);
+}
+
+/**
+ * Resolve + bound the parent directory a `createProjectFile` /
+ * `createProjectDir` call targets. Two nested realpath bounds, both applied
+ * here at the handler choke point (path-bounds convention):
+ *
+ *  1. the project directory (parent of `projectPath`, which is the README
+ *     path — or the directory itself) must resolve under the conception's
+ *     `projects/` tree — these verbs create entries, so they get a tighter
+ *     bound than the read-side `assertUnderConception`;
+ *  2. the target's parent (`<projectDir>/<dirRelPath>`) must exist and
+ *     resolve back under the project directory, so a symlinked subdir can't
+ *     smuggle the create outside the tree.
+ *
+ * Returns the canonical absolute parent directory to create into.
+ */
+async function resolveCreateParent(projectPath: string, dirRelPath: string): Promise<string> {
+  const { lastConceptionPath: conceptionPath } = await readSettings();
+  if (!conceptionPath) throw new Error('no conception path is set');
+  const projectDir =
+    basename(projectPath).toLowerCase() === 'readme.md' ? dirname(projectPath) : projectPath;
+  const projectDirReal = await requirePathUnder(projectDir, join(conceptionPath, 'projects'));
+  const rel = cleanDirRelPath(dirRelPath);
+  const parentAbs = rel === '' ? projectDirReal : join(projectDirReal, rel);
+  return requirePathUnder(parentAbs, projectDirReal);
 }
 
 /**
@@ -269,4 +301,30 @@ export function registerProjectsIpc(): void {
     await assertUnderConception(projectPath);
     return createProjectNote(projectPath, slug);
   });
+
+  ipcMain.handle(
+    'createProjectFile',
+    async (event, projectPath: string, dirRelPath: string, name: string) => {
+      requireMainWindowSender(event);
+      requireNonEmptyString('createProjectFile', projectPath);
+      requireString('createProjectFile', dirRelPath);
+      requireNonEmptyString('createProjectFile', name);
+      const cleanName = requireCreatableName(name);
+      const parent = await resolveCreateParent(projectPath, dirRelPath);
+      return createProjectEntry(parent, cleanName, 'file');
+    },
+  );
+
+  ipcMain.handle(
+    'createProjectDir',
+    async (event, projectPath: string, dirRelPath: string, name: string) => {
+      requireMainWindowSender(event);
+      requireNonEmptyString('createProjectDir', projectPath);
+      requireString('createProjectDir', dirRelPath);
+      requireNonEmptyString('createProjectDir', name);
+      const cleanName = requireCreatableName(name);
+      const parent = await resolveCreateParent(projectPath, dirRelPath);
+      return createProjectEntry(parent, cleanName, 'dir');
+    },
+  );
 }
