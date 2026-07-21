@@ -96,6 +96,22 @@ describe('deriveDeath', () => {
     expect(death.highDelta).toBe(0);
   });
 
+  it('does NOT call the tab OOM-killed when a child died but the shell exited itself', () => {
+    // The cgroup OOM killer picks one victim from the whole tab. When it takes a
+    // compiler or test runner, the shell survives, reports the failure, and exits
+    // on its own — unsignalled. Labelling that "killed — out of memory" would
+    // blame the tab for a death it reported rather than suffered.
+    const death = deriveDeath({
+      exitCode: 2,
+      before: events(0, 10),
+      after: events(1, 44),
+    });
+    expect(death.kind).toBe('failed');
+    expect(death.label).toBe('exited — code 2');
+    // The evidence still rides along for the log footer.
+    expect(death.oomKillDelta).toBe(1);
+  });
+
   it('ignores cgroup counters when the before-sample is missing', () => {
     // An unscoped tab, or one that died before its first periodic sample, has no
     // baseline. Falling back to `after > 0` would resurrect the cumulative trap.

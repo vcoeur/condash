@@ -72,6 +72,12 @@ export interface DeathEvidence {
  * one, because a cap hit also raises `high` on the way up — so testing pressure
  * first would mislabel every cap hit.
  *
+ * Both OOM verdicts require the shell itself to have been signalled. The cgroup
+ * OOM killer picks one victim from the whole tab — often a child (a compiler, a
+ * test runner), leaving the shell alive to report the failure and exit on its
+ * own. That tab was not killed, so it does not get a "killed" label; the raw
+ * `oomKillDelta` still rides along on the verdict for the log footer.
+ *
  * @param evidence Exit status, signal, and the cgroup counters bracketing the death.
  * @returns The verdict, carrying both the classification and its evidence.
  */
@@ -92,7 +98,7 @@ export function deriveDeath(evidence: DeathEvidence): TermDeath {
 
   const base = { exitCode, signal, oomKillDelta, highDelta };
 
-  if (oomKillDelta !== undefined && oomKillDelta > 0) {
+  if (signal === SIGKILL && oomKillDelta !== undefined && oomKillDelta > 0) {
     return { ...base, kind: 'oom-cap', label: 'killed — out of memory (cap)' };
   }
   if (signal === SIGKILL && highDelta !== undefined && highDelta > 0) {
