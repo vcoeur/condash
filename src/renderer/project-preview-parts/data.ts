@@ -112,3 +112,44 @@ export function buildFileTree(entries: readonly ProjectFileEntry[]): FileTreeNod
   sortTree(roots, 0);
   return roots;
 }
+
+/** Own-field equality — everything but `children`, which
+ * {@link reconcileLevel} compares recursively. */
+function sameNodeFields(a: FileTreeNode, b: FileTreeNode): boolean {
+  return a.name === b.name && a.relPath === b.relPath && a.path === b.path && a.kind === b.kind;
+}
+
+/** Reconcile one sibling level, keyed by `relPath`. Returns `previous`
+ * itself when every position resolves to the same node object. */
+function reconcileLevel(previous: FileTreeNode[], next: FileTreeNode[]): FileTreeNode[] {
+  const prevByRelPath = new Map(previous.map((node) => [node.relPath, node]));
+  const out = next.map((nextNode) => {
+    const prevNode = prevByRelPath.get(nextNode.relPath);
+    if (!prevNode) return nextNode;
+    const children = reconcileLevel(prevNode.children, nextNode.children);
+    if (children === prevNode.children && sameNodeFields(prevNode, nextNode)) return prevNode;
+    // The subtree changed: keep the fresh node, but graft the reconciled
+    // children so untouched grandchild subtrees still keep identity.
+    nextNode.children = children;
+    return nextNode;
+  });
+  const unchanged =
+    out.length === previous.length && out.every((node, index) => node === previous[index]);
+  return unchanged ? previous : out;
+}
+
+/**
+ * Reconcile a freshly built tree against the previous render's tree,
+ * reusing the previous node object for every subtree that is structurally
+ * identical (same name / relPath / path / kind and recursively identical
+ * children). An unchanged tree returns `previous` itself. This keeps node
+ * identity stable across files refetches so the widget's reference-keyed
+ * `<For>` only remounts rows whose subtree actually changed.
+ */
+export function reconcileFileTree(
+  previous: FileTreeNode[] | undefined,
+  next: FileTreeNode[],
+): FileTreeNode[] {
+  if (!previous) return next;
+  return reconcileLevel(previous, next);
+}
