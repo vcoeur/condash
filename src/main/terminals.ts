@@ -7,6 +7,7 @@ import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type {
   TabInfo,
+  TermDeath,
   TermSession,
   TermSide,
   TermSpawnRequest,
@@ -18,7 +19,15 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
-import { wrapWithMemoryScope, sampleCgroupMemory } from './tab-scope';
+import {
+  wrapWithMemoryScope,
+  cgroupPathFor,
+  readCgroupMemory,
+  readCgroupMemoryEvents,
+  type CgroupMemoryEvents,
+} from './tab-scope';
+import { deriveDeath, isAbnormal } from './term-death';
+import { perfLog } from './perf-log';
 import { spawnEnv, spawnPtyEnv } from './shell-env';
 import { safeSend } from './safe-send';
 import { SessionLogger } from './terminal-logger';
@@ -61,10 +70,45 @@ interface Session {
    * cgroup, which would misreport the whole dashboard as the tab's usage. */
   memScoped: boolean;
   /** Latest sampled cgroup memory usage (bytes) for a scoped tab; undefined
-   * until the first sample (and always for unscoped tabs). */
+   * until the first sample (and always for unscoped tabs). **Quantized** — only
+   * advances when the broadcast quantum is crossed, so it must not be used as a
+   * rate baseline. */
   memBytes?: number;
+  /** Unquantized reading from the last sample, paired with `memSampledAt`. The
+   * growth rate diffs against this; using the quantized `memBytes` would divide
+   * a multi-tick delta by one tick's elapsed time and inflate the rate. */
+  memRawBytes?: number;
   /** Resolved hard cap (bytes) of this tab's scope, when numeric. */
   memMaxBytes?: number;
+  /** This tab's cgroup path, resolved **once at spawn while the pid is alive**.
+   * `/proc/<pid>` is gone by the time node-pty emits `exit` (it fires after
+   * `waitpid` and the socket close), so every later read — including the
+   * death-verdict one that matters most — goes by this path. Also avoids the
+   * pid-reuse race a recycled pid would introduce. Unset for unscoped tabs and
+   * on hosts without cgroup v2. */
+  cgroupPath?: string;
+  /** cgroup `memory.events` at the most recent periodic sample. */
+  memEvents?: CgroupMemoryEvents;
+  /** cgroup `memory.events` at the sample *before* `memEvents`. The counters are
+   * cumulative for the cgroup's life, so a verdict needs two points; keeping the
+   * previous one means a kill is still attributable when the exit-time read
+   * loses its race with `systemd-run --collect` reaping the unit. */
+  memEventsPrev?: CgroupMemoryEvents;
+  /** Why the session ended; undefined while live. */
+  death?: TermDeath;
+  /** Wall-clock ms of the sample that produced `memBytes` — the other half of
+   * the growth-rate calculation. */
+  memSampledAt?: number;
+  /** Bytes/second the tab's cgroup grew over the last sampling interval. The
+   * existing meter is instantaneous, so a tab going 2G→8G inside one 2.5 s
+   * window showed no warning at all before it died; a rate can warn on
+   * trajectory instead of on a level. */
+  memGrowthBytesPerSec?: number;
+  /** True when the cgroup's `MemoryHigh` throttle count moved on the last
+   * sample — i.e. the kernel is actively reclaiming against this tab. This is
+   * the state tabs are actually dying in, and it was previously invisible: the
+   * user saw an unexplained slowdown with nothing to attribute it to. */
+  memThrottled?: boolean;
   /** Per-session 'destroyed' listener handle on `webContents` — kept on the
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
@@ -145,8 +189,11 @@ function snapshot(): TermSession[] {
     repo: s.repo,
     cwd: s.cwd,
     exited: s.exited,
+    death: s.death,
     memBytes: s.memBytes,
     memMaxBytes: s.memMaxBytes,
+    memGrowthBytesPerSec: s.memGrowthBytesPerSec,
+    memThrottled: s.memThrottled,
   }));
 }
 
@@ -186,6 +233,23 @@ export function memSampleChanged(previous: number | undefined, next: number | un
   return Math.abs(next - previous) >= MEM_BROADCAST_QUANTUM_BYTES;
 }
 
+/** Broadcast quantum for the per-tab growth rate (bytes/sec). The perf pane
+ *  renders whole MB/s and hides anything under 1 MB/s as "—", so a sub-MB/s
+ *  wobble is invisible. Without a quantum the rate is a fresh integer on every
+ *  sample of a live process, which would rebroadcast the whole session snapshot
+ *  every tick and re-introduce the T5 idle churn for every user with memory
+ *  scoping on — the default — whether or not they ever open the pane. */
+export const RATE_BROADCAST_QUANTUM_BYTES_PER_SEC = 1024 * 1024;
+
+/** Whether a fresh growth-rate reading warrants a rebroadcast: the first
+ *  reading, a transition to/from "no reading", or a move of at least one
+ *  quantum. Pure so the threshold is unit-testable; exported for tests. */
+export function rateChanged(previous: number | undefined, next: number | undefined): boolean {
+  if (previous === next) return false;
+  if (previous === undefined || next === undefined) return true;
+  return Math.abs(next - previous) >= RATE_BROADCAST_QUANTUM_BYTES_PER_SEC;
+}
+
 /** Sample every scoped tab's cgroup memory and rebroadcast the snapshot when a
  *  figure moved by a meaningful step, so the renderer's per-tab meter tracks
  *  usage. One small file read per live scoped pty; unscoped tabs are skipped
@@ -198,14 +262,76 @@ export function memSampleChanged(previous: number | undefined, next: number | un
 function sampleMemory(): void {
   let changed = false;
   for (const s of sessions.values()) {
-    if (!s.memScoped || s.exited !== undefined || !s.pty) continue;
-    const bytes = sampleCgroupMemory(s.pty.pid);
+    if (!s.memScoped || s.exited !== undefined || s.cgroupPath === undefined) continue;
+    const bytes = readCgroupMemory(s.cgroupPath);
+    const at = Date.now();
+    // Growth rate off the RAW previous sample (`memRawBytes`), not the quantized
+    // display value: `memBytes` only advances when the 8 MB broadcast quantum is
+    // crossed while the clock advances every tick, so diffing against it would
+    // divide a multi-tick delta by a single tick and inflate the rate — a tab
+    // growing 3 MB/tick would read 0, 0, then a false spike.
+    if (bytes !== undefined && s.memRawBytes !== undefined && s.memSampledAt !== undefined) {
+      const elapsedSec = (at - s.memSampledAt) / 1000;
+      if (elapsedSec > 0) {
+        const rate = Math.round((bytes - s.memRawBytes) / elapsedSec);
+        // Quantize before comparing. An exact compare is true on virtually every
+        // tick for a live process, which would rebroadcast the whole snapshot
+        // every 2.5 s and undo the T5 idle-churn fix for every user running with
+        // memory scoping (the default) — including those who never open this
+        // pane. The pane renders whole MB/s, so a sub-MB/s wobble changes nothing
+        // on screen.
+        if (rateChanged(s.memGrowthBytesPerSec, rate)) {
+          s.memGrowthBytesPerSec = rate;
+          changed = true;
+        }
+      }
+    }
+    if (bytes !== undefined) {
+      s.memRawBytes = bytes;
+      s.memSampledAt = at;
+    }
     if (memSampleChanged(s.memBytes, bytes)) {
       s.memBytes = bytes;
       changed = true;
     }
+    // Refresh the death-evidence watermarks on the same tick — one extra small
+    // read per scoped tab, riding the timer that already exists rather than
+    // adding one. Two points are kept because the counters are cumulative and
+    // the exit-time read can lose its race with `--collect`.
+    const events = readCgroupMemoryEvents(s.cgroupPath);
+    if (events) {
+      // A move in the cumulative `high` counter means the kernel is reclaiming
+      // against this tab right now. Unlike the raw counter (which stays
+      // non-zero forever once tripped), the delta is a live state.
+      const throttled = s.memEvents !== undefined && events.high > s.memEvents.high;
+      if (throttled !== s.memThrottled) {
+        s.memThrottled = throttled;
+        changed = true;
+      }
+      s.memEventsPrev = s.memEvents;
+      s.memEvents = events;
+    }
   }
   if (changed) broadcastSessions();
+  // Ride this tick rather than arming a second timer — the instrumentation must
+  // not add periodic work to the very thread it is measuring. No-op while perf
+  // recording is off, and best-effort when on (a write failure must never break
+  // the thing it measures).
+  void perfLog.flush();
+}
+
+/**
+ * Apply the `terminal.perf` preference: open or close the recorder against the
+ * active conception's `.condash/perf/` file. Called at boot and whenever the
+ * conception or the preference changes.
+ *
+ * @param conceptionPath Active conception, or null (recording is then off — the
+ *   records are per-conception and there is nowhere to put them).
+ */
+export async function syncPerfLogging(conceptionPath: string | null): Promise<void> {
+  const prefs = await getTerminalPrefs();
+  const wanted = prefs.perf?.enabled === true && conceptionPath !== null;
+  perfLog.setEnabled(wanted, wanted ? conceptionPath : undefined);
 }
 
 /** Begin periodic per-tab memory sampling (idempotent). Called once at app
@@ -541,6 +667,13 @@ export async function spawnTerminal(
     // actually reached a live frame.
     (data, epoch) => safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data, epoch }),
     () => session.pty,
+    {
+      observer: {
+        onBatch: (_bytes, inFlight) => perfLog.recordBatch(id, inFlight),
+        onPause: () => perfLog.recordPause(id),
+        onWatchdogResume: () => perfLog.recordWatchdog(id),
+      },
+    },
   );
   session = {
     id,
@@ -577,6 +710,20 @@ export async function spawnTerminal(
   sessions.set(id, session);
   logger?.spawn();
 
+  // Resolve the cgroup path NOW, while the pid is alive. `/proc/<pid>` is gone
+  // by the time node-pty emits `exit` (it fires after waitpid and the pty socket
+  // close), so a pid-based lookup at death time always fails — which would leave
+  // every OOM classified as a bare SIGKILL — and a recycled pid would resolve to
+  // a foreign cgroup. Seeding the first `memory.events` reading here also gives
+  // a tab that dies inside the first sampling interval a baseline to diff
+  // against; a fast-allocating runaway is plausibly in exactly that window.
+  if (session.memScoped) {
+    session.cgroupPath = cgroupPathFor(ptyProcess.pid);
+    if (session.cgroupPath !== undefined) {
+      session.memEvents = readCgroupMemoryEvents(session.cgroupPath);
+    }
+  }
+
   // Read `session.webContents` (not the spawn-time parameter) inside the
   // handlers: attachTerminal reassigns it when a reloaded renderer
   // re-attaches, and a closure over the original WebContents would keep
@@ -584,6 +731,12 @@ export async function spawnTerminal(
   ptyProcess.onData((data) => {
     session.bytesSeen += data.length;
     appendBuffer(session, data);
+    // Time the OSC scan and the logger's parse SEPARATELY, not as one span:
+    // they are the two competing candidates for what dominates the main thread,
+    // and the whole point of measuring is to tell them apart. Both are gated on
+    // recording being on, so a normal run pays one boolean check per chunk.
+    const timing = perfLog.isEnabled();
+    const started = timing ? process.hrtime.bigint() : 0n;
     // Capture any in-band transcript regardless of disk logging — the dashboard
     // reads it for a faithful summary. Scan the OSC out **once** here: when a
     // disk logger is present, hand it the stripped `clean` text and the decoded
@@ -592,9 +745,15 @@ export async function spawnTerminal(
     // and the renderer. When there's no logger, the plain scan suffices.
     if (session.logger) {
       const { clean, frames } = session.transcript.feedCapturingFrames(data);
+      const afterScan = timing ? process.hrtime.bigint() : 0n;
       session.logger.output(data, { clean, frames });
+      if (timing) {
+        perfLog.recordChunk(id, data.length, afterScan - started);
+        perfLog.recordLogParse(id, process.hrtime.bigint() - afterScan);
+      }
     } else {
       session.transcript.feed(data);
+      if (timing) perfLog.recordChunk(id, data.length, process.hrtime.bigint() - started);
     }
     // Batch the renderer send only — the buffer / transcript / logger above
     // still see every raw chunk, so on-disk output stays byte-identical. The
@@ -602,15 +761,47 @@ export async function spawnTerminal(
     // pty.pause()/resume().
     session.flow.enqueue(data);
   });
-  ptyProcess.onExit(({ exitCode }) => {
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    // Read the cgroup counters by CACHED PATH, never by pid: node-pty emits this
+    // only after waitpid has reaped the child and the pty socket has closed, so
+    // `/proc/<pid>` is already gone (and a recycled pid would report a foreign
+    // cgroup's counters — a spurious OOM verdict).
+    //
+    // Two-tier evidence, because this read still races `--collect` reaping the
+    // unit: prefer the exit-time reading diffed against the last periodic
+    // sample; if the cgroup is already gone, fall back to the last two periodic
+    // samples, which still bracket a kill that happened between them.
+    const exitEvents =
+      session.cgroupPath !== undefined ? readCgroupMemoryEvents(session.cgroupPath) : undefined;
+    const before = exitEvents ? session.memEvents : session.memEventsPrev;
+    const after = exitEvents ?? session.memEvents;
+    const death = deriveDeath({ exitCode, signal, before, after });
     session.exited = exitCode;
+    session.death = death;
     session.pty = null;
-    session.logger?.exit(exitCode);
+    session.logger?.exit(exitCode, death);
+    // Dispose the logger's headless xterm as soon as the pty is gone. An
+    // abnormally-exited row is now kept on screen until the user dismisses it,
+    // so without this each dead row would pin a full headless Terminal plus its
+    // 5000-line scrollback for the app's lifetime — a crash-looping run or a
+    // repeatedly-OOMing agent leaks one per death. `exit()` above has already
+    // written the footer and `close()` is idempotent (it memoizes its pass), so
+    // `stopSession` closing again later is a no-op.
+    //
+    // The rolling `buffer` is deliberately NOT cleared: it is capped at 64 KB,
+    // and it is what a reloaded renderer replays into a dead row — clearing it
+    // would blank the very output the row is being kept on screen to show.
+    void session.logger?.close();
     // Deliver any batched-but-unsent output before the exit notification so the
     // renderer never sees termExit ahead of the tab's final bytes; this also
     // clears the coalescing timer so nothing fires after the pty is gone.
     session.flow.flush();
-    safeSend(session.webContents, EVENT_CHANNELS.termExit, { id, code: exitCode });
+    safeSend(session.webContents, EVENT_CHANNELS.termExit, {
+      id,
+      code: exitCode,
+      death,
+      abnormal: isAbnormal(death),
+    });
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
     broadcastSessions();
@@ -804,6 +995,57 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
 export function closeSession(id: string): Promise<void> {
   return stopSession(id);
 }
+
+/**
+ * Relaunch an exited session with the same command, cwd, and side, then drop the
+ * dead row. The counterpart to keeping an abnormally-exited tab on screen: the
+ * user reads why it died, then restarts it without re-deriving what it was.
+ *
+ * Only a session whose pty has actually exited can be restarted — restarting a
+ * live tab would silently orphan its running process.
+ *
+ * Re-entrant calls for the same id are rejected rather than queued: the Restart
+ * button has no busy state, and a double-click would otherwise pass the
+ * still-exited check twice and spawn two terminals from one dead row.
+ *
+ * @param conceptionPath Active conception, for repo resolution (as `spawnTerminal`).
+ * @param id The exited session to relaunch.
+ * @returns The new session's id and cwd.
+ * @throws When the id is unknown, its pty is still live, or a restart is already
+ *   in flight for it.
+ */
+export async function restartSession(
+  conceptionPath: string | null,
+  id: string,
+): Promise<{ id: string; cwd: string }> {
+  const session = sessions.get(id);
+  if (!session) throw new Error(`No terminal session '${id}'`);
+  if (session.exited === undefined) throw new Error(`Session '${id}' is still running`);
+  if (restarting.has(id)) throw new Error(`Session '${id}' is already restarting`);
+  restarting.add(id);
+  try {
+    const spawned = await spawnTerminal(conceptionPath, session.webContents, {
+      side: session.side,
+      // `cmd` is the resolved command label the original spawn ran; a session
+      // spawned as a plain shell has none, and re-spawns as a plain shell.
+      command: session.cmd,
+      repo: session.repo,
+      cwd: session.cwd,
+    });
+    // Retire the dead row only once the replacement exists, so a failed respawn
+    // leaves the evidence on screen rather than silently swallowing the tab.
+    // Caveat for a code-side repo session: spawnTerminal's one-run-per-repo
+    // sweep has already stopped this row by the time we get here, so the
+    // evidence-preserving property holds only for `my`-side tabs.
+    await stopSession(id);
+    return spawned;
+  } finally {
+    restarting.delete(id);
+  }
+}
+
+/** Ids with a restart in flight — see `restartSession`. */
+const restarting = new Set<string>();
 
 /** Read terminal prefs. The `terminal` key is global-only (`settings.json`);
  * `condash.json` / `configuration.json` are legacy read fallbacks for

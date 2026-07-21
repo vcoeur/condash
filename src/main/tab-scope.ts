@@ -226,29 +226,95 @@ export function parseSize(size: string): number | undefined {
 }
 
 /**
- * Current memory usage (bytes) of the cgroup a pid belongs to. For a
- * memory-scoped tab the pid is `systemd-run`, so this reports the whole
- * transient scope (the entire tab process tree). Reads cgroup v2's
- * `memory.current`. Returns undefined off cgroup v2, or when the process/file is
- * already gone (a just-exited pty).
+ * Resolve a pid's cgroup v2 path, relative to the `/sys/fs/cgroup` mount.
  *
- * Only meaningful for a **scoped** pid — an unscoped pid resolves to condash's
- * own cgroup, so the caller must not sample unscoped tabs.
+ * Exported so a caller can resolve **once while the pid is alive** and keep the
+ * path: `/proc/<pid>` disappears the moment the process is reaped, and node-pty
+ * only emits `exit` *after* `waitpid` has returned and the pty socket has closed
+ * — so a pid-based read at exit time always fails, and worse, a recycled pid
+ * would resolve to a foreign cgroup. Reading by cached path has neither problem.
  *
- * @param pid The pty leader pid (the `systemd-run` process for a scoped tab).
- * @returns Bytes in use by the pid's cgroup, or undefined.
+ * @param pid A live pid.
+ * @returns The path relative to the cgroup mount, or undefined off cgroup v2 /
+ *   when the process is already gone.
  */
-export function sampleCgroupMemory(pid: number): number | undefined {
+export function cgroupPathFor(pid: number): string | undefined {
   try {
     // cgroup v2 is a single unified "0::<path>" line.
     const match = /^0::(.*)$/m.exec(readFileSync(`/proc/${pid}/cgroup`, 'utf8'));
     if (!match) return undefined;
-    const rel = match[1] === '/' ? '' : match[1];
-    const bytes = Number(readFileSync(`/sys/fs/cgroup${rel}/memory.current`, 'utf8').trim());
+    return match[1] === '/' ? '' : match[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Current memory usage (bytes) for an already-resolved cgroup path.
+ *
+ * @param cgroupPath Path relative to the cgroup mount, from `cgroupPathFor`.
+ * @returns Bytes in use, or undefined once the cgroup is gone.
+ */
+export function readCgroupMemory(cgroupPath: string): number | undefined {
+  try {
+    const bytes = Number(readFileSync(`/sys/fs/cgroup${cgroupPath}/memory.current`, 'utf8').trim());
     return Number.isFinite(bytes) ? bytes : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** Cumulative memory-pressure counters for a cgroup, from cgroup v2's
+ *  `memory.events`. **Every field counts events since the cgroup was created**,
+ *  never "right now" — a consumer must compare two samples, not test against
+ *  zero. See `term-death.ts` for why that distinction is load-bearing. */
+export interface CgroupMemoryEvents {
+  /** Times the cgroup's own OOM killer fired — i.e. it hit `MemoryMax`. */
+  oomKill: number;
+  /** Times usage reached `MemoryMax`. */
+  max: number;
+  /** Times usage exceeded `MemoryHigh` and the kernel throttled + reclaimed.
+   *  Sustained growth here is what generates the PSI pressure an external OOM
+   *  killer (systemd-oomd) reacts to. */
+  high: number;
+}
+
+/**
+ * Read cgroup v2 `memory.events` for an already-resolved cgroup path.
+ *
+ * Takes a **path, not a pid**, deliberately. The verdict this feeds is needed
+ * exactly at process exit, and by then the pid is reaped and `/proc/<pid>` is
+ * gone (node-pty emits `exit` only after `waitpid` returns and the pty socket
+ * closes). Resolve the path once at spawn with `cgroupPathFor` and read by path
+ * thereafter; that also sidesteps the pid-reuse race, where a recycled pid would
+ * silently report a foreign cgroup's counters and could manufacture a spurious
+ * OOM verdict.
+ *
+ * The read still races `systemd-run --collect` reaping the unit after exit, so
+ * callers must keep the last periodic sample as a fallback rather than relying
+ * on the exit-time read succeeding.
+ *
+ * @param cgroupPath Path relative to the cgroup mount, from `cgroupPathFor`.
+ * @returns The cumulative counters, or undefined once the cgroup is gone.
+ */
+export function readCgroupMemoryEvents(cgroupPath: string): CgroupMemoryEvents | undefined {
+  try {
+    const text = readFileSync(`/sys/fs/cgroup${cgroupPath}/memory.events`, 'utf8');
+    return parseCgroupMemoryEvents(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parse the `key value` lines of a cgroup v2 `memory.events` file. Absent keys
+ *  read as 0 — the file only lists counters the kernel tracks for that cgroup.
+ *  Pure and exported so the format handling is unit-testable without a cgroup. */
+export function parseCgroupMemoryEvents(text: string): CgroupMemoryEvents {
+  const read = (key: string): number => {
+    const match = new RegExp(`^${key}\\s+(\\d+)$`, 'm').exec(text);
+    return match ? Number(match[1]) : 0;
+  };
+  return { oomKill: read('oom_kill'), max: read('max'), high: read('high') };
 }
 
 /** A program + argv pair ready to hand to `pty.spawn`. */

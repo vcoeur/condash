@@ -1,4 +1,4 @@
-import type { TermSide } from '@shared/types';
+import type { TermDeath, TermSide } from '@shared/types';
 
 /** A column inside the bottom pane — the right column only materialises
  *  when at least one tab lives in it. */
@@ -44,6 +44,10 @@ export interface Tab {
   colorSlot?: number;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
+  /** Why the session ended. Present on an abnormally-exited tab, whose row is
+   *  deliberately kept on screen so the verdict is readable and the session can
+   *  be restarted; a clean exit still auto-closes and never renders this. */
+  death?: TermDeath;
   /** Live cgroup-scope memory usage (bytes) for a memory-scoped tab; undefined
    *  for unscoped tabs. Broadcast by main's per-tab sampler. Drives the tab's
    *  memory meter. */

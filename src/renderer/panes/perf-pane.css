@@ -1,0 +1,136 @@
+/* Performance pane — live main-thread vitals plus per-tab memory trajectory.
+ * Sits in the left band alongside Projects / Tasks / Deliverables. */
+
+.perf-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.perf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.perf-header h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* Recording is opt-in (terminal.perf.enabled) and writes to .condash/perf/, so
+ * the button reads as a state, not just an action. */
+.perf-toggle {
+  font-size: var(--text-2xs);
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.perf-toggle.recording {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+
+.perf-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.perf-vitals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.perf-vital {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.perf-vital small {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+.perf-vital strong {
+  font-family: var(--font-mono-base);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+.perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.perf-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.perf-table th.num,
+.perf-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono-base);
+}
+
+.perf-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+/* A throttled row is the one worth noticing: the kernel is reclaiming against
+ * that tab, which is the state a tab dies in under system memory pressure. */
+.perf-table tr.throttled td {
+  background: var(--warn-bg);
+}
+
+.perf-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+  width: 100%;
+}
+
+.perf-cap {
+  color: var(--text-muted);
+}
+
+.perf-pill {
+  display: inline-block;
+  font-size: var(--text-2xs);
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.perf-pill.warn {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+}

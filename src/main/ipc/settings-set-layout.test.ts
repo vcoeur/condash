@@ -77,4 +77,21 @@ describe('setLayout (lazily-imported config-schema seam)', () => {
       handlers.setLayout(trustedEvent, { projects: 'yes', working: 'nope' }),
     ).rejects.toThrow(/setLayout/);
   });
+
+  it('accepts EVERY LeftView the type allows', async () => {
+    // Regression guard for a whole bug class, not one value. `layoutSchema`'s
+    // leftView validator used to be a hand-written zod union; adding 'perf' to
+    // the TS type left it stale, and tsc could not see the drift. The failure
+    // was app-wide, not local to the new pane: `updateLayout` spreads the
+    // persisted layout into every later write, so one unlisted view made every
+    // subsequent layout save throw for as long as it stayed selected.
+    // The schema is now built from LEFT_VIEWS; this asserts the two agree.
+    const { LEFT_VIEWS } = await import('../../shared/types/layout');
+    const { drainSettingsQueue } = await import('../settings');
+    for (const leftView of LEFT_VIEWS) {
+      await handlers.setLayout(trustedEvent, { ...validLayout, leftView });
+      await drainSettingsQueue();
+      expect(await handlers.getLayout(trustedEvent)).toMatchObject({ leftView });
+    }
+  });
 });

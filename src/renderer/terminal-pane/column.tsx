@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import type { Agent } from '@shared/types';
+import type { Agent, TermDeath } from '@shared/types';
 import { RefreshIcon } from '../icons';
 import { createDropdownMenu } from '../dropdown-menu';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
@@ -36,6 +36,42 @@ function memTitle(tab: Tab): string {
   );
 }
 
+/** Very short verdict text for the tab strip, where horizontal room is scarce.
+ *  The full sentence lives in the tooltip. */
+function shortDeathLabel(death: TermDeath): string {
+  switch (death.kind) {
+    case 'oom-cap':
+    case 'oom-pressure':
+      return 'OOM';
+    case 'killed':
+      return 'killed';
+    case 'signal':
+      return death.signal !== undefined ? `sig ${death.signal}` : 'signal';
+    case 'failed':
+      return `exit ${death.exitCode ?? '?'}`;
+    default:
+      return '';
+  }
+}
+
+/** Native-tooltip text spelling out the verdict and the evidence behind it —
+ *  the difference between "hit its own cap" and "killed by the system under
+ *  pressure" is the distinction the whole feature exists to draw, so it is
+ *  stated in words rather than left to the reader. */
+function deathTitle(death: TermDeath): string {
+  const parts = [death.label];
+  if (death.kind === 'oom-cap') {
+    parts.push('This tab exceeded its own memory cap and its cgroup OOM killer stopped it.');
+  } else if (death.kind === 'oom-pressure') {
+    parts.push(
+      'The system killed this tab under memory pressure while it was being throttled — ' +
+        'it did not reach its own cap.',
+    );
+  }
+  if (death.exitCode !== undefined) parts.push(`Exit code ${death.exitCode}.`);
+  return parts.join(' ');
+}
+
 export interface TerminalColumnProps {
   col: Column;
   tabs: Tab[];
@@ -67,6 +103,10 @@ export interface TerminalColumnProps {
    *  Nudges the pty size so the program redraws — clears a half-frame left by
    *  the hidden-tab serialize/hydrate round-trip. */
   onRefreshTab: (id: string) => void;
+  /** Relaunch an abnormally-exited tab in place — same cwd, command, and column.
+   *  Only reachable from a dead tab's row, which is kept on screen precisely so
+   *  this is possible. */
+  onRestartTab: (id: string) => void;
   /** True when the bottom band is showing the Dashboard rather than the
    *  terminals. Drives the active state of the Dashboard pseudo-tab (and
    *  suppresses the active ring on the real terminal tabs). */
@@ -225,6 +265,33 @@ export function TerminalColumn(props: TerminalColumnProps) {
                   >
                     {formatMem(tab.memBytes!)}
                   </span>
+                </Show>
+                {/* Death verdict — the whole reason an abnormally-exited row is
+                 *  kept on screen. Without it a killed tab was indistinguishable
+                 *  from one the user closed. */}
+                <Show when={tab.death && tab.death.kind !== 'clean'}>
+                  <span
+                    class="terminal-tab-death"
+                    classList={{ oom: tab.death!.kind.startsWith('oom-') }}
+                    title={deathTitle(tab.death!)}
+                  >
+                    {shortDeathLabel(tab.death!)}
+                  </span>
+                </Show>
+                <Show when={tab.death && tab.death.kind !== 'clean'}>
+                  <button
+                    type="button"
+                    class="terminal-tab-restart"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onRestartTab(tab.id);
+                    }}
+                    onDblClick={(e) => e.stopPropagation()}
+                    title="Relaunch this session (same command and directory)"
+                    aria-label="Restart terminal"
+                  >
+                    Restart
+                  </button>
                 </Show>
                 {/* Repaint affordance — only on the selected tab, trailing the
                  *  title (right edge). Replaces the old column-level Refresh

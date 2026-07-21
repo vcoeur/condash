@@ -286,7 +286,35 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                                                               |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section.                                               |
 | `memory`                    | `{}` (enabled)                                          | Per-tab memory containment via a systemd user scope (Linux only) — see [`terminal.memory`](#terminal-memory) below.                                                                  |
+| `perf`                      | `{}` (disabled)                                         | Main-process performance recording — see [`terminal.perf`](#terminal-perf) below. Off by default; toggled from the **Performance** pane.                                              |
 | `autoRefreshOnTabSwitch`    | `true`                                                  | When `true` (default), switching to any tab automatically runs **Refresh** — full-screen TUIs, plain shells, and agent sessions are all repainted, so a hidden tab never shows a stale snapshot. Set explicitly to `false` to restrict auto-refresh to alternate-buffer tabs only (the previous default). See [Hidden terminal tabs parse off the main thread](../explanation/internals.md#terminal-worker). |
+
+### Terminal perf { #terminal-perf }
+
+`terminal.perf` controls main-process performance recording. **Off by default** — while disabled the
+instrumentation is inert, so an ordinary run pays nothing.
+
+| Key       | Default | Meaning                                                                 |
+| --------- | ------- | ----------------------------------------------------------------------- |
+| `enabled` | `false` | Record counters to `<conception>/.condash/perf/YYYY-MM-DD.jsonl`.        |
+
+When enabled, condash appends one JSON record per sampling window (2.5 s — the same tick that drives
+the per-tab memory meter; recording adds no timer of its own). Each record carries event-loop delay
+percentiles for the main process and, per session, bytes and chunks read off the pty, time spent in
+the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, coalesced IPC
+batches, backpressure pauses, and the un-acked in-flight high-water mark.
+
+The event-loop delay is the most directly useful figure: main is a single thread shared by every
+terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
+clearest measure of UI stalls. The **Performance** pane in the left band shows the live values and
+toggles recording; per-tab memory, growth rate, and throttle state are shown there whether or not
+recording is on, since they come from the always-on sampler.
+
+Records are plain JSONL and are safe to delete. `.condash/` is gitignored in full.
+
+To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mjs` drives N tabs at a
+controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,
+which isolates the cost of the logger's duplicate ANSI parse on the main thread.
 
 ### Terminal memory { #terminal-memory }
 

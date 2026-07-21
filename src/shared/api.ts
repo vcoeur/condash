@@ -33,6 +33,7 @@ import type {
   SkillsSyncStatus,
   StepMarker,
   SyncStatusSnapshot,
+  PerfVitals,
   TabInfo,
   TaskConfigEntry,
   TaskRunGroup,
@@ -325,6 +326,15 @@ export interface CondashApi {
   onTaskRuns(callback: (runs: RunningTaskRun[]) => void): () => void;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
+  /** Relaunch an exited session with its original command, cwd, and side, and
+   *  retire the dead row. Rejects for an unknown id or a still-running session. */
+  termRestart(id: string): Promise<{ id: string; cwd: string }>;
+  /** Read main-process performance vitals without disturbing the recording
+   *  window. Cheap enough to poll from the perf pane. */
+  perfVitals(): Promise<PerfVitals>;
+  /** Turn performance recording on or off, persisting `terminal.perf.enabled`
+   *  and reopening the recorder. Returns the resulting vitals. */
+  perfSetEnabled(enabled: boolean): Promise<PerfVitals>;
   termWrite(id: string, data: string): Promise<void>;
   /** Read the system clipboard via the main process. Used by the terminal's
    * Ctrl+V handler — the renderer's navigator.clipboard.readText() is

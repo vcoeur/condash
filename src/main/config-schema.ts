@@ -11,6 +11,7 @@ import type {
   Theme,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
+  TerminalPerfPrefs,
   TerminalPrefs,
   TerminalXtermColors,
   TerminalXtermPrefs,
@@ -20,7 +21,7 @@ import type {
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { THEME_VALUES } from '../shared/themes';
-import { MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
+import { LEFT_VIEWS, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -282,6 +283,13 @@ const appScopeMemorySettings = z
   } satisfies Record<keyof AppScopeMemoryPrefs, z.ZodTypeAny>)
   .strict();
 
+/** Main-process performance recording. Off by default; see TerminalPerfPrefs. */
+const terminalPerfSettings = z
+  .object({
+    enabled: z.boolean().optional(),
+  } satisfies Record<keyof TerminalPerfPrefs, z.ZodTypeAny>)
+  .strict();
+
 const terminalMemorySettings = z
   .object({
     enabled: z.boolean().optional(),
@@ -353,6 +361,7 @@ const terminalSettings = z
     projectActions: z.array(actionTemplateSchema).optional(),
     newProjectActions: z.array(actionTemplateSchema).optional(),
     memory: terminalMemorySettings.optional(),
+    perf: terminalPerfSettings.optional(),
     autoRefreshOnTabSwitch: z.boolean().optional(),
   } satisfies Record<keyof TerminalPrefs, z.ZodTypeAny>)
   .strict();
@@ -365,9 +374,12 @@ export const layoutSchema = z
     // Optional: layouts persisted before `leftView` existed omit it; the read
     // path back-fills from DEFAULT_LAYOUT. The legacy `'outputs'` value (v3.20.0)
     // is migrated to `'deliverables'` in migrateRawSettings.
-    leftView: z
-      .union([z.literal('projects'), z.literal('tasks'), z.literal('deliverables')])
-      .optional(),
+    // Built from LEFT_VIEWS (shared/types/layout.ts) rather than hand-listed, so
+    // a new LeftView cannot compile while leaving this validator stale — the
+    // failure mode was silent and app-wide: `setLayout` throws on the unknown
+    // value, and since updateLayout spreads the persisted layout into every
+    // subsequent write, ONE unlisted view breaks every later layout save too.
+    leftView: z.enum(LEFT_VIEWS).optional(),
     working: z.union([
       z.literal('code'),
       z.literal('knowledge'),

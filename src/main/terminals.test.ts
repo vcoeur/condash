@@ -17,6 +17,8 @@ import {
   liveTabInfo,
   MEM_BROADCAST_QUANTUM_BYTES,
   memSampleChanged,
+  rateChanged,
+  RATE_BROADCAST_QUANTUM_BYTES_PER_SEC,
   recentTail,
   wrapForShell,
 } from './terminals';
@@ -140,6 +142,37 @@ describe('memSampleChanged — T5 memory-broadcast quantization', () => {
     expect(memSampleChanged(base, base + MEM_BROADCAST_QUANTUM_BYTES)).toBe(true);
     expect(memSampleChanged(base, base - MEM_BROADCAST_QUANTUM_BYTES)).toBe(true);
     expect(memSampleChanged(base, base + MEM_BROADCAST_QUANTUM_BYTES * 4)).toBe(true);
+  });
+});
+
+describe('rateChanged — growth-rate broadcast quantization', () => {
+  // The growth rate is a fresh integer on virtually every sample of a live
+  // process, so an exact compare would set `changed` on every 2.5 s tick and
+  // rebroadcast the whole session snapshot — undoing the T5 fix above for every
+  // user running with memory scoping (the default), including those who never
+  // open the perf pane. The rate needs its own quantum for the same reason
+  // memBytes does.
+  it('reports the first reading and a transition to "no reading" as changed', () => {
+    expect(rateChanged(undefined, 4_000_000)).toBe(true);
+    expect(rateChanged(4_000_000, undefined)).toBe(true);
+  });
+
+  it('treats both-undefined and identical rates as unchanged', () => {
+    expect(rateChanged(undefined, undefined)).toBe(false);
+    expect(rateChanged(2_000_000, 2_000_000)).toBe(false);
+  });
+
+  it('suppresses the sub-MB/s wobble a live process produces every tick', () => {
+    const base = 12_000_000; // ~12 MB/s
+    expect(rateChanged(base, base + 1)).toBe(false);
+    expect(rateChanged(base, base + (RATE_BROADCAST_QUANTUM_BYTES_PER_SEC - 1))).toBe(false);
+    expect(rateChanged(base, base - (RATE_BROADCAST_QUANTUM_BYTES_PER_SEC - 1))).toBe(false);
+  });
+
+  it('broadcasts a move of at least one quantum, in either direction', () => {
+    const base = 12_000_000;
+    expect(rateChanged(base, base + RATE_BROADCAST_QUANTUM_BYTES_PER_SEC)).toBe(true);
+    expect(rateChanged(base, base - RATE_BROADCAST_QUANTUM_BYTES_PER_SEC)).toBe(true);
   });
 });
 

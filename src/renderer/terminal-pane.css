@@ -385,6 +385,48 @@
   padding: 0 3px;
 }
 
+/* Death verdict on an abnormally-exited tab. Such a row is deliberately kept on
+ * screen (a clean exit still auto-closes), because auto-closing it destroyed the
+ * only evidence of what happened — an OOM kill used to be indistinguishable from
+ * a tab the user closed. Warn-toned for any death, error-toned for the two OOM
+ * verdicts, which are the ones worth acting on. */
+.terminal-tab-death {
+  flex-shrink: 0;
+  font-family: var(--ui-font-terminal, var(--font-mono-base));
+  font-size: var(--text-2xs);
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.terminal-tab-death.oom {
+  color: var(--error-fg, var(--warn-fg));
+  background: var(--error-bg, var(--warn-bg));
+}
+
+/* Relaunch affordance on a dead tab — same command, cwd, and column. Pairs with
+ * the verdict badge: read why it died, then bring it back. */
+.terminal-tab-restart {
+  flex-shrink: 0;
+  font-size: var(--text-2xs);
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  transition:
+    opacity 0.1s ease,
+    background 0.1s ease;
+}
+
+.terminal-tab-restart:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 26%, transparent);
+}
+
 /* Per-tab repaint button — only rendered on the active tab, trailing the label
  * (and memory meter) at the tab's right edge. A subtle icon affordance that
  * replaces the old column-level Refresh toolbar button; inherits the tab's

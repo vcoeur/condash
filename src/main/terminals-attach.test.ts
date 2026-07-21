@@ -62,7 +62,9 @@ vi.mock('./shell-env', () => ({
 }));
 vi.mock('./tab-scope', () => ({
   wrapWithMemoryScope: (program: string, argv: string[]) => ({ program, argv }),
-  sampleCgroupMemory: () => undefined,
+  cgroupPathFor: () => undefined,
+  readCgroupMemory: () => undefined,
+  readCgroupMemoryEvents: () => undefined,
 }));
 
 import {

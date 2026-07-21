@@ -28,7 +28,7 @@ import { EVENT_CHANNELS } from '../shared/ipc-channels';
 interface FakePty {
   pid: number;
   onDataCb?: (data: string) => void;
-  onExitCb?: (e: { exitCode: number }) => void;
+  onExitCb?: (e: { exitCode: number; signal?: number }) => void;
   onData(cb: (data: string) => void): void;
   onExit(cb: (e: { exitCode: number }) => void): void;
   write: ReturnType<typeof vi.fn>;
@@ -91,7 +91,9 @@ vi.mock('./shell-env', () => ({
 }));
 vi.mock('./tab-scope', () => ({
   wrapWithMemoryScope: (program: string, argv: string[]) => ({ program, argv }),
-  sampleCgroupMemory: () => undefined,
+  cgroupPathFor: () => undefined,
+  readCgroupMemory: () => undefined,
+  readCgroupMemoryEvents: () => undefined,
 }));
 vi.mock('./effective-config', () => ({
   getEffectiveConceptionConfig: vi.fn(async () => ({})),
@@ -270,7 +272,42 @@ describe('terminals spawn wiring (M8c)', () => {
     const exitPayload = wc.send.mock.calls.find(
       ([channel]) => channel === EVENT_CHANNELS.termExit,
     )?.[1];
-    expect(exitPayload).toEqual({ id, code: 3 });
+    // The payload carries the death verdict alongside the raw code: a non-zero
+    // exit is abnormal, so the renderer keeps the row instead of auto-closing.
+    expect(exitPayload).toMatchObject({
+      id,
+      code: 3,
+      abnormal: true,
+      death: { kind: 'failed', exitCode: 3 },
+    });
+  });
+
+  it('marks a clean exit as not abnormal so its tab still auto-closes', async () => {
+    const wc = makeWebContents();
+    const { id, pty } = await spawnSession(wc);
+    pty.onExitCb!({ exitCode: 0 });
+    const exitPayload = wc.send.mock.calls.find(
+      ([channel]) => channel === EVENT_CHANNELS.termExit,
+    )?.[1];
+    expect(exitPayload).toMatchObject({ id, code: 0, abnormal: false, death: { kind: 'clean' } });
+  });
+
+  it('classifies a SIGKILLed session as killed rather than a clean exit', async () => {
+    // The field failure this instrumentation exists for: node-pty reports
+    // exitCode 0 for a SIGKILLed process, so before the signal was captured an
+    // OOM kill was byte-identical to `exit 0` everywhere condash looked.
+    const wc = makeWebContents();
+    const { id, pty } = await spawnSession(wc);
+    pty.onExitCb!({ exitCode: 0, signal: 9 });
+    const exitPayload = wc.send.mock.calls.find(
+      ([channel]) => channel === EVENT_CHANNELS.termExit,
+    )?.[1];
+    expect(exitPayload).toMatchObject({
+      id,
+      code: 0,
+      abnormal: true,
+      death: { kind: 'killed', signal: 9 },
+    });
   });
 
   it('a burst past BATCH_FLUSH_BYTES flushes before exit and still orders termData ahead of termExit', async () => {

@@ -15,6 +15,7 @@ import { detectConceptionState, initConception } from '../conception-init';
 import { htmlToPdf } from '../export-pdf';
 import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';
+import { syncPerfLogging } from '../terminals';
 import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
 import { requireMainWindowSender, requireNonEmptyString } from './utils';
@@ -164,6 +165,10 @@ export function registerSystemIpc(opts: {
     // tracks until the next listRepos reconciles.
     await disposeRepoWatchers();
     await setWatchedConception(picked);
+    // Re-point perf recording at the new conception. Records live under
+    // `<conception>/.condash/perf/`, so without this a session left recording
+    // across a conception switch keeps writing into the previous tree.
+    await syncPerfLogging(picked);
     opts.onConceptionPicked(picked);
     fireRecentsChange();
   }

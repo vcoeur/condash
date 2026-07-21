@@ -18,6 +18,7 @@ import {
   killAll,
   resetFlowsForWebContents,
   startMemorySampling,
+  syncPerfLogging,
   trackedSessionIds,
 } from './terminals';
 import { clearBootRepos } from './repos';
@@ -503,6 +504,9 @@ app.whenReady().then(async () => {
   // parallel with createWindow below (S1). Fire-and-forget: never delays first
   // paint, swallows its own errors, and only runs when a conception is set.
   if (conceptionPath) prewarmDefaultPanes(conceptionPath);
+  // Open the perf recorder if the user opted in. Fire-and-forget so it can never
+  // delay first paint; a no-op unless `terminal.perf.enabled` is true.
+  void syncPerfLogging(conceptionPath);
   // The menu only needs the just-read settings — build it up front.
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],

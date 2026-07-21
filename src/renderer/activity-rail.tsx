@@ -5,6 +5,7 @@ import {
   DeliverablesIcon,
   KnowledgeIcon,
   LogsIcon,
+  PerfIcon,
   ProjectsIcon,
   ResourcesIcon,
   SkillsIcon,
@@ -30,6 +31,7 @@ const RAIL_ITEMS: RailItemDef[] = [
     icon: DeliverablesIcon,
     kind: 'left',
   },
+  { key: 'perf', label: 'Performance', shortcut: '', icon: PerfIcon, kind: 'left' },
   { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon, kind: 'working' },
   {
     key: 'knowledge',
@@ -48,6 +50,10 @@ const RAIL_ITEMS: RailItemDef[] = [
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L', icon: SkillsIcon, kind: 'working' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L', icon: LogsIcon, kind: 'working' },
 ];
+
+/** Index of the first `working` item — where the rail's group separator goes.
+ *  Derived from RAIL_ITEMS so reordering or inserting items keeps it correct. */
+const FIRST_WORKING_INDEX = RAIL_ITEMS.findIndex((item) => item.kind === 'working');
 
 export interface ActivityRailProps {
   leftView: LeftView;
@@ -85,7 +91,10 @@ export function ActivityRail(props: ActivityRailProps) {
     <aside class="rail" aria-label="Activity rail">
       <For each={RAIL_ITEMS}>
         {(item, index) => {
-          const divider = item.kind === 'working' && index() === 3;
+          // Separator before the FIRST working item, derived rather than a
+          // literal index: the old `index() === 3` silently stopped matching the
+          // moment a left item was inserted, dropping the divider for everyone.
+          const divider = item.kind === 'working' && index() === FIRST_WORKING_INDEX;
           return (
             <>
               <Show when={divider}>
