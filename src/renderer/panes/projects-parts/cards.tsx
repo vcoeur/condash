@@ -30,12 +30,11 @@ export interface ChildRow {
  *  list. Provided once by ProjectsView so cards read them without threading
  *  props through GroupBlock/SubGroup. */
 export interface ParentInfo {
-  /** Title for a child's "Part of" banner, or undefined when the parent slug
-   *  doesn't resolve (the card then falls back to the raw slug). */
-  parentTitleOf: (parentSlug: string) => string | undefined;
-  /** Status of a child's parent, for the status pill on the "Part of" banner;
-   *  undefined when the parent slug doesn't resolve. */
-  parentStatusOf: (parentSlug: string) => string | undefined;
+  /** Full Project for a slug, or undefined when the slug doesn't resolve —
+   *  drives the "Part of" banner (title + status pill) and lets banner rows
+   *  open the referenced project through the same path as a card click. A
+   *  dangling parent slug renders as the raw slug, non-clickable. */
+  projectOf: (slug: string) => Project | undefined;
   /** Every item declaring this slug as its `parent`, status-ordered — the rows
    *  of the parent card's subprojects banner. Empty for a leaf item. */
   childrenOf: (slug: string) => ChildRow[];
@@ -226,13 +225,21 @@ export function Card(props: {
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
-  const handleHeaderClick = (event: MouseEvent) => {
+  // Interactive children keep their own click behaviour — the whole-card
+  // open must not swallow the work-on dropdown, PR badge, or the clickable
+  // relation banners (which open a *different* project). `button.parent-banner`
+  // stays element-qualified so a dangling parent's non-clickable <div>
+  // fallback still opens the card itself.
+  const CARD_CLICK_EXCLUDE =
+    '.row-action, .pr-badge, .title-actions, button.parent-banner, button.child-row';
+
+  const handleCardClick = (event: MouseEvent) => {
     // A click synthesised at the end of a drag must not also open the card.
     if (draggedThisGesture) {
       draggedThisGesture = false;
       return;
     }
-    if ((event.target as HTMLElement).closest('.row-action, .pr-badge')) return;
+    if ((event.target as HTMLElement).closest(CARD_CLICK_EXCLUDE)) return;
     props.onOpen(props.item);
   };
 
@@ -276,7 +283,10 @@ export function Card(props: {
     // A plain fixed-position clone we own renders exactly as styled (unlike a
     // setDragImage clone, whose opacity Chromium ignores).
     ghost = card.cloneNode(true) as HTMLElement;
-    ghost.querySelectorAll('.title-actions, .steps-list').forEach((el) => el.remove());
+    ghost.querySelectorAll('.title-actions, .row-relations').forEach((el) => el.remove());
+    // Pure visual feedback — keep the clone (and its cloned buttons) out of
+    // the accessibility tree.
+    ghost.setAttribute('aria-hidden', 'true');
     ghost.style.position = 'fixed';
     ghost.style.top = '0';
     ghost.style.left = '0';
@@ -311,9 +321,9 @@ export function Card(props: {
 
   const handlePointerDown = (event: PointerEvent) => {
     if (!isDraggable() || event.button !== 0) return;
-    // Let interactive children (work-on dropdown, PR badge) keep their own
-    // click behaviour.
-    if ((event.target as HTMLElement).closest('.title-actions, .row-action, .pr-badge')) {
+    // Let interactive children (work-on dropdown, PR badge, banner buttons)
+    // keep their own click behaviour — same exclusion set as the card open.
+    if ((event.target as HTMLElement).closest(CARD_CLICK_EXCLUDE)) {
       return;
     }
     dragPointerId = event.pointerId;
@@ -360,6 +370,9 @@ export function Card(props: {
     if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
     dragPointerId = null;
     endDrag();
+    // A cancelled gesture synthesises no click, so an armed flag would
+    // swallow the NEXT genuine click on this card — disarm it here.
+    draggedThisGesture = false;
   };
 
   // Cmd/Ctrl+1..N maps to KNOWN_STATUSES[0..N-1]; ignore anything else so
@@ -386,24 +399,26 @@ export function Card(props: {
   const statusUnknown = (): boolean =>
     !(KNOWN_STATUSES as readonly string[]).includes(props.item.status);
 
-  // Parent banner + subproject count, from the list-wide lookup provided by
-  // ProjectsView. A dangling parent slug falls back to showing the raw slug.
+  // Parent banner + subproject rows, from the list-wide lookup provided by
+  // ProjectsView. A dangling parent slug (no resolution) renders as a
+  // non-clickable fallback showing the raw slug.
   const parentInfo = useContext(ParentInfoContext);
-  const parentLabel = (): string | null => {
-    const slug = props.item.parent;
-    if (!slug) return null;
-    return parentInfo?.().parentTitleOf(slug) ?? slug;
-  };
-  // Parent's status, for the pill on the "Part of" banner. Undefined when the
-  // parent slug doesn't resolve, in which case the pill is omitted.
-  const parentStatus = (): string | undefined => {
+  const parentProject = (): Project | undefined => {
     const slug = props.item.parent;
     if (!slug) return undefined;
-    return parentInfo?.().parentStatusOf(slug);
+    return parentInfo?.().projectOf(slug);
   };
+  // Guarded accessors so the banner's classList/title never dereference a
+  // parent that stopped resolving mid-update.
+  const parentStatus = (): string | undefined => parentProject()?.status;
   // Spin-off children of this card's item, status-ordered — one row each in the
   // bottom subprojects banner. Empty for a leaf card.
   const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
+  // Open a banner-referenced project through the same path as a card click.
+  const openSlug = (slug: string): void => {
+    const target = parentInfo?.().projectOf(slug);
+    if (target) props.onOpen(target);
+  };
 
   return (
     <article
@@ -425,31 +440,14 @@ export function Card(props: {
       aria-label={`${props.item.title}, ${props.item.status}`}
       data-status-card={props.item.status}
       tabIndex={0}
+      onClick={handleCardClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
     >
-      <Show when={parentLabel()}>
-        <div
-          class="parent-banner"
-          classList={{
-            warn: !!parentStatus() && !isKnownStatus(parentStatus()!),
-            [`status-${parentStatus()}`]: !!parentStatus() && isKnownStatus(parentStatus()!),
-          }}
-          title={`Part of: ${parentLabel()}${parentStatus() ? ` (${parentStatus()})` : ''}`}
-        >
-          <span class="parent-banner-icon" aria-hidden="true">
-            ↑
-          </span>
-          <span class="parent-banner-name">{parentLabel()}</span>
-          <Show when={parentStatus()}>
-            <span class="rel-status-pill">{parentStatus()}</span>
-          </Show>
-        </div>
-      </Show>
-      <div class="row-head" onClick={handleHeaderClick}>
+      <div class="row-head">
         {/* Row 1: kind glyph + title (left, can wrap to 2 lines) and the
             work-on action pinned to the right. */}
         <div class="title-row">
@@ -528,29 +526,77 @@ export function Card(props: {
           </span>
         </div>
       </div>
-      {/* Subprojects banner at the bottom of a parent card: one display-only
-          row per spin-off child (↓ icon + title + status pill), mirroring the
-          "Part of" banner at the top of each child. */}
-      <Show when={children().length > 0}>
-        <div class="children-banner">
-          <For each={children()}>
-            {(child) => (
-              <div
-                class="child-row"
+      {/* Relations zone at the bottom of the card, hairline-separated from the
+          head so parent/subproject links read as a distinct area rather than
+          part of the title. The "Part of" banner (↑) and the subproject rows
+          (↓) are real buttons that open the referenced project — except a
+          dangling parent slug, which keeps a non-clickable raw-slug fallback. */}
+      <Show when={props.item.parent || children().length > 0}>
+        <div class="row-relations">
+          <Show when={props.item.parent}>
+            <Show
+              when={parentProject()}
+              fallback={
+                <div class="parent-banner" title={`Part of: ${props.item.parent}`}>
+                  <span class="parent-banner-icon" aria-hidden="true">
+                    ↑
+                  </span>
+                  <span class="parent-banner-name">{props.item.parent}</span>
+                </div>
+              }
+            >
+              <button
+                type="button"
+                class="parent-banner"
                 classList={{
-                  warn: !isKnownStatus(child.status),
-                  [`status-${child.status}`]: isKnownStatus(child.status),
+                  warn: !!parentStatus() && !isKnownStatus(parentStatus()!),
+                  [`status-${parentStatus()}`]: !!parentStatus() && isKnownStatus(parentStatus()!),
                 }}
-                title={`Subproject: ${child.title} (${child.status})`}
+                title={`Part of: ${parentProject()?.title}${parentStatus() ? ` (${parentStatus()})` : ''} — click to open`}
+                aria-label={`Open parent project: ${parentProject()?.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSlug(props.item.parent!);
+                }}
               >
-                <span class="child-row-icon" aria-hidden="true">
-                  ↓
+                <span class="parent-banner-icon" aria-hidden="true">
+                  ↑
                 </span>
-                <span class="child-row-name">{child.title}</span>
-                <span class="rel-status-pill">{child.status}</span>
-              </div>
-            )}
-          </For>
+                <span class="parent-banner-name">{parentProject()?.title}</span>
+                <Show when={parentStatus()}>
+                  <span class="rel-status-pill">{parentStatus()}</span>
+                </Show>
+              </button>
+            </Show>
+          </Show>
+          <Show when={children().length > 0}>
+            <div class="children-banner">
+              <For each={children()}>
+                {(child) => (
+                  <button
+                    type="button"
+                    class="child-row"
+                    classList={{
+                      warn: !isKnownStatus(child.status),
+                      [`status-${child.status}`]: isKnownStatus(child.status),
+                    }}
+                    title={`Subproject: ${child.title} (${child.status}) — click to open`}
+                    aria-label={`Open subproject: ${child.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openSlug(child.slug);
+                    }}
+                  >
+                    <span class="child-row-icon" aria-hidden="true">
+                      ↓
+                    </span>
+                    <span class="child-row-name">{child.title}</span>
+                    <span class="rel-status-pill">{child.status}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
         </div>
       </Show>
     </article>

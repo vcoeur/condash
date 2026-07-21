@@ -171,12 +171,12 @@ test('arrow keys move the selection, the preview, and the tab stop together', as
     await modal.locator('.theme-card[data-theme-id="light"]').focus();
     await booted.window.keyboard.press('ArrowRight');
 
-    const warmGallery = modal.locator('.theme-card[data-theme-id="dark"]');
-    await expect(warmGallery).toBeFocused();
-    await expect(warmGallery).toHaveAttribute('aria-checked', 'true');
-    await expect(warmGallery).toHaveAttribute('tabindex', '0');
+    const mist = modal.locator('.theme-card[data-theme-id="mist"]');
+    await expect(mist).toBeFocused();
+    await expect(mist).toHaveAttribute('aria-checked', 'true');
+    await expect(mist).toHaveAttribute('tabindex', '0');
     await expect(modal.locator('.theme-card[tabindex="0"]')).toHaveCount(1);
-    expect((await activeTheme(booted)).id).toBe('dark');
+    expect((await activeTheme(booted)).id).toBe('mist');
   } finally {
     await booted.cleanup();
   }
@@ -190,11 +190,11 @@ test('the status-bar cycle persists its choice', async () => {
   const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
   try {
     await booted.window.locator('[aria-label="Cycle theme"]').click();
-    // Deterministic: the cycle order is THEME_VALUES, so light → dark. A
+    // Deterministic: the cycle order is THEME_VALUES, so light → mist. A
     // `.not.toBe('light')` here would also pass on an absent or garbage value.
     await expect
       .poll(async () => JSON.parse(await readFile(globalPath, 'utf8')).theme)
-      .toBe('dark');
+      .toBe('mist');
   } finally {
     await booted.cleanup();
   }

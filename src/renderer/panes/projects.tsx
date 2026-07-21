@@ -58,18 +58,17 @@ export function ProjectsView(props: {
   // GroupBlock (and its synchronous localStorage collapse read) on an unrelated
   // status/step change (R2).
   const groups = createMemo<Group[]>((prev) => projectsTabGroups(props.buckets, prev));
-  // List-wide parent/child lookup shared with every Card via context: slug →
-  // title and slug → status maps for the "Part of" banner (name + status pill),
-  // and a parent-slug → status-ordered child rows map for the bottom
-  // subprojects banner. Rebuilt whenever the buckets change.
+  // List-wide parent/child lookup shared with every Card via context: a slug →
+  // Project map backing the "Part of" banner (title + status pill) and the
+  // banner buttons' open-referenced-project action, and a parent-slug →
+  // status-ordered child rows map for the bottom subprojects banner. Rebuilt
+  // whenever the buckets change.
   const parentInfo = createMemo<ParentInfo>(() => {
-    const titleBySlug = new Map<string, string>();
-    const statusBySlug = new Map<string, string>();
+    const projectBySlug = new Map<string, Project>();
     const childrenByParent = new Map<string, ChildRow[]>();
     for (const items of props.buckets.values()) {
       for (const item of items) {
-        titleBySlug.set(item.slug, item.title);
-        statusBySlug.set(item.slug, item.status);
+        projectBySlug.set(item.slug, item);
         if (item.parent) {
           const row: ChildRow = { slug: item.slug, title: item.title, status: item.status };
           const rows = childrenByParent.get(item.parent);
@@ -80,8 +79,7 @@ export function ProjectsView(props: {
     }
     for (const rows of childrenByParent.values()) rows.sort(compareByStatusThenSlug);
     return {
-      parentTitleOf: (slug) => titleBySlug.get(slug),
-      parentStatusOf: (slug) => statusBySlug.get(slug),
+      projectOf: (slug) => projectBySlug.get(slug),
       childrenOf: (slug) => childrenByParent.get(slug) ?? [],
     };
   });

@@ -1,11 +1,11 @@
 import { constants as fsConstants, promises as fs } from 'node:fs';
-import { basename, extname, join, normalize } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { dialog } from 'electron';
 import type { TreeRoot } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { readSettings } from './settings';
 import { DEFAULT_RESOURCES_PATH } from './config-migrate';
-import { requirePathUnder } from './path-bounds';
+import { cleanRelDirPath, requirePathUnder } from './path-bounds';
 
 /**
  * Helpers backing the `tree.*` IPC verbs that mutate the on-disk
@@ -69,17 +69,10 @@ async function resolveChildBounded(
   if (typeof dirRelPath !== 'string') {
     throw new Error('dirRelPath must be a string');
   }
-  // `''` is allowed (means the root itself).
-  const cleanedDir = normalize(dirRelPath);
-  if (/^(\.\.([\\/]|$))/.test(cleanedDir) || cleanedDir.startsWith('/')) {
-    throw new Error('dirRelPath escapes the pane root');
-  }
-  // After `normalize`, only literal `..` segments survive a traversal
-  // attempt. A whole-string `.includes('..')` would also flag innocent
-  // filenames like `foo..bar` mid-path, so split + segment-match.
-  const segments = cleanedDir.split(/[\\/]/);
-  if (segments.includes('..')) throw new Error('dirRelPath escapes the pane root');
-  const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
+  // `''` is allowed (means the root itself). Shape check (absolute / `..`
+  // traversal rejection) is the shared `cleanRelDirPath` from path-bounds.
+  const cleanedDir = cleanRelDirPath(dirRelPath, 'the pane root');
+  const dirAbs = cleanedDir === '' ? rootAbs : join(rootAbs, cleanedDir);
   // The directory must already exist on disk and stay under the root.
   await requirePathUnder(dirAbs, rootAbs);
   const targetAbs = join(dirAbs, childName);
@@ -141,8 +134,8 @@ export async function treeImportFile(root: TreeRoot, dirRelPath: string): Promis
   // Resolve + bounds-check the destination before opening the dialog so
   // we never copy a file just to throw away on a bad target.
   const rootAbs = await resolveRoot(root);
-  const cleanedDir = normalize(dirRelPath ?? '');
-  const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
+  const cleanedDir = cleanRelDirPath(dirRelPath ?? '', 'the pane root');
+  const dirAbs = cleanedDir === '' ? rootAbs : join(rootAbs, cleanedDir);
   await requirePathUnder(dirAbs, rootAbs);
 
   const result = await dialog.showOpenDialog({

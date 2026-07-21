@@ -7,6 +7,7 @@ import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
 import { Button } from './actions';
+import { FilesWidget } from './project-preview-parts/file-tree';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
@@ -245,7 +246,7 @@ export function ProjectPreview(props: {
   // is a strong signal the user wants to add one (#88).
   const showAddForm = () => adding() || (props.project?.steps.length ?? 0) === 0;
 
-  const [files] = createResource(
+  const [files, { refetch: refetchFiles }] = createResource(
     () => props.project?.path ?? null,
     async (path) => (path ? await window.condash.listProjectFiles(path) : []),
   );
@@ -662,30 +663,15 @@ export function ProjectPreview(props: {
 
                   <section class="widget">
                     <h3 class="widget-title">Files</h3>
-                    <div class="widget-files">
-                      <For each={(files() ?? []).filter((f) => f.relPath !== 'README.md')}>
-                        {(file) => (
-                          <button
-                            type="button"
-                            class="widget-file"
-                            onClick={() => props.onOpenFile(file.path)}
-                            title={file.relPath}
-                          >
-                            {file.name}
-                          </button>
-                        )}
-                      </For>
-                      <Show when={props.onCreateNote}>
-                        <button
-                          type="button"
-                          class="widget-file add-note"
-                          onClick={() => props.onCreateNote?.(project())}
-                          title="Add a new note to this project"
-                        >
-                          + Add note
-                        </button>
-                      </Show>
-                    </div>
+                    <FilesWidget
+                      projectPath={project().path}
+                      files={() => files()}
+                      onOpenFile={props.onOpenFile}
+                      onRefresh={() => void refetchFiles()}
+                      onCreateNote={
+                        props.onCreateNote ? () => props.onCreateNote?.(project()) : undefined
+                      }
+                    />
                   </section>
                 </div>
 

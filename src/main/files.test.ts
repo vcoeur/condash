@@ -1,8 +1,22 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { listProjectFiles } from './files';
+import {
+  createProjectEntry,
+  listProjectFiles,
+  requireCreatableName,
+  resolveCreateParent,
+} from './files';
 
 let tmp: string;
 
@@ -25,16 +39,25 @@ describe('listProjectFiles', () => {
     writeFileSync(join(tmp, 'extra.md'), 'x');
     const files = await listProjectFiles(r);
     expect(new Set(files.map((f) => f.relPath))).toEqual(new Set(['README.md', 'extra.md']));
+    expect(files.every((f) => f.kind === 'file')).toBe(true);
   });
 
-  it('returns one-level nested files', async () => {
+  it('emits directory entries alongside their files', async () => {
     const r = readme();
     mkdirSync(join(tmp, 'notes'));
     writeFileSync(join(tmp, 'notes', '01-design.md'), 'd');
     const files = await listProjectFiles(r);
-    expect(new Set(files.map((f) => f.relPath))).toEqual(
-      new Set(['README.md', 'notes/01-design.md']),
+    expect(new Set(files.map((f) => `${f.kind}:${f.relPath}`))).toEqual(
+      new Set(['file:README.md', 'dir:notes', 'file:notes/01-design.md']),
     );
+  });
+
+  it('surfaces empty directories', async () => {
+    const r = readme();
+    mkdirSync(join(tmp, 'scripts'));
+    const files = await listProjectFiles(r);
+    const scripts = files.find((f) => f.relPath === 'scripts');
+    expect(scripts).toMatchObject({ kind: 'dir', name: 'scripts' });
   });
 
   it('walks deeper than one nested level (regression: local/candidates/* must surface)', async () => {
@@ -45,8 +68,11 @@ describe('listProjectFiles', () => {
     writeFileSync(join(tmp, 'local', 'candidates', 'a.png'), 'p');
     writeFileSync(join(tmp, 'local', 'family', 'family-sheet.png'), 'p');
     const files = await listProjectFiles(r);
-    expect(new Set(files.map((f) => f.relPath))).toEqual(
+    expect(new Set(files.filter((f) => f.kind === 'file').map((f) => f.relPath))).toEqual(
       new Set(['README.md', 'local/candidates/a.png', 'local/family/family-sheet.png']),
+    );
+    expect(new Set(files.filter((f) => f.kind === 'dir').map((f) => f.relPath))).toEqual(
+      new Set(['local', 'local/candidates', 'local/family']),
     );
   });
 
@@ -59,7 +85,9 @@ describe('listProjectFiles', () => {
     writeFileSync(join(tmp, 'notes', '.draft'), 'd');
     writeFileSync(join(tmp, 'notes', '01.md'), 'x');
     const files = await listProjectFiles(r);
-    expect(new Set(files.map((f) => f.relPath))).toEqual(new Set(['README.md', 'notes/01.md']));
+    expect(new Set(files.map((f) => f.relPath))).toEqual(
+      new Set(['README.md', 'notes', 'notes/01.md']),
+    );
   });
 
   it('returns entries sorted by relPath via localeCompare', async () => {
@@ -83,10 +111,146 @@ describe('listProjectFiles', () => {
     const a = files.find((f) => f.name === 'a.png')!;
     expect(a.relPath).toBe('local/candidates/a.png');
     expect(a.path.endsWith('/local/candidates/a.png')).toBe(true);
+    const dir = files.find((f) => f.relPath === 'local/candidates')!;
+    expect(dir.name).toBe('candidates');
+    expect(dir.path.endsWith('/local/candidates')).toBe(true);
   });
 
   it('returns [] when the directory is unreadable / missing', async () => {
     const files = await listProjectFiles(join(tmp, 'no-such', 'README.md'));
     expect(files).toEqual([]);
+  });
+});
+
+describe('requireCreatableName', () => {
+  it('accepts ordinary names verbatim (trimmed)', () => {
+    expect(requireCreatableName('notes.md')).toBe('notes.md');
+    expect(requireCreatableName('  Makefile ')).toBe('Makefile');
+    expect(requireCreatableName('foo..bar')).toBe('foo..bar');
+  });
+
+  it('rejects empty and whitespace-only names', () => {
+    expect(() => requireCreatableName('')).toThrow(/empty/);
+    expect(() => requireCreatableName('   ')).toThrow(/empty/);
+  });
+
+  it('rejects path separators', () => {
+    expect(() => requireCreatableName('a/b')).toThrow(/separator/);
+    expect(() => requireCreatableName('a\\b')).toThrow(/separator/);
+  });
+
+  it('rejects leading dots and dot segments', () => {
+    expect(() => requireCreatableName('.hidden')).toThrow(/dot/);
+    expect(() => requireCreatableName('..')).toThrow(/dot/);
+    expect(() => requireCreatableName('.')).toThrow(/dot/);
+  });
+
+  it('rejects trailing dots', () => {
+    expect(() => requireCreatableName('notes.')).toThrow(/dot/);
+  });
+
+  it('rejects Windows reserved device names, case-insensitively', () => {
+    expect(() => requireCreatableName('CON')).toThrow(/reserved/);
+    expect(() => requireCreatableName('nul')).toThrow(/reserved/);
+    expect(() => requireCreatableName('Com1')).toThrow(/reserved/);
+    expect(() => requireCreatableName('LPT9.txt')).toThrow(/reserved/);
+    expect(requireCreatableName('console.md')).toBe('console.md');
+    expect(requireCreatableName('common')).toBe('common');
+  });
+});
+
+describe('resolveCreateParent', () => {
+  const MONTH = '2026-07';
+  const ITEM = '2026-07-21-widget';
+  let projectsRoot: string;
+  let itemDir: string;
+
+  beforeEach(() => {
+    projectsRoot = join(tmp, 'projects');
+    itemDir = join(projectsRoot, MONTH, ITEM);
+    mkdirSync(join(itemDir, 'notes'), { recursive: true });
+    writeFileSync(join(itemDir, 'README.md'), '# item');
+  });
+
+  it('resolves the item dir from its README path and from the dir itself', async () => {
+    const fromReadme = await resolveCreateParent(join(itemDir, 'README.md'), '', projectsRoot);
+    const fromDir = await resolveCreateParent(itemDir, '', projectsRoot);
+    expect(fromReadme).toBe(fromDir);
+  });
+
+  it('resolves a nested target dir under the item', async () => {
+    const parent = await resolveCreateParent(itemDir, 'notes', projectsRoot);
+    expect(parent.endsWith(`${MONTH}/${ITEM}/notes`)).toBe(true);
+  });
+
+  it('rejects the projects root and a month bucket as the "project"', async () => {
+    await expect(resolveCreateParent(projectsRoot, '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
+    await expect(resolveCreateParent(join(projectsRoot, MONTH), '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
+  });
+
+  it('rejects a dir under projects/ that is not item-shaped', async () => {
+    const stray = join(projectsRoot, MONTH, 'not-a-dated-item');
+    mkdirSync(stray, { recursive: true });
+    await expect(resolveCreateParent(stray, '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
+  });
+
+  it('rejects a projectPath outside the projects root', async () => {
+    const outside = join(tmp, 'elsewhere');
+    mkdirSync(outside);
+    await expect(resolveCreateParent(outside, '', projectsRoot)).rejects.toThrow(/outside/);
+  });
+
+  it('rejects .. traversal in dirRelPath', async () => {
+    await expect(resolveCreateParent(itemDir, '../..', projectsRoot)).rejects.toThrow(/escapes/);
+  });
+
+  it('rejects a symlinked subdir escaping the item dir', async () => {
+    const outside = join(tmp, 'outside');
+    mkdirSync(outside);
+    symlinkSync(outside, join(itemDir, 'sneaky'));
+    await expect(resolveCreateParent(itemDir, 'sneaky', projectsRoot)).rejects.toThrow(/outside/);
+  });
+
+  it('rejects a target dir that does not exist yet', async () => {
+    await expect(resolveCreateParent(itemDir, 'missing', projectsRoot)).rejects.toThrow(
+      /does not resolve/,
+    );
+  });
+});
+
+describe('createProjectEntry', () => {
+  it('creates an empty file and returns its posix path', async () => {
+    const path = await createProjectEntry(tmp, 'todo.md', 'file');
+    expect(path.endsWith('/todo.md')).toBe(true);
+    expect(readFileSync(join(tmp, 'todo.md'), 'utf8')).toBe('');
+  });
+
+  it('creates a directory', async () => {
+    await createProjectEntry(tmp, 'scripts', 'dir');
+    expect(statSync(join(tmp, 'scripts')).isDirectory()).toBe(true);
+  });
+
+  it('rejects an existing file target', async () => {
+    writeFileSync(join(tmp, 'todo.md'), 'keep');
+    await expect(createProjectEntry(tmp, 'todo.md', 'file')).rejects.toThrow(/already exists/);
+    expect(readFileSync(join(tmp, 'todo.md'), 'utf8')).toBe('keep');
+  });
+
+  it('rejects an existing directory target', async () => {
+    mkdirSync(join(tmp, 'scripts'));
+    await expect(createProjectEntry(tmp, 'scripts', 'dir')).rejects.toThrow(/already exists/);
+  });
+
+  it('rejects a symlink squatting on the target name', async () => {
+    symlinkSync(join(tmp, 'nowhere'), join(tmp, 'sneaky'));
+    await expect(createProjectEntry(tmp, 'sneaky', 'file')).rejects.toThrow(/already exists/);
+    await expect(createProjectEntry(tmp, 'sneaky', 'dir')).rejects.toThrow(/already exists/);
+    expect(existsSync(join(tmp, 'nowhere'))).toBe(false);
   });
 });

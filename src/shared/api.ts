@@ -231,7 +231,21 @@ export interface CondashApi {
     newText: string,
   ): Promise<void>;
   addStep(path: string, text: string): Promise<void>;
+  /** List a project directory's contents — files *and* directories (see
+   *  `ProjectFileEntry.kind`), recursively, dot-entries skipped. Directory
+   *  entries are included so the preview's file tree shows empty dirs. */
   listProjectFiles(path: string): Promise<ProjectFileEntry[]>;
+  /** Create an empty file named `name` inside `<projectDir>/<dirRelPath>/`
+   *  (`dirRelPath: ''` = the project root; `projectPath` is the README path
+   *  or the project directory). The project dir must realpath to an actual
+   *  item directory (`projects/<month>/<dated-slug>/`) and the target's
+   *  parent must exist and resolve back under it; names with path
+   *  separators, leading/trailing dots, or Windows reserved device names,
+   *  and already-existing targets, are rejected. Returns the new file's
+   *  absolute posix path. */
+  createProjectFile(projectPath: string, dirRelPath: string, name: string): Promise<string>;
+  /** Like `createProjectFile` but creates an empty directory. */
+  createProjectDir(projectPath: string, dirRelPath: string, name: string): Promise<string>;
   /**
    * Set a project's `**Status**` field. On done-edges (close: prev != done →
    * done; reopen: done → prev != done) also append a `Closed.` /

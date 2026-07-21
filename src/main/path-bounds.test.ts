@@ -32,6 +32,7 @@ vi.mock('./effective-config', () => ({
 }));
 
 import {
+  cleanRelDirPath,
   requirePathUnder,
   requirePathUnderWorkspace,
   requireReadableSkillPath,
@@ -59,6 +60,39 @@ afterEach(() => {
   delete testGlobals.__testConfig;
   delete process.env.CONDASH_USER_SKILLS_ROOT;
   delete process.env.CONDASH_USER_AGENTS_MD;
+});
+
+describe('cleanRelDirPath', () => {
+  it('maps empty and dot to the root', () => {
+    expect(cleanRelDirPath('', 'the project directory')).toBe('');
+    expect(cleanRelDirPath('.', 'the project directory')).toBe('');
+  });
+
+  it('keeps normal nested paths', () => {
+    expect(cleanRelDirPath('notes', 'the project directory')).toBe('notes');
+    expect(cleanRelDirPath('local/candidates', 'the project directory')).toBe('local/candidates');
+  });
+
+  it('rejects absolute paths, naming the bound', () => {
+    expect(() => cleanRelDirPath('/etc', 'the pane root')).toThrow(/relative to the pane root/);
+  });
+
+  it('rejects .. traversal, including post-normalize survivors', () => {
+    expect(() => cleanRelDirPath('..', 'the project directory')).toThrow(/escapes/);
+    expect(() => cleanRelDirPath('../outside', 'the project directory')).toThrow(/escapes/);
+    expect(() => cleanRelDirPath('notes/../../outside', 'the project directory')).toThrow(
+      /escapes/,
+    );
+  });
+
+  it('normalizes away internal dot segments', () => {
+    expect(cleanRelDirPath('notes/../local', 'the project directory')).toBe('local');
+    expect(cleanRelDirPath('./notes', 'the project directory')).toBe('notes');
+  });
+
+  it('does not flag dotted filenames as traversal', () => {
+    expect(cleanRelDirPath('notes/foo..bar', 'the project directory')).toBe('notes/foo..bar');
+  });
 });
 
 describe('requirePathUnder', () => {

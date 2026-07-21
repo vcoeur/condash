@@ -288,7 +288,10 @@ body[data-dragging='project'] .group-block.drag-over {
 }
 
 .row.draggable {
-  cursor: grab;
+  /* The whole card is click-to-open, so the resting cursor stays the pointer
+   * (click affordance wins); the grabbing cursor appears only once a drag
+   * actually starts (body[data-dragging] below). */
+  cursor: pointer;
   /* Pointer-drag uses mousedown+move; suppress text selection so a drag
    * doesn't paint a selection across the card. */
   user-select: none;
@@ -882,9 +885,24 @@ body[data-dragging='project'] .row {
   line-height: 1;
 }
 
-/* "Part of <plan>" banner at the top of a spin-off card. A pill hugging the
- * top-left, accent-tinted so it reads as a relationship marker rather than
- * meta text. Ellipsises rather than wrapping. */
+/* Relations zone at the bottom of the card — hosts the "Part of" banner and
+ * the subprojects banner below the head, separated from the title/meta by a
+ * family-tinted hairline so relations read as their own area, not as part of
+ * the title. The .row gap (6px) plus this padding gives the clear spacing;
+ * the hairline picks up --row-stripe so the zone stays tied to the family
+ * frame. */
+.row .row-relations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--row-stripe) 30%, transparent);
+}
+
+/* "Part of <plan>" banner in a spin-off card's relations zone. A pill hugging
+ * the left edge, accent-tinted so it reads as a relationship marker rather
+ * than meta text. Ellipsises rather than wrapping. */
 .row .parent-banner {
   display: inline-flex;
   align-items: center;
@@ -910,14 +928,37 @@ body[data-dragging='project'] .row {
   min-width: 0;
 }
 
-/* Subprojects banner at the bottom of a parent card: one full-width row per
- * spin-off child, mirroring the "Part of" pill at the top of each child. Same
+/* Subprojects banner in a parent card's relations zone: one full-width row per
+ * spin-off child, mirroring the "Part of" pill on each child card. Same
  * accent tint so both read as relationship markers; the ↓ icon and status pill
  * echo the child card's ↑ icon and pill. */
 .row .children-banner {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Resolved banner rows are real <button>s that open the referenced project —
+ * strip the UA button chrome back to the shared pill look, then add the
+ * clickable affordances (deeper tint on hover, focus ring for the keyboard
+ * path). The dangling-parent fallback stays a <div> and takes none of this. */
+.row button.parent-banner,
+.row button.child-row {
+  border: none;
+  font: inherit;
+  font-size: var(--text-2xs);
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.row button.parent-banner:hover,
+.row button.child-row:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.row button.parent-banner:focus-visible,
+.row button.child-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .row .child-row {
   display: flex;

@@ -26,7 +26,10 @@ export interface ThemePreset {
   kind: ThemeKind;
   /** One-line character sketch, shown under the label in the picker. */
   description: string;
-  /** `[background, panel, accent]` — the three hues the picker's swatch paints.
+  /** `[background, panel, accent]` — the three hues the picker's swatch
+   *  paints. "Panel" loosely: a preset whose panel equals its background
+   *  (Paper, Mist) shows `--bg-elevated` there instead, so the swatch's
+   *  middle stripe stays visible.
    *  Hex literals rather than `var(--…)` reads on purpose: a swatch has to show
    *  its own theme's colours while a *different* theme is the active one, so it
    *  cannot resolve them off the live token set. Keep in sync by eye with the
@@ -45,11 +48,25 @@ export const THEME_PRESETS = [
     swatch: ['#faf6f8', '#ffffff', '#672167'],
   },
   {
+    id: 'mist',
+    label: 'Mist',
+    kind: 'light',
+    description: 'Cool morning light — fog gray-blue, ink text, steel-blue accent.',
+    swatch: ['#edf1f5', '#fcfdfe', '#275e80'],
+  },
+  {
     id: 'dark',
     label: 'Warm Gallery',
     kind: 'dark',
     description: 'Gold on warm black — the gallery-dark lead theme.',
     swatch: ['#151412', '#1a1815', '#c8a882'],
+  },
+  {
+    id: 'nocturne',
+    label: 'Nocturne',
+    kind: 'dark',
+    description: 'Moonlit indigo night — periwinkle on deep blue-black.',
+    swatch: ['#10131d', '#151a28', '#91a7f2'],
   },
   {
     id: 'console',

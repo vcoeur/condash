@@ -36,7 +36,7 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 |---|---|---|
 | `listProjects()` | `Project[]` | Walk `projects/<month>/<slug>/README.md`, parse the metadata block, return the full project list. |
 | `getProject(path)` | `Project \| null` | Re-parse a single README — used to patch the in-memory list after a watcher event. |
-| `listProjectFiles(path)` | `ProjectFileEntry[]` | List files under a project directory (notes plus any other subdirectories). |
+| `listProjectFiles(path)` | `ProjectFileEntry[]` | List a project directory's contents recursively — files *and* directories (`kind: 'file' \| 'dir'`), dot-entries skipped. Directory entries are emitted too so the preview's file tree can render structure, including empty dirs. |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
 | `readResourcesTree()` | `ResourceNode \| null` | Walk `<conception>/resources/` (hard-coded, not configurable), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
 | `readSkillsTree(scope, tab)` | `SkillNode \| null` | Walk the `(scope, tab)` skills directory — `local` reads the conception, `global` reads the per-machine user scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (condash ships only the Generic `.agents/skills/` tree). `null` when the directory is absent. |
@@ -153,11 +153,13 @@ The opt-in dashboard engine (`ipc/dashboard.ts`) periodically summarizes the ope
 
 ## Tree mutations (Knowledge / Resources / Skills panes)
 
-The three tree panes (Knowledge / Resources / Skills) expose create-file / create-dir / import-file verbs so the user can add content without leaving the dashboard. Each verb names the target tree explicitly so the main process can bound the write against the correct root (knowledge is hardcoded to `knowledge/`; resources and skills resolve from the conception's config).
+The tree panes (Knowledge / Resources / Skills) and the project preview's file tree expose create-file / create-dir / import verbs so the user can add content without leaving the dashboard. Each verb names its target explicitly so the main process can bound the write against the correct root (knowledge is hardcoded to `knowledge/`; resources and skills resolve from the conception's config; the project create verbs bound against the item's own directory).
 
 | Verb | What it does |
 |---|---|
 | `createProjectNote(projectPath, slug)` | Create `<projectPath>/notes/NN-<slug>.md`. Scans `notes/` for the highest existing `NN-` prefix, increments by one, sanitises the slug, writes an empty file, returns the absolute path. Used by the "+ Note" button on every project card. |
+| `createProjectFile(projectPath, dirRelPath, name)` | Create an empty file named `name` inside `<projectDir>/<dirRelPath>/` (`''` = the project root; `projectPath` is the README path or the project directory). The project dir must realpath to an actual **item** directory — `projects/<YYYY-MM>/<YYYY-MM-DD-slug>/` — so the verb can neither scatter entries into the `projects/` root or a month bucket nor fabricate item dirs; the target's parent must exist and resolve back under the item dir (symlink-escape safe). Names keep their case after a trim but are rejected when empty, containing path separators, starting or ending with a dot, or matching a Windows reserved device name; an existing target is refused (`wx`). Returns the new file's absolute posix path. Backs the preview file tree's inline "new file" input. |
+| `createProjectDir(projectPath, dirRelPath, name)` | Like `createProjectFile` but creates an empty directory (non-recursive `mkdir`, so an existing target — symlinks included — is refused). Backs the file tree's inline "new folder" input. |
 | `treeCreateMd(root, dirRelPath, filename, skillTab?)` | Create an empty `.md` file under `<root>/<dirRelPath>/<filename>`. `root` is `'knowledge' \| 'resources' \| 'skills'`; `skillTab` selects which Skills sub-root (`generic` / `claude` / `kimi`) for the Skills pane. Filename must end in `.md` and pass slug-safety checks. |
 | `treeMkdir(root, dirRelPath, name, skillTab?)` | Create an empty directory at `<root>/<dirRelPath>/<name>`. Same path-bounding rules as `treeCreateMd`. |
 | `treeImportFile(root, dirRelPath, skillTab?)` | Open an OS file picker, then copy the chosen file into `<root>/<dirRelPath>/`. Used to drop PDFs / images into the Resources pane without leaving the dashboard. |
