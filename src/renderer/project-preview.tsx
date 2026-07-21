@@ -1,4 +1,13 @@
-import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js';
+import {
+  For,
+  Show,
+  createEffect,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+} from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
@@ -355,6 +364,21 @@ export function ProjectPreview(props: {
       cancelAdd();
     }
   };
+
+  // The modal stays mounted across projects (parent banner / Subprojects
+  // swap `props.project` in place), so drop any in-flight step draft or edit
+  // when the previewed project changes — `editingLineIndex` indexes the OLD
+  // project's README and must never leak into the next one.
+  createEffect(
+    on(
+      () => props.project?.path ?? null,
+      () => {
+        cancelAdd();
+        cancelEdit();
+      },
+      { defer: true },
+    ),
+  );
 
   return (
     <Show when={props.project}>

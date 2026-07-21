@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectFileEntry } from '@shared/types';
-import { buildFileTree, defaultExpanded, isLocalScratch, type FileTreeNode } from './data';
+import {
+  buildFileTree,
+  defaultExpanded,
+  isLocalScratch,
+  reconcileFileTree,
+  type FileTreeNode,
+} from './data';
 
 function entry(relPath: string, kind: 'file' | 'dir'): ProjectFileEntry {
   const name = relPath.split('/').pop()!;
@@ -79,6 +85,65 @@ describe('buildFileTree', () => {
       entry('notes/archive', 'dir'),
     ]);
     expect(names(tree[0].children)).toEqual(['archive', 'local']);
+  });
+});
+
+describe('reconcileFileTree', () => {
+  const byName = (nodes: FileTreeNode[], name: string): FileTreeNode =>
+    nodes.find((n) => n.name === name)!;
+
+  it('returns next as-is when there is no previous tree', () => {
+    const next = buildFileTree([entry('a.md', 'file')]);
+    expect(reconcileFileTree(undefined, next)).toBe(next);
+  });
+
+  it('returns the previous tree itself for an identical rebuild', () => {
+    const entries = [
+      entry('notes', 'dir'),
+      entry('notes/01.md', 'file'),
+      entry('assets', 'dir'),
+      entry('assets/logo.png', 'file'),
+      entry('todo.md', 'file'),
+    ];
+    const previous = buildFileTree(entries);
+    expect(reconcileFileTree(previous, buildFileTree(entries))).toBe(previous);
+  });
+
+  it('renews the parent chain of an added file but keeps untouched subtrees', () => {
+    const base = [
+      entry('notes', 'dir'),
+      entry('notes/01.md', 'file'),
+      entry('assets', 'dir'),
+      entry('assets/logo.png', 'file'),
+    ];
+    const previous = buildFileTree(base);
+    const next = buildFileTree([...base, entry('notes/02.md', 'file')]);
+    const reconciled = reconcileFileTree(previous, next);
+
+    expect(reconciled).not.toBe(previous);
+    // The changed dir gets a new node…
+    expect(byName(reconciled, 'notes')).not.toBe(byName(previous, 'notes'));
+    // …but its untouched child and the untouched sibling subtree keep identity.
+    expect(byName(byName(reconciled, 'notes').children, '01.md')).toBe(
+      byName(byName(previous, 'notes').children, '01.md'),
+    );
+    expect(byName(reconciled, 'assets')).toBe(byName(previous, 'assets'));
+  });
+
+  it('replaces a node whose absolute path changed, keeping its siblings', () => {
+    const previous = buildFileTree([entry('a.md', 'file'), entry('b.md', 'file')]);
+    const moved: ProjectFileEntry = {
+      relPath: 'a.md',
+      name: 'a.md',
+      kind: 'file',
+      path: '/elsewhere/a.md',
+    };
+    const reconciled = reconcileFileTree(previous, buildFileTree([moved, entry('b.md', 'file')]));
+
+    expect(reconciled).not.toBe(previous);
+    expect(byName(reconciled, 'a.md')).not.toBe(byName(previous, 'a.md'));
+    expect(byName(reconciled, 'a.md').path).toBe('/elsewhere/a.md');
+    expect(byName(reconciled, 'b.md')).toBe(byName(previous, 'b.md'));
   });
 });
 

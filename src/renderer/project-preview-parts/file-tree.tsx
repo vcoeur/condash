@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, on } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal, on } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { ProjectFileEntry } from '@shared/types';
 import { Button, IconButton } from '../actions';
@@ -9,6 +9,7 @@ import {
   buildFileTree,
   defaultExpanded,
   isLocalScratch,
+  reconcileFileTree,
   type FileTreeNode,
 } from './data';
 
@@ -80,7 +81,13 @@ export function FilesWidget(props: {
     ),
   );
 
-  const tree = (): FileTreeNode[] => buildFileTree(props.files() ?? []);
+  // Memo (one build per files-refetch, not per access), reconciled against
+  // the previous tree so unchanged rows keep object identity — otherwise the
+  // reference-keyed <For> remounts every row on refetch, killing a visible
+  // inline-create draft input mid-typing.
+  const tree = createMemo<FileTreeNode[]>((prev) =>
+    reconcileFileTree(prev, buildFileTree(props.files() ?? [])),
+  );
 
   const isExpanded = (node: FileTreeNode, depth: number): boolean =>
     overrides().get(node.relPath) ?? defaultExpanded(node, depth);

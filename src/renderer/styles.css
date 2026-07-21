@@ -279,6 +279,9 @@
   --dark-border: rgba(200, 168, 130, 0.1);
   --dark-border-strong: rgba(200, 168, 130, 0.22);
   --dark-accent: #c8a882;
+  /* Hover = the accent lifted toward cream (10.1:1 on --dark-bg vs the
+   * accent's 8.2:1), the same brighten-on-hover step the other themes take. */
+  --dark-accent-hover: #d6bc9c;
   --dark-accent-soft: rgba(200, 168, 130, 0.14);
   --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --dark-shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
@@ -325,6 +328,7 @@
     --border: var(--dark-border);
     --border-strong: var(--dark-border-strong);
     --accent: var(--dark-accent);
+    --accent-hover: var(--dark-accent-hover);
     --accent-soft: var(--dark-accent-soft);
     --shadow-card: var(--dark-shadow-card);
     --shadow-lift: var(--dark-shadow-lift);
@@ -361,6 +365,7 @@
   --border: var(--dark-border);
   --border-strong: var(--dark-border-strong);
   --accent: var(--dark-accent);
+  --accent-hover: var(--dark-accent-hover);
   --accent-soft: var(--dark-accent-soft);
   --shadow-card: var(--dark-shadow-card);
   --shadow-lift: var(--dark-shadow-lift);
