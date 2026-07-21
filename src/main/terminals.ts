@@ -7,6 +7,7 @@ import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type {
   TabInfo,
+  TermDeath,
   TermSession,
   TermSide,
   TermSpawnRequest,
@@ -18,7 +19,13 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
-import { wrapWithMemoryScope, sampleCgroupMemory } from './tab-scope';
+import {
+  wrapWithMemoryScope,
+  sampleCgroupMemory,
+  sampleCgroupMemoryEvents,
+  type CgroupMemoryEvents,
+} from './tab-scope';
+import { deriveDeath, isAbnormal } from './term-death';
 import { spawnEnv, spawnPtyEnv } from './shell-env';
 import { safeSend } from './safe-send';
 import { SessionLogger } from './terminal-logger';
@@ -65,6 +72,13 @@ interface Session {
   memBytes?: number;
   /** Resolved hard cap (bytes) of this tab's scope, when numeric. */
   memMaxBytes?: number;
+  /** cgroup `memory.events` as of the most recent periodic sample. Kept as the
+   * baseline the exit-time sample is diffed against: the counters are
+   * cumulative for the cgroup's life, so only movement across the death is
+   * evidence of what killed it (see `term-death.ts`). */
+  memEvents?: CgroupMemoryEvents;
+  /** Why the session ended; undefined while live. */
+  death?: TermDeath;
   /** Per-session 'destroyed' listener handle on `webContents` — kept on the
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
@@ -145,6 +159,7 @@ function snapshot(): TermSession[] {
     repo: s.repo,
     cwd: s.cwd,
     exited: s.exited,
+    death: s.death,
     memBytes: s.memBytes,
     memMaxBytes: s.memMaxBytes,
   }));
@@ -204,6 +219,13 @@ function sampleMemory(): void {
       s.memBytes = bytes;
       changed = true;
     }
+    // Refresh the death-evidence baseline on the same tick — one extra small
+    // read per scoped tab, riding the timer that already exists rather than
+    // adding one. Deliberately NOT part of `changed`: these counters move
+    // without anything on screen changing, and rebroadcasting the whole
+    // snapshot for them would undo the T5 quantization above.
+    const events = sampleCgroupMemoryEvents(s.pty.pid);
+    if (events) s.memEvents = events;
   }
   if (changed) broadcastSessions();
 }
@@ -602,15 +624,27 @@ export async function spawnTerminal(
     // pty.pause()/resume().
     session.flow.enqueue(data);
   });
-  ptyProcess.onExit(({ exitCode }) => {
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    // Sample the cgroup counters BEFORE anything else: `systemd-run --collect`
+    // reaps the scope shortly after exit, and once it does `memory.events` is
+    // gone and the death is unattributable. Diffed against the baseline the
+    // periodic sampler keeps, because the counters are cumulative (term-death.ts).
+    const after = session.memScoped && ptyProcess.pid ? sampleCgroupMemoryEvents(ptyProcess.pid) : undefined;
+    const death = deriveDeath({ exitCode, signal, before: session.memEvents, after });
     session.exited = exitCode;
+    session.death = death;
     session.pty = null;
-    session.logger?.exit(exitCode);
+    session.logger?.exit(exitCode, death);
     // Deliver any batched-but-unsent output before the exit notification so the
     // renderer never sees termExit ahead of the tab's final bytes; this also
     // clears the coalescing timer so nothing fires after the pty is gone.
     session.flow.flush();
-    safeSend(session.webContents, EVENT_CHANNELS.termExit, { id, code: exitCode });
+    safeSend(session.webContents, EVENT_CHANNELS.termExit, {
+      id,
+      code: exitCode,
+      death,
+      abnormal: isAbnormal(death),
+    });
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
     broadcastSessions();
@@ -803,6 +837,40 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
 
 export function closeSession(id: string): Promise<void> {
   return stopSession(id);
+}
+
+/**
+ * Relaunch an exited session with the same command, cwd, and side, then drop the
+ * dead row. The counterpart to keeping an abnormally-exited tab on screen: the
+ * user reads why it died, then restarts it without re-deriving what it was.
+ *
+ * Only a session whose pty has actually exited can be restarted — restarting a
+ * live tab would silently orphan its running process.
+ *
+ * @param conceptionPath Active conception, for repo resolution (as `spawnTerminal`).
+ * @param id The exited session to relaunch.
+ * @returns The new session's id and cwd.
+ * @throws When the id is unknown or its pty is still live.
+ */
+export async function restartSession(
+  conceptionPath: string | null,
+  id: string,
+): Promise<{ id: string; cwd: string }> {
+  const session = sessions.get(id);
+  if (!session) throw new Error(`No terminal session '${id}'`);
+  if (session.exited === undefined) throw new Error(`Session '${id}' is still running`);
+  const spawned = await spawnTerminal(conceptionPath, session.webContents, {
+    side: session.side,
+    // `cmd` is the resolved command label the original spawn ran; a session
+    // spawned as a plain shell has none, and re-spawns as a plain shell.
+    command: session.cmd,
+    repo: session.repo,
+    cwd: session.cwd,
+  });
+  // Retire the dead row only once the replacement exists, so a failed respawn
+  // leaves the evidence on screen rather than silently swallowing the tab.
+  await stopSession(id);
+  return spawned;
 }
 
 /** Read terminal prefs. The `terminal` key is global-only (`settings.json`);

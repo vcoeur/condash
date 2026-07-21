@@ -1,7 +1,7 @@
 import { mkdir, open, rename } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Terminal } from '@xterm/headless';
-import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
+import type { TaskRunContext, TermDeath, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
 import {
@@ -99,10 +99,17 @@ interface HeaderMeta {
   kind: LogKind;
 }
 
-/** Footer-line JSON shape, appended on `exit()`. */
+/** Footer-line JSON shape, appended on `exit()`.
+ *
+ * `exitCode` alone cannot distinguish a clean exit from an OOM kill — node-pty
+ * reports 0 for a SIGKILLed process, so every kill in the field logged
+ * `"exitCode":0` and the failure rate was unmeasurable. `death` carries the
+ * derived verdict (and its evidence) so a post-mortem needs only the log file.
+ * Optional: readers of logs written before this field existed must still parse. */
 interface FooterMeta {
   finished: string;
   exitCode: number;
+  death?: TermDeath;
 }
 
 /** Default opt-OUT: a fresh install records nothing until the user flips
@@ -202,6 +209,7 @@ export class SessionLogger {
   private flushChain: Promise<void> = Promise.resolve();
   private readonly startedTs: string;
   private exitCode: number | undefined;
+  private death: TermDeath | undefined;
   private finishedTs: string | undefined;
   private readonly txtPath: string;
   /** When the session is a segregated task run, the `<trigger>/<slug>` dir to
@@ -369,9 +377,10 @@ export class SessionLogger {
     this.scheduleFlush();
   }
 
-  exit(exitCode: number): void {
+  exit(exitCode: number, death?: TermDeath): void {
     if (!this.isEnabled()) return;
     this.exitCode = exitCode;
+    this.death = death;
     this.finishedTs = this.now().toISOString();
     this.dirty = true;
     // Terminal flush — fsync the final footer state to disk.
@@ -709,7 +718,11 @@ export class SessionLogger {
       lines.push('', '<!-- timeline -->', ...this.gridMarkers);
     }
     if (this.exitCode !== undefined && this.finishedTs !== undefined) {
-      const footer: FooterMeta = { finished: this.finishedTs, exitCode: this.exitCode };
+      const footer: FooterMeta = {
+        finished: this.finishedTs,
+        exitCode: this.exitCode,
+        ...(this.death ? { death: this.death } : {}),
+      };
       lines.push('', `${META_LINE_PREFIX}${JSON.stringify(footer)}`);
     }
     return lines.join('\n') + '\n';

@@ -101,6 +101,9 @@ export interface TerminalPaneProps {
    *  (repaint) action on the newly-active tab. Pulled from
    *  `terminal.autoRefreshOnTabSwitch`. */
   autoRefreshOnTabSwitch?: boolean;
+  /** Surface a user-facing error (wired to the app toast). Optional so the pane
+   *  stays usable in tests and stories without a toast host. */
+  onError?: (message: string) => void;
 }
 
 export function TerminalPane(props: TerminalPaneProps) {
@@ -119,6 +122,7 @@ export function TerminalPane(props: TerminalPaneProps) {
     resolveAgent,
     saveActiveBuffer,
     refreshSession,
+    restartTab,
     dnd,
     search,
     resize,
@@ -168,6 +172,7 @@ export function TerminalPane(props: TerminalPaneProps) {
         search.openSearch();
       }}
       onRefreshTab={(id) => refreshSession(id)}
+      onRestartTab={(id) => restartTab(id)}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
     />

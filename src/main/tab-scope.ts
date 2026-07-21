@@ -239,16 +239,77 @@ export function parseSize(size: string): number | undefined {
  * @returns Bytes in use by the pid's cgroup, or undefined.
  */
 export function sampleCgroupMemory(pid: number): number | undefined {
+  const rel = cgroupPathFor(pid);
+  if (rel === undefined) return undefined;
   try {
-    // cgroup v2 is a single unified "0::<path>" line.
-    const match = /^0::(.*)$/m.exec(readFileSync(`/proc/${pid}/cgroup`, 'utf8'));
-    if (!match) return undefined;
-    const rel = match[1] === '/' ? '' : match[1];
     const bytes = Number(readFileSync(`/sys/fs/cgroup${rel}/memory.current`, 'utf8').trim());
     return Number.isFinite(bytes) ? bytes : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** Resolve a pid's cgroup v2 path, relative to the `/sys/fs/cgroup` mount.
+ *  Returns undefined off cgroup v2 or when the process is already gone. */
+function cgroupPathFor(pid: number): string | undefined {
+  try {
+    // cgroup v2 is a single unified "0::<path>" line.
+    const match = /^0::(.*)$/m.exec(readFileSync(`/proc/${pid}/cgroup`, 'utf8'));
+    if (!match) return undefined;
+    return match[1] === '/' ? '' : match[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Cumulative memory-pressure counters for a cgroup, from cgroup v2's
+ *  `memory.events`. **Every field counts events since the cgroup was created**,
+ *  never "right now" — a consumer must compare two samples, not test against
+ *  zero. See `term-death.ts` for why that distinction is load-bearing. */
+export interface CgroupMemoryEvents {
+  /** Times the cgroup's own OOM killer fired — i.e. it hit `MemoryMax`. */
+  oomKill: number;
+  /** Times usage reached `MemoryMax`. */
+  max: number;
+  /** Times usage exceeded `MemoryHigh` and the kernel throttled + reclaimed.
+   *  Sustained growth here is what generates the PSI pressure an external OOM
+   *  killer (systemd-oomd) reacts to. */
+  high: number;
+}
+
+/**
+ * Read cgroup v2 `memory.events` for the cgroup a pid belongs to. Same
+ * resolution and same undefined-on-failure contract as `sampleCgroupMemory`, and
+ * meaningful for the same reason: for a scoped tab the pid is `systemd-run`, so
+ * this reports the whole tab process tree.
+ *
+ * Must be sampled **before** the scope is reaped — `systemd-run --collect`
+ * removes the unit shortly after exit, at which point the file is gone and this
+ * returns undefined.
+ *
+ * @param pid The pty leader pid (the `systemd-run` process for a scoped tab).
+ * @returns The cumulative counters, or undefined off cgroup v2 / on a reaped scope.
+ */
+export function sampleCgroupMemoryEvents(pid: number): CgroupMemoryEvents | undefined {
+  const rel = cgroupPathFor(pid);
+  if (rel === undefined) return undefined;
+  try {
+    const text = readFileSync(`/sys/fs/cgroup${rel}/memory.events`, 'utf8');
+    return parseCgroupMemoryEvents(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parse the `key value` lines of a cgroup v2 `memory.events` file. Absent keys
+ *  read as 0 — the file only lists counters the kernel tracks for that cgroup.
+ *  Pure and exported so the format handling is unit-testable without a cgroup. */
+export function parseCgroupMemoryEvents(text: string): CgroupMemoryEvents {
+  const read = (key: string): number => {
+    const match = new RegExp(`^${key}\\s+(\\d+)$`, 'm').exec(text);
+    return match ? Number(match[1]) : 0;
+  };
+  return { oomKill: read('oom_kill'), max: read('max'), high: read('high') };
 }
 
 /** A program + argv pair ready to hand to `pty.spawn`. */

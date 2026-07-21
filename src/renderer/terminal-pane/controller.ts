@@ -592,12 +592,18 @@ export function createTerminalController(props: TerminalPaneProps) {
       bufferTransitionWrite(id, data);
     }
   });
-  const offTermExit = window.condash.onTermExit(({ id, code: _code }) => {
-    // Auto-close the tab on process exit — the previous "[process exited N]"
-    // marker stayed around forever and forced a manual click on the close
-    // button. If the user wants to inspect the buffer, the Save-buffer
-    // button on the tab strip dumps it to a .txt before close lands.
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
+  const offTermExit = window.condash.onTermExit(({ id, code, death, abnormal }) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: code, death } : t)));
+    // A clean `exit 0` still auto-closes: the old "[process exited 0]" marker
+    // stayed around forever and forced a manual close click.
+    //
+    // An ABNORMAL exit keeps its row. Auto-closing it destroyed the only
+    // evidence of what happened — and the Save-buffer escape hatch could not
+    // fill the gap, because it needs the handle still in `xterms`, which the
+    // close removes one broadcast later. The row now carries the death verdict
+    // and a Restart action instead; the user closes it when they are done
+    // reading. Mirrors what the Code pane already does for run rows.
+    if (abnormal) return;
     if (!closingTabs.has(id)) closeTab(id);
   });
 
@@ -831,6 +837,29 @@ export function createTerminalController(props: TerminalPaneProps) {
    *  path passes `onlyIfAltBuffer: true` only when the user has explicitly set
    *  `autoRefreshOnTabSwitch: false`; the default (and the manual Refresh button)
    *  always nudges. */
+  /** Relaunch an abnormally-exited tab in place. Main owns the respawn (it holds
+   *  the original command / cwd / side and retires the dead row itself), so this
+   *  only has to carry the intent across and land the replacement in the same
+   *  column the dead tab occupied. */
+  const restartTab = (id: string): void => {
+    const tab = tabs().find((t) => t.id === id);
+    if (!tab || tab.exited === undefined) return;
+    setNextSpawnColumn(tab.column);
+    void window.condash
+      .termRestart(id)
+      .then(({ id: newId }) => {
+        // Carry the dead tab's presentation across so a restarted agent tab
+        // doesn't lose its pinned name and reappear as a bare cwd basename.
+        pendingSpawnIntent.set(newId, { label: tab.label, pinned: tab.pinned });
+        setMeta(newId, { label: tab.label, column: tab.column, pinned: tab.pinned });
+      })
+      .catch((err: unknown) => {
+        // Main leaves the dead row in place when the respawn fails, so the
+        // evidence stays on screen; surface why rather than failing silently.
+        props.onError?.(`Could not restart the session: ${String(err)}`);
+      });
+  };
+
   const refreshSession = (id: string | null, opts?: { onlyIfAltBuffer?: boolean }): void => {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
@@ -1012,6 +1041,7 @@ export function createTerminalController(props: TerminalPaneProps) {
     resolveAgent,
     saveActiveBuffer,
     refreshSession,
+    restartTab,
     dnd,
     search,
     resize,

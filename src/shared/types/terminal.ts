@@ -196,6 +196,43 @@ export interface TerminalLoggingPrefs {
   markerIntervalSec?: number;
 }
 
+/** Coarse classification of how a terminal session ended, in decreasing
+ * severity. Derived in `src/main/term-death.ts`; carried here because the
+ * renderer renders it. */
+export type TermDeathKind =
+  /** The tab's own cgroup OOM killer fired — it hit its `MemoryMax` cap. */
+  | 'oom-cap'
+  /** Killed from outside under memory pressure (systemd-oomd reacting to PSI)
+   *  while the cgroup was throttling at `MemoryHigh`. The cgroup's own
+   *  `oom_kill` does NOT fire in this case, so it needs its own verdict. */
+  | 'oom-pressure'
+  /** SIGKILL with no memory evidence — killed externally, cause unknown. */
+  | 'killed'
+  /** Terminated by some other signal (SIGTERM, SIGHUP, …). */
+  | 'signal'
+  /** Ran to completion with a non-zero status. */
+  | 'failed'
+  /** Ran to completion with status 0. */
+  | 'clean';
+
+/** Why a terminal session ended: the classification plus the raw evidence, so a
+ * tab row can show a short label and a log footer can carry the full picture. */
+export interface TermDeath {
+  kind: TermDeathKind;
+  /** Process exit status, when the process exited rather than being signalled. */
+  exitCode?: number;
+  /** Signal number that terminated the process, when it was signalled. */
+  signal?: number;
+  /** Increase in the cgroup's own OOM-kill count across the death. */
+  oomKillDelta?: number;
+  /** Increase in the `MemoryHigh` throttle count across the death — the marker
+   * of sustained reclaim, which is what generates the pressure an external OOM
+   * killer reacts to. */
+  highDelta?: number;
+  /** Short human label for the tab row. */
+  label: string;
+}
+
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on
  * spawn/exit/close so renderers can keep their tab strip and Code-pane LIVE
  * badges in sync without polling. */
@@ -211,6 +248,11 @@ export interface TermSession {
   cwd?: string;
   /** Process exit code if the pty has terminated; undefined while live. */
   exited?: number;
+  /** Why the session ended, derived at exit from the exit code, the terminating
+   * signal, and the movement in the tab cgroup's `memory.events`. Undefined
+   * while live. An OOM kill and a clean `exit 0` are indistinguishable by
+   * `exited` alone — this is the field that tells them apart. */
+  death?: TermDeath;
   /** Live memory usage (bytes) of the tab's own cgroup scope, when the tab was
    * spawned in a memory scope (Linux + systemd). Undefined for unscoped tabs and
    * before the first sample. Drives the per-tab memory meter. */
@@ -258,4 +300,11 @@ export interface TermDataMessage {
 export interface TermExitMessage {
   id: string;
   code: number;
+  /** Why the session ended. Undefined only for a session that exited before the
+   * verdict machinery could run (defensive — main always populates it). */
+  death?: TermDeath;
+  /** Convenience mirror of `death.kind !== 'clean'`. The renderer keeps the tab
+   * row on screen when this is true instead of auto-closing, so the user can
+   * read the verdict and restart. */
+  abnormal?: boolean;
 }

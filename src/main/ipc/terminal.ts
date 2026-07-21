@@ -8,6 +8,7 @@ import {
   resizeTerminal,
   setSessionSide,
   setTerminalPrefs,
+  restartSession,
   spawnTerminal,
   tabsContext,
   writeTerminal,
@@ -35,6 +36,12 @@ export function registerTerminalIpc(): void {
     const spawnRequest = requireRecord('termSpawn', request) as unknown as TermSpawnRequest;
     const { lastConceptionPath: conceptionPath } = await readSettings();
     return spawnTerminal(conceptionPath, event.sender, spawnRequest);
+  });
+
+  ipcMain.handle('termRestart', async (event, id: unknown) => {
+    requireMainWindowSender(event);
+    const { lastConceptionPath: conceptionPath } = await readSettings();
+    return restartSession(conceptionPath, requireNonEmptyString('termRestart', id));
   });
 
   ipcMain.handle('termWrite', (event, id: unknown, data: string) => {
