@@ -80,6 +80,19 @@ interface Session {
   memEvents?: CgroupMemoryEvents;
   /** Why the session ended; undefined while live. */
   death?: TermDeath;
+  /** Wall-clock ms of the sample that produced `memBytes` — the other half of
+   * the growth-rate calculation. */
+  memSampledAt?: number;
+  /** Bytes/second the tab's cgroup grew over the last sampling interval. The
+   * existing meter is instantaneous, so a tab going 2G→8G inside one 2.5 s
+   * window showed no warning at all before it died; a rate can warn on
+   * trajectory instead of on a level. */
+  memGrowthBytesPerSec?: number;
+  /** True when the cgroup's `MemoryHigh` throttle count moved on the last
+   * sample — i.e. the kernel is actively reclaiming against this tab. This is
+   * the state tabs are actually dying in, and it was previously invisible: the
+   * user saw an unexplained slowdown with nothing to attribute it to. */
+  memThrottled?: boolean;
   /** Per-session 'destroyed' listener handle on `webContents` — kept on the
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
@@ -163,6 +176,9 @@ function snapshot(): TermSession[] {
     death: s.death,
     memBytes: s.memBytes,
     memMaxBytes: s.memMaxBytes,
+    memGrowthBytesPerSec: s.memGrowthBytesPerSec,
+    memThrottled: s.memThrottled,
+    bytesSeen: s.bytesSeen,
   }));
 }
 
@@ -216,17 +232,40 @@ function sampleMemory(): void {
   for (const s of sessions.values()) {
     if (!s.memScoped || s.exited !== undefined || !s.pty) continue;
     const bytes = sampleCgroupMemory(s.pty.pid);
+    const at = Date.now();
+    // Growth rate off the raw sample, before the quantized store below: the
+    // quantization exists to suppress *broadcasts*, and folding it into the rate
+    // would make a steady climb read as zero growth between broadcast steps.
+    if (bytes !== undefined && s.memBytes !== undefined && s.memSampledAt !== undefined) {
+      const elapsedSec = (at - s.memSampledAt) / 1000;
+      if (elapsedSec > 0) {
+        const rate = Math.round((bytes - s.memBytes) / elapsedSec);
+        if (rate !== s.memGrowthBytesPerSec) {
+          s.memGrowthBytesPerSec = rate;
+          changed = true;
+        }
+      }
+    }
+    if (bytes !== undefined) s.memSampledAt = at;
     if (memSampleChanged(s.memBytes, bytes)) {
       s.memBytes = bytes;
       changed = true;
     }
     // Refresh the death-evidence baseline on the same tick — one extra small
     // read per scoped tab, riding the timer that already exists rather than
-    // adding one. Deliberately NOT part of `changed`: these counters move
-    // without anything on screen changing, and rebroadcasting the whole
-    // snapshot for them would undo the T5 quantization above.
+    // adding one.
     const events = sampleCgroupMemoryEvents(s.pty.pid);
-    if (events) s.memEvents = events;
+    if (events) {
+      // A move in the cumulative `high` counter means the kernel is reclaiming
+      // against this tab right now. Unlike the raw counter (which stays
+      // non-zero forever once tripped), the delta is a live state.
+      const throttled = s.memEvents !== undefined && events.high > s.memEvents.high;
+      if (throttled !== s.memThrottled) {
+        s.memThrottled = throttled;
+        changed = true;
+      }
+      s.memEvents = events;
+    }
   }
   if (changed) broadcastSessions();
   // Ride this tick rather than arming a second timer — the instrumentation must
@@ -668,7 +707,8 @@ export async function spawnTerminal(
     // reaps the scope shortly after exit, and once it does `memory.events` is
     // gone and the death is unattributable. Diffed against the baseline the
     // periodic sampler keeps, because the counters are cumulative (term-death.ts).
-    const after = session.memScoped && ptyProcess.pid ? sampleCgroupMemoryEvents(ptyProcess.pid) : undefined;
+    const after =
+      session.memScoped && ptyProcess.pid ? sampleCgroupMemoryEvents(ptyProcess.pid) : undefined;
     const death = deriveDeath({ exitCode, signal, before: session.memEvents, after });
     session.exited = exitCode;
     session.death = death;

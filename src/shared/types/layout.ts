@@ -16,7 +16,7 @@ export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'lo
 
 /** Left-band view — which pane fills the left band when it is visible.
  * Selected by the left activity-rail items (Projects / Tasks / Deliverables). */
-export type LeftView = 'projects' | 'tasks' | 'deliverables';
+export type LeftView = 'projects' | 'tasks' | 'deliverables' | 'perf';
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).

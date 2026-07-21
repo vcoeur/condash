@@ -198,6 +198,21 @@ export interface TerminalLoggingPrefs {
   markerIntervalSec?: number;
 }
 
+/** Process-level performance vitals for the perf pane. A read-only peek for
+ * display that never resets the recorder's accumulators — polling the pane must
+ * not steal data from the recorded windows. */
+export interface PerfVitals {
+  /** Whether recording is on. The pane stays useful when off: per-tab memory,
+   * growth rate, and throttle state come from the always-on sampler. The
+   * event-loop figures do not. */
+  recording: boolean;
+  /** Event-loop delay in ms over the current window; present only while
+   * recording. The most direct measure of UI lag on the shared main thread. */
+  loop?: { p50: number; p99: number; max: number };
+  /** Main-process heap use in bytes. */
+  heapUsed: number;
+}
+
 /** Main-process performance recording. Off by default, like disk logging: while
  * disabled every instrumentation entry point is an immediate return, so an
  * ordinary user pays nothing. Records land in `<conception>/.condash/perf/` as
@@ -271,6 +286,18 @@ export interface TermSession {
   /** The tab scope's hard memory cap (bytes), when scoped with a numeric
    * `MemoryMax`. The renderer warns as `memBytes` approaches it. */
   memMaxBytes?: number;
+  /** Bytes/second the tab's cgroup grew over the last sampling interval.
+   * `memBytes` alone is a level, so a tab climbing 2G→8G inside one sampling
+   * window gave no warning before it died; the rate warns on trajectory. */
+  memGrowthBytesPerSec?: number;
+  /** True while the kernel is reclaiming against this tab (its cgroup
+   * `MemoryHigh` throttle counter moved on the last sample). Previously
+   * invisible — the user saw an unexplained slowdown with nothing to attribute
+   * it to — and it is the state tabs are actually dying in. */
+  memThrottled?: boolean;
+  /** Total bytes read off this session's pty since spawn. Drives the perf
+   * pane's throughput column. */
+  bytesSeen?: number;
 }
 
 export interface TermSpawnRequest {

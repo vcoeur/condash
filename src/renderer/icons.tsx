@@ -298,6 +298,22 @@ export function DeliverablesIcon() {
   );
 }
 
+/** Performance rail icon — a pulse trace, signifying live vitals. */
+export function PerfIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12h4l3-7 4 14 3-7h4" />
+    </svg>
+  );
+}
+
 /** Code rail icon — angle brackets, the classic code symbol. */
 export function CodeIcon() {
   return (

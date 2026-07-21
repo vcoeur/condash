@@ -132,6 +132,25 @@ xterm.js renders a lot of cells on every paint. Two knobs help:
 
 Both keys live under `terminal.xterm` in `.condash/settings.json` (or the legacy `condash.json`). The Settings → Terminal tab in the gear modal edits them live.
 
+If that doesn't account for it, measure rather than guess. Open the **Performance** pane in the left band and press **Record**: it shows main-process event-loop delay (the most direct measure of UI stalls — main is a single thread shared by every tab as well as git status, file watching, and all IPC), plus per-tab byte rates and where main's time is going. Records land in `<conception>/.condash/perf/`.
+
+Disk logging (`terminal.logging.enabled`) is worth checking specifically: when it's on, the main process runs a second full ANSI parse of every byte, duplicating work the renderer already does. Turning it off is a quick A/B.
+
+## A terminal tab disappeared
+
+A tab that vanishes on its own was killed, not closed. Since the tab now reports why, look at the row before dismissing it: an abnormal exit **keeps its row** with a verdict badge and a **Restart** button, and only a clean `exit 0` auto-closes.
+
+The verdicts that matter:
+
+- **killed — out of memory (cap)** — the tab exceeded its own `MemoryMax` and its cgroup OOM killer stopped it. Raise `terminal.memory.max`, or find what in that tab is growing.
+- **killed — out of memory (system pressure)** — the machine ran short of memory and an external killer (systemd-oomd, reacting to pressure) took the whole tab scope. The tab did **not** reach its own cap, so raising `terminal.memory.max` will not help; lowering `terminal.memory.high` so the tab throttles earlier, or reducing total load, will.
+- **killed — SIGKILL** — killed from outside with no memory evidence.
+- **exited — code N** — the program itself failed.
+
+The same verdict is written into the session's log footer under `.condash/logs/`, so a tab that died while you were away can still be diagnosed after the fact.
+
+To catch the second case before it kills anything, watch the Performance pane: a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
+
 ## CLI
 
 ### `condash projects list` says "no conception"

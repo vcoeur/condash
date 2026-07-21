@@ -15,6 +15,7 @@ import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
 import { ProjectsView } from './panes/projects';
 import { DeliverablesView } from './panes/deliverables';
+import { PerfView } from './panes/perf-view';
 import { TasksView } from './panes/tasks';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
@@ -600,6 +601,9 @@ function App() {
                             void bridge.runTask(agentId, text, taskName, opts)
                           }
                         />
+                      </Match>
+                      <Match when={layout().leftView === 'perf'}>
+                        <PerfView sessions={allSessions} />
                       </Match>
                       <Match when={layout().leftView === 'projects'}>
                         <Show

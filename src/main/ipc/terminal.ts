@@ -10,9 +10,11 @@ import {
   setTerminalPrefs,
   restartSession,
   spawnTerminal,
+  syncPerfLogging,
   tabsContext,
   writeTerminal,
 } from '../terminals';
+import { perfLog, readVitals } from '../perf-log';
 import { latestScreenshot } from '../screenshot';
 import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
@@ -36,6 +38,23 @@ export function registerTerminalIpc(): void {
     const spawnRequest = requireRecord('termSpawn', request) as unknown as TermSpawnRequest;
     const { lastConceptionPath: conceptionPath } = await readSettings();
     return spawnTerminal(conceptionPath, event.sender, spawnRequest);
+  });
+
+  ipcMain.handle('perfVitals', (event) => {
+    requireMainWindowSender(event);
+    return readVitals(perfLog);
+  });
+
+  ipcMain.handle('perfSetEnabled', async (event, enabled: unknown) => {
+    requireMainWindowSender(event);
+    // setTerminalPrefs REPLACES the whole `terminal` block — it is not a patch
+    // despite the parameter name. Merge over the current prefs, or flipping this
+    // toggle would silently wipe the shell, shortcuts, logging, and memory caps.
+    const current = await getTerminalPrefs();
+    await setTerminalPrefs({ ...current, perf: { enabled: enabled === true } });
+    const { lastConceptionPath } = await readSettings();
+    await syncPerfLogging(lastConceptionPath);
+    return readVitals(perfLog);
   });
 
   ipcMain.handle('termRestart', async (event, id: unknown) => {

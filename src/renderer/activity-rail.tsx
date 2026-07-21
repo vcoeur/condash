@@ -5,6 +5,7 @@ import {
   DeliverablesIcon,
   KnowledgeIcon,
   LogsIcon,
+  PerfIcon,
   ProjectsIcon,
   ResourcesIcon,
   SkillsIcon,
@@ -30,6 +31,7 @@ const RAIL_ITEMS: RailItemDef[] = [
     icon: DeliverablesIcon,
     kind: 'left',
   },
+  { key: 'perf', label: 'Performance', shortcut: '', icon: PerfIcon, kind: 'left' },
   { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon, kind: 'working' },
   {
     key: 'knowledge',

@@ -26,6 +26,8 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 import { dirname, join } from 'node:path';
 
+import type { PerfVitals } from '../shared/types';
+
 /** Per-session accumulators, reset on every flush. */
 interface SessionCounters {
   /** Bytes read off the pty. */
@@ -162,6 +164,18 @@ export class PerfLog {
     return this.enabled;
   }
 
+  /** Event-loop delay percentiles (ms) for the window so far, WITHOUT resetting
+   *  it. `takeRecord` is the resetting read; this one exists so a display can
+   *  poll without stealing data from the recorded windows. */
+  peekLoop(): { p50: number; p99: number; max: number } | undefined {
+    if (!this.enabled || !this.histogram) return undefined;
+    return {
+      p50: Math.round(this.histogram.percentile(50) / 1e3) / 1e3,
+      p99: Math.round(this.histogram.percentile(99) / 1e3) / 1e3,
+      max: Math.round(this.histogram.max / 1e3) / 1e3,
+    };
+  }
+
   /** Counters for `id`, creating them on first use. */
   private forSession(id: string): SessionCounters {
     let entry = this.counters.get(id);
@@ -283,6 +297,15 @@ export class PerfLog {
       this.writeFailed = true;
     }
   }
+}
+
+/** Read the current vitals without disturbing the recording window. */
+export function readVitals(log: PerfLog): PerfVitals {
+  return {
+    recording: log.isEnabled(),
+    loop: log.peekLoop(),
+    heapUsed: process.memoryUsage().heapUsed,
+  };
 }
 
 /** Path of the perf JSONL for a conception, one file per day. */
