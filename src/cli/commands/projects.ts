@@ -45,7 +45,7 @@ export const KNOWN_FLAGS_VALIDATE = ['all', 'path'] as const;
 export const KNOWN_FLAGS_STATUS = ['summary'] as const;
 export const KNOWN_FLAGS_CLOSE = ['status', 'summary', 'no-touch-dirty'] as const;
 export const KNOWN_FLAGS_CHECK_KNOWLEDGE = ['record'] as const;
-export const KNOWN_FLAGS_REOPEN = ['status'] as const;
+export const KNOWN_FLAGS_REOPEN = ['status', 'summary'] as const;
 export const KNOWN_FLAGS_BACKFILL_CLOSED = ['dry-run'] as const;
 export const KNOWN_FLAGS_INDEX = ['dry-run', 'rewrite-aggregated'] as const;
 export const KNOWN_FLAGS_CREATE = [
@@ -246,16 +246,18 @@ function printHelp(verb: string | null): void {
       return;
     case 'reopen':
       writeBlock([
-        'condash projects reopen <slug> [--status <s>]',
+        'condash projects reopen <slug> [--status <s>] [--summary <text>]',
         '',
         'Flip status from done back to --status (default: now) + append a reopen Timeline entry.',
         '',
         'Optional:',
-        '  --status   Target status (default: now). `done` is rejected.',
+        '  --status    Target status (default: now). `done` is rejected.',
+        '  --summary   Annotate the Timeline entry.',
         '',
         'Examples:',
         '  condash projects reopen condash-cli-ux-fixes',
         '  condash projects reopen condash-cli-ux-fixes --status review',
+        '  condash projects reopen condash-cli-ux-fixes --summary "follow-up came due"',
       ]);
       return;
     case 'backfill-closed':

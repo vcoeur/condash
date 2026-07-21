@@ -40,7 +40,7 @@ Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matchi
 | `index` | `/projects index` | `condash projects index` |
 | `worktree` | `/projects worktree {setup\|remove\|check\|list\|status} [branch]` | `condash worktrees …` |
 
-The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry then records the dated `Checked knowledge promotion` marker; `reopen` appends `Reopened.`. `check-knowledge` is the standalone recorder for that marker (`--record`, after a real `/knowledge` review) — the date and format are always written by condash, never hand-typed. There is no mass/backfill writer: a done project gets the marker only once it has actually been reviewed.
+The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry then records the dated `Checked knowledge promotion` marker; `reopen` appends `Reopened.`. Both take an optional `--summary` appended to that entry, which lands in its bare form when the flag is omitted. `check-knowledge` is the standalone recorder for that marker (`--record`, after a real `/knowledge` review) — the date and format are always written by condash, never hand-typed. There is no mass/backfill writer: a done project gets the marker only once it has actually been reviewed.
 
 ## `/knowledge`
 

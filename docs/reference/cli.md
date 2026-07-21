@@ -95,9 +95,9 @@ Item lifecycle and reads.
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
 | `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
-| `status get <slug>` / `status set <slug> <new-status>` | Read or change the `status` field |
-| `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry |
-| `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry |
+| `status get <slug>` / `status set <slug> <new-status>` | Read or change the `status` field; a done-edge appends the same `Closed.` / `Reopened.` timeline entry as the verbs below, annotated with `--summary <text>` when given |
+| `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry, annotated with `--summary <text>` when given |
+| `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry, annotated with `--summary <text>` when given |
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
 | `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [--status <s>]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. Incidents add `--severity` + `--severity-impact` + `--environment` |
@@ -110,6 +110,15 @@ Slug forms accepted:
 - Full dated: `2026-04-17-foo` — exact folder name, minus the month dir.
 - Short: `foo` — any part of the slug after the date prefix.
 - Month-qualified: `2026-04/2026-04-17-foo`.
+
+`--summary` (on `close`, `reopen`, and `status set`) must be **single-line**: the
+text is written into one `## Timeline` bullet, so a carriage return, newline, or
+U+2028 / U+2029 line separator surviving the surrounding whitespace trim is a
+hard error and nothing is written. Leading and trailing breaks are trimmed away
+and are fine — only an interior one fails. Worth knowing when the value comes
+from a shell variable or a paste: `--summary "$(…)"` and text copied out of a PDF
+or web page are the usual sources. The flag is validated on every transition,
+including ones that write no timeline entry at all.
 
 ### `knowledge`
 
@@ -169,7 +178,7 @@ Worktree-centric operations on top of the conception's configured repositories (
 | `list` | Print every worktree, grouped by primary, with branch + dirty status |
 | `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
 | `mismatch` | Report worktrees referenced by an item's `branch` field that don't exist on disk (or vice versa) |
-| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch) are expected outcomes reported under `blocked` and do **not** affect the exit code |
+| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch. Re-running setup on an already-present worktree backfills only the declared env files that worktree is missing — an existing copy is never overwritten, and `install:` does not re-run; `--no-env` suppresses that backfill too. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch) are expected outcomes reported under `blocked` and do **not** affect the exit code |
 | `remove <branch> [--repo <r>...] [--force] [--force-rm]` | Tear down `<branch>` worktrees and (if safe) the local branch. `--force` passes through to `git worktree remove --force` (deletes even if dirty); `--force-rm` implies `--force` and `rm -rf`'s the leftover dir if git deregistered the worktree but left files behind (typical with `node_modules`). Without `--force-rm`, half-removed entries are reported under `partiallyRemoved[]` so the caller can distinguish them from genuinely protected repos |
 
 A declaring item's `apps:` tokens and explicit `--repo` values resolve to a repo by its `#handle`, its directory name, or a configured alias — so a repo whose handle differs from its directory (e.g. `#vcoeur` → `vcoeur.com`) is matched either way. The worktree directory is always named after the canonical directory name, so every spelling lands on the same `<worktrees_path>/<branch>/<dir>/`.

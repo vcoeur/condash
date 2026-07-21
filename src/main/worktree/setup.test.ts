@@ -4,7 +4,7 @@
  * The setup mutator now flattens slashes to `-` for the on-disk directory
  * key while leaving the actual git ref intact.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -490,6 +490,244 @@ describe('setup-side flattened-path collision / stale-dir classification', () =>
     expect(result.alreadyPresent).toEqual([
       { repo: 'demo', path: join(worktreesRoot, 'idempotent', 'demo') },
     ]);
+  });
+});
+
+describe('declared env: file copy', () => {
+  // Issue #450: the env copy only ever ran on the creation path, so a
+  // worktree missing its declared (gitignored, therefore never checked out)
+  // env files could not be repaired — re-running setup printed "Already
+  // present" and copied nothing.
+  function writeEnvConfig(
+    envFiles: string[] = ['.env'],
+    extra: Record<string, unknown> = {},
+  ): void {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo', env: envFiles, ...extra }],
+        },
+        null,
+        2,
+      ),
+    );
+  }
+
+  it('copies declared env files when it creates the worktree', async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const result = await setupBranchWorktrees(conception, 'env-create', { repos: ['demo'] });
+    expect(result.created).toHaveLength(1);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env'] }]);
+    const target = join(worktreesRoot, 'env-create', 'demo');
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+  });
+
+  it('backfills declared env files into a worktree that already exists', async () => {
+    // The issue's repro: the worktree is created by a raw `git worktree add`
+    // (the documented fallback when no item declares the branch), so it never
+    // received the declared env file.
+    writeEnvConfig(['.env'], { install: 'touch installed.marker' });
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const target = join(worktreesRoot, 'env-backfill', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'env-backfill');
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    const result = await setupBranchWorktrees(conception, 'env-backfill', { repos: ['demo'] });
+    expect(result.created).toEqual([]);
+    expect(result.alreadyPresent).toEqual([{ repo: 'demo', path: target }]);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+    // `install:` stays out of scope on the already-present path — a re-run
+    // must not kick off an unrequested `npm ci` / `mvn clean install`.
+    expect(result.installRan).toEqual([]);
+    expect(existsSync(join(target, 'installed.marker'))).toBe(false);
+  });
+
+  it('never clobbers an env file the worktree already has', async () => {
+    // A worktree's env file is often deliberately divergent (a different port
+    // so two branches can run side by side); only the genuinely missing file
+    // is backfilled.
+    writeEnvConfig(['.env', '.env.local']);
+    writeFileSync(join(repo, '.env'), 'PORT=5600\n');
+    writeFileSync(join(repo, '.env.local'), 'TOKEN=primary\n');
+    await setupBranchWorktrees(conception, 'env-divergent', { repos: ['demo'] });
+    const target = join(worktreesRoot, 'env-divergent', 'demo');
+    writeFileSync(join(target, '.env'), 'PORT=5610\n');
+    rmSync(join(target, '.env.local'));
+
+    const result = await setupBranchWorktrees(conception, 'env-divergent', { repos: ['demo'] });
+    expect(result.alreadyPresent).toHaveLength(1);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env.local'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('PORT=5610\n');
+    expect(readFileSync(join(target, '.env.local'), 'utf8')).toBe('TOKEN=primary\n');
+  });
+
+  it('--no-env suppresses both the create copy and the backfill', async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const created = await setupBranchWorktrees(conception, 'env-skip', {
+      repos: ['demo'],
+      skipEnv: true,
+    });
+    expect(created.created).toHaveLength(1);
+    expect(created.envCopied).toEqual([]);
+    const target = join(worktreesRoot, 'env-skip', 'demo');
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    const again = await setupBranchWorktrees(conception, 'env-skip', {
+      repos: ['demo'],
+      skipEnv: true,
+    });
+    expect(again.alreadyPresent).toHaveLength(1);
+    expect(again.envCopied).toEqual([]);
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    // Control run: without the flag the same already-present worktree *is*
+    // backfilled. Without this, the assertion above holds trivially — the
+    // backfill would be a no-op on code that has no backfill at all, so the
+    // "and the backfill" half of the name could not fail.
+    const unskipped = await setupBranchWorktrees(conception, 'env-skip', { repos: ['demo'] });
+    expect(unskipped.alreadyPresent).toHaveLength(1);
+    expect(unskipped.envCopied).toEqual([{ repo: 'demo', files: ['.env'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+  });
+
+  // The backfill sits strictly inside the genuine-already-present branch, so a
+  // repo whose target directory is *blocked* must come away with no env file.
+  // Nothing else pins that boundary: the collision / stale-dir cases above run
+  // on a config with no `env:` at all.
+  it('does not backfill into a directory blocked as a non-worktree', async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const target = join(worktreesRoot, 'env-stale-dir', 'demo');
+    mkdirSync(target, { recursive: true });
+
+    const result = await setupBranchWorktrees(conception, 'env-stale-dir', { repos: ['demo'] });
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain('not a registered worktree');
+    expect(result.envCopied).toEqual([]);
+    expect(existsSync(join(target, '.env'))).toBe(false);
+  });
+
+  it("does not backfill into another branch's worktree on a flattened-path collision", async () => {
+    writeEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    // `coll/ision` and `coll-ision` share the directory key `coll-ision`.
+    await setupBranchWorktrees(conception, 'coll/ision', { repos: ['demo'], skipEnv: true });
+    const target = join(worktreesRoot, 'coll-ision', 'demo');
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    const result = await setupBranchWorktrees(conception, 'coll-ision', { repos: ['demo'] });
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain('flattened-path collision');
+    expect(result.envCopied).toEqual([]);
+    // The other branch's worktree keeps its own (absent) env state.
+    expect(existsSync(join(target, '.env'))).toBe(false);
+  });
+});
+
+// `--copy-env` is the legacy blanket `.env` / `.env.local` copy for repos with
+// no `env:` declaration. It flows through the same `declaredEnvFiles` helper as
+// `env:`, so the #450 backfill covers it too — `worktree.md` states the backfill
+// works "on both paths alike", and nothing pinned the `--copy-env` half.
+describe('legacy --copy-env blanket copy', () => {
+  /** Config for a repo with no `env:` declaration — the `--copy-env` case. */
+  function writeNoEnvConfig(): void {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo' }],
+        },
+        null,
+        2,
+      ),
+    );
+  }
+
+  it('copies .env and .env.local when it creates the worktree', async () => {
+    writeNoEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    writeFileSync(join(repo, '.env.local'), 'TOKEN=primary\n');
+    const result = await setupBranchWorktrees(conception, 'copyenv-create', {
+      repos: ['demo'],
+      copyEnv: true,
+    });
+    expect(result.created).toHaveLength(1);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env', '.env.local'] }]);
+    const target = join(worktreesRoot, 'copyenv-create', 'demo');
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+    expect(readFileSync(join(target, '.env.local'), 'utf8')).toBe('TOKEN=primary\n');
+  });
+
+  it('backfills .env and .env.local into a worktree that already exists', async () => {
+    writeNoEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    writeFileSync(join(repo, '.env.local'), 'TOKEN=primary\n');
+    const target = join(worktreesRoot, 'copyenv-backfill', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'copyenv-backfill');
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    // Control: without the flag the already-present worktree gets nothing, so
+    // the assertion below cannot pass on a code path that ignores `--copy-env`.
+    const withoutFlag = await setupBranchWorktrees(conception, 'copyenv-backfill', {
+      repos: ['demo'],
+    });
+    expect(withoutFlag.alreadyPresent).toEqual([{ repo: 'demo', path: target }]);
+    expect(withoutFlag.envCopied).toEqual([]);
+    expect(existsSync(join(target, '.env'))).toBe(false);
+
+    const result = await setupBranchWorktrees(conception, 'copyenv-backfill', {
+      repos: ['demo'],
+      copyEnv: true,
+    });
+    expect(result.created).toEqual([]);
+    expect(result.alreadyPresent).toEqual([{ repo: 'demo', path: target }]);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env', '.env.local'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('VITE_API=primary\n');
+    expect(readFileSync(join(target, '.env.local'), 'utf8')).toBe('TOKEN=primary\n');
+  });
+
+  it('never clobbers a divergent env file on the --copy-env backfill', async () => {
+    writeNoEnvConfig();
+    writeFileSync(join(repo, '.env'), 'PORT=5600\n');
+    writeFileSync(join(repo, '.env.local'), 'TOKEN=primary\n');
+    const target = join(worktreesRoot, 'copyenv-divergent', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'copyenv-divergent');
+    writeFileSync(join(target, '.env'), 'PORT=5610\n');
+
+    const result = await setupBranchWorktrees(conception, 'copyenv-divergent', {
+      repos: ['demo'],
+      copyEnv: true,
+    });
+    expect(result.alreadyPresent).toHaveLength(1);
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env.local'] }]);
+    expect(readFileSync(join(target, '.env'), 'utf8')).toBe('PORT=5610\n');
+    expect(readFileSync(join(target, '.env.local'), 'utf8')).toBe('TOKEN=primary\n');
+  });
+
+  it('skips a declared source file that does not exist in the primary checkout', async () => {
+    // `copyDeclaredFiles` is best-effort: `.env.local` is commonly absent, and
+    // its absence must not suppress the `.env` copy or raise.
+    writeNoEnvConfig();
+    writeFileSync(join(repo, '.env'), 'VITE_API=primary\n');
+    const target = join(worktreesRoot, 'copyenv-partial', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'copyenv-partial');
+
+    const result = await setupBranchWorktrees(conception, 'copyenv-partial', {
+      repos: ['demo'],
+      copyEnv: true,
+    });
+    expect(result.envCopied).toEqual([{ repo: 'demo', files: ['.env'] }]);
+    expect(existsSync(join(target, '.env.local'))).toBe(false);
   });
 });
 

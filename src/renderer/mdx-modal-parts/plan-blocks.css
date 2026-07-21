@@ -19,12 +19,88 @@
   --wf-ok: var(--success);
   --wf-radius: var(--radius-md);
 
-  max-width: 860px;
-  margin: 0 auto;
+  /* Reading measure for prose-shaped blocks. The document itself fills the
+   * modal (`--modal-w-lg`, up to 1680px) and the measure is applied per block
+   * below — capping the container instead left a narrow column in a wide
+   * modal, and shrank the blocks whose whole point is showing a wide layout. */
+  --plan-measure: 860px;
+
   padding: 16px 24px 40px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Top-level blocks sit on the reading measure by default, so an unclassified
+ * (or newly added) block type stays prose-safe; the structural set opts out
+ * below. `width: 100%` is load-bearing: an `auto` inline margin suppresses
+ * flex cross-axis stretch, so without it a short block would collapse to its
+ * content width. Both selectors are spelled out rather than `.plan-doc > *`
+ * so they outrank `.plan-block { margin: 0 }` (below) and note-modal.css's
+ * `.md-rendered { max-width: none; margin: 0 }`, which the prose block carries. */
+.plan-doc > .plan-block,
+.plan-doc > .plan-prose {
+  width: 100%;
+  max-width: var(--plan-measure);
+  margin-inline: auto;
+}
+
+/* Structural blocks: the content *is* a layout, so the reading measure shrinks
+ * the very thing being shown. Only top-level blocks are freed — a wireframe
+ * nested in a column or a tab stays bounded by its container.
+ *
+ * The test for membership is whether the content actually grows into the freed
+ * width. The API blocks fail it and are deliberately absent: `.plan-endpoint` is
+ * a bordered `details` card whose body is a summary line, a `width: 100%`
+ * four-column params table and JSON explorers — freeing it stretched text
+ * columns rather than revealing anything, and stretched the nested description
+ * prose too (a `RichTextBlock`, which the measure rule above cannot reach: it
+ * only matches direct children). Visible chrome made the resulting offset from
+ * the prose column unmissable. `.plan-openapi` is a list of short path rows plus
+ * a scrolling JSON explorer, so it grows no further either. Both read as prose
+ * and stay on the measure. `.plan-data-model` does belong here: `.plan-entities`
+ * is a `flex-wrap` of `min-width: 200px` cards, so extra width means more cards
+ * per row.
+ *
+ * Wireframes are freed per surface, not wholesale. Only `desktop` / `browser`
+ * have a fluid frame (`.wf-frame { width: 100% }` below) that actually grows
+ * into the freed space — the same pair `columnsMustStack` in containers.tsx
+ * treats as needing width. The device surfaces pin `.wf-frame` to a fixed px
+ * width, so freeing them widens only the `figure`: `.plan-wireframe` is a flex
+ * column with `align-items: flex-start`, so a 300px phone would sit hard against
+ * the left edge of a ~1600px figure trailing a void, while the prose above it
+ * stayed centred on the measure. Held on the measure instead, the frame and its
+ * `figcaption` share the prose block's left edge. Listing the wide surfaces
+ * (rather than excluding the narrow ones) keeps the same prose-safe default as
+ * above: a sixth surface added to the schema enum starts on the measure. */
+.plan-doc > .plan-wireframe[data-surface='desktop'],
+.plan-doc > .plan-wireframe[data-surface='browser'],
+.plan-doc > .plan-diagram,
+.plan-doc > .plan-mermaid,
+.plan-doc > .plan-data-model,
+.plan-doc > .plan-diff,
+.plan-doc > .plan-custom-html,
+.plan-doc > .plan-columns {
+  max-width: none;
+}
+
+/* Mermaid is freed above, but unlike the other freed blocks its content is
+ * self-limiting: mermaid sizes the rendered SVG `width="100%"` with an inline
+ * `max-width: {natural}px` (`useMaxWidth`, on by default and not overridden by
+ * `markdown.ts`'s `initialize` calls), so a small diagram keeps its natural
+ * width and would otherwise sit hard against the left edge of a full-width
+ * figure while every prose block stayed centred on the measure. Centring the
+ * figure's contents puts a narrow diagram over the prose column and leaves a
+ * wide one spanning everything.
+ *
+ * `text-align` is the mechanism because the SVG is inline-level: mermaid's
+ * generated stylesheet sets only font and fill on the svg root, never `display`,
+ * and no rule here does either. It also carries the `figcaption` onto the same
+ * axis as the diagram. This is the treatment `note-modal.css` already gives
+ * mermaid via `.md-rendered .mermaid` — the figure `MermaidBlock` renders is a
+ * direct child of `.plan-doc`, so that selector never reaches it. */
+.plan-doc > .plan-mermaid {
+  text-align: center;
 }
 
 .plan-block {
@@ -619,12 +695,15 @@
   border: none;
   border-radius: 0;
 }
+/* `desktop` / `browser` are the wide surfaces (the same pair `columnsMustStack`
+ * in containers.tsx refuses to squeeze into half a column) — they take the
+ * width they are given and are bounded only by their container. The device
+ * surfaces below keep their fixed geometry: a phone frame has to read as a
+ * phone at any container width. */
 .plan-wireframe[data-surface='desktop'] .wf-frame {
-  max-width: 860px;
   min-height: 380px;
 }
 .plan-wireframe[data-surface='browser'] .wf-frame {
-  max-width: 760px;
   min-height: 340px;
 }
 .plan-wireframe[data-surface='mobile'] .wf-frame {

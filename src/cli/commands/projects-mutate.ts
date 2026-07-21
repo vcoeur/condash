@@ -205,7 +205,8 @@ export async function reopenProject(
   conceptionPath: string,
 ): Promise<void> {
   const target = (args.flags.status as string | undefined) ?? 'now';
-  delete args.flags.status;
+  const summary = (args.flags.summary as string | undefined)?.trim();
+  for (const k of ['status', 'summary']) delete args.flags[k];
   assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects reopen <slug>');
@@ -224,7 +225,7 @@ export async function reopenProject(
       `Cannot reopen ${candidate.slug}: previous status is '${previous || '(none)'}', expected 'done'`,
     );
   }
-  const transition = await transitionStatus(candidate.readmePath, target);
+  const transition = await transitionStatus(candidate.readmePath, target, { summary });
   const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
   emit(
     ctx,

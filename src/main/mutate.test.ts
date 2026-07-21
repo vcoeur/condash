@@ -10,6 +10,7 @@ import {
   toggleStep,
   transitionStatus,
 } from './mutate';
+import { closeMilestoneSubject, extractClosedEntries } from './sync/close-milestone';
 
 describe('addStep', () => {
   let dir: string;
@@ -174,6 +175,25 @@ describe('editStepText', () => {
   });
 });
 
+/** Minimal YAML-frontmatter README with a `## Timeline` section, seeded at
+ *  `status`. Used by the done-edge (close / reopen) cases. */
+function doneEdgeReadme(status: string): string {
+  return [
+    '---',
+    'date: 2026-05-08',
+    'kind: project',
+    `status: ${status}`,
+    '---',
+    '',
+    '# T',
+    '',
+    '## Timeline',
+    '',
+    '- 2026-05-08 — Created.',
+    '',
+  ].join('\n');
+}
+
 describe('transitionStatus', () => {
   let dir: string;
   let path: string;
@@ -274,6 +294,207 @@ describe('transitionStatus', () => {
     const out = await fs.readFile(path, 'utf8');
     expect(result.timelineAppended).toBe('- 2026-05-09 — Closed.');
     expect(out).toContain('- 2026-05-09 — Closed.');
+  });
+
+  it('appends a summary-annotated Closed line when opts.summary is given', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'done', {
+      today: '2026-05-09',
+      summary: 'Shipped as v3.14.1',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+    expect(out).toContain('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+  });
+
+  it('appends a bare Reopened line on the reopen edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'now', { today: '2026-05-10' });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened.');
+    expect(out).toContain('- 2026-05-10 — Reopened.');
+  });
+
+  it('appends a summary-annotated Reopened line, mirroring the close edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'review', {
+      today: '2026-05-10',
+      summary: 'PR #42 reverted upstream',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened. PR #42 reverted upstream.');
+    expect(out).toContain('- 2026-05-10 — Reopened. PR #42 reverted upstream.');
+    expect(out).toMatch(/^status: review$/m);
+  });
+
+  it('trims the summary and falls back to the bare form when it is blank', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const result = await transitionStatus(path, 'now', { today: '2026-05-10', summary: '   ' });
+    expect(result.timelineAppended).toBe('- 2026-05-10 — Reopened.');
+  });
+
+  // A summary is interpolated verbatim into the timeline bullet, so an
+  // embedded newline forges extra timeline entries. The worst shape is a
+  // *reopen* summary carrying a `Closed.` bullet: the sweeper diffs
+  // `Closed.` entries against HEAD, so the forged line makes it mint a close
+  // milestone for what was a reopen.
+  it('rejects a newline-bearing summary on the reopen edge and writes nothing', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const before = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'now', {
+        today: '2026-05-10',
+        summary: 'premature\n- 2026-05-10 — Closed. shipped v9',
+      }),
+    ).rejects.toThrow(/single line/);
+    // The reject is total: status line included, the file is byte-identical.
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
+  it('keeps the sweeper from seeing a forged close after a rejected reopen', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const head = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'now', {
+        today: '2026-05-10',
+        summary: 'premature\n- 2026-05-10 — Closed. shipped v9',
+      }),
+    ).rejects.toThrow(/single line/);
+    const worktree = await fs.readFile(path, 'utf8');
+    expect(
+      closeMilestoneSubject(
+        '2026-05-08-t',
+        extractClosedEntries(head),
+        extractClosedEntries(worktree),
+      ),
+    ).toBeNull();
+  });
+
+  it('rejects a newline-bearing summary on the close edge too', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const before = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'done', {
+        today: '2026-05-09',
+        summary: 'shipped\n- 2026-05-09 — Closed. and again',
+      }),
+    ).rejects.toThrow(/single line/);
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
+  it('rejects CRLF and lone-CR summaries, not just bare LF', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'one\r\ntwo' }),
+    ).rejects.toThrow(/single line/);
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'one\rtwo' }),
+    ).rejects.toThrow(/single line/);
+  });
+
+  // U+2028 / U+2029 are ECMAScript LineTerminators too. They forge nothing —
+  // every reader splits on /\r?\n/, so they never start a new physical line —
+  // but they break the read path in the other direction: `.` does not cross a
+  // LineTerminator, so a `Closed.` entry carrying one stops matching
+  // `CLOSED_ENTRY` and `parseTimelineEntries`. The close then goes invisible.
+  it('rejects U+2028 / U+2029 line separators on the close edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const before = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'shipped\u2028v9' }),
+    ).rejects.toThrow(/single line/);
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'shipped\u2029v9' }),
+    ).rejects.toThrow(/single line/);
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
+  it('rejects U+2028 / U+2029 line separators on the reopen edge', async () => {
+    await fs.writeFile(path, doneEdgeReadme('done'), 'utf8');
+    const before = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'now', { today: '2026-05-10', summary: 'reverted\u2028upstream' }),
+    ).rejects.toThrow(/single line/);
+    await expect(
+      transitionStatus(path, 'now', { today: '2026-05-10', summary: 'reverted\u2029upstream' }),
+    ).rejects.toThrow(/single line/);
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
+  // The damage the guard prevents, stated independently of the guard: a
+  // `Closed.` entry carrying U+2028 is invisible to both readers, so the
+  // sweeper would mint `<item>: sync` instead of a close milestone and
+  // `backfill-closed` would later append a second `Closed.` entry.
+  it('would lose a close entry that carried a line separator', async () => {
+    const withSeparator = '- 2026-05-09 — Closed. shipped\u2028v9.';
+    const control = '- 2026-05-09 — Closed. shipped v9.';
+    expect(extractClosedEntries(withSeparator)).toEqual([]);
+    expect(parseTimelineEntries(`## Timeline\n\n${withSeparator}\n`)).toEqual([]);
+    expect(extractClosedEntries(control)).toEqual(['shipped v9.']);
+    expect(parseTimelineEntries(`## Timeline\n\n${control}\n`)).toEqual([
+      { date: '2026-05-09', text: 'Closed. shipped v9.' },
+    ]);
+  });
+
+  it('keeps the sweeper from seeing an invisible close after a rejected U+2028 close', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const head = await fs.readFile(path, 'utf8');
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'shipped\u2028v9' }),
+    ).rejects.toThrow(/single line/);
+    const worktree = await fs.readFile(path, 'utf8');
+    expect(worktree).toBe(head);
+    expect(
+      closeMilestoneSubject(
+        '2026-05-08-t',
+        extractClosedEntries(head),
+        extractClosedEntries(worktree),
+      ),
+    ).toBeNull();
+  });
+
+  it('accepts a summary whose only line separator is stripped by the trim', async () => {
+    // `trim()` strips U+2028 / U+2029 as whitespace, so a leading or trailing
+    // one is not an error — only an interior break survives into the line.
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'done', {
+      today: '2026-05-09',
+      summary: '\u2028Shipped as v3.14.1\u2029',
+    });
+    expect(result.timelineAppended).toBe('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+    expect(extractClosedEntries(await fs.readFile(path, 'utf8'))).toEqual(['Shipped as v3.14.1.']);
+  });
+
+  it('rejects a benign multi-line summary, which would otherwise read truncated', async () => {
+    // No injection intent here: the flush-left continuation is simply dropped
+    // by `parseTimelineEntries` (it folds only *indented* continuations), so
+    // the entry would render short while the stray line stayed in the file.
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    await expect(
+      transitionStatus(path, 'done', { today: '2026-05-09', summary: 'line one\nline two' }),
+    ).rejects.toThrow(/single line/);
+  });
+
+  it('accepts a summary whose only newline is trailing whitespace', async () => {
+    // The guard runs after the trim, so a shell-supplied trailing newline is
+    // not an error — only a break that would survive into the written line.
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'done', {
+      today: '2026-05-09',
+      summary: '\nShipped as v3.14.1\n',
+    });
+    expect(result.timelineAppended).toBe('- 2026-05-09 — Closed. Shipped as v3.14.1.');
+  });
+
+  it('writes no timeline entry on a non-done-edge, even with a summary', async () => {
+    await fs.writeFile(path, doneEdgeReadme('now'), 'utf8');
+    const result = await transitionStatus(path, 'review', {
+      today: '2026-05-10',
+      summary: 'ignored',
+    });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBeNull();
+    expect(out).not.toContain('ignored');
   });
 
   it('handles a BOM-prefixed frontmatter file and drops the BOM on write', async () => {
