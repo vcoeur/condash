@@ -128,7 +128,8 @@ export class PerfLog {
   private histogram: IntervalHistogram | undefined;
   private windowStart = 0;
   private enabled = false;
-  private filePath: string | undefined;
+  /** Conception receiving the records. The filename is day-stamped per flush. */
+  private conceptionPath: string | undefined;
   /** Set once a write fails, so a broken path doesn't retry every flush. */
   private writeFailed = false;
 
@@ -142,13 +143,23 @@ export class PerfLog {
    * opens the window; disabling stops and discards it.
    *
    * @param enabled Whether to record.
-   * @param filePath Destination JSONL file; required when enabling.
+   * @param conceptionPath Conception whose `.condash/perf/` receives the
+   *   records; required when enabling. The day-stamped filename is derived per
+   *   flush, so a run spanning midnight rolls over on its own.
    */
-  setEnabled(enabled: boolean, filePath?: string): void {
+  setEnabled(enabled: boolean, conceptionPath?: string): void {
+    // The destination can change while recording stays on — a conception switch
+    // repoints it — so the path is updated on every call, not only on the
+    // off→on edge. An early return keyed solely on `enabled` would keep writing
+    // into the previous conception's `.condash/perf/`.
+    if (enabled) this.conceptionPath = conceptionPath;
     if (enabled === this.enabled) return;
     this.enabled = enabled;
     if (enabled) {
-      this.filePath = filePath;
+      // A fresh run gets a fresh write attempt: leaving the latch set would mean
+      // one transient disk error silently disabled recording for the process
+      // lifetime, with the pane still showing "Recording" and nothing on disk.
+      this.writeFailed = false;
       this.histogram = monitorEventLoopDelay({ resolution: 10 });
       this.histogram.enable();
       this.windowStart = this.now().getTime();
@@ -242,8 +253,17 @@ export class PerfLog {
    */
   takeRecord(): PerfRecord | undefined {
     if (!this.enabled || !this.histogram) return undefined;
-    if (this.counters.size === 0) return undefined;
     const at = this.now();
+    if (this.counters.size === 0) {
+      // Nothing to record, but the window must still close. Leaving the
+      // histogram un-reset let one spike (a GC pause, a git-status stall) sit in
+      // `max` indefinitely once tabs went quiet — so the pane's headline number
+      // was least trustworthy exactly when the app was idle enough to read it —
+      // and made the next record's `windowMs` span the whole idle stretch.
+      this.histogram.reset();
+      this.windowStart = at.getTime();
+      return undefined;
+    }
     const sessions: Record<string, SessionRecord> = {};
     for (const [id, c] of this.counters) {
       // Spread-if-present rather than assigning undefined: an undefined-valued
@@ -289,10 +309,15 @@ export class PerfLog {
    */
   async flush(): Promise<void> {
     const record = this.takeRecord();
-    if (!record || !this.filePath || this.writeFailed) return;
+    if (!record || !this.conceptionPath || this.writeFailed) return;
+    // Recompute the day-stamped path per flush rather than caching it at
+    // enable time: a session left recording across midnight would otherwise keep
+    // appending to yesterday's file, breaking the documented one-file-per-day
+    // contract precisely on the long runs worth studying.
+    const path = perfLogPath(this.conceptionPath, this.now());
     try {
-      await mkdir(dirname(this.filePath), { recursive: true });
-      await appendFile(this.filePath, `${JSON.stringify(record)}\n`, 'utf8');
+      await mkdir(dirname(path), { recursive: true });
+      await appendFile(path, `${JSON.stringify(record)}\n`, 'utf8');
     } catch {
       this.writeFailed = true;
     }

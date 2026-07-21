@@ -6,7 +6,7 @@ import { PerfLog, perfLogPath } from './perf-log';
 function recording(): { log: PerfLog; advance: (ms: number) => void } {
   let t = new Date('2026-07-21T10:00:00.000Z').getTime();
   const log = new PerfLog(() => new Date(t));
-  log.setEnabled(true, '/tmp/does-not-matter.jsonl');
+  log.setEnabled(true, '/tmp/does-not-matter');
   return { log, advance: (ms: number) => (t += ms) };
 }
 
@@ -125,8 +125,23 @@ describe('PerfLog', () => {
     const { log } = recording();
     log.recordChunk('sid-1', 999, 0n);
     log.setEnabled(false);
-    log.setEnabled(true, '/tmp/does-not-matter.jsonl');
+    log.setEnabled(true, '/tmp/does-not-matter');
     expect(log.takeRecord()).toBeUndefined();
+  });
+
+  it('closes the window even when nothing happened, so an idle stretch is not folded in', () => {
+    // An empty window used to return early BEFORE resetting the histogram and
+    // advancing windowStart. One spike then sat in `max` for as long as tabs
+    // stayed quiet — the pane's headline number was least trustworthy exactly
+    // when the app was idle enough to read it — and the next real record's
+    // windowMs spanned the whole idle stretch.
+    const { log, advance } = recording();
+    advance(60_000);
+    expect(log.takeRecord()).toBeUndefined();
+
+    advance(2500);
+    log.recordChunk('sid-1', 10, 0n);
+    expect(log.takeRecord()?.windowMs).toBe(2500);
   });
 });
 

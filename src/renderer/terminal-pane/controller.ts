@@ -11,7 +11,7 @@
 // returned surface.
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
-import type { TabSummary, TermSide, TermSpawnRequest } from '@shared/types';
+import type { TabSummary, TermSession, TermSide, TermSpawnRequest } from '@shared/types';
 import { createDragDropController } from './drag-drop';
 import { decideRefreshAction, refreshOnSwitchTargets, REPAINT_NUDGE_MS } from './nudge-machine';
 import { decideFit, MAX_FIT_ATTEMPTS } from './fit-when-ready';
@@ -377,17 +377,17 @@ export function createTerminalController(props: TerminalPaneProps) {
     transitioningInColumn,
   };
 
+  /** The fields of a broadcast `TermSession` this controller consumes. Declared
+   *  once and shared by `reconcile` and `queueReconcile`: when the two copies
+   *  drifted, a field added to the wire (the death verdict) was silently dropped
+   *  on every reload, leaving unexplained zombie rows with no Restart button. */
+  type SessionSnapshot = Pick<
+    TermSession,
+    'id' | 'side' | 'exited' | 'repo' | 'memBytes' | 'memMaxBytes' | 'death'
+  >;
+
   // ---- onTermSessions: single source of truth for adds/removes ----
-  const reconcile = async (
-    snap: readonly {
-      id: string;
-      side: TermSide;
-      exited?: number;
-      repo?: string;
-      memBytes?: number;
-      memMaxBytes?: number;
-    }[],
-  ) => {
+  const reconcile = async (snap: readonly SessionSnapshot[]) => {
     const known = new Set(tabs().map((t) => t.id));
     for (const s of snap) {
       if (s.side !== 'my' || known.has(s.id)) continue;
@@ -451,11 +451,25 @@ export function createTerminalController(props: TerminalPaneProps) {
       const next = prev.map((t) => {
         const s = snapById.get(t.id);
         if (!s) return t;
-        if (t.exited === s.exited && t.memBytes === s.memBytes && t.memMaxBytes === s.memMaxBytes) {
+        if (
+          t.exited === s.exited &&
+          t.memBytes === s.memBytes &&
+          t.memMaxBytes === s.memMaxBytes &&
+          // Compare by kind, not by object identity: main rebuilds the verdict
+          // object on every broadcast, so an identity compare would allocate a
+          // fresh row every 2.5 s and undo the T5 churn fix.
+          t.death?.kind === s.death?.kind
+        ) {
           return t;
         }
         mutated = true;
-        return { ...t, exited: s.exited, memBytes: s.memBytes, memMaxBytes: s.memMaxBytes };
+        return {
+          ...t,
+          exited: s.exited,
+          memBytes: s.memBytes,
+          memMaxBytes: s.memMaxBytes,
+          death: s.death,
+        };
       });
       return mutated ? next : prev;
     });
@@ -503,16 +517,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   // insert the same session (the per-insert re-check above is the second
   // belt for anything that still slips through).
   let reconcileChain: Promise<void> = Promise.resolve();
-  const queueReconcile = (
-    snap: readonly {
-      id: string;
-      side: TermSide;
-      exited?: number;
-      repo?: string;
-      memBytes?: number;
-      memMaxBytes?: number;
-    }[],
-  ): void => {
+  const queueReconcile = (snap: readonly SessionSnapshot[]): void => {
     reconcileChain = reconcileChain.then(() => reconcile(snap)).catch(() => undefined);
   };
 
@@ -844,6 +849,11 @@ export function createTerminalController(props: TerminalPaneProps) {
   const restartTab = (id: string): void => {
     const tab = tabs().find((t) => t.id === id);
     if (!tab || tab.exited === undefined) return;
+    // Client-side guard so a double-click doesn't fire two invokes. Main rejects
+    // the second one regardless (it is the authority), but that surfaces as an
+    // error toast; swallowing the duplicate here keeps the common case quiet.
+    if (restartingTabs.has(id)) return;
+    restartingTabs.add(id);
     setNextSpawnColumn(tab.column);
     void window.condash
       .termRestart(id)
@@ -857,8 +867,12 @@ export function createTerminalController(props: TerminalPaneProps) {
         // Main leaves the dead row in place when the respawn fails, so the
         // evidence stays on screen; surface why rather than failing silently.
         props.onError?.(`Could not restart the session: ${String(err)}`);
-      });
+      })
+      .finally(() => restartingTabs.delete(id));
   };
+
+  /** Ids with a restart in flight, so a double-click can't fire two spawns. */
+  const restartingTabs = new Set<string>();
 
   const refreshSession = (id: string | null, opts?: { onlyIfAltBuffer?: boolean }): void => {
     if (!id) return;

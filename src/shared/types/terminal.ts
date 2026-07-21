@@ -295,9 +295,6 @@ export interface TermSession {
    * invisible — the user saw an unexplained slowdown with nothing to attribute
    * it to — and it is the state tabs are actually dying in. */
   memThrottled?: boolean;
-  /** Total bytes read off this session's pty since spawn. Drives the perf
-   * pane's throughput column. */
-  bytesSeen?: number;
 }
 
 export interface TermSpawnRequest {
