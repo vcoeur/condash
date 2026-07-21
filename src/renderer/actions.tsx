@@ -57,6 +57,20 @@ export function Button(props: ButtonProps): JSX.Element {
   );
 }
 
+/**
+ * Icon-only action button — `.btn--icon`'s square footprint over the same
+ * variant/tone contract as {@link Button}. Callers pass the glyph as the
+ * child and MUST give a `title`/`aria-label` since there is no text.
+ */
+export function IconButton(props: ButtonProps): JSX.Element {
+  const [local, rest] = splitProps(props, ['class', 'children']);
+  return (
+    <Button {...rest} class={cx('btn--icon', local.class)}>
+      {local.children}
+    </Button>
+  );
+}
+
 export interface ActionBarProps {
   /** Push a lone leading child (e.g. a Delete) to the far left, commit on the right. */
   split?: boolean;

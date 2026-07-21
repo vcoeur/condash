@@ -22,9 +22,12 @@ export interface FileTreeNode {
   children: FileTreeNode[];
 }
 
-/** Is `relPath` the top-level `local/` dir or anything inside it? */
-export function isLocalPath(relPath: string): boolean {
-  return relPath === LOCAL_DIR || relPath.startsWith(`${LOCAL_DIR}/`);
+/** Does `node` get the gitignored-scratch treatment? True for the top-level
+ * `local/` directory and everything inside it — but not for a top-level
+ * *file* that happens to be named `local`. */
+export function isLocalScratch(node: Pick<FileTreeNode, 'relPath' | 'kind'>): boolean {
+  if (node.relPath === LOCAL_DIR) return node.kind === 'dir';
+  return node.relPath.startsWith(`${LOCAL_DIR}/`);
 }
 
 /** Default expansion for a dir node: top-level dirs start expanded, except

@@ -1,10 +1,16 @@
 import { For, Show, createEffect, createSignal, on } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { ProjectFileEntry } from '@shared/types';
-import { Button } from '../actions';
+import { Button, IconButton } from '../actions';
 import { Caret, FolderIcon, IconExternal } from '../icons';
 import { IconNewFile, IconNewFolder } from './icons';
-import { LOCAL_DIR, buildFileTree, defaultExpanded, isLocalPath, type FileTreeNode } from './data';
+import {
+  LOCAL_DIR,
+  buildFileTree,
+  defaultExpanded,
+  isLocalScratch,
+  type FileTreeNode,
+} from './data';
 
 /** Pending inline-create input: which dir it targets ('' = project root)
  * and what it creates. */
@@ -50,6 +56,10 @@ export function FilesWidget(props: {
   const [draftName, setDraftName] = createSignal('');
   const [draftError, setDraftError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+  // The live draft input — refocused after a failed commit, because the
+  // `disabled` swap during the IPC round-trip drops focus and Enter-to-retry
+  // would otherwise be dead until the user clicks back in.
+  let draftInput: HTMLInputElement | undefined;
 
   const cancelDraft = (): void => {
     setDraft(null);
@@ -109,6 +119,9 @@ export function FilesWidget(props: {
       props.onRefresh();
     } catch (err) {
       setDraftError(errorMessage(err));
+      // Re-enable happens in the finally below; refocus a tick later so
+      // Enter-to-retry works without a click back into the input.
+      queueMicrotask(() => draftInput?.focus());
     } finally {
       setBusy(false);
     }
@@ -130,7 +143,10 @@ export function FilesWidget(props: {
           type="text"
           placeholder={draft()?.kind === 'dir' ? 'folder name…' : 'file name…'}
           value={draftName()}
-          ref={(el) => queueMicrotask(() => el?.focus())}
+          ref={(el) => {
+            draftInput = el;
+            queueMicrotask(() => el?.focus());
+          }}
           onInput={(e) => setDraftName(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -142,8 +158,11 @@ export function FilesWidget(props: {
             }
           }}
           onBlur={() => {
-            // Click-away cancels; a failed commit keeps focus + error.
-            if (!busy()) cancelDraft();
+            // Click-away cancels. Not during a commit (the disabled swap
+            // fires a blur mid-flight), and not while an error is shown —
+            // wiping the error and the typed name on a stray blur would
+            // destroy the retry; Esc remains the explicit way out.
+            if (!busy() && !draftError()) cancelDraft();
           }}
           disabled={busy()}
         />
@@ -164,7 +183,7 @@ export function FilesWidget(props: {
       <li>
         <div
           class="file-tree-row file-tree-dir"
-          classList={{ 'file-tree-local': isLocalPath(node().relPath) }}
+          classList={{ 'file-tree-local': isLocalScratch(node()) }}
           style={indentStyle(rowProps.depth)}
         >
           <button
@@ -184,42 +203,45 @@ export function FilesWidget(props: {
             </span>
             <span class="file-tree-name">{node().name}</span>
             <Show when={isLocalRoot()}>
-              <span class="gitignored-badge" title="Scratch, not committed — local/ is gitignored">
+              <span
+                class="pill gitignored-badge"
+                title="Scratch, not committed — local/ is gitignored"
+              >
                 gitignored
               </span>
             </Show>
           </button>
           <span class="file-tree-actions">
-            <Button
+            <IconButton
               variant="ghost"
               tone="add"
-              class="btn--icon file-tree-action"
+              class="file-tree-action"
               onClick={() => beginDraft(node().relPath, 'file')}
               title={`New file in ${node().relPath}/`}
               aria-label={`New file in ${node().relPath}`}
             >
               <IconNewFile />
-            </Button>
-            <Button
+            </IconButton>
+            <IconButton
               variant="ghost"
               tone="add"
-              class="btn--icon file-tree-action"
+              class="file-tree-action"
               onClick={() => beginDraft(node().relPath, 'dir')}
               title={`New folder in ${node().relPath}/`}
               aria-label={`New folder in ${node().relPath}`}
             >
               <IconNewFolder />
-            </Button>
-            <Button
+            </IconButton>
+            <IconButton
               variant="ghost"
               tone="open"
-              class="btn--icon file-tree-action"
+              class="file-tree-action"
               onClick={() => openExternally(node().path)}
               title="Open folder externally"
               aria-label={`Open ${node().relPath} externally`}
             >
               <IconExternal />
-            </Button>
+            </IconButton>
           </span>
         </div>
         <Show when={expanded()}>
@@ -238,7 +260,7 @@ export function FilesWidget(props: {
     <li>
       <div
         class="file-tree-row file-tree-file"
-        classList={{ 'file-tree-local': isLocalPath(rowProps.node.relPath) }}
+        classList={{ 'file-tree-local': isLocalScratch(rowProps.node) }}
         style={indentStyle(rowProps.depth)}
       >
         <button
@@ -250,16 +272,16 @@ export function FilesWidget(props: {
           <span class="file-tree-name">{rowProps.node.name}</span>
         </button>
         <span class="file-tree-actions">
-          <Button
+          <IconButton
             variant="ghost"
             tone="open"
-            class="btn--icon file-tree-action"
+            class="file-tree-action"
             onClick={() => openExternally(rowProps.node.path)}
             title="Open externally"
             aria-label={`Open ${rowProps.node.relPath} externally`}
           >
             <IconExternal />
-          </Button>
+          </IconButton>
         </span>
       </div>
     </li>

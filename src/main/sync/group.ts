@@ -11,10 +11,11 @@
  * the item.
  */
 
-/** `2026-07` */
-const MONTH_DIR = /^\d{4}-\d{2}$/;
-/** `2026-07-10-some-slug` */
-const ITEM_DIR = /^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$/;
+/** `2026-07`. Exported for the create-verb bound in `files.ts`, which must
+ * agree with the sweeper on what an item path looks like. */
+export const MONTH_DIR = /^\d{4}-\d{2}$/;
+/** `2026-07-10-some-slug`. Exported alongside {@link MONTH_DIR}. */
+export const ITEM_DIR = /^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$/;
 
 /** Subject of the single commit carrying every regenerated `index.md`. */
 export const INDEX_COMMIT_SUBJECT = 'indexes: sync';

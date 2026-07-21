@@ -26,7 +26,10 @@ export interface ThemePreset {
   kind: ThemeKind;
   /** One-line character sketch, shown under the label in the picker. */
   description: string;
-  /** `[background, panel, accent]` — the three hues the picker's swatch paints.
+  /** `[background, panel, accent]` — the three hues the picker's swatch
+   *  paints. "Panel" loosely: a preset whose panel equals its background
+   *  (Paper, Mist) shows `--bg-elevated` there instead, so the swatch's
+   *  middle stripe stays visible.
    *  Hex literals rather than `var(--…)` reads on purpose: a swatch has to show
    *  its own theme's colours while a *different* theme is the active one, so it
    *  cannot resolve them off the live token set. Keep in sync by eye with the

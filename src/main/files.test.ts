@@ -12,10 +12,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  cleanDirRelPath,
   createProjectEntry,
   listProjectFiles,
   requireCreatableName,
+  resolveCreateParent,
 } from './files';
 
 let tmp: string;
@@ -144,36 +144,83 @@ describe('requireCreatableName', () => {
     expect(() => requireCreatableName('..')).toThrow(/dot/);
     expect(() => requireCreatableName('.')).toThrow(/dot/);
   });
+
+  it('rejects trailing dots', () => {
+    expect(() => requireCreatableName('notes.')).toThrow(/dot/);
+  });
+
+  it('rejects Windows reserved device names, case-insensitively', () => {
+    expect(() => requireCreatableName('CON')).toThrow(/reserved/);
+    expect(() => requireCreatableName('nul')).toThrow(/reserved/);
+    expect(() => requireCreatableName('Com1')).toThrow(/reserved/);
+    expect(() => requireCreatableName('LPT9.txt')).toThrow(/reserved/);
+    expect(requireCreatableName('console.md')).toBe('console.md');
+    expect(requireCreatableName('common')).toBe('common');
+  });
 });
 
-describe('cleanDirRelPath', () => {
-  it('maps empty and dot to the project root', () => {
-    expect(cleanDirRelPath('')).toBe('');
-    expect(cleanDirRelPath('.')).toBe('');
+describe('resolveCreateParent', () => {
+  const MONTH = '2026-07';
+  const ITEM = '2026-07-21-widget';
+  let projectsRoot: string;
+  let itemDir: string;
+
+  beforeEach(() => {
+    projectsRoot = join(tmp, 'projects');
+    itemDir = join(projectsRoot, MONTH, ITEM);
+    mkdirSync(join(itemDir, 'notes'), { recursive: true });
+    writeFileSync(join(itemDir, 'README.md'), '# item');
   });
 
-  it('keeps normal nested paths', () => {
-    expect(cleanDirRelPath('notes')).toBe('notes');
-    expect(cleanDirRelPath('local/candidates')).toBe('local/candidates');
+  it('resolves the item dir from its README path and from the dir itself', async () => {
+    const fromReadme = await resolveCreateParent(join(itemDir, 'README.md'), '', projectsRoot);
+    const fromDir = await resolveCreateParent(itemDir, '', projectsRoot);
+    expect(fromReadme).toBe(fromDir);
   });
 
-  it('rejects absolute paths', () => {
-    expect(() => cleanDirRelPath('/etc')).toThrow(/relative/);
+  it('resolves a nested target dir under the item', async () => {
+    const parent = await resolveCreateParent(itemDir, 'notes', projectsRoot);
+    expect(parent.endsWith(`${MONTH}/${ITEM}/notes`)).toBe(true);
   });
 
-  it('rejects .. traversal, including post-normalize survivors', () => {
-    expect(() => cleanDirRelPath('..')).toThrow(/escapes/);
-    expect(() => cleanDirRelPath('../outside')).toThrow(/escapes/);
-    expect(() => cleanDirRelPath('notes/../../outside')).toThrow(/escapes/);
+  it('rejects the projects root and a month bucket as the "project"', async () => {
+    await expect(resolveCreateParent(projectsRoot, '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
+    await expect(resolveCreateParent(join(projectsRoot, MONTH), '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
   });
 
-  it('normalizes away internal dot segments', () => {
-    expect(cleanDirRelPath('notes/../local')).toBe('local');
-    expect(cleanDirRelPath('./notes')).toBe('notes');
+  it('rejects a dir under projects/ that is not item-shaped', async () => {
+    const stray = join(projectsRoot, MONTH, 'not-a-dated-item');
+    mkdirSync(stray, { recursive: true });
+    await expect(resolveCreateParent(stray, '', projectsRoot)).rejects.toThrow(
+      /not a project item directory/,
+    );
   });
 
-  it('does not flag dotted filenames as traversal', () => {
-    expect(cleanDirRelPath('notes/foo..bar')).toBe('notes/foo..bar');
+  it('rejects a projectPath outside the projects root', async () => {
+    const outside = join(tmp, 'elsewhere');
+    mkdirSync(outside);
+    await expect(resolveCreateParent(outside, '', projectsRoot)).rejects.toThrow(/outside/);
+  });
+
+  it('rejects .. traversal in dirRelPath', async () => {
+    await expect(resolveCreateParent(itemDir, '../..', projectsRoot)).rejects.toThrow(/escapes/);
+  });
+
+  it('rejects a symlinked subdir escaping the item dir', async () => {
+    const outside = join(tmp, 'outside');
+    mkdirSync(outside);
+    symlinkSync(outside, join(itemDir, 'sneaky'));
+    await expect(resolveCreateParent(itemDir, 'sneaky', projectsRoot)).rejects.toThrow(/outside/);
+  });
+
+  it('rejects a target dir that does not exist yet', async () => {
+    await expect(resolveCreateParent(itemDir, 'missing', projectsRoot)).rejects.toThrow(
+      /does not resolve/,
+    );
   });
 });
 

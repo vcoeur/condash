@@ -237,10 +237,12 @@ export interface CondashApi {
   listProjectFiles(path: string): Promise<ProjectFileEntry[]>;
   /** Create an empty file named `name` inside `<projectDir>/<dirRelPath>/`
    *  (`dirRelPath: ''` = the project root; `projectPath` is the README path
-   *  or the project directory). The target's parent must exist and resolve
-   *  under the conception's `projects/` tree; names with path separators or
-   *  leading dots and already-existing targets are rejected. Returns the new
-   *  file's absolute posix path. */
+   *  or the project directory). The project dir must realpath to an actual
+   *  item directory (`projects/<month>/<dated-slug>/`) and the target's
+   *  parent must exist and resolve back under it; names with path
+   *  separators, leading/trailing dots, or Windows reserved device names,
+   *  and already-existing targets, are rejected. Returns the new file's
+   *  absolute posix path. */
   createProjectFile(projectPath: string, dirRelPath: string, name: string): Promise<string>;
   /** Like `createProjectFile` but creates an empty directory. */
   createProjectDir(projectPath: string, dirRelPath: string, name: string): Promise<string>;

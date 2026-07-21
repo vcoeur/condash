@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { sep } from 'node:path';
+import { isAbsolute, normalize, sep } from 'node:path';
 import { readSettings } from './settings';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { walkRepos, type ConfigShape } from './config-walk';
@@ -15,6 +15,31 @@ function isRealpathUnder(childReal: string, rootReal: string): boolean {
   const child = childReal.endsWith(sep) ? childReal : childReal + sep;
   const parent = rootReal.endsWith(sep) ? rootReal : rootReal + sep;
   return child === parent || child.startsWith(parent);
+}
+
+/**
+ * Shape-check a renderer-supplied directory path relative to some root.
+ * `''` (and `.`) mean the root itself. Rejects absolute paths and any `..`
+ * traversal; `boundLabel` names the root in error messages ("the project
+ * directory", "the pane root"). Shape-only — the realpath bound against the
+ * actual root stays with the caller. The single copy shared by the project
+ * create verbs (`files.ts`) and the tree-pane mutations
+ * (`tree-mutations.ts`).
+ */
+export function cleanRelDirPath(dirRelPath: string, boundLabel: string): string {
+  const cleaned = normalize(dirRelPath);
+  if (cleaned === '' || cleaned === '.') return '';
+  if (isAbsolute(cleaned)) {
+    throw new Error(`dirRelPath must be relative to ${boundLabel}`);
+  }
+  // After `normalize`, only literal `..` segments survive a traversal
+  // attempt; segment-match rather than `.includes('..')` so an innocent
+  // `foo..bar` filename mid-path is not flagged.
+  const segments = cleaned.split(/[\\/]/);
+  if (segments.includes('..')) {
+    throw new Error(`dirRelPath escapes ${boundLabel}`);
+  }
+  return cleaned;
 }
 
 /** Realpath `path`, throwing a uniform error when it doesn't resolve. */

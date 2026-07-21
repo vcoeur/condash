@@ -283,7 +283,10 @@ export function Card(props: {
     // A plain fixed-position clone we own renders exactly as styled (unlike a
     // setDragImage clone, whose opacity Chromium ignores).
     ghost = card.cloneNode(true) as HTMLElement;
-    ghost.querySelectorAll('.title-actions, .steps-list').forEach((el) => el.remove());
+    ghost.querySelectorAll('.title-actions, .row-relations').forEach((el) => el.remove());
+    // Pure visual feedback — keep the clone (and its cloned buttons) out of
+    // the accessibility tree.
+    ghost.setAttribute('aria-hidden', 'true');
     ghost.style.position = 'fixed';
     ghost.style.top = '0';
     ghost.style.left = '0';
@@ -367,6 +370,9 @@ export function Card(props: {
     if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
     dragPointerId = null;
     endDrag();
+    // A cancelled gesture synthesises no click, so an armed flag would
+    // swallow the NEXT genuine click on this card — disarm it here.
+    draggedThisGesture = false;
   };
 
   // Cmd/Ctrl+1..N maps to KNOWN_STATUSES[0..N-1]; ignore anything else so

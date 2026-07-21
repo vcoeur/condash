@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectFileEntry } from '@shared/types';
-import { buildFileTree, defaultExpanded, isLocalPath, type FileTreeNode } from './data';
+import { buildFileTree, defaultExpanded, isLocalScratch, type FileTreeNode } from './data';
 
 function entry(relPath: string, kind: 'file' | 'dir'): ProjectFileEntry {
   const name = relPath.split('/').pop()!;
@@ -104,11 +104,15 @@ describe('defaultExpanded', () => {
   });
 });
 
-describe('isLocalPath', () => {
-  it('matches local and its contents, not lookalikes', () => {
-    expect(isLocalPath('local')).toBe(true);
-    expect(isLocalPath('local/a.png')).toBe(true);
-    expect(isLocalPath('localize.md')).toBe(false);
-    expect(isLocalPath('notes/local')).toBe(false);
+describe('isLocalScratch', () => {
+  it('matches the local dir and its contents, not lookalikes', () => {
+    expect(isLocalScratch({ relPath: 'local', kind: 'dir' })).toBe(true);
+    expect(isLocalScratch({ relPath: 'local/a.png', kind: 'file' })).toBe(true);
+    expect(isLocalScratch({ relPath: 'localize.md', kind: 'file' })).toBe(false);
+    expect(isLocalScratch({ relPath: 'notes/local', kind: 'dir' })).toBe(false);
+  });
+
+  it('does not dim a top-level file that happens to be named local', () => {
+    expect(isLocalScratch({ relPath: 'local', kind: 'file' })).toBe(false);
   });
 });

@@ -1,7 +1,9 @@
 import { promises as fs, type Dirent } from 'node:fs';
-import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import type { ProjectFileEntry } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { cleanRelDirPath, requirePathUnder } from './path-bounds';
+import { ITEM_DIR, MONTH_DIR } from './sync/group';
 
 /**
  * List the contents of a project directory (the directory containing
@@ -41,13 +43,19 @@ async function walk(absDir: string, relDir: string, out: ProjectFileEntry[]): Pr
   }
 }
 
+/** Windows device names that resolve to devices rather than files — a create
+ * with one of these silently misbehaves there, and condash is cross-OS. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
 /**
  * Validate a renderer-supplied entry name for `createProjectFile` /
- * `createProjectDir`. The name is kept verbatim (no slug-casing — a project
- * dir legitimately holds `Makefile` or `NOTES.txt`), but rejects anything
- * that could change the target directory or hide the result: empty names,
- * path separators, and leading dots (the walk skips dot-entries, so a
- * dot-named create would silently vanish from the tree).
+ * `createProjectDir`. The name keeps its case and characters after an outer
+ * trim (no slug-casing — a project dir legitimately holds `Makefile` or
+ * `NOTES.txt`), but rejects anything that could change the target directory,
+ * hide the result, or break on another OS: empty names, path separators,
+ * leading dots (the walk skips dot-entries, so a dot-named create would
+ * silently vanish from the tree), trailing dots, and Windows reserved
+ * device names.
  */
 export function requireCreatableName(name: string): string {
   const trimmed = name.trim();
@@ -60,32 +68,57 @@ export function requireCreatableName(name: string): string {
   if (trimmed.startsWith('.')) {
     throw new Error('name must not start with a dot');
   }
-  if (trimmed === '..' || trimmed === '.') {
-    throw new Error('name must not be a dot segment');
+  if (trimmed.endsWith('.')) {
+    throw new Error('name must not end with a dot');
+  }
+  if (WINDOWS_RESERVED.test(trimmed)) {
+    throw new Error(`'${trimmed}' is a reserved name`);
   }
   return trimmed;
 }
 
 /**
- * Normalise a renderer-supplied directory path relative to a project root.
- * `''` (and `.`) mean the project root itself. Rejects absolute paths and
- * any `..` traversal — mirror of `tree-mutations.ts`'s shape check; the
- * realpath bound against the project dir happens at the IPC handler.
+ * Resolve + bound the parent directory a create verb targets, given the
+ * conception's `projects/` root. Three checks, in order:
+ *
+ *  1. the project directory (parent of `projectPath` when it names the
+ *     README, the directory itself otherwise) must realpath under
+ *     `projectsRoot`;
+ *  2. it must be an actual **item** directory — `<month>/<dated-slug>`
+ *     matching the sweeper's `MONTH_DIR`/`ITEM_DIR` shapes — so the create
+ *     verbs can never scatter entries into the `projects/` root or a month
+ *     bucket (the sweeper would report those `unresolved`), nor fabricate
+ *     new item dirs wholesale;
+ *  3. the target parent (`<projectDir>/<dirRelPath>`) must exist and
+ *     realpath back under the item directory, so a symlinked subdir can't
+ *     smuggle the create outside the tree.
+ *
+ * Kept out of the IPC layer so the whole bound is unit-testable against a
+ * fixture tree; the handler supplies `projectsRoot` from settings.
+ *
+ * @returns The canonical absolute parent directory to create into.
  */
-export function cleanDirRelPath(dirRelPath: string): string {
-  const cleaned = normalize(dirRelPath);
-  if (cleaned === '' || cleaned === '.') return '';
-  if (isAbsolute(cleaned)) {
-    throw new Error('dirRelPath must be relative to the project directory');
+export async function resolveCreateParent(
+  projectPath: string,
+  dirRelPath: string,
+  projectsRoot: string,
+): Promise<string> {
+  const projectDir =
+    basename(projectPath).toLowerCase() === 'readme.md' ? dirname(projectPath) : projectPath;
+  const projectDirReal = await requirePathUnder(projectDir, projectsRoot);
+  const projectsRootReal = await requirePathUnder(projectsRoot, projectsRoot);
+  const itemRel = relative(projectsRootReal, projectDirReal);
+  const itemSegments = itemRel === '' ? [] : itemRel.split(sep);
+  if (
+    itemSegments.length !== 2 ||
+    !MONTH_DIR.test(itemSegments[0]) ||
+    !ITEM_DIR.test(itemSegments[1])
+  ) {
+    throw new Error('projectPath is not a project item directory');
   }
-  // After `normalize`, only literal `..` segments survive a traversal
-  // attempt; segment-match rather than `.includes('..')` so an innocent
-  // `foo..bar` filename mid-path is not flagged.
-  const segments = cleaned.split(/[\\/]/);
-  if (segments.includes('..')) {
-    throw new Error('dirRelPath escapes the project directory');
-  }
-  return cleaned;
+  const rel = cleanRelDirPath(dirRelPath, 'the project directory');
+  const parentAbs = rel === '' ? projectDirReal : join(projectDirReal, rel);
+  return requirePathUnder(parentAbs, projectDirReal);
 }
 
 /**

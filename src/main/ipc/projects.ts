@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { promises as fsp } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { parseHeader } from '../../shared/header';
 import { compareByStatusThenSlug } from '../../shared/projects';
 import type {
@@ -12,10 +12,10 @@ import type {
 import { createProjectCore } from '../create-project';
 import { touchDirtyMarker } from '../dirty';
 import {
-  cleanDirRelPath,
   createProjectEntry,
   listProjectFiles,
   requireCreatableName,
+  resolveCreateParent,
 } from '../files';
 import { addStep, editStepText, toggleStep, transitionStatus, writeNote } from '../mutate';
 import { createProjectNote, readNote } from '../note';
@@ -41,29 +41,15 @@ async function assertUnderConception(path: string): Promise<void> {
 }
 
 /**
- * Resolve + bound the parent directory a `createProjectFile` /
- * `createProjectDir` call targets. Two nested realpath bounds, both applied
- * here at the handler choke point (path-bounds convention):
- *
- *  1. the project directory (parent of `projectPath`, which is the README
- *     path — or the directory itself) must resolve under the conception's
- *     `projects/` tree — these verbs create entries, so they get a tighter
- *     bound than the read-side `assertUnderConception`;
- *  2. the target's parent (`<projectDir>/<dirRelPath>`) must exist and
- *     resolve back under the project directory, so a symlinked subdir can't
- *     smuggle the create outside the tree.
- *
- * Returns the canonical absolute parent directory to create into.
+ * Feed `resolveCreateParent` (files.ts — where the whole bound lives and is
+ * unit-tested) the conception's `projects/` root. The create verbs get a
+ * tighter bound than the read-side `assertUnderConception`: only a real item
+ * directory (`<month>/<dated-slug>`) may be created into.
  */
-async function resolveCreateParent(projectPath: string, dirRelPath: string): Promise<string> {
+async function createParentFromSettings(projectPath: string, dirRelPath: string): Promise<string> {
   const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('no conception path is set');
-  const projectDir =
-    basename(projectPath).toLowerCase() === 'readme.md' ? dirname(projectPath) : projectPath;
-  const projectDirReal = await requirePathUnder(projectDir, join(conceptionPath, 'projects'));
-  const rel = cleanDirRelPath(dirRelPath);
-  const parentAbs = rel === '' ? projectDirReal : join(projectDirReal, rel);
-  return requirePathUnder(parentAbs, projectDirReal);
+  return resolveCreateParent(projectPath, dirRelPath, join(conceptionPath, 'projects'));
 }
 
 /**
@@ -310,7 +296,7 @@ export function registerProjectsIpc(): void {
       requireString('createProjectFile', dirRelPath);
       requireNonEmptyString('createProjectFile', name);
       const cleanName = requireCreatableName(name);
-      const parent = await resolveCreateParent(projectPath, dirRelPath);
+      const parent = await createParentFromSettings(projectPath, dirRelPath);
       return createProjectEntry(parent, cleanName, 'file');
     },
   );
@@ -323,7 +309,7 @@ export function registerProjectsIpc(): void {
       requireString('createProjectDir', dirRelPath);
       requireNonEmptyString('createProjectDir', name);
       const cleanName = requireCreatableName(name);
-      const parent = await resolveCreateParent(projectPath, dirRelPath);
+      const parent = await createParentFromSettings(projectPath, dirRelPath);
       return createProjectEntry(parent, cleanName, 'dir');
     },
   );
