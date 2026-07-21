@@ -95,6 +95,50 @@ test('clicking the card body (not the title) opens that project preview', async 
   }
 });
 
+test('switching projects via the preview banner drops a half-typed step draft', async () => {
+  // Both projects are stepless so the add-step input is exposed on each —
+  // the exact shape of the pre-#453 leak: text typed on the child survived
+  // the banner switch and Enter would append it to the PARENT's README.
+  const booted = await bootApp({
+    prepare: async (conceptionDir) => {
+      const month = join(conceptionDir, 'projects', '2026-04');
+      await mkdir(join(month, '2026-04-20-parent-plan'), { recursive: true });
+      await writeFile(
+        join(month, '2026-04-20-parent-plan', 'README.md'),
+        `---\ndate: 2026-04-20\nkind: project\nstatus: now\n---\n\n# Parent plan\n\n## Goal\n\nStepless parent fixture.\n`,
+        'utf8',
+      );
+      await mkdir(join(month, '2026-04-21-child-impl'), { recursive: true });
+      await writeFile(
+        join(month, '2026-04-21-child-impl', 'README.md'),
+        `---\ndate: 2026-04-21\nkind: project\nstatus: now\nparent: 2026-04-20-parent-plan\n---\n\n# Child impl\n\n## Goal\n\nStepless child fixture.\n`,
+        'utf8',
+      );
+    },
+  });
+  try {
+    const win = booted.window;
+
+    await win.click('article.row.is-subproject .title');
+    await win.waitForSelector('.modal.project-preview', { state: 'visible' });
+    await expect(win.locator('.modal.project-preview .modal-title')).toHaveText('Child impl');
+
+    // Zero steps → the add-step input is already exposed; type without committing.
+    const addInput = win.locator('.modal.project-preview .add-step-form input');
+    await addInput.fill('half-typed step');
+
+    // Swap the previewed project in place via the modal's own banner button.
+    await win.click('.modal.project-preview button.parent-banner-name');
+    await expect(win.locator('.modal.project-preview .modal-title')).toHaveText('Parent plan');
+
+    // The reset effect must have dropped the draft — before #453 the child's
+    // text was still sitting here, one Enter away from the wrong README.
+    await expect(addInput).toHaveValue('');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('a pointer gesture past the drag threshold does not open the preview', async () => {
   const booted = await bootApp();
   try {

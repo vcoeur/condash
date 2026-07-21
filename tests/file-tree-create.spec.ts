@@ -83,6 +83,9 @@ test('creating an existing name shows an inline error, keeps the input, and retr
     await expect(win.locator('.file-tree-error')).toBeVisible();
     await expect(win.locator('.file-tree-error')).toContainText("'existing.txt' already exists");
     await expect(win.locator('.file-tree-input')).toHaveValue('existing.txt');
+    // The failed commit's disabled-swap dropped focus; the widget refocuses
+    // the input so Enter-to-retry works without a click back in.
+    await expect(win.locator('.file-tree-input')).toBeFocused();
 
     // Blur must NOT cancel while the error is shown (Esc stays the explicit
     // way out) — click a neutral spot and check the draft survived.
