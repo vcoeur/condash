@@ -26,6 +26,7 @@ import {
   type CgroupMemoryEvents,
 } from './tab-scope';
 import { deriveDeath, isAbnormal } from './term-death';
+import { perfLog, perfLogPath } from './perf-log';
 import { spawnEnv, spawnPtyEnv } from './shell-env';
 import { safeSend } from './safe-send';
 import { SessionLogger } from './terminal-logger';
@@ -228,6 +229,25 @@ function sampleMemory(): void {
     if (events) s.memEvents = events;
   }
   if (changed) broadcastSessions();
+  // Ride this tick rather than arming a second timer — the instrumentation must
+  // not add periodic work to the very thread it is measuring. No-op while perf
+  // recording is off, and best-effort when on (a write failure must never break
+  // the thing it measures).
+  void perfLog.flush();
+}
+
+/**
+ * Apply the `terminal.perf` preference: open or close the recorder against the
+ * active conception's `.condash/perf/` file. Called at boot and whenever the
+ * conception or the preference changes.
+ *
+ * @param conceptionPath Active conception, or null (recording is then off — the
+ *   records are per-conception and there is nowhere to put them).
+ */
+export async function syncPerfLogging(conceptionPath: string | null): Promise<void> {
+  const prefs = await getTerminalPrefs();
+  const wanted = prefs.perf?.enabled === true && conceptionPath !== null;
+  perfLog.setEnabled(wanted, wanted ? perfLogPath(conceptionPath, new Date()) : undefined);
 }
 
 /** Begin periodic per-tab memory sampling (idempotent). Called once at app
@@ -563,6 +583,13 @@ export async function spawnTerminal(
     // actually reached a live frame.
     (data, epoch) => safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data, epoch }),
     () => session.pty,
+    {
+      observer: {
+        onBatch: (_bytes, inFlight) => perfLog.recordBatch(id, inFlight),
+        onPause: () => perfLog.recordPause(id),
+        onWatchdogResume: () => perfLog.recordWatchdog(id),
+      },
+    },
   );
   session = {
     id,
@@ -606,6 +633,12 @@ export async function spawnTerminal(
   ptyProcess.onData((data) => {
     session.bytesSeen += data.length;
     appendBuffer(session, data);
+    // Time the OSC scan and the logger's parse SEPARATELY, not as one span:
+    // they are the two competing candidates for what dominates the main thread,
+    // and the whole point of measuring is to tell them apart. Both are gated on
+    // recording being on, so a normal run pays one boolean check per chunk.
+    const timing = perfLog.isEnabled();
+    const started = timing ? process.hrtime.bigint() : 0n;
     // Capture any in-band transcript regardless of disk logging — the dashboard
     // reads it for a faithful summary. Scan the OSC out **once** here: when a
     // disk logger is present, hand it the stripped `clean` text and the decoded
@@ -614,9 +647,15 @@ export async function spawnTerminal(
     // and the renderer. When there's no logger, the plain scan suffices.
     if (session.logger) {
       const { clean, frames } = session.transcript.feedCapturingFrames(data);
+      const afterScan = timing ? process.hrtime.bigint() : 0n;
       session.logger.output(data, { clean, frames });
+      if (timing) {
+        perfLog.recordChunk(id, data.length, afterScan - started);
+        perfLog.recordLogParse(id, process.hrtime.bigint() - afterScan);
+      }
     } else {
       session.transcript.feed(data);
+      if (timing) perfLog.recordChunk(id, data.length, process.hrtime.bigint() - started);
     }
     // Batch the renderer send only — the buffer / transcript / logger above
     // still see every raw chunk, so on-disk output stays byte-identical. The

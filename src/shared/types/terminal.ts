@@ -109,6 +109,8 @@ export interface TerminalPrefs {
   /** Per-tab memory containment via a transient systemd user scope. See
    *  TerminalMemoryPrefs. No-op on unsupported platforms. */
   memory?: TerminalMemoryPrefs;
+  /** Main-process performance recording. See TerminalPerfPrefs. Off by default. */
+  perf?: TerminalPerfPrefs;
   /** When true (the default), switching to a terminal tab automatically runs
    *  the Refresh action on the newly-active tab — repainting it after the
    *  hidden-tab serialize/hydrate round-trip so a live full-screen TUI (Claude
@@ -194,6 +196,15 @@ export interface TerminalLoggingPrefs {
    * previous one, so an idle session is never stamped. Applies to both
    * transcript and grid logs. Default: 60. `0` disables periodic markers. */
   markerIntervalSec?: number;
+}
+
+/** Main-process performance recording. Off by default, like disk logging: while
+ * disabled every instrumentation entry point is an immediate return, so an
+ * ordinary user pays nothing. Records land in `<conception>/.condash/perf/` as
+ * one JSONL file per day. */
+export interface TerminalPerfPrefs {
+  /** Toggle recording. Default: false. */
+  enabled?: boolean;
 }
 
 /** Coarse classification of how a terminal session ended, in decreasing

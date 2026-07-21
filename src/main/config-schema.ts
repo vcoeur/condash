@@ -11,6 +11,7 @@ import type {
   Theme,
   TerminalLoggingPrefs,
   TerminalMemoryPrefs,
+  TerminalPerfPrefs,
   TerminalPrefs,
   TerminalXtermColors,
   TerminalXtermPrefs,
@@ -282,6 +283,13 @@ const appScopeMemorySettings = z
   } satisfies Record<keyof AppScopeMemoryPrefs, z.ZodTypeAny>)
   .strict();
 
+/** Main-process performance recording. Off by default; see TerminalPerfPrefs. */
+const terminalPerfSettings = z
+  .object({
+    enabled: z.boolean().optional(),
+  } satisfies Record<keyof TerminalPerfPrefs, z.ZodTypeAny>)
+  .strict();
+
 const terminalMemorySettings = z
   .object({
     enabled: z.boolean().optional(),
@@ -353,6 +361,7 @@ const terminalSettings = z
     projectActions: z.array(actionTemplateSchema).optional(),
     newProjectActions: z.array(actionTemplateSchema).optional(),
     memory: terminalMemorySettings.optional(),
+    perf: terminalPerfSettings.optional(),
     autoRefreshOnTabSwitch: z.boolean().optional(),
   } satisfies Record<keyof TerminalPrefs, z.ZodTypeAny>)
   .strict();

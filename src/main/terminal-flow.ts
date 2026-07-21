@@ -41,6 +41,22 @@ export interface TerminalFlowOptions {
   flushBytes?: number;
   flushMs?: number;
   watchdogMs?: number;
+  /** Optional observer for performance instrumentation. Passed in rather than
+   *  imported so this module stays dependency-free and unit-testable in the node
+   *  vitest env — the same reason it holds no `electron` or `node-pty` import.
+   *  Called only on state transitions, never per byte. */
+  observer?: TerminalFlowObserver;
+}
+
+/** Flow-control events worth counting. `inFlight` is the un-acked backlog at the
+ *  moment of the batch — its high-water mark is the number that says whether
+ *  backpressure is actually engaging. */
+export interface TerminalFlowObserver {
+  onBatch?(bytes: number, inFlight: number): void;
+  onPause?(): void;
+  /** The pause watchdog force-resumed a pty that stopped being acked — a
+   *  renderer-saturation signal, distinct from ordinary backpressure. */
+  onWatchdogResume?(): void;
 }
 
 /**
@@ -74,6 +90,7 @@ export class TerminalFlow {
   private readonly flushBytesThreshold: number;
   private readonly flushMs: number;
   private readonly watchdogMs: number;
+  private readonly observer: TerminalFlowObserver | undefined;
 
   constructor(
     private readonly send: (data: string, epoch: number) => boolean,
@@ -85,6 +102,7 @@ export class TerminalFlow {
     this.flushBytesThreshold = options.flushBytes ?? BATCH_FLUSH_BYTES;
     this.flushMs = options.flushMs ?? BATCH_FLUSH_MS;
     this.watchdogMs = options.watchdogMs ?? PAUSE_WATCHDOG_MS;
+    this.observer = options.observer;
   }
 
   /** Queue one raw pty chunk for the renderer. Flushes at once when the pending
@@ -123,8 +141,10 @@ export class TerminalFlow {
     // (a chatty code-side session across a reload gap, L2/L3).
     if (!delivered) return;
     this.inFlight += data.length;
+    this.observer?.onBatch?.(data.length, this.inFlight);
     if (!this.paused && this.inFlight >= this.high) {
       this.paused = true;
+      this.observer?.onPause?.();
       try {
         this.getPty()?.pause();
       } catch {
@@ -213,6 +233,7 @@ export class TerminalFlow {
   private onWatchdog(): void {
     this.watchdogTimer = null;
     if (!this.paused) return;
+    this.observer?.onWatchdogResume?.();
     this.resumePty();
   }
 

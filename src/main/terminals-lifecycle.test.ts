@@ -28,7 +28,7 @@ import { EVENT_CHANNELS } from '../shared/ipc-channels';
 interface FakePty {
   pid: number;
   onDataCb?: (data: string) => void;
-  onExitCb?: (e: { exitCode: number }) => void;
+  onExitCb?: (e: { exitCode: number; signal?: number }) => void;
   onData(cb: (data: string) => void): void;
   onExit(cb: (e: { exitCode: number }) => void): void;
   write: ReturnType<typeof vi.fn>;

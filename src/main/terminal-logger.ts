@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import type { Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermDeath, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
+import { perfLog } from './perf-log';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
 import {
   OscTranscriptExtractor,
@@ -530,11 +531,19 @@ export class SessionLogger {
 
     // Full atomic rewrite: grid repaint, first write, header/kind flip, a trim,
     // a guard mismatch, or any terminal (sync) flush.
+    // The grid path walks the entire scrollback on every flush — O(scrollback),
+    // independent of how many new bytes arrived — so it is timed separately from
+    // the per-chunk parse. Its skip guard never fires for a busy tab, which is
+    // exactly the case worth measuring.
+    const gridStart = !isTranscript && perfLog.isEnabled() ? process.hrtime.bigint() : 0n;
     const body = isTranscript
       ? this.oscTranscript.render()
       : this.term
         ? renderBufferAsPlainText(this.term)
         : '';
+    if (gridStart !== 0n) {
+      perfLog.recordGridRender(this.ctx.sid, process.hrtime.bigint() - gridStart);
+    }
     // Snapshot the transcript/marker watermarks that describe *this* body at
     // render time, BEFORE the async write window below. Pty output() runs
     // synchronously during the awaits (mkdir/open/writeFile/rename); reading
