@@ -1,6 +1,6 @@
 import { mkdir, open, rename } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { Terminal } from '@xterm/headless';
+import type { IMarker, Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermDeath, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { perfLog } from './perf-log';
@@ -44,9 +44,12 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  *     — a per-flush watermark ({@link bodyCursor}) into the extractor, plus a
  *     byte-length + short tail sample of what's on disk — instead of re-joining
  *     the whole (multi-MB) transcript and prefix-comparing the whole file.
- *   - Grid sessions **skip the whole-buffer render** when no new bytes reached
- *     the term since the last write (a grid repaint isn't append-shaped, so a
- *     grown grid still takes a full rewrite).
+ *   - Grid sessions **re-translate only the rows that can still change**
+ *     ({@link GridBodyRenderer}) — rows already above the viewport are frozen,
+ *     so their rendered text is reused instead of being walked again. The
+ *     *file* write is still a full rewrite (a grid repaint isn't append-shaped),
+ *     and is skipped outright when no new bytes reached the term since the last
+ *     write.
  * Any inconsistency (a byte-cap trim dropped written lines, the header `kind`
  * flipped, the on-disk length/tail no longer matches, a prior write error) and
  * the durable `exit()` / `close()` flushes take the atomic tmp → (fsync) →
@@ -198,6 +201,123 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
   };
 }
 
+/**
+ * Incremental grid-body renderer — one per {@link SessionLogger}.
+ *
+ * A grid flush used to walk EVERY buffer row through `translateToString`,
+ * scrollback included: ~5000 rows × 200 cols (roughly a 1 MB string, plus one
+ * `IBufferLine` wrapper allocated per row) on the main thread every 5 s, for a
+ * flush that may have added a handful of lines. That is O(retained size), not
+ * O(new output), and the render-skip guard in {@link SessionLogger.flushNow}
+ * cannot cover it — the guard only fires when NO byte reached the term since
+ * the last write, yet the same `output()` call that bumps that watermark is the
+ * only thing that ever schedules a flush.
+ *
+ * So the grid body renders the way the transcript body already writes: only the
+ * new part. Rows above the viewport (`[0, baseY)`) have scrolled out of the
+ * cursor's reach and can never change again, so their rendered text is kept and
+ * reused; only the viewport and whatever was appended below it is re-translated.
+ * The output is byte-identical to translating every row from scratch.
+ *
+ * Scrollback eviction shifts every row index down, so the cache is anchored to
+ * an xterm **marker** rather than to an absolute index: xterm moves a marker
+ * down by each evicted line and disposes it once its own line is evicted —
+ * exactly the mapping the cache needs, with a disposed marker degrading to a
+ * full render.
+ *
+ * The marker is pinned at the LAST frozen row (`baseY - 1`), never at `baseY`.
+ * `CSI L` (insert lines) with the cursor on the viewport's top row inserts at
+ * index `baseY`, and xterm shifts any marker at or below an insert's index — so
+ * a marker pinned at `baseY` slides one row INTO the viewport, and a later
+ * eviction cancels the sign of that slide so the arithmetic guard below no
+ * longer rejects it, yielding a body off by one row. Pinned one row higher,
+ * every insert / delete lands strictly below the marker (they are all bounded
+ * by the scroll region, which starts at `baseY` at the earliest) and only an
+ * eviction can move it.
+ */
+export class GridBodyRenderer {
+  /** Rendered text of buffer rows `[0, baseY)` as of the last render — the rows
+   *  that were already frozen then, so their text can be reused verbatim. */
+  private frozenRows: string[] = [];
+  /** Marker pinned at the last frozen row of that render. Null when the last
+   *  render had no scrollback to reuse, or the cache has been dropped. */
+  private marker: IMarker | null = null;
+
+  /** Takes the term at construction rather than per render so the buffer-swap
+   *  subscription below cannot be forgotten by a caller — dropping the cache on
+   *  a swap is a correctness requirement, not a tuning knob. */
+  constructor(private readonly term: Terminal) {
+    // An alternate-screen switch, or a full reset (`RIS`) — which installs
+    // brand new buffer objects — leaves the marker anchored in a buffer that is
+    // no longer the one being rendered, and its row indices mean nothing here.
+    this.term.buffer.onBufferChange(() => this.invalidate());
+  }
+
+  /** Drop the cache so the next render translates every row again. */
+  invalidate(): void {
+    this.marker?.dispose();
+    this.marker = null;
+    this.frozenRows = [];
+  }
+
+  /** Read every populated row of the headless xterm buffer (scrollback +
+   *  viewport) as plain UTF-8 text, reusing the frozen prefix of the previous
+   *  render. `translateToString(true)` trims trailing blanks per row, which
+   *  keeps the file from carrying the wide xterm grid's empty cells. Rows are
+   *  joined with `\n`. */
+  render(): string {
+    const buffer = this.term.buffer.active;
+    const rows = this.reusableRows(buffer.length);
+    for (let y = rows.length; y < buffer.length; y++) {
+      const line = buffer.getLine(y);
+      rows.push(line ? line.translateToString(true) : '');
+    }
+    // Snapshot the cache BEFORE the trailing-blank pop below: the pop can reach
+    // back into the frozen prefix (a cleared screen leaves the tail of
+    // scrollback empty), and the cache is indexed by absolute row.
+    this.rememberFrozenRows(rows);
+    // Drop the trailing run of empty rows — terminal buffers are usually
+    // padded with blanks all the way to the viewport bottom.
+    while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
+    return rows.join('\n');
+  }
+
+  /** The prefix of the previous render that is still valid, as a fresh array the
+   *  caller appends the re-translated remainder onto. Empty when there is no
+   *  usable cache. */
+  private reusableRows(bufferLength: number): string[] {
+    const marker = this.marker;
+    if (!marker || marker.isDisposed) return [];
+    // `marker.line` is the last frozen row's CURRENT index — xterm decremented
+    // it once per evicted line — so it doubles as the reusable row count and as
+    // the measure of how far the cache has slid.
+    const reusable = marker.line + 1;
+    const evicted = this.frozenRows.length - reusable;
+    // A negative `evicted` means the marker moved the wrong way; anything past
+    // the buffer's end means rows vanished from under it. Neither maps onto the
+    // cache, so re-translate everything.
+    if (evicted < 0 || reusable > bufferLength) return [];
+    return this.frozenRows.slice(evicted);
+  }
+
+  /** Cache the rows frozen as of this render and re-pin the marker. The previous
+   *  marker is disposed first: xterm walks every live marker on every evicted
+   *  line, so leaking one per flush would make eviction cost grow without
+   *  bound. */
+  private rememberFrozenRows(rows: string[]): void {
+    this.marker?.dispose();
+    this.marker = null;
+    const buffer = this.term.buffer.active;
+    const frozen = buffer.baseY;
+    this.frozenRows = frozen > 0 ? rows.slice(0, frozen) : [];
+    if (frozen === 0) return;
+    // `registerMarker` takes an offset from the cursor, which sits at
+    // `baseY + cursorY`; the last frozen row is `baseY - 1`. Returns undefined
+    // on the alternate buffer, which has no scrollback to reuse anyway.
+    this.marker = this.term.registerMarker(-1 - buffer.cursorY) ?? null;
+  }
+}
+
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
   /** Headless xterm buffer for the grid-body render. Constructed lazily on the
@@ -256,6 +376,10 @@ export class SessionLogger {
    * When a session speaks it, the log body becomes the clean transcript
    * instead of the grid snapshot. */
   private readonly oscTranscript = new OscTranscriptExtractor();
+  /** Renders the grid body, reusing the frozen scrollback prefix between
+   *  flushes so a flush costs O(new rows) instead of O(scrollback). Built with
+   *  the term in {@link ensureTerm}, so null for as long as the term is. */
+  private gridBody: GridBodyRenderer | null = null;
   /** Injectable clock — stamps `started`/`finished` and the timestamp markers
    * so tests can drive cadence deterministically. */
   private readonly now: () => Date;
@@ -310,6 +434,7 @@ export class SessionLogger {
         // flag only unlocks stable APIs that haven't been promoted to default.
         allowProposedApi: true,
       });
+      this.gridBody = new GridBodyRenderer(this.term);
     }
     return this.term;
   }
@@ -418,6 +543,7 @@ export class SessionLogger {
     }
     this.cancelFlush();
     this.closed = true;
+    this.gridBody?.invalidate();
     if (this.term) this.term.dispose();
   }
 
@@ -531,15 +657,14 @@ export class SessionLogger {
 
     // Full atomic rewrite: grid repaint, first write, header/kind flip, a trim,
     // a guard mismatch, or any terminal (sync) flush.
-    // The grid path walks the entire scrollback on every flush — O(scrollback),
-    // independent of how many new bytes arrived — so it is timed separately from
-    // the per-chunk parse. Its skip guard never fires for a busy tab, which is
-    // exactly the case worth measuring.
+    // The grid path re-translates only the rows that can still have changed
+    // (see GridBodyRenderer) — the rest of the snapshot is reused — so it is
+    // timed separately from the per-chunk parse.
     const gridStart = !isTranscript && perfLog.isEnabled() ? process.hrtime.bigint() : 0n;
     const body = isTranscript
       ? this.oscTranscript.render()
-      : this.term
-        ? renderBufferAsPlainText(this.term)
+      : this.gridBody
+        ? this.gridBody.render()
         : '';
     if (gridStart !== 0n) {
       perfLog.recordGridRender(this.ctx.sid, process.hrtime.bigint() - gridStart);
@@ -736,23 +861,6 @@ export class SessionLogger {
     }
     return lines.join('\n') + '\n';
   }
-}
-
-/** Read every populated row of the headless xterm buffer (scrollback +
- * viewport) as plain UTF-8 text. `translateToString(true)` trims trailing
- * blanks per row, which keeps the file from carrying the wide xterm
- * grid's empty cells. Rows are joined with `\n`. */
-function renderBufferAsPlainText(term: Terminal): string {
-  const buffer = term.buffer.active;
-  const rows: string[] = [];
-  for (let y = 0; y < buffer.length; y++) {
-    const line = buffer.getLine(y);
-    rows.push(line ? line.translateToString(true) : '');
-  }
-  // Drop the trailing run of empty rows — terminal buffers are usually
-  // padded with blanks all the way to the viewport bottom.
-  while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
-  return rows.join('\n');
 }
 
 /** The last `n` bytes of `buf` (the whole buffer when shorter). */
