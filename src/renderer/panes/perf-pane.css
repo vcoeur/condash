@@ -110,12 +110,30 @@
   background: var(--warn-bg);
 }
 
+/* Flex so the long repo/cwd label absorbs the truncation and the short id after
+   it stays whole — the id is the part that disambiguates two same-directory
+   tabs, so eliding it would defeat the point. */
 .perf-tab-name {
+  display: flex;
+  align-items: baseline;
+  max-width: 0;
+  width: 100%;
+}
+
+.perf-tab-name > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 0;
-  width: 100%;
+}
+
+/* Session id beside the repo/cwd label. Two tabs opened in the same directory
+   carry the same label, so without this the rows are indistinguishable. Muted
+   and shrink-proof: it is a disambiguator, not something to read. */
+.perf-tab-id {
+  margin-left: 0.5em;
+  opacity: 0.45;
+  font-size: 0.85em;
+  flex: none;
 }
 
 .perf-cap {

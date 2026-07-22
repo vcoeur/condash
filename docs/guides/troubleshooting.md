@@ -151,6 +151,16 @@ The same verdict is written into the session's log footer under `.condash/logs/`
 
 To catch the second case before it kills anything, watch the Performance pane: a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
 
+### If every tab shows the same memory figure
+
+Fixed after v4.96.0. In v4.96.0 exactly, condash resolved a tab's cgroup immediately after spawning it — before `systemd-run` had migrated the child into its scope — so every tab cached condash's *own* app scope. The symptom is unmistakable: every row in the Performance pane shows an identical level, an identical growth rate, and moves in lockstep, because they are all reading one cgroup. Death verdicts on that build read the app's counters too, so they are not trustworthy. Upgrade; there is no workaround on that version.
+
+To check which cgroup a tab is actually in on any version:
+
+```bash
+systemctl --user list-units --type=scope 'condash-*'
+```
+
 ## CLI
 
 ### `condash projects list` says "no conception"

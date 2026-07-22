@@ -21,7 +21,7 @@ import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 import {
   wrapWithMemoryScope,
-  cgroupPathFor,
+  resolveScopeCgroup,
   readCgroupMemory,
   readCgroupMemoryEvents,
   type CgroupMemoryEvents,
@@ -252,8 +252,11 @@ export function rateChanged(previous: number | undefined, next: number | undefin
 
 /** Sample every scoped tab's cgroup memory and rebroadcast the snapshot when a
  *  figure moved by a meaningful step, so the renderer's per-tab meter tracks
- *  usage. One small file read per live scoped pty; unscoped tabs are skipped
- *  (their pid resolves to condash's own cgroup — not the tab's). An active
+ *  usage. One small file read per live scoped pty. A tab is sampled only once
+ *  `cgroupPath` is set, which `resolveScopeCgroup` does only after confirming
+ *  the path ends in the tab's own unit name — never on a bare `/proc` read,
+ *  which resolves to condash's own cgroup both for an unscoped tab and for a
+ *  scoped one that has not finished migrating. An active
  *  process's memory.current moves on virtually every sample, so the change test
  *  is quantized (`memSampleChanged`) — an exact-byte compare would rebroadcast
  *  the whole snapshot continuously even when the rendered meter wouldn't change
@@ -632,7 +635,7 @@ export async function spawnTerminal(
   // over the per-machine default; both may be unset (→ enabled defaults). The
   // logger keeps recording the *real* program/argv, not the wrapper.
   const memPrefs = config.terminal?.memory ?? settings.terminal?.memory;
-  const spawnTarget = wrapWithMemoryScope(program, argv, memPrefs);
+  const spawnTarget = wrapWithMemoryScope(program, argv, memPrefs, { kind: 'term', sessionId: id });
   const ptyProcess = pty.spawn(spawnTarget.program, spawnTarget.argv, {
     name: 'xterm-256color',
     cols,
@@ -710,18 +713,37 @@ export async function spawnTerminal(
   sessions.set(id, session);
   logger?.spawn();
 
-  // Resolve the cgroup path NOW, while the pid is alive. `/proc/<pid>` is gone
-  // by the time node-pty emits `exit` (it fires after waitpid and the pty socket
-  // close), so a pid-based lookup at death time always fails — which would leave
-  // every OOM classified as a bare SIGKILL — and a recycled pid would resolve to
-  // a foreign cgroup. Seeding the first `memory.events` reading here also gives
-  // a tab that dies inside the first sampling interval a baseline to diff
-  // against; a fast-allocating runaway is plausibly in exactly that window.
-  if (session.memScoped) {
-    session.cgroupPath = cgroupPathFor(ptyProcess.pid);
-    if (session.cgroupPath !== undefined) {
-      session.memEvents = readCgroupMemoryEvents(session.cgroupPath);
-    }
+  // Resolve the cgroup path while the pid is alive, but only once the child has
+  // actually MIGRATED into its scope. Both halves are load-bearing:
+  //
+  //  - Not later: `/proc/<pid>` is gone by the time node-pty emits `exit` (it
+  //    fires after waitpid and the pty socket close), so a lookup at death time
+  //    always fails — every OOM would classify as a bare SIGKILL — and a
+  //    recycled pid would resolve to a foreign cgroup.
+  //  - Not immediately: `systemd-run --scope` execs before it has asked the user
+  //    manager to create the unit, so a read taken here returns condash's OWN
+  //    app scope. Every tab then caches the same foreign path, reports the whole
+  //    app's memory as its own, and derives its death verdict from the app's
+  //    counters. `resolveScopeCgroup` waits for the named unit to appear.
+  //
+  // Seeding the first `memory.events` reading gives a tab that dies inside the
+  // first sampling interval a baseline to diff against; a fast-allocating
+  // runaway is plausibly in exactly that window. The await is deliberately not
+  // blocking the spawn's return — output flows while migration completes.
+  if (session.memScoped && spawnTarget.unitName !== undefined) {
+    void resolveScopeCgroup(
+      ptyProcess.pid,
+      spawnTarget.unitName,
+      () => sessions.get(id) === session && session.exited === undefined,
+    ).then((path) => {
+      // Re-check liveness: the tab may have exited during migration, and a
+      // closed session must not acquire a path (and start sampling) afterwards.
+      if (path === undefined || sessions.get(id) !== session || session.exited !== undefined) {
+        return;
+      }
+      session.cgroupPath = path;
+      session.memEvents = readCgroupMemoryEvents(path);
+    });
   }
 
   // Read `session.webContents` (not the spawn-time parameter) inside the

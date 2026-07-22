@@ -174,7 +174,16 @@ export function PerfView(props: PerfViewProps) {
                 const eta = (): string | undefined => formatEta(secondsToCap(session));
                 return (
                   <tr classList={{ throttled: session.memThrottled === true }}>
-                    <td class="perf-tab-name">{session.repo ?? session.cwd ?? session.id}</td>
+                    {/* The id rides along because the primary label is a repo or
+                        cwd, and two tabs opened in one directory render
+                        identically under it — which reads as a duplicated row
+                        rather than as two tabs. */}
+                    <td class="perf-tab-name">
+                      <span>{session.repo ?? session.cwd ?? session.id}</span>
+                      <Show when={session.repo !== undefined || session.cwd !== undefined}>
+                        <span class="perf-tab-id">{session.id}</span>
+                      </Show>
+                    </td>
                     <td class="num">
                       <Show when={session.memBytes !== undefined} fallback="—">
                         {formatBytes(session.memBytes!)}

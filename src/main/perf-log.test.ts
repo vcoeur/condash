@@ -30,6 +30,26 @@ describe('PerfLog', () => {
     expect(log.takeRecord()).toBeUndefined();
   });
 
+  it('reports an idle loop as ~0 delay, not as the sampler resolution', async () => {
+    // `monitorEventLoopDelay` records the gap between its own firings, so a raw
+    // reading has a floor equal to its resolution (measured: 10.1–10.3 ms at
+    // resolution 10). Reporting that raw put a fixed ~10 ms on the pane's
+    // headline "main loop p99" for a completely idle app — 61% of a frame
+    // budget, and exactly the symptom the instrument exists to hunt.
+    const { log } = recording();
+    // Real idle time, not the fake clock: the histogram runs on its own timer.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    log.recordChunk('sid-1', 10, 0n);
+
+    const loop = log.takeRecord()?.loop;
+    expect(loop).toBeDefined();
+    // Without the resolution subtraction these read ~10.1 / ~10.3.
+    expect(loop!.p50).toBeLessThan(5);
+    expect(loop!.p99).toBeLessThan(5);
+    // Never negative, however quiet the loop was.
+    expect(loop!.p50).toBeGreaterThanOrEqual(0);
+  });
+
   it('accumulates per-session byte and chunk counts', () => {
     const { log } = recording();
     log.recordChunk('sid-1', 4096, 1_000_000n);

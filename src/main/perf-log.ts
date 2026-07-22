@@ -117,6 +117,41 @@ function omitUndefined<T extends Record<string, number | undefined>>(
   return out;
 }
 
+/** Sampling resolution (ms) of the event-loop histogram — and, crucially, the
+ *  floor it reports. See {@link loopDelayMs}. */
+const LOOP_RESOLUTION_MS = 10;
+
+/**
+ * Convert a raw histogram reading (ns) to milliseconds of delay **in excess of
+ * the sampler's own interval**.
+ *
+ * `monitorEventLoopDelay` records the observed gap between its own timer
+ * firings, not the excess over the expected gap, so on a perfectly idle loop it
+ * reports the resolution. Measured on an idle process: resolution 10 → p50
+ * 10.109 ms, p99 10.297 ms, min 10.027 ms; resolution 20 → p50 20.120 ms. A 100
+ * ms hard block at resolution 10 reads max 106.50 ms, so the relationship is
+ * `reported ≈ true_delay + resolution`.
+ *
+ * Reporting the raw value put a fixed ~10 ms — around 61 % of a 16.7 ms frame
+ * budget — on the pane's headline "main loop p99" for a completely idle app.
+ * That is both the symptom this instrumentation was built to investigate and a
+ * plausible-looking magnitude for it, so the instrument was positioned to
+ * confirm the hypothesis it was meant to test, while masking any genuine delay
+ * below the floor.
+ *
+ * Subtracting the resolution rather than lowering it keeps the sampler's own
+ * cost off the thread being measured — a 1 ms resolution means a timer firing
+ * 1000×/s on the main loop, which is itself a perturbation.
+ *
+ * @param nanoseconds A raw reading from the interval histogram.
+ * @returns Milliseconds of delay above the sampling interval, floored at 0 and
+ *   rounded to microsecond precision.
+ */
+function loopDelayMs(nanoseconds: number): number {
+  const rawMs = nanoseconds / 1e6;
+  return Math.max(0, Math.round((rawMs - LOOP_RESOLUTION_MS) * 1e3) / 1e3);
+}
+
 /**
  * Accumulates main-process performance counters and flushes them as JSONL.
  *
@@ -160,7 +195,7 @@ export class PerfLog {
       // one transient disk error silently disabled recording for the process
       // lifetime, with the pane still showing "Recording" and nothing on disk.
       this.writeFailed = false;
-      this.histogram = monitorEventLoopDelay({ resolution: 10 });
+      this.histogram = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
       this.histogram.enable();
       this.windowStart = this.now().getTime();
     } else {
@@ -181,9 +216,9 @@ export class PerfLog {
   peekLoop(): { p50: number; p99: number; max: number } | undefined {
     if (!this.enabled || !this.histogram) return undefined;
     return {
-      p50: Math.round(this.histogram.percentile(50) / 1e3) / 1e3,
-      p99: Math.round(this.histogram.percentile(99) / 1e3) / 1e3,
-      max: Math.round(this.histogram.max / 1e3) / 1e3,
+      p50: loopDelayMs(this.histogram.percentile(50)),
+      p99: loopDelayMs(this.histogram.percentile(99)),
+      max: loopDelayMs(this.histogram.max),
     };
   }
 
@@ -289,9 +324,9 @@ export class PerfLog {
       t: at.toISOString(),
       windowMs: at.getTime() - this.windowStart,
       loop: {
-        p50: Math.round(this.histogram.percentile(50) / 1e3) / 1e3,
-        p99: Math.round(this.histogram.percentile(99) / 1e3) / 1e3,
-        max: Math.round(this.histogram.max / 1e3) / 1e3,
+        p50: loopDelayMs(this.histogram.percentile(50)),
+        p99: loopDelayMs(this.histogram.percentile(99)),
+        max: loopDelayMs(this.histogram.max),
       },
       heapUsed: process.memoryUsage().heapUsed,
       sessions,

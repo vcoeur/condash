@@ -178,6 +178,7 @@ export function scopeArgv(
   program: string,
   argv: string[],
   prefs: TerminalMemoryPrefs | undefined,
+  unitName: string,
 ): string[] {
   const high = prefs?.high ?? DEFAULT_MEMORY_HIGH;
   const max = prefs?.max ?? DEFAULT_MEMORY_MAX;
@@ -187,6 +188,12 @@ export function scopeArgv(
     '--scope',
     '--quiet',
     '--collect',
+    // Name the unit rather than letting systemd mint a `run-r<hash>.scope`. The
+    // name is what makes the tab's cgroup identifiable without racing to read
+    // `/proc/<pid>/cgroup` — see `resolveScopeCgroup`. It also makes tab scopes
+    // greppable in `systemctl --user list-units --type=scope`, which anonymous
+    // units are not.
+    `--unit=${unitName}`,
     '-p',
     `MemoryHigh=${high}`,
     '-p',
@@ -197,6 +204,74 @@ export function scopeArgv(
     program,
     ...argv,
   ];
+}
+
+/** What kind of run a scope contains. Interactive tabs and headless scheduled
+ *  runs both mint ids of the form `t-<8 hex>` from independent generators, so
+ *  the kind is what keeps their unit names in separate namespaces — a collision
+ *  would make `systemd-run --unit` fail and the second spawn die outright. */
+export type ScopeKind = 'term' | 'task';
+
+/**
+ * The transient unit name for a run's memory scope.
+ *
+ * Session ids are `t-<8 hex>` (see `makeId` / `makeSid`), so the result is
+ * always a valid systemd unit name without escaping.
+ *
+ * @param kind Whether this is an interactive tab or a scheduled task run.
+ * @param sessionId The session id.
+ * @returns The `.scope` unit name to pass to `systemd-run --unit`.
+ */
+export function scopeUnitName(kind: ScopeKind, sessionId: string): string {
+  return `condash-${kind}-${sessionId}.scope`;
+}
+
+/** How long to wait for `systemd-run` to migrate the child into its scope. The
+ *  observed move is well under 50 ms; the ceiling is generous so a loaded user
+ *  manager still resolves rather than silently losing the tab's figures. */
+const SCOPE_RESOLVE_TIMEOUT_MS = 3000;
+/** Gap between `/proc/<pid>/cgroup` re-reads while waiting for the migration. */
+const SCOPE_RESOLVE_POLL_MS = 25;
+
+/**
+ * Resolve a scoped tab's cgroup path, waiting for `systemd-run` to actually move
+ * the child into the scope.
+ *
+ * **Why this cannot be a single read.** `systemd-run --scope` execs first and
+ * only then asks the user manager, over D-Bus, to create the unit and migrate
+ * into it. A read taken synchronously after `pty.spawn` therefore returns the
+ * *parent's* cgroup — condash's own app scope — so every tab would cache the
+ * same foreign path and report the whole app's memory as its own, and every
+ * death verdict would read the app's `memory.events` instead of the tab's.
+ *
+ * Resolution is confirmed against the expected unit name rather than merely
+ * "changed from the parent", so a partial or reordered migration can never leave
+ * a tab pointing at some other cgroup. Failing to resolve yields `undefined`,
+ * which the sampler already treats as "no reading yet" — no figures is strictly
+ * better than confident wrong ones.
+ *
+ * @param pid The live pid returned by `pty.spawn`.
+ * @param unitName The unit name passed to `systemd-run --unit`, from
+ *   {@link scopeUnitName}.
+ * @param isAlive Called before each retry; return false once the session is gone
+ *   so a tab that dies during migration stops the poll.
+ * @returns The tab's cgroup path relative to the mount, or undefined if the
+ *   migration never completed.
+ */
+export async function resolveScopeCgroup(
+  pid: number,
+  unitName: string,
+  isAlive: () => boolean = () => true,
+): Promise<string | undefined> {
+  const deadline = Date.now() + SCOPE_RESOLVE_TIMEOUT_MS;
+  for (;;) {
+    const path = cgroupPathFor(pid);
+    // The unit name is unique per session, so an endsWith match cannot collide
+    // with the parent scope or a sibling tab's.
+    if (path !== undefined && path.endsWith(`/${unitName}`)) return path;
+    if (!isAlive() || Date.now() >= deadline) return undefined;
+    await new Promise((resolve) => setTimeout(resolve, SCOPE_RESOLVE_POLL_MS));
+  }
 }
 
 /**
@@ -325,6 +400,10 @@ export interface WrappedSpawn {
    *  (`MemoryMax`) in bytes — drives the renderer meter's warning fraction.
    *  Undefined when not wrapped, or when the cap is non-numeric ("infinity"). */
   scopeMaxBytes?: number;
+  /** When the spawn was wrapped, the transient unit name the tab runs in.
+   *  `resolveScopeCgroup` matches on it to confirm the child has actually
+   *  migrated before any figure is attributed to the tab. */
+  unitName?: string;
 }
 
 /**
@@ -340,12 +419,14 @@ export interface WrappedSpawn {
  * @param program The program to run (shell, agedum, …).
  * @param argv Its arguments.
  * @param prefs The effective `terminal.memory` prefs (may be undefined).
+ * @param run Which run the scope contains — names the transient unit.
  * @returns The program + argv to spawn — wrapped, or verbatim.
  */
 export function wrapWithMemoryScope(
   program: string,
   argv: string[],
   prefs: TerminalMemoryPrefs | undefined,
+  run: { kind: ScopeKind; sessionId: string },
 ): WrappedSpawn {
   // Enabled unless explicitly turned off — robustness by default on capable
   // hosts.
@@ -365,10 +446,12 @@ export function wrapWithMemoryScope(
     return { program, argv };
   }
   const max = prefs?.max ?? DEFAULT_MEMORY_MAX;
+  const unitName = scopeUnitName(run.kind, run.sessionId);
   return {
     program: 'systemd-run',
-    argv: scopeArgv(program, argv, prefs),
+    argv: scopeArgv(program, argv, prefs, unitName),
     scopeMaxBytes: parseSize(max),
+    unitName,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   parseSize,
   probeArgv,
   scopeArgv,
+  scopeUnitName,
   wrapWithMemoryScope,
 } from './tab-scope';
 
@@ -28,12 +29,18 @@ describe('parseSize', () => {
 
 describe('scopeArgv', () => {
   it('applies the default limits when prefs are absent', () => {
-    const argv = scopeArgv('/bin/bash', ['-lc', 'agedum cline'], undefined);
+    const argv = scopeArgv(
+      '/bin/bash',
+      ['-lc', 'agedum cline'],
+      undefined,
+      'condash-term-t-01.scope',
+    );
     expect(argv).toEqual([
       '--user',
       '--scope',
       '--quiet',
       '--collect',
+      '--unit=condash-term-t-01.scope',
       '-p',
       'MemoryHigh=6G',
       '-p',
@@ -48,7 +55,7 @@ describe('scopeArgv', () => {
   });
 
   it('honours per-field overrides and preserves the target program + args', () => {
-    const argv = scopeArgv('agedum', ['claude'], { max: '12G', swapMax: '0' });
+    const argv = scopeArgv('agedum', ['claude'], { max: '12G', swapMax: '0' }, 'u.scope');
     expect(argv).toContain('MemoryMax=12G');
     expect(argv).toContain('MemorySwapMax=0');
     // Unset field falls back to its default.
@@ -56,13 +63,42 @@ describe('scopeArgv', () => {
     // The wrapped command trails after the `--` separator, in order.
     expect(argv.slice(argv.indexOf('--'))).toEqual(['--', 'agedum', 'claude']);
   });
+
+  it('names the unit so the tab cgroup is identifiable without a /proc race', () => {
+    const argv = scopeArgv('/bin/bash', [], undefined, 'condash-term-t-abc123.scope');
+    expect(argv).toContain('--unit=condash-term-t-abc123.scope');
+    // The flag must precede the `--` separator or systemd-run would pass it to
+    // the wrapped program instead of consuming it.
+    expect(argv.indexOf('--unit=condash-term-t-abc123.scope')).toBeLessThan(argv.indexOf('--'));
+  });
+});
+
+describe('scopeUnitName', () => {
+  it('namespaces by kind so a tab and a scheduled run cannot collide', () => {
+    // Both id generators mint `t-<8 hex>` from independent random sources, so
+    // the kind is the only thing keeping the unit names apart. A collision would
+    // make `systemd-run --unit` fail and the second spawn die outright.
+    expect(scopeUnitName('term', 't-abc123')).toBe('condash-term-t-abc123.scope');
+    expect(scopeUnitName('task', 't-abc123')).toBe('condash-task-t-abc123.scope');
+    expect(scopeUnitName('term', 't-abc123')).not.toBe(scopeUnitName('task', 't-abc123'));
+  });
 });
 
 describe('wrapWithMemoryScope', () => {
   it('passes the spawn through unchanged when explicitly disabled', () => {
     // enabled:false short-circuits before any host probing, so this is
     // deterministic regardless of platform.
-    expect(wrapWithMemoryScope('/bin/bash', ['-i'], { enabled: false })).toEqual({
+    expect(
+      wrapWithMemoryScope(
+        '/bin/bash',
+        ['-i'],
+        { enabled: false },
+        {
+          kind: 'term',
+          sessionId: 't-01',
+        },
+      ),
+    ).toEqual({
       program: '/bin/bash',
       argv: ['-i'],
     });
