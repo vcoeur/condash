@@ -96,6 +96,12 @@ interface Session {
   memEventsPrev?: CgroupMemoryEvents;
   /** Why the session ended; undefined while live. */
   death?: TermDeath;
+  /** Set the moment condash begins terminating this session — a Stop, a tab
+   * close, or app quit. The pipeline ends in SIGKILL, which `deriveDeath` would
+   * otherwise be free to read as an external kill and, on a tab resting near
+   * `MemoryHigh`, blame on memory pressure. Set BEFORE the first signal, since
+   * the pty can exit on the SIGTERM. */
+  stopping?: boolean;
   /** Wall-clock ms of the sample that produced `memBytes` — the other half of
    * the growth-rate calculation. */
   memSampledAt?: number;
@@ -789,15 +795,31 @@ export async function spawnTerminal(
     // `/proc/<pid>` is already gone (and a recycled pid would report a foreign
     // cgroup's counters — a spurious OOM verdict).
     //
-    // Two-tier evidence, because this read still races `--collect` reaping the
-    // unit: prefer the exit-time reading diffed against the last periodic
-    // sample; if the cgroup is already gone, fall back to the last two periodic
-    // samples, which still bracket a kill that happened between them.
+    // Two-tier evidence, because this read races `--collect` reaping the unit.
+    // Measured against live systemd: the exit-time read WINS — the cgroup is
+    // still readable at `onExit` and gone ~50 ms later, for a clean exit, a slow
+    // exit, and a SIGKILL alike. So tier 1 is the normal path.
+    //
+    // Tier 2 exists for when it doesn't, and is deliberately weaker: the last
+    // two periodic samples span a window that CLOSES UP TO ONE SAMPLING INTERVAL
+    // BEFORE the death, so it cannot contain the `oom_kill` the kernel writes at
+    // the moment of death. Those counters ride along for the log footer, but
+    // `bracketsDeath: false` stops them promoting an OOM verdict — a confident
+    // wrong attribution is worse than an honest "killed — SIGKILL".
     const exitEvents =
       session.cgroupPath !== undefined ? readCgroupMemoryEvents(session.cgroupPath) : undefined;
     const before = exitEvents ? session.memEvents : session.memEventsPrev;
     const after = exitEvents ?? session.memEvents;
-    const death = deriveDeath({ exitCode, signal, before, after });
+    const death = deriveDeath({
+      exitCode,
+      signal,
+      before,
+      after,
+      bracketsDeath: exitEvents !== undefined,
+      // condash's own kill pipeline ends in SIGKILL; without this a deliberate
+      // Stop or app quit of a tab resting near MemoryHigh records as an OOM kill.
+      intentional: session.stopping === true,
+    });
     session.exited = exitCode;
     session.death = death;
     session.pty = null;
@@ -961,6 +983,10 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
   if (!session) return;
   const runFs = opts.runForceStop !== false;
   const removeEntry = opts.removeEntry !== false;
+
+  // Mark BEFORE the first signal: the pty can exit on the SIGTERM, and onExit
+  // reads this flag to tell a deliberate shutdown from an external kill.
+  session.stopping = true;
 
   const p = session.pty;
   killTree(p, 'SIGTERM');

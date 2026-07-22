@@ -27,6 +27,7 @@ import { prewarmDefaultPanes } from './prewarm';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
 import { loginPath } from './shell-env';
 import { runLogJanitor } from './terminal-logger-janitor';
+import { runPerfJanitor } from './perf-log';
 import { sealOrphanLogs } from './seal-orphan-logs';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { buildMenu, rebuildMenu, rebuildMenuFromSettings, setMenuWindow } from './menu';
@@ -675,6 +676,14 @@ async function runJanitorSafe(conceptionPath: string): Promise<void> {
     await runLogJanitor(conceptionPath, config.terminal?.logging);
   } catch (err) {
     process.stderr.write(`condash terminal-logs janitor: ${(err as Error).message}\n`);
+  }
+  // Separate try: a failure pruning terminal logs must not leave perf records
+  // unpruned, and vice versa. `.condash/perf/` previously had no janitor at all,
+  // so recording left on grew without limit in a directory nothing reports.
+  try {
+    await runPerfJanitor(conceptionPath);
+  } catch (err) {
+    process.stderr.write(`condash perf janitor: ${(err as Error).message}\n`);
   }
 }
 

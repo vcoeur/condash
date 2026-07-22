@@ -22,7 +22,7 @@
  *   identified as the bottleneck, rather than inferring it from a proxy.
  */
 
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 import { dirname, join } from 'node:path';
 
@@ -210,6 +210,14 @@ export class PerfLog {
     return this.enabled;
   }
 
+  /** Whether a record write has failed since recording was last enabled. The
+   *  latch means recording is on in name only — nothing further will be
+   *  written — so a display must be able to say so rather than keep claiming
+   *  it is recording. Cleared by the next off→on toggle. */
+  hasWriteFailed(): boolean {
+    return this.writeFailed;
+  }
+
   /** Event-loop delay percentiles (ms) for the window so far, WITHOUT resetting
    *  it. `takeRecord` is the resetting read; this one exists so a display can
    *  poll without stealing data from the recorded windows. */
@@ -363,6 +371,11 @@ export class PerfLog {
 export function readVitals(log: PerfLog): PerfVitals {
   return {
     recording: log.isEnabled(),
+    // Report the write state, not just the intent. Swallowing a write error is
+    // right for an instrument, but a pane that keeps saying "Recording" after
+    // the disk filled lets the user believe they captured a long run and walk
+    // away with nothing.
+    writeFailed: log.hasWriteFailed(),
     loop: log.peekLoop(),
     heapUsed: process.memoryUsage().heapUsed,
   };
@@ -371,7 +384,103 @@ export function readVitals(log: PerfLog): PerfVitals {
 /** Path of the perf JSONL for a conception, one file per day. */
 export function perfLogPath(conceptionPath: string, at: Date): string {
   const day = at.toISOString().slice(0, 10);
-  return join(conceptionPath, '.condash', 'perf', `${day}.jsonl`);
+  return join(perfLogRoot(conceptionPath), `${day}.jsonl`);
+}
+
+/** Directory holding a conception's perf records. */
+export function perfLogRoot(conceptionPath: string): string {
+  return join(conceptionPath, '.condash', 'perf');
+}
+
+/** Days of perf records to keep. Short on purpose: these are diagnostic traces
+ *  taken during a specific investigation, not history worth carrying. */
+const PERF_RETENTION_DAYS = 14;
+/** Ceiling for the whole perf directory. Recording produces roughly 10 MB/day
+ *  with two active tabs and ~80 MB/day with twenty, so this bounds even a
+ *  recording session left on and forgotten. */
+const PERF_MAX_DIR_BYTES = 200 * 1024 * 1024;
+
+export interface PerfJanitorResult {
+  scanned: number;
+  deleted: string[];
+  remainingBytes: number;
+}
+
+/**
+ * Prune `<conception>/.condash/perf/`.
+ *
+ * The day-stamped filename bounds a single *file*, never the directory, and
+ * nothing else pruned it — so recording left on accumulated without limit, in a
+ * directory no UI reports the size of. Mirrors the terminal-log janitor: evict
+ * by age, then oldest-first until under the cap.
+ *
+ * **Today's file is never a victim.** A live recorder is appending to it, and
+ * deleting it mid-session throws away the run the user is in the middle of
+ * capturing — the same rule the log janitor applies to the current day-dir.
+ *
+ * Errors are swallowed per-file: a janitor must never break app start.
+ *
+ * @param conceptionPath Conception whose perf directory to prune.
+ * @param now Clock, injectable for tests.
+ * @returns What was scanned, what was deleted, and the surviving byte total.
+ */
+export async function runPerfJanitor(
+  conceptionPath: string,
+  now: Date = new Date(),
+): Promise<PerfJanitorResult> {
+  const root = perfLogRoot(conceptionPath);
+  const result: PerfJanitorResult = { scanned: 0, deleted: [], remainingBytes: 0 };
+
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return result; // no perf dir → nothing to do
+  }
+
+  const today = perfLogPath(conceptionPath, now).slice(root.length + 1);
+  const files: { name: string; day: string; bytes: number }[] = [];
+  for (const name of names) {
+    const match = /^(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(name);
+    if (!match) continue;
+    try {
+      files.push({ name, day: match[1], bytes: (await stat(join(root, name))).size });
+    } catch {
+      /* vanished between readdir and stat */
+    }
+  }
+  result.scanned = files.length;
+  if (files.length === 0) return result;
+
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - PERF_RETENTION_DAYS);
+  const cutoffDay = cutoff.toISOString().slice(0, 10);
+
+  const drop = async (file: { name: string; bytes: number }): Promise<void> => {
+    try {
+      await rm(join(root, file.name), { force: true });
+      result.deleted.push(file.name);
+    } catch {
+      /* leave it; it will be retried on the next sweep */
+    }
+  };
+
+  // Oldest first, so the cap pass evicts in the right order.
+  files.sort((a, b) => (a.day < b.day ? -1 : 1));
+  for (const file of files) {
+    if (file.name !== today && file.day < cutoffDay) await drop(file);
+  }
+
+  const survivors = files.filter((f) => !result.deleted.includes(f.name));
+  let total = survivors.reduce((sum, f) => sum + f.bytes, 0);
+  for (const file of survivors) {
+    if (total <= PERF_MAX_DIR_BYTES) break;
+    if (file.name === today) continue;
+    await drop(file);
+    total -= file.bytes;
+  }
+  result.remainingBytes = total;
+  return result;
 }
 
 /** Process-wide instance. Terminal hot paths call into it unconditionally; it

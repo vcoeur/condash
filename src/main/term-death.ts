@@ -25,10 +25,12 @@ import type { TermDeath } from '../shared/types';
 
 import type { CgroupMemoryEvents } from './tab-scope';
 
-/** True when the verdict is anything other than a clean `exit 0`. Drives whether
- *  the tab row is kept on screen instead of auto-closing. */
+/** True when the death warrants keeping the tab row on screen instead of
+ *  auto-closing. A clean `exit 0` does not, and neither does a stop condash
+ *  itself issued — the user who pressed Stop does not need the outcome
+ *  explained back to them, and pinning that row would defeat the close. */
 export function isAbnormal(death: TermDeath): boolean {
-  return death.kind !== 'clean';
+  return death.kind !== 'clean' && death.kind !== 'stopped';
 }
 
 /** POSIX signal numbers condash names explicitly; anything else renders as its
@@ -63,6 +65,16 @@ export interface DeathEvidence {
   before?: CgroupMemoryEvents;
   /** cgroup `memory.events` sampled at exit, before the scope is reaped. */
   after?: CgroupMemoryEvents;
+  /** True when `after` was read at exit and therefore the `before`→`after`
+   *  window actually contains the death. False when the exit-time read lost its
+   *  race with `--collect` and the caller substituted the last two periodic
+   *  samples — a window that closes *before* the death and so cannot contain
+   *  the event it would be used to attribute. See {@link deriveDeath}. */
+  bracketsDeath?: boolean;
+  /** True when condash itself terminated the session — a user Stop, a tab close,
+   *  or the app quitting. The kill pipeline ends in SIGKILL, which is otherwise
+   *  indistinguishable from an external kill. */
+  intentional?: boolean;
 }
 
 /**
@@ -77,6 +89,22 @@ export interface DeathEvidence {
  * test runner), leaving the shell alive to report the failure and exit on its
  * own. That tab was not killed, so it does not get a "killed" label; the raw
  * `oomKillDelta` still rides along on the verdict for the log footer.
+ *
+ * Two further guards keep the record honest, because this verdict is persisted
+ * to the session log footer and is the longitudinal evidence the whole feature
+ * exists to produce — a false entry is worse than a missing one:
+ *
+ * - **An intentional stop is never an OOM verdict.** condash's own kill pipeline
+ *   ends in SIGKILL, and a tab resting near `MemoryHigh` has `high` ticking
+ *   under ordinary reclaim. Without this, quitting the app with a memory-active
+ *   tab open manufactures a "killed — out of memory" record for a deliberate
+ *   shutdown.
+ * - **Counters that do not bracket the death cannot attribute it.** When the
+ *   exit-time read loses its race with `--collect`, the caller can only offer
+ *   the last two periodic samples — a window closing up to one sampling interval
+ *   *before* the death, which therefore cannot contain the `oom_kill` written at
+ *   the moment of death. Such counters still ride along for the footer, but they
+ *   do not promote a verdict.
  *
  * @param evidence Exit status, signal, and the cgroup counters bracketing the death.
  * @returns The verdict, carrying both the classification and its evidence.
@@ -98,10 +126,22 @@ export function deriveDeath(evidence: DeathEvidence): TermDeath {
 
   const base = { exitCode, signal, oomKillDelta, highDelta };
 
-  if (signal === SIGKILL && oomKillDelta !== undefined && oomKillDelta > 0) {
+  // A stop condash issued itself is not a diagnosis. Reported before any signal
+  // branch: the pipeline's own SIGKILL is exactly what would otherwise be read
+  // as an external kill.
+  if (evidence.intentional === true) {
+    return { ...base, kind: 'stopped', label: 'stopped' };
+  }
+
+  // Counters only attribute a death if their window contains it. `bracketsDeath`
+  // defaults to true so a caller that supplies a genuine exit-time reading needs
+  // no ceremony; only the degraded fallback has to say so.
+  const attributable = evidence.bracketsDeath !== false;
+
+  if (attributable && signal === SIGKILL && oomKillDelta !== undefined && oomKillDelta > 0) {
     return { ...base, kind: 'oom-cap', label: 'killed — out of memory (cap)' };
   }
-  if (signal === SIGKILL && highDelta !== undefined && highDelta > 0) {
+  if (attributable && signal === SIGKILL && highDelta !== undefined && highDelta > 0) {
     return {
       ...base,
       kind: 'oom-pressure',

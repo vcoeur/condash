@@ -39,6 +39,13 @@
   color: var(--accent-fg, #fff);
 }
 
+/* Writes are failing — recording is on in name only. Warn rather than reassure. */
+.perf-toggle.failed {
+  border-color: transparent;
+  background: var(--warn);
+  color: #000;
+}
+
 .perf-toggle:disabled {
   opacity: 0.5;
   cursor: default;

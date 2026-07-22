@@ -1,6 +1,9 @@
+import { mkdtemp, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { PerfLog, perfLogPath } from './perf-log';
+import { PerfLog, perfLogPath, perfLogRoot, runPerfJanitor } from './perf-log';
 
 /** A PerfLog on a controllable clock, already recording. */
 function recording(): { log: PerfLog; advance: (ms: number) => void } {
@@ -169,5 +172,70 @@ describe('perfLogPath', () => {
   it('files records by UTC day under .condash/perf', () => {
     const path = perfLogPath('/home/alice/conception', new Date('2026-07-21T23:30:00.000Z'));
     expect(path).toBe('/home/alice/conception/.condash/perf/2026-07-21.jsonl');
+  });
+});
+
+describe('runPerfJanitor', () => {
+  const NOW = new Date('2026-07-22T10:00:00.000Z');
+
+  /** A conception dir seeded with perf files of the given day → size. */
+  async function seed(files: Record<string, number>): Promise<string> {
+    const conception = await mkdtemp(join(tmpdir(), 'condash-perf-janitor-'));
+    const root = perfLogRoot(conception);
+    await mkdir(root, { recursive: true });
+    for (const [day, bytes] of Object.entries(files)) {
+      await writeFile(join(root, `${day}.jsonl`), 'x'.repeat(bytes), 'utf8');
+    }
+    return conception;
+  }
+
+  it('does nothing when there is no perf directory', async () => {
+    const conception = await mkdtemp(join(tmpdir(), 'condash-perf-janitor-'));
+    await expect(runPerfJanitor(conception, NOW)).resolves.toMatchObject({
+      scanned: 0,
+      deleted: [],
+    });
+  });
+
+  it('evicts records past the retention window', async () => {
+    const conception = await seed({
+      '2026-07-01': 10, // 21 days old
+      '2026-07-06': 10, // 16 days old
+      '2026-07-20': 10, // 2 days old
+    });
+    const result = await runPerfJanitor(conception, NOW);
+    expect(result.deleted).toEqual(['2026-07-01.jsonl', '2026-07-06.jsonl']);
+    expect(await readdir(perfLogRoot(conception))).toEqual(['2026-07-20.jsonl']);
+  });
+
+  it('evicts oldest-first while over the directory cap', async () => {
+    // Three 90 MB days = 270 MB, over the 200 MB ceiling; dropping the oldest
+    // one brings it under, so the second must survive.
+    const big = 90 * 1024 * 1024;
+    const conception = await seed({
+      '2026-07-20': big,
+      '2026-07-21': big,
+      '2026-07-22': big,
+    });
+    const result = await runPerfJanitor(conception, NOW);
+    expect(result.deleted).toEqual(['2026-07-20.jsonl']);
+    expect(result.remainingBytes).toBe(2 * big);
+  });
+
+  it("never deletes today's file, even to get under the cap", async () => {
+    // A live recorder is appending to it: evicting today throws away the run
+    // the user is in the middle of capturing.
+    const huge = 500 * 1024 * 1024;
+    const conception = await seed({ '2026-07-22': huge });
+    const result = await runPerfJanitor(conception, NOW);
+    expect(result.deleted).toEqual([]);
+    expect(await readdir(perfLogRoot(conception))).toEqual(['2026-07-22.jsonl']);
+  });
+
+  it('ignores files that are not day-stamped records', async () => {
+    const conception = await seed({ '2026-07-01': 10 });
+    await writeFile(join(perfLogRoot(conception), 'notes.txt'), 'keep me', 'utf8');
+    await runPerfJanitor(conception, NOW);
+    expect(await readdir(perfLogRoot(conception))).toEqual(['notes.txt']);
   });
 });

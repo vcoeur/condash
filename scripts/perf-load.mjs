@@ -20,6 +20,35 @@
 // pauses present exactly as the reported lag while being invisible to every
 // counter the app records itself. Turning it off is an explicit choice.
 //
+// ## Isolation
+//
+// The harness runs against a THROWAWAY user-data dir and a THROWAWAY conception,
+// both under /tmp, and asserts that isolation at runtime before applying any
+// load. This is not tidiness — an earlier version drove the user's real app
+// state and did real damage:
+//
+//   - it enabled `terminal.logging` and `perf.enabled` in the user's own
+//     settings.json and never restored them, so a default run left full disk
+//     transcription of every terminal byte permanently on, and an --ab run left
+//     it permanently off for someone who had deliberately enabled it;
+//   - it flooded into the user's real `.condash/logs/`, where the janitor evicts
+//     whole day-directories oldest-first to stay under its cap and never evicts
+//     today — so the harness's own junk was protected and the eviction victims
+//     were the user's real prior-day agent transcripts;
+//   - it appended to the same `.condash/perf/<day>.jsonl` the user's own running
+//     instance was writing, silently mixing two instances' records into one A/B.
+//
+// Isolation removes that entire class, and removes the need for a restore path
+// that a Ctrl-C would skip anyway.
+//
+// ## Memory safety
+//
+// N tabs at MemoryMax=8G each is 8N GB of nominal headroom, and the documented
+// field failure is systemd-oomd killing at MemoryHigh under whole-machine PSI
+// pressure — which per-tab caps by construction do not prevent. So the harness
+// checks actual available memory before spawning and refuses to run a load it
+// estimates the machine cannot absorb. --force overrides, deliberately loudly.
+//
 // Output:
 //   /tmp/perf-load/<label>/perf.jsonl    per-window counter records
 //   /tmp/perf-load/<label>/gc.log        raw --trace-gc output
@@ -31,14 +60,25 @@
 //   node scripts/perf-load.mjs --ab            # runs logging on AND off, compares
 
 import { _electron as electron } from 'playwright';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { freemem, tmpdir, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const OUT_DIR = '/tmp/perf-load';
+
+/** Refuse to spawn more than this without --force. Not a technical limit — a
+ *  speed bump in front of a load that can take the whole session down. */
+const MAX_TABS_UNFORCED = 12;
+/** Rough per-tab working set (shell + flood pipeline + the app's buffers). Used
+ *  only to compare a planned run against free memory. */
+const EST_TAB_BYTES = 96 * 1024 * 1024;
+/** Never plan a run that would leave the machine below this. */
+const RESERVE_BYTES = 2 * 1024 ** 3;
 
 /** Parse `512k` / `2M` / `1024` into bytes per second. */
 function parseRate(text) {
@@ -64,6 +104,7 @@ function parseArgs(argv) {
     logging: 'on',
     traceGc: true,
     ab: false,
+    force: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -91,12 +132,63 @@ function parseArgs(argv) {
       case '--ab':
         args.ab = true;
         break;
+      case '--force':
+        args.force = true;
+        break;
       default:
         if (flag.startsWith('--')) throw new Error(`Unknown flag ${flag}`);
     }
   }
   if (!Number.isInteger(args.tabs) || args.tabs < 1) throw new Error('--tabs must be a positive int');
   return args;
+}
+
+/** Available memory (bytes). Prefers MemAvailable, which unlike `freemem()`
+ *  accounts for reclaimable page cache and is what the kernel itself uses to
+ *  decide whether an allocation can be satisfied. */
+async function availableBytes() {
+  try {
+    const meminfo = await readFile('/proc/meminfo', 'utf8');
+    const match = /^MemAvailable:\s+(\d+) kB$/m.exec(meminfo);
+    if (match) return Number(match[1]) * 1024;
+  } catch {
+    /* not Linux, or /proc unavailable — fall back */
+  }
+  return freemem();
+}
+
+/**
+ * Refuse a run the machine plausibly cannot absorb.
+ *
+ * The audit documented this exact machine dying to memory pressure with five
+ * agent tabs live, and the project notes flagged that staging an 8-tab flood
+ * risked reproducing the very condition under study. A harness that can take the
+ * user's session down is not a measuring instrument.
+ */
+async function assertMemorySafe({ tabs, force }) {
+  const available = await availableBytes();
+  const needed = tabs * EST_TAB_BYTES + RESERVE_BYTES;
+  const gb = (bytes) => `${(bytes / 1024 ** 3).toFixed(1)}G`;
+  console.log(
+    `[perf-load] memory: ${gb(available)} available of ${gb(totalmem())}, ` +
+      `plan needs ~${gb(needed)} for ${tabs} tabs`,
+  );
+
+  const problems = [];
+  if (tabs > MAX_TABS_UNFORCED) problems.push(`--tabs ${tabs} exceeds the ${MAX_TABS_UNFORCED}-tab ceiling`);
+  if (needed > available) problems.push(`plan needs ~${gb(needed)} but only ${gb(available)} is available`);
+  if (problems.length === 0) return;
+
+  const detail = problems.join('; ');
+  if (!force) {
+    throw new Error(
+      `refusing to run: ${detail}.\n` +
+        `  This machine's documented failure mode is systemd-oomd killing tabs at MemoryHigh under\n` +
+        `  whole-machine pressure — which per-tab caps do NOT prevent. Close some tabs, lower --tabs,\n` +
+        `  or pass --force if you accept the risk of losing the session.`,
+    );
+  }
+  console.warn(`[perf-load] WARNING: ${detail} — proceeding because --force was given.`);
 }
 
 /**
@@ -118,8 +210,39 @@ function floodCommand(rate) {
   );
 }
 
+/** Bytes/second actually emitted for a requested `rate`.
+ *
+ *  `floodCommand` sizes its `head -c` in RAW bytes and then base64-encodes them,
+ *  which expands 3 bytes to 4, plus a newline per chunk. Reporting the requested
+ *  rate therefore understated the real load by about a third and gave the
+ *  operator a wrong mental model of how hard the machine was being hit. */
+function effectiveRate(rate) {
+  const chunksPerSec = 64;
+  const chunkBytes = Math.max(1, Math.round(rate / chunksPerSec));
+  return (Math.ceil(chunkBytes / 3) * 4 + 1) * chunksPerSec;
+}
+
+/**
+ * Create the throwaway user-data dir + conception this run drives.
+ *
+ * Both live under /tmp and are removed afterwards. Nothing the harness does
+ * reaches the user's real `~/.config/condash` or their conception — no settings
+ * to restore, no logs to evict, no perf JSONL shared with a live instance.
+ */
+async function makeSandbox() {
+  const root = await mkdtemp(join(tmpdir(), 'condash-perf-sandbox-'));
+  const userDataDir = join(root, 'user-data');
+  const conceptionPath = join(root, 'conception');
+  // A conception is just a directory with these two trees; the harness only
+  // needs somewhere for `.condash/` to land.
+  await mkdir(userDataDir, { recursive: true });
+  await mkdir(join(conceptionPath, 'projects'), { recursive: true });
+  await mkdir(join(conceptionPath, 'knowledge'), { recursive: true });
+  return { root, userDataDir, conceptionPath };
+}
+
 /** Run one load window end to end and return its perf records. */
-async function runWindow({ label, tabs, rate, durationMs, logging, traceGc }) {
+async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sandbox }) {
   const outDir = join(OUT_DIR, label);
   await mkdir(outDir, { recursive: true });
 
@@ -129,17 +252,61 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc }) {
   }
 
   const gcLogPath = join(outDir, 'gc.log');
-  const args = [mainEntry];
+  const args = [mainEntry, `--user-data-dir=${sandbox.userDataDir}`];
   if (traceGc) args.push('--js-flags=--trace-gc');
 
-  console.log(`[perf-load] ${label}: ${tabs} tabs, ${(rate / 1024).toFixed(0)} KB/s each, ` +
+  console.log(`[perf-load] ${label}: ${tabs} tabs, ${(rate / 1024).toFixed(0)} KB/s each ` +
+    `(~${(effectiveRate(rate) / 1024).toFixed(0)} KB/s after base64), ` +
     `${(durationMs / 1000).toFixed(0)}s, logging ${logging}, trace-gc ${traceGc}`);
 
-  const app = await electron.launch({ args, cwd: repoRoot });
-  const gcChunks = [];
-  app.process().stderr?.on('data', (chunk) => gcChunks.push(chunk.toString()));
+  const app = await electron.launch({
+    args,
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      // The conception override the main process honours (settings.ts) — this is
+      // what keeps the flood's logs and perf records out of the user's real tree.
+      CONDASH_CONCEPTION_PATH: sandbox.conceptionPath,
+      // BOTH overrides are needed, and the runtime assertion below is why we
+      // know it: `--user-data-dir` alone is silently overridden, because a dev
+      // launch calls `app.setPath('userData', …)` at module top level to keep
+      // `npm run dev` from racing the installed app for settings.json. This env
+      // var is that redirect's own escape hatch.
+      CONDASH_DEV_USER_DATA_DIR: sandbox.userDataDir,
+    },
+  });
+
+  // Stream --trace-gc straight to disk. Buffering it in an array grew without
+  // bound for the whole run, in the harness's own heap, on a machine the harness
+  // is deliberately pushing toward memory pressure — and losing the harness took
+  // every byte of GC evidence with it.
+  const gcStream = createWriteStream(gcLogPath);
+  app.process().stderr?.on('data', (chunk) => {
+    gcStream.write(chunk);
+    // The app-scope backstop warns on stderr when it could not cap condash's own
+    // scope, which is exactly the state a flood must not run in. Surface it
+    // instead of burying it in gc.log.
+    const text = chunk.toString();
+    if (text.includes('app-scope backstop not applied')) {
+      console.warn(`[perf-load] WARNING: ${text.trim()}`);
+    }
+  });
 
   try {
+    // Assert the isolation actually took, in the MAIN process, before any load.
+    // `--user-data-dir` is the documented Electron switch for this, but a silent
+    // failure here would mean writing to the user's real settings.json — the
+    // exact damage this design exists to prevent, so it gets a runtime check
+    // rather than trust.
+    const liveUserData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
+    if (!liveUserData.startsWith(sandbox.root)) {
+      throw new Error(
+        `isolation failed: app userData is '${liveUserData}', outside the sandbox '${sandbox.root}'. ` +
+          `Refusing to run — this would mutate your real settings.json.`,
+      );
+    }
+    console.log(`[perf-load] isolated: userData=${liveUserData}`);
+
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
@@ -149,8 +316,8 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc }) {
     await window.evaluate(
       async ([loggingOn]) => {
         // termSetPrefs REPLACES the whole terminal block rather than patching
-        // it, so read-merge-write: a bare { logging } would wipe the shell,
-        // shortcuts, and memory caps out of the user's settings.json.
+        // it, so read-merge-write. Harmless here (sandboxed settings), but the
+        // trap is real and this is the shape every caller must copy.
         const current = await window.condash.termGetPrefs();
         await window.condash.termSetPrefs({
           ...current,
@@ -193,7 +360,7 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc }) {
     return { vitals, sids };
   } finally {
     await app.close().catch(() => {});
-    if (gcChunks.length > 0) await writeFile(gcLogPath, gcChunks.join(''), 'utf8');
+    await new Promise((done) => gcStream.end(done));
   }
 }
 
@@ -244,24 +411,34 @@ function summarise(records) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const conceptionPath = process.env.CONDASH_CONCEPTION_PATH ?? '/home/alice/src/vcoeur/conception';
+  await assertMemorySafe(args);
+
   await rm(OUT_DIR, { recursive: true, force: true });
   await mkdir(OUT_DIR, { recursive: true });
+
+  const sandbox = await makeSandbox();
+  console.log(`[perf-load] sandbox: ${sandbox.root}`);
+  const conceptionPath = sandbox.conceptionPath;
 
   const modes = args.ab ? ['on', 'off'] : [args.logging];
   const summary = {};
 
-  for (const logging of modes) {
-    const label = `logging-${logging}`;
-    const before = (await readPerfRecords(conceptionPath)).length;
-    await runWindow({ ...args, logging, label });
-    const records = (await readPerfRecords(conceptionPath)).slice(before);
-    await writeFile(
-      join(OUT_DIR, label, 'perf.jsonl'),
-      records.map((r) => JSON.stringify(r)).join('\n') + '\n',
-      'utf8',
-    );
-    summary[label] = summarise(records);
+  try {
+    for (const logging of modes) {
+      const label = `logging-${logging}`;
+      const before = (await readPerfRecords(conceptionPath)).length;
+      await runWindow({ ...args, logging, label, sandbox });
+      const records = (await readPerfRecords(conceptionPath)).slice(before);
+      await writeFile(
+        join(OUT_DIR, label, 'perf.jsonl'),
+        records.map((r) => JSON.stringify(r)).join('\n') + '\n',
+        'utf8',
+      );
+      summary[label] = summarise(records);
+    }
+  } finally {
+    // Results already live under OUT_DIR; the sandbox itself is disposable.
+    await rm(sandbox.root, { recursive: true, force: true }).catch(() => {});
   }
 
   await writeFile(join(OUT_DIR, 'summary.json'), JSON.stringify(summary, null, 2), 'utf8');

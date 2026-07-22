@@ -121,6 +121,63 @@ describe('deriveDeath', () => {
     expect(death.highDelta).toBeUndefined();
   });
 
+  it('never blames memory for a stop condash itself issued', () => {
+    // The kill pipeline ends in SIGKILL, and a tab resting near MemoryHigh has
+    // `high` ticking under ordinary reclaim — verified live: a throttled tab
+    // climbed 222 → 1055 on that counter while merely sitting there. Without
+    // this guard, quitting the app with such a tab open writes a phantom
+    // "killed — out of memory" into the log footer, corrupting the very
+    // longitudinal record the verdicts exist to produce.
+    const death = deriveDeath({
+      exitCode: 0,
+      signal: 9,
+      before: events(0, 100),
+      after: events(1, 900),
+      intentional: true,
+    });
+    expect(death.kind).toBe('stopped');
+    expect(death.label).toBe('stopped');
+    // The raw counters still ride along — the evidence is kept, only the
+    // attribution is withheld.
+    expect(death.oomKillDelta).toBe(1);
+    expect(death.highDelta).toBe(800);
+    // And a deliberate stop must not pin its row on screen.
+    expect(isAbnormal(death)).toBe(false);
+  });
+
+  it('will not attribute a death to counters whose window predates it', () => {
+    // When the exit-time read loses its race with `--collect`, the caller can
+    // only offer the last two periodic samples — a window closing up to one
+    // sampling interval BEFORE the death, which therefore cannot contain the
+    // oom_kill the kernel writes at the moment of death. Reporting `oom-cap`
+    // from it would assert a tier-2 guess with tier-1 confidence.
+    const death = deriveDeath({
+      exitCode: 0,
+      signal: 9,
+      before: events(0, 10),
+      after: events(1, 50),
+      bracketsDeath: false,
+    });
+    expect(death.kind).toBe('killed');
+    expect(death.label).toBe('killed — SIGKILL');
+    // Evidence preserved for the footer even though it did not promote a verdict.
+    expect(death.oomKillDelta).toBe(1);
+  });
+
+  it('attributes normally when the window does bracket the death', () => {
+    // The complement of the above, and the normal path: measured against live
+    // systemd, the exit-time read wins its race with `--collect` — the cgroup is
+    // still readable at onExit and gone ~50 ms later.
+    const death = deriveDeath({
+      exitCode: 0,
+      signal: 9,
+      before: events(0, 10),
+      after: events(1, 50),
+      bracketsDeath: true,
+    });
+    expect(death.kind).toBe('oom-cap');
+  });
+
   it('clamps a counter that went backwards to zero', () => {
     // Defensive: a reused/recreated cgroup path could read lower than the prior
     // sample. A negative delta must not read as evidence.

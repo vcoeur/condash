@@ -104,16 +104,27 @@ export function PerfView(props: PerfViewProps) {
         <button
           type="button"
           class="perf-toggle"
-          classList={{ recording: vitals()?.recording === true }}
+          classList={{
+            recording: vitals()?.recording === true && vitals()?.writeFailed !== true,
+            failed: vitals()?.writeFailed === true,
+          }}
           disabled={busy()}
           onClick={() => void toggleRecording()}
           title={
-            vitals()?.recording === true
-              ? 'Stop recording to .condash/perf/'
-              : 'Record main-process counters to .condash/perf/ (off by default)'
+            vitals()?.writeFailed === true
+              ? 'Recording stopped reaching disk — the write to .condash/perf/ failed. Toggle off and on to retry.'
+              : vitals()?.recording === true
+                ? 'Stop recording to .condash/perf/'
+                : 'Record main-process counters to .condash/perf/ (off by default)'
           }
         >
-          {vitals()?.recording === true ? 'Recording' : 'Record'}
+          {/* Never render "Recording" once writes are failing: the user would
+              believe they captured a long run and come back to nothing. */}
+          {vitals()?.writeFailed === true
+            ? 'Write failed'
+            : vitals()?.recording === true
+              ? 'Recording'
+              : 'Record'}
         </button>
       </div>
 

@@ -329,12 +329,14 @@ To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mj
 controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,
 which isolates the cost of the logger's duplicate ANSI parse on the main thread.
 
-> **The harness is not currently safe to run.** It mutates your real `settings.json` (enabling disk
-> logging and perf recording) and never restores it, has no cap on `--tabs` and no check of available
-> memory, and floods into your real conception's log store — where the janitor evicts whole
-> prior-day directories to stay under its cap, so your own session transcripts are the eviction
-> victims rather than the harness's output. It also runs the app outside a capped app scope, so the
-> whole-session OOM backstop is inert exactly while it is applying load. Treat it as unfinished.
+The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
+isolation in the main process before applying any load — so it never touches your real
+`settings.json`, never floods your conception's log store, and never shares a perf JSONL with a
+running instance. (The assertion is not ceremony: `--user-data-dir` alone is silently overridden by
+the dev-mode `userData` redirect, and the check is what caught it.) It also refuses to start a run
+larger than 12 tabs, or one whose estimated working set exceeds available memory, unless `--force` is
+given — per-tab caps are per tab, and the documented field failure is whole-machine pressure, which
+they do not prevent.
 
 ### Terminal memory { #terminal-memory }
 
