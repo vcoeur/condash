@@ -54,8 +54,10 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  * flipped, the on-disk length/tail no longer matches, a prior write error) and
  * the durable `exit()` / `close()` flushes take the atomic tmp → (fsync) →
  * rename full rewrite instead, which re-establishes the file and the
- * bookkeeping exactly. Only a compact watermark is retained in memory, never
- * the whole file text. The periodic flushes do NOT `fsync` — only the terminal
+ * bookkeeping exactly. The transcript path retains only a compact watermark,
+ * never the whole file text; a grid session additionally holds its frozen-row
+ * cache (~1.5 MB UTF-16 at the 5000-line default, against the term's own ~12 MB
+ * buffer). The periodic flushes do NOT `fsync` — only the terminal
  * flushes (exit / close) do; the atomic rename already keeps the file from ever
  * being torn, appends never truncate existing content, and fsync-ing every
  * few-second flush stalls the main process for durability a log viewer doesn't
@@ -212,6 +214,14 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
  * cannot cover it — the guard only fires when NO byte reached the term since
  * the last write, yet the same `output()` call that bumps that watermark is the
  * only thing that ever schedules a flush.
+ *
+ * This removes the row walk, NOT the whole cost. Measured at production
+ * geometry (200 cols, 5000 scrollback, saturated): the full walk was ~21 ms per
+ * render, this is ~12.5 ms, and ~12.8 ms of that is `rows.join('\n')` alone —
+ * which is O(retained size), as are the `Buffer.from` and full-file rewrite
+ * that follow. So a flush is still O(retained size); the ~1.7× win is the
+ * translate walk going away, and the next profiler along should look at the
+ * join and the write, not here.
  *
  * So the grid body renders the way the transcript body already writes: only the
  * new part. Rows above the viewport (`[0, baseY)`) have scrolled out of the
@@ -377,8 +387,9 @@ export class SessionLogger {
    * instead of the grid snapshot. */
   private readonly oscTranscript = new OscTranscriptExtractor();
   /** Renders the grid body, reusing the frozen scrollback prefix between
-   *  flushes so a flush costs O(new rows) instead of O(scrollback). Built with
-   *  the term in {@link ensureTerm}, so null for as long as the term is. */
+   *  flushes so the *row walk* costs O(new rows) instead of O(scrollback). The
+   *  flush as a whole stays O(retained size) — see {@link GridBodyRenderer}.
+   *  Built with the term in {@link ensureTerm}, so null for as long as it is. */
   private gridBody: GridBodyRenderer | null = null;
   /** Injectable clock — stamps `started`/`finished` and the timestamp markers
    * so tests can drive cadence deterministically. */

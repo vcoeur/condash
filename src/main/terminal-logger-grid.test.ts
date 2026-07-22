@@ -123,6 +123,46 @@ describe('GridBodyRenderer row walk', () => {
   });
 });
 
+describe('GridBodyRenderer cache invariants', () => {
+  // Both of these defend an invariant the implementation states in a comment but
+  // that nothing else exercises: the review that found them confirmed the whole
+  // suite — seeded fuzz included — stays green with either one broken.
+
+  it('caches the frozen rows before the trailing-blank pop, not after', async () => {
+    // `render()` snapshots the cache BEFORE dropping the trailing run of empty
+    // rows, because that pop can reach back into the frozen prefix: a cleared
+    // screen leaves the tail of scrollback blank. Snapshot after the pop and the
+    // cache is short by the blank depth, then a later eviction pulls the slide
+    // back to exactly zero so the arithmetic guard waves it through — and the
+    // body emits the wrong scrollback rows with no error at all.
+    //
+    // The shape is routine: `clear`, then a long build log.
+    const term = newTerm();
+    const renderer = new GridBodyRenderer(term);
+    for (let i = 0; i < SCROLLBACK + ROWS + 20; i++) await write(term, `row-${i}\r\n`);
+    await write(term, '\x1b[2J');
+    for (let i = 0; i < ROWS; i++) await write(term, `\r\n`);
+    renderer.render();
+    for (let i = 0; i < ROWS; i++) await write(term, `after-${i}\r\n`);
+
+    expect(renderer.render()).toBe(fullRender(term));
+  });
+
+  it('keeps at most one live marker across many renders', async () => {
+    // xterm walks every live marker on every evicted line, so leaking one per
+    // flush degrades eviction without bound — a slow leak on a long-lived tab,
+    // invisible to any output-equality test.
+    const term = newTerm();
+    const renderer = new GridBodyRenderer(term);
+    for (let i = 0; i < 200; i++) {
+      await write(term, `line-${i}\r\n`);
+      renderer.render();
+    }
+    const markers = (term as unknown as { _core: { markers: unknown[] } })._core.markers;
+    expect(markers.length).toBeLessThanOrEqual(1);
+  });
+});
+
 describe('GridBodyRenderer output equals a full re-render', () => {
   it('matches while the buffer grows and once it starts evicting', async () => {
     const term = newTerm();
