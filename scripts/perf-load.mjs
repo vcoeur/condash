@@ -380,7 +380,7 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
       throw new Error(
         `renderer did not load: page is '${pageUrl}' with an empty #root. ` +
           `A localhost URL means the app booted in dev mode and is waiting on a Vite server that ` +
-          `is not running (CONDASH_FORCE_PROD lost from the env below); a file:// URL means the ` +
+          `is not running (CONDASH_FORCE_PROD lost from the launch env); a file:// URL means the ` +
           `renderer bundle itself is broken. Refusing to measure a dead renderer.`,
       );
     }
