@@ -337,11 +337,18 @@ which isolates the cost of the logger's duplicate ANSI parse on the main thread.
 The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
 isolation in the main process before applying any load — so it never touches your real
 `settings.json`, never floods your conception's log store, and never shares a perf JSONL with a
-running instance. (The assertion is not ceremony: `--user-data-dir` alone is silently overridden by
-the dev-mode `userData` redirect, and the check is what caught it.) It also refuses to start a run
-larger than 12 tabs, or one whose estimated working set exceeds available memory, unless `--force` is
-given — per-tab caps are per tab, and the documented field failure is whole-machine pressure, which
-they do not prevent.
+running instance. It also refuses to start a run larger than 12 tabs, or one whose estimated working
+set exceeds available memory, unless `--force` is given — per-tab caps are per tab, and the
+documented field failure is whole-machine pressure, which they do not prevent.
+
+Every other precondition is asserted at runtime too, and none of the assertions is ceremony. A
+harness that measures other software turns an unverified assumption into plausible **false data**
+rather than a crash, so each one has already caught a real defect: the isolation check caught
+`--user-data-dir` being silently overridden by the dev-mode `userData` redirect; the renderer check
+caught the app booting against a Vite dev server nobody had started, which left a dead renderer and a
+run that exited 0 with numbers off by up to 9×; and the GC-record count caught `--trace-gc` output
+going to **stdout** while only stderr was captured, so `gc.log` had never held a single GC record.
+Requires a current `npm run build` — both the main bundle and the renderer bundle.
 
 ### Terminal memory { #terminal-memory }
 

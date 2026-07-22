@@ -61,7 +61,7 @@
 
 import { _electron as electron } from 'playwright';
 import { createWriteStream, rmSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { freemem, tmpdir, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -79,6 +79,11 @@ const MAX_TABS_UNFORCED = 12;
 const EST_TAB_BYTES = 96 * 1024 * 1024;
 /** Never plan a run that would leave the machine below this. */
 const RESERVE_BYTES = 2 * 1024 ** 3;
+/** One --trace-gc record, e.g.
+ *  `[123:0x…]   842 ms: Scavenge 12.3 (18.0) -> 9.1 (18.0) MB, 1.20 / 0.00 ms`.
+ *  Matched on the collector name after the timestamp so Electron's own stdout
+ *  chatter is not counted as GC evidence. */
+const GC_RECORD = /\bms:\s+(Scavenge|Mark-Compact|Mark-sweep|Minor|Incremental)/;
 
 /** Parse `512k` / `2M` / `1024` into bytes per second. */
 function parseRate(text) {
@@ -250,14 +255,78 @@ async function makeSandbox() {
 }
 
 /** Run one load window end to end and return its perf records. */
+/**
+ * Warn when `src/` is newer than the bundles the run is about to measure.
+ *
+ * Existence is not currency, and the gap is not theoretical: on 2026-07-22 a
+ * reading was taken against a `dist-electron/` seven weeks older than the tree,
+ * so the run measured old code while reporting the current version back. The
+ * preflight above would have passed it, and so would the renderer assertion — a
+ * stale bundle mounts perfectly well.
+ *
+ * A warning rather than a throw: editing a source comment after building makes
+ * the tree newer without changing what runs, and refusing to measure over that
+ * would be worse than saying so. Naming the delta is what makes it actionable —
+ * "42 days" reads very differently from "20 seconds".
+ */
+async function warnIfBuildStale(entries) {
+  const newestSource = await newestMtime(join(repoRoot, 'src'));
+  if (newestSource === 0) return;
+  let oldestBundle = Infinity;
+  for (const entry of entries) {
+    oldestBundle = Math.min(oldestBundle, (await stat(entry)).mtimeMs);
+  }
+  if (newestSource <= oldestBundle) return;
+  const staleMs = newestSource - oldestBundle;
+  const age =
+    staleMs > 86_400_000
+      ? `${(staleMs / 86_400_000).toFixed(1)} days`
+      : `${(staleMs / 60_000).toFixed(1)} min`;
+  console.warn(
+    `[perf-load] WARNING: src/ is ${age} newer than the built bundles. This run measures the ` +
+      `BUILD, not the working tree — re-run \`npm run build\` unless that is what you want.`,
+  );
+}
+
+/** Newest mtime under `dir`, recursively. 0 when the tree is unreadable. */
+async function newestMtime(dir) {
+  let newest = 0;
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, await newestMtime(path));
+    } else if (entry.isFile()) {
+      newest = Math.max(newest, (await stat(path)).mtimeMs);
+    }
+  }
+  return newest;
+}
+
 async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sandbox }) {
   const outDir = join(OUT_DIR, label);
   await mkdir(outDir, { recursive: true });
 
+  // Both halves of the build are prerequisites, and checking only the main one
+  // actively misled: `npm run build` satisfied a main-only guard while the
+  // renderer was still missing or stale, so the guard passed and the run
+  // measured an app with no renderer at all. Name which half is missing.
   const mainEntry = join(repoRoot, 'dist-electron', 'main', 'index.js');
-  if (!existsSync(mainEntry)) {
-    throw new Error(`Missing ${mainEntry} — run \`npm run build\` first.`);
+  const rendererEntry = join(repoRoot, 'dist', 'index.html');
+  for (const [half, entry] of [
+    ['main', mainEntry],
+    ['renderer', rendererEntry],
+  ]) {
+    if (!existsSync(entry)) {
+      throw new Error(`Missing ${half} bundle ${entry} — run \`npm run build\` first.`);
+    }
   }
+  await warnIfBuildStale([mainEntry, rendererEntry]);
 
   const gcLogPath = join(outDir, 'gc.log');
   const args = [mainEntry, `--user-data-dir=${sandbox.userDataDir}`];
@@ -275,11 +344,20 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
       // The conception override the main process honours (settings.ts) — this is
       // what keeps the flood's logs and perf records out of the user's real tree.
       CONDASH_CONCEPTION_PATH: sandbox.conceptionPath,
-      // BOTH overrides are needed, and the runtime assertion below is why we
-      // know it: `--user-data-dir` alone is silently overridden, because a dev
-      // launch calls `app.setPath('userData', …)` at module top level to keep
-      // `npm run dev` from racing the installed app for settings.json. This env
-      // var is that redirect's own escape hatch.
+      // Load the built renderer, not the Vite dev server. `isDev` in
+      // src/main/index.ts:187 is `!app.isPackaged && CONDASH_FORCE_PROD !== '1'`,
+      // and this launch is unpackaged — so without this the app loads
+      // http://localhost:5600, which only exists while `npm run dev` runs, and
+      // comes up with a dead renderer. The Playwright fixture and
+      // perf-baseline.mjs both set it for the same reason.
+      CONDASH_FORCE_PROD: '1',
+      // Isolation backstop, inert while CONDASH_FORCE_PROD is set: the dev
+      // `app.setPath('userData', …)` redirect (index.ts:197) only runs when
+      // `isDev`, so in forced-prod mode `--user-data-dir` alone carries the
+      // isolation — verified 2026-07-22 by the runtime assertion below, which
+      // reads the live path rather than trusting either mechanism. Kept so
+      // dropping the prod force can never silently re-point the run at the
+      // user's real settings.json.
       CONDASH_DEV_USER_DATA_DIR: sandbox.userDataDir,
     },
   });
@@ -288,7 +366,26 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
   // bound for the whole run, in the harness's own heap, on a machine the harness
   // is deliberately pushing toward memory pressure — and losing the harness took
   // every byte of GC evidence with it.
+  //
+  // BOTH streams: V8 writes --trace-gc to stdout, Electron writes its own
+  // diagnostics to stderr, and capturing only stderr left gc.log holding twelve
+  // lines of Electron noise and zero GC records on every run since the flag was
+  // added. `gcRecords` counts what actually landed, so the run reports whether
+  // GC was measured instead of the header comment asserting it.
   const gcStream = createWriteStream(gcLogPath);
+  let gcRecords = 0;
+  // A chunk boundary can fall mid-line, so carry the tail into the next chunk
+  // rather than counting a split record twice or not at all.
+  let gcPartialLine = '';
+  const countGcRecords = (text) => {
+    const lines = (gcPartialLine + text).split('\n');
+    gcPartialLine = lines.pop() ?? '';
+    for (const line of lines) if (GC_RECORD.test(line)) gcRecords++;
+  };
+  app.process().stdout?.on('data', (chunk) => {
+    gcStream.write(chunk);
+    countGcRecords(chunk.toString());
+  });
   app.process().stderr?.on('data', (chunk) => {
     gcStream.write(chunk);
     // The app-scope backstop warns on stderr when it could not cap condash's own
@@ -317,6 +414,33 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
 
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
+
+    // Assert the RENDERER actually loaded, before any load — same posture as the
+    // isolation assertion above, for the same reason: a silent failure here is a
+    // plausible, invalid reading rather than a crash. A dev-mode launch points at
+    // the Vite dev URL and, with no dev server up, leaves a chrome-error page.
+    // Measured 2026-07-22, that dead renderer understated gridRenderMs by 26 %,
+    // understated the logging A/B's loop-p99 delta by 9×, and reported
+    // `pauses: 0` where the real path pauses 4 times — flow control cannot
+    // engage when nothing consumes.
+    //
+    // The check is a MOUNTED #root, not the presence of `window.condash`: the
+    // preload still runs on the error page, so every IPC call below succeeds
+    // against a renderer that draws nothing. Presence of the API proves nothing.
+    const pageUrl = window.url();
+    try {
+      await window.waitForSelector('#root > *', { timeout: 30_000 });
+    } catch {
+      throw new Error(
+        `renderer did not load: page is '${pageUrl}', #root never gained a child. ` +
+          `A chrome-error:// URL is the flagship case — the app booted in dev mode and the Vite ` +
+          `server it wants is not running, so navigation failed outright (CONDASH_FORCE_PROD lost ` +
+          `from the launch env). A localhost URL means dev mode with the server up but the app ` +
+          `not mounting; a file:// URL means the built renderer bundle is broken or stale. ` +
+          `Refusing to measure a dead renderer.`,
+      );
+    }
+    console.log(`[perf-load] renderer loaded: ${pageUrl}`);
 
     // Configure through the app's own IPC rather than by writing settings.json
     // behind its back: the running process caches prefs, so a file edit would
@@ -369,6 +493,20 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
   } finally {
     await app.close().catch(() => {});
     await new Promise((done) => gcStream.end(done));
+    // Verify the GC evidence exists rather than assuming the flag produced it.
+    // gc.log held zero records for every run between the flag being added and
+    // 2026-07-22, because the harness captured the wrong stream — a silent hole
+    // in the one signal that is invisible to every in-app counter.
+    if (traceGc) {
+      if (gcRecords === 0) {
+        console.warn(
+          `[perf-load] WARNING: ${label}: --trace-gc was on but ${gcLogPath} holds ZERO GC ` +
+            `records. GC is UNMEASURED for this run — do not read a GC conclusion off it.`,
+        );
+      } else {
+        console.log(`[perf-load] ${label}: ${gcRecords} GC records → ${gcLogPath}`);
+      }
+    }
   }
 }
 
