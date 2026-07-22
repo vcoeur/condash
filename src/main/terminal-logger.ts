@@ -430,8 +430,9 @@ export class SessionLogger {
         rows: ROWS,
         scrollback: this.prefs.scrollback,
         // Required since xterm.js 5.4 for `ILinkProvider` and the buffer-line
-        // APIs used by `renderBufferAsPlainText`. Safe to leave enabled — the
-        // flag only unlocks stable APIs that haven't been promoted to default.
+        // APIs {@link GridBodyRenderer} renders through — and for
+        // `registerMarker`, which anchors its row cache. Safe to leave enabled —
+        // the flag only unlocks stable APIs not yet promoted to default.
         allowProposedApi: true,
       });
       this.gridBody = new GridBodyRenderer(this.term);
