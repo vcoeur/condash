@@ -57,13 +57,13 @@
 //
 // The disk logger renders its grid body out of a headless xterm of COLS=200,
 // ROWS=50, scrollback=5000 — 5050 populated rows at most — and flushes every 5 s
-// (`src/main/terminal-logger.ts`; the 5050 is asserted by
-// `terminal-logger-grid.test.ts`). Since v4.97.1 that render reuses the frozen
-// prefix of the previous one, so its row walk costs O(rows that ARRIVED in the
-// flush window) rather than O(rows RETAINED). How much output a profile lands in
-// one 5 s window, measured against those 5050 rows, therefore decides which half
-// of the renderer it exercises at all — and until 2026-07-23 this harness only
-// ever exercised one of them.
+// (`src/main/terminal-logger.ts`; the four constants are mirrored below and the
+// mirror is locked by `terminal-logger-harness-mirror.test.ts`). Since v4.97.1
+// that render reuses the frozen prefix of the previous one, so its row walk
+// costs O(rows that ARRIVED in the flush window) rather than O(rows RETAINED).
+// How much output a profile lands in one 5 s window, measured against those 5050
+// rows, therefore decides which half of the renderer it exercises at all — and
+// until 2026-07-23 this harness only ever exercised one of them.
 //
 //   --profile flood, --rate 512k (both defaults):
 //     chunk = round(512·1024 / 64) = 8192 raw bytes, base64 → 4·ceil(8192/3)
@@ -86,20 +86,46 @@
 //     16 384 / 101.6 = 161 rows/s → 806 rows per 5 s flush
 //     806 / 5050 = 16 % of the buffer
 //   → ~84 % of the buffer is still frozen when the next render runs, which is
-//     the only regime in which reuse can be measured, and it is where a real tab
-//     spends nearly all of its life.
+//     the only regime in which reuse can be measured at all.
 //
 // The RATE is the crux here, not the line shape, and this is the easy thing to
-// get wrong. Short lines at the flood rate would put 699 200 / 101.6 = 6880
-// rows/s, or 34 400 rows, into that 5050-row buffer — 6.8× turnover, i.e. WORSE
+// get wrong. Short lines at the FLOOD'S 512k would put 524 288 / 101.6 = 5159
+// rows/s, or 25 795 rows, into that 5050-row buffer — 5.1× turnover, i.e. WORSE
 // than the flood profile it was meant to fix. A profile that merely looked
 // realistic, at the rate this harness already used, would have gone on measuring
-// the same zero while appearing to have addressed the problem.
+// the same zero while appearing to have addressed the problem. (All rows-per-
+// flush figures here and in `reportRegime` are keyed to the REQUESTED rate, the
+// one an operator types. Against the flood's post-base64 699 200 B/s the same
+// arithmetic gives 34 401 rows and 6.8× — a different quantity, and reporting it
+// where the code reports the other is how two in-repo sources came to state
+// different numbers for the same thing before 2026-07-23.)
 //
 // One consequence of the low rate: at 161 rows/s the buffer needs ~31 s to
 // saturate, against ~1.4 s for the flood. A realistic run shorter than about a
 // minute is measuring the warm-up, not the steady state. The harness prints both
-// the regime and that warm-up time at startup rather than leaving it here.
+// the regime and that warm-up time at startup, and `summarise` DROPS every
+// pre-saturation window from its headline ms/render rather than averaging a
+// warming buffer in with a full one — see `gridRenderMsPerRenderSteady`.
+//
+// ## What `realistic` does and does not represent
+//
+// It is a floor on the grid renderer's cost for a NON-COOPERATING tab, not a
+// portrait of a typical tab. Two limits, both found in review on 2026-07-23 and
+// both worth keeping in front of anyone quoting a number off this profile:
+//
+//   1. Neither profile emits anything but printable ASCII and newlines. No
+//      alternate screen, no RIS, no `\r` progress bar, no `CSI L` — so
+//      `GridBodyRenderer.invalidate()` and the marker-anomaly path are never
+//      reached, and the frozen prefix is never dropped mid-run. Real tabs run
+//      TUIs and spinners that do exactly that. A real tab's render cost is
+//      therefore at least this, not around this.
+//   2. More narrowly still: `SessionLogger.flushNow` picks the TRANSCRIPT body
+//      whenever `oscTranscript.hasTranscript()` is true
+//      (src/main/terminal-logger.ts:626-629), and only falls back to the grid
+//      otherwise. Cooperating agent tabs — condash's own dominant logged
+//      workload — emit their transcript in-band over OSC 7373 and so skip
+//      `GridBodyRenderer` entirely. The grid path serves non-cooperating tabs,
+//      and that is the population this profile measures.
 //
 // Output:
 //   /tmp/perf-load/<label>/perf.jsonl    per-window counter records
@@ -146,20 +172,42 @@ const RESERVE_BYTES = 2 * 1024 ** 3;
  *  chatter is not counted as GC evidence. */
 const GC_RECORD = /\bms:\s+(Scavenge|Mark-Compact|Mark-sweep|Minor|Incremental)/;
 
-// ── Headless-logger geometry, MIRRORED from src/main/terminal-logger.ts (COLS,
-// ROWS, DEFAULT_PREFS.scrollback, DEFAULT_FLUSH_MS). Duplicated rather than
-// imported: this is plain ESM run by bare node, and that module is TypeScript
-// that pulls @xterm/headless in with it. Nothing the harness MEASURES depends on
-// these being current — but the regime it reports does, and a regime reported
-// wrong is exactly how the flood profile went four weeks looking like a valid
-// reading. Re-check them when the logger's defaults move.
+// ── Headless-logger geometry, MIRRORED from src/main/terminal-logger.ts
+// (LOGGER_GRID_GEOMETRY: cols, rows, scrollback, flushMs).
+//
+// Duplicated rather than imported, and the duplication is LOCKED, not trusted.
+// Importing is not available here: this file is plain ESM run by bare `node`,
+// the logger is TypeScript, and its relative imports are extensionless under
+// `moduleResolution: Bundler` — which Node's type stripping does not resolve.
+// (The logger's own runtime graph is electron-free and defers @xterm/headless to
+// a lazy require, so the dependency graph is not what blocks it; module
+// resolution is.)
+//
+// Nothing the harness MEASURES depends on these being current — but every regime
+// it REPORTS does, and a regime reported wrong is exactly how the flood profile
+// went four weeks looking like a valid reading. Until 2026-07-23 the comment
+// here claimed `terminal-logger-grid.test.ts` asserted the identity; it does
+// not — that test runs its own toy geometry (40×10, scrollback 30) and asserts
+// only the SHAPE `bufferRows === SCROLLBACK + ROWS`. Nothing covered `scripts/`
+// at all, so changing COLS in the logger would have silently falsified every
+// figure below under a green suite. `terminal-logger-harness-mirror.test.ts`
+// now reads these four values back out of this file and fails when they drift.
 const LOG_COLS = 200;
 const LOG_ROWS = 50;
 const LOG_SCROLLBACK = 5000;
 /** Most populated rows the logger's headless buffer ever holds: scrollback plus
- *  the viewport. `terminal-logger-grid.test.ts` asserts this identity. */
+ *  the viewport — the denominator every turnover figure divides by. */
 const LOG_BUFFER_ROWS = LOG_SCROLLBACK + LOG_ROWS;
 const LOG_FLUSH_MS = 5000;
+
+/** The mirror, exported so the lock test compares the values this harness
+ *  ACTUALLY computes with rather than source literals it re-parses. */
+export const LOGGER_GEOMETRY_MIRROR = {
+  cols: LOG_COLS,
+  rows: LOG_ROWS,
+  scrollback: LOG_SCROLLBACK,
+  flushMs: LOG_FLUSH_MS,
+};
 
 /** Chunks per second the flood emits. 64 approximates a chatty agent. Hoisted
  *  out of `floodCommand` because `effectiveRate` needs the same number and kept
@@ -170,19 +218,33 @@ const FLOOD_CHUNKS_PER_SEC = 64;
 /** Per-profile default byte rate, applied after parsing so an explicit `--rate`
  *  wins whatever the flag order. They differ by 32× on purpose: the profiles
  *  measure opposite sides of the 5050-row buffer, and inheriting the flood's
- *  rate would put the realistic profile at 6.8× turnover — deeper into
+ *  512k would put the realistic profile at 5.1× turnover — deeper into
  *  saturation than the flood itself. See "Load profiles". */
 const PROFILE_DEFAULT_RATE = {
   flood: 512 * 1024,
   realistic: 16 * 1024,
 };
 
+/** Smallest rate that still produces a load. Below this the flood's `head -c`
+ *  goes to 1 byte and, at rate 0, `realisticBurst` divides by zero and emits
+ *  `sleep Infinity` — a tab that outputs nothing, a run that measures nothing,
+ *  and a summary that looks like any other. Reject rather than clamp: a typo'd
+ *  rate is a mistake to surface, not a load to invent. */
+const MIN_RATE_BYTES_PER_SEC = 64;
+
 /** Parse `512k` / `2M` / `1024` into bytes per second. */
 function parseRate(text) {
   const match = /^(\d+(?:\.\d+)?)\s*([kKmM]?)$/.exec(text);
   if (!match) throw new Error(`Bad --rate '${text}' (expected e.g. 512k, 2M, 4096)`);
   const mult = { k: 1024, K: 1024, m: 1024 ** 2, M: 1024 ** 2, '': 1 }[match[2]];
-  return Math.round(Number(match[1]) * mult);
+  const rate = Math.round(Number(match[1]) * mult);
+  if (rate < MIN_RATE_BYTES_PER_SEC) {
+    throw new Error(
+      `--rate '${text}' resolves to ${rate} B/s, below the ${MIN_RATE_BYTES_PER_SEC} B/s floor. ` +
+        `A rate this low emits no measurable load (at 0 it emits 'sleep Infinity' and nothing at all).`,
+    );
+  }
+  return rate;
 }
 
 /** Parse `60s` / `2m` / `90` into milliseconds. */
@@ -247,7 +309,17 @@ function parseArgs(argv) {
         args.force = true;
         break;
       default:
-        if (flag.startsWith('--')) throw new Error(`Unknown flag ${flag}`);
+        // Rejected, never ignored. `--profile=realistic` already threw, but a
+        // bare `node scripts/perf-load.mjs realistic` used to be SILENTLY
+        // dropped and ran the default flood — the one regime whose whole
+        // documented property is that it measures zero for the optimisation
+        // under study. The most likely typo reinstating the exact bug the
+        // profile flag exists to fix is not a defensible default.
+        throw new Error(
+          flag.startsWith('--')
+            ? `Unknown flag ${flag}`
+            : `Unexpected argument '${flag}' — every option is a flag, e.g. --profile ${flag}`,
+        );
     }
   }
   if (!Number.isInteger(args.tabs) || args.tabs < 1) throw new Error('--tabs must be a positive int');
@@ -527,15 +599,30 @@ function loadCommand(profile, rate) {
   return profile === 'realistic' ? realisticCommand(rate) : floodCommand(rate);
 }
 
-/** Bytes/second actually emitted for a requested `rate`.
+/** Bytes/second the command would emit for a requested `rate` if every sleep
+ *  were the only thing costing time — a NOMINAL CEILING, not a measurement.
  *
  *  `floodCommand` sizes its `head -c` in RAW bytes and then base64-encodes them,
  *  which expands 3 bytes to 4, plus a newline per chunk. Reporting the requested
  *  rate therefore understated the real load by about a third and gave the
- *  operator a wrong mental model of how hard the machine was being hit. The
- *  realistic profile has no such expansion — it solves for the gap directly — so
- *  its effective rate is its requested rate, and this stays a per-profile
- *  function rather than a flood-shaped formula applied to both. */
+ *  operator a wrong mental model of how hard the machine was being hit.
+ *
+ *  But it is a ceiling in BOTH profiles and always was: emitting a burst (and,
+ *  for the flood, forking four processes per chunk) takes wall-clock the fixed
+ *  `sleep` never subtracts, so the loop's real period is longer than its sleep.
+ *  Measured 2026-07-23, a flood run printing a 682.8 KB/s ceiling delivered
+ *  566 KB/s — 17 % low, which is the documented fork overhead showing up exactly
+ *  where the arithmetic says it cannot. So this is labelled "nominal" wherever
+ *  it is printed, and `summarise` checks the bytes the app actually counted
+ *  against it. Between 2026-07-23 and that check, the label read "on the wire",
+ *  which asserted delivery this function has no way to know about.
+ *
+ *  The realistic branch is `burstBytes / (burstBytes / rate)` — algebraically
+ *  the identity `rate`, since `realisticBurst` SOLVES the gap for the requested
+ *  rate rather than discovering it. It is kept in that form, rather than as
+ *  `return rate`, only so the two profiles' ceilings are derived the same way
+ *  and a future change to the burst geometry cannot drift them apart. Do not
+ *  read it as a calculation that could have come out otherwise. */
 function effectiveRate(profile, rate) {
   if (profile === 'realistic') {
     const { burstBytes, gapSec } = realisticBurst(rate);
@@ -560,6 +647,33 @@ function rowsPerFlush(profile, rate) {
   return Math.round(rowsPerChunk * FLOOD_CHUNKS_PER_SEC * flushSec);
 }
 
+/** Seconds this profile needs to fill the 5050-row buffer at `rate` — the point
+ *  after which a grid render is walking a full buffer rather than a growing one.
+ *  ~1.4 s for the flood at 512k, ~31 s for realistic at 16k. Every per-render
+ *  figure taken before this is a different measurement from every one taken
+ *  after; `summarise` uses it to keep the two apart. */
+function saturationSec(profile, rate) {
+  const rowsPerSec = rowsPerFlush(profile, rate) / (LOG_FLUSH_MS / 1000);
+  return rowsPerSec > 0 ? LOG_BUFFER_ROWS / rowsPerSec : Infinity;
+}
+
+/** A percentage that never rounds to `0` or `100` unless it IS 0 or 100.
+ *
+ *  `toFixed(0)` on 99.98 gives "100", which under the sub-saturation branch of
+ *  `reportRegime` printed "= 100% of it — the other 0% stays frozen and reusable
+ *  between flushes": a run at effectively full turnover described as being in
+ *  the reusable regime, i.e. precisely the plausible-but-wrong output that
+ *  function exists to prevent. Widen the precision until the digits are honest
+ *  rather than truncating them into a contradiction. */
+function formatPercent(value) {
+  for (const digits of [0, 1, 2, 3]) {
+    const text = value.toFixed(digits);
+    const rounded = Number(text);
+    if (rounded === value || (rounded > 0 && rounded < 100)) return text;
+  }
+  return value.toFixed(4);
+}
+
 /**
  * Print which side of the log buffer this run lands on, before it starts.
  *
@@ -568,25 +682,40 @@ function rowsPerFlush(profile, rate) {
  * plausible number, from a working harness, about a code path the load never
  * reached. Cheap to print, and it is the first thing to check against a
  * surprising result.
+ *
+ * Three bands, not two. The `>= 1` boundary is the real one — at or above it
+ * nothing survives a flush — but a run just under it has a frozen prefix too
+ * thin to reuse, and calling that "reusable" is only true in the sense that
+ * makes it useless. Naming the near-saturation band stops the verdict reading as
+ * an endorsement of a regime the operator almost certainly did not want.
  */
 function reportRegime(profile, rate) {
   const rows = rowsPerFlush(profile, rate);
   const turnover = rows / LOG_BUFFER_ROWS;
-  const verdict =
-    turnover >= 1
-      ? `${turnover.toFixed(1)}x FULL TURNOVER — nothing survives a flush window, so a ` +
-        `render-reuse optimisation cannot show up here by construction`
-      : `${(turnover * 100).toFixed(0)}% of it — the other ` +
-        `${(100 - turnover * 100).toFixed(0)}% stays frozen and reusable between flushes`;
+  const percent = turnover * 100;
+  let verdict;
+  if (turnover >= 1) {
+    verdict =
+      `${turnover.toFixed(1)}x FULL TURNOVER — nothing survives a flush window, so a ` +
+      `render-reuse optimisation cannot show up here by construction`;
+  } else if (turnover >= 0.9) {
+    verdict =
+      `${formatPercent(percent)}% of it — only ${formatPercent(100 - percent)}% stays frozen, ` +
+      `which is effectively saturation: reuse has almost nothing to work with here either`;
+  } else {
+    verdict =
+      `${formatPercent(percent)}% of it — the other ` +
+      `${formatPercent(100 - percent)}% stays frozen and reusable between flushes`;
+  }
   console.log(
     `[perf-load] profile ${profile}: ~${rows} new rows per ` +
       `${LOG_FLUSH_MS / 1000}s flush against a ${LOG_BUFFER_ROWS}-row buffer = ${verdict}`,
   );
   if (turnover < 1) {
-    const warmSec = (LOG_BUFFER_ROWS / rows) * (LOG_FLUSH_MS / 1000);
     console.log(
-      `[perf-load] profile ${profile}: the buffer takes ~${warmSec.toFixed(0)}s to saturate at ` +
-        `this rate — a shorter run measures the warm-up, not the steady state.`,
+      `[perf-load] profile ${profile}: the buffer takes ~${saturationSec(profile, rate).toFixed(0)}s ` +
+        `to saturate at this rate — windows before that are dropped from the steady-state ` +
+        `ms/render, so a run must outlast it by several flushes to report one at all.`,
     );
   }
 }
@@ -688,9 +817,12 @@ async function runWindow({ label, tabs, profile, rate, durationMs, logging, trac
   const args = [mainEntry, `--user-data-dir=${sandbox.userDataDir}`];
   if (traceGc) args.push('--js-flags=--trace-gc');
 
+  // "nominal ceiling", not "on the wire": `effectiveRate` is an upper bound the
+  // loop approaches from below, and a flood run printing 682.8 KB/s here
+  // delivered 566 KB/s. `summarise` prints what actually arrived.
   console.log(`[perf-load] ${label}: profile ${profile}, ${tabs} tabs, ` +
     `${(rate / 1024).toFixed(1)} KB/s each ` +
-    `(~${(effectiveRate(profile, rate) / 1024).toFixed(1)} KB/s on the wire), ` +
+    `(nominal ceiling ~${(effectiveRate(profile, rate) / 1024).toFixed(1)} KB/s after encoding), ` +
     `${(durationMs / 1000).toFixed(0)}s, logging ${logging}, trace-gc ${traceGc}`);
 
   const app = await electron.launch({
@@ -885,6 +1017,80 @@ async function readPerfRecords(conceptionPath) {
 /** Records this harness knows how to compare. See `PERF_SCHEMA_VERSION`. */
 const EXPECTED_SCHEMA = 2;
 
+/** Fewest post-saturation renders that may back a steady-state ms/render.
+ *  One render per 5 s flush per tab, so a 60 s single-tab realistic run
+ *  (saturating at ~31 s) yields about six — the figure is reported, and below
+ *  this it is refused outright rather than published from two samples. */
+const MIN_STEADY_RENDERS = 4;
+/** …and fewest post-saturation windows, so a single fat window cannot stand in
+ *  for a series. Records land on the app's 2.5 s sampler tick. */
+const MIN_STEADY_WINDOWS = 3;
+
+/** Fraction of the nominal ceiling below which the delivered byte count is
+ *  reported as a divergence rather than a rounding difference. The flood's
+ *  documented fork overhead lands it around 0.83, so this is deliberately below
+ *  that: the point is to catch a load that did not run, not to relitigate a
+ *  known and explained shortfall on every invocation. */
+const DELIVERY_FLOOR = 0.7;
+/** …and the ceiling. `effectiveRate` is an upper bound by construction, so
+ *  exceeding it means the model is wrong, not that the run went well. */
+const DELIVERY_CEILING = 1.05;
+
+/** Sum the per-session counters of one window into `totals`, in place. */
+function accumulate(totals, record) {
+  for (const session of Object.values(record.sessions)) {
+    totals.bytes += session.bytes ?? 0;
+    totals.oscMs += session.oscMs ?? 0;
+    totals.logParseMs += session.logParseMs ?? 0;
+    totals.gridRenderMs += session.gridRenderMs ?? 0;
+    totals.gridRenders += session.gridRenders ?? 0;
+    totals.batches += session.batches ?? 0;
+    totals.pauses += session.pauses ?? 0;
+    totals.watchdogs += session.watchdogs ?? 0;
+  }
+}
+
+const emptyTotals = () => ({
+  bytes: 0,
+  oscMs: 0,
+  logParseMs: 0,
+  gridRenderMs: 0,
+  gridRenders: 0,
+  batches: 0,
+  pauses: 0,
+  watchdogs: 0,
+});
+
+/**
+ * Split the run's windows at the moment the log buffer fills.
+ *
+ * A grid render costs O(retained buffer size), so a render taken while the
+ * buffer is still filling is measuring a smaller object than one taken after.
+ * Averaging the two is not noise — it is a systematic bias, and it runs in the
+ * direction that flatters whichever profile saturates faster. The flood fills in
+ * ~1.4 s and so is essentially all steady state; `realistic` at 16k needs ~31 s,
+ * so a 45-60 s run spends a third to half its renders on an unsaturated buffer.
+ *
+ * Measured 2026-07-23, `--tabs 1 --duration 60s`, with this split in place:
+ * whole-run 49.06 ms flood vs 8.68 realistic reads as 5.65x, where steady state
+ * (53.52 / 11.71) reads as 4.57x — a 24 % overstatement manufactured entirely by
+ * the average. At 120 s the same pair gives 51.71 / 9.64 = 5.36x whole-run
+ * against 53.96 / 10.80 = 5.00x steady, so the bias shrinks with duration
+ * without ever going away, which is exactly why it cannot be outrun instead of
+ * fixed. The review that found this measured 6.45x against 4.6x at 45 s.
+ *
+ * A window counts as steady only if it STARTED after saturation, so no window
+ * straddles the boundary.
+ *
+ * @returns the steady-state window subset, plus the run start it measured from.
+ */
+function steadyWindows(records, profile, rate) {
+  const windowStart = (record) => Date.parse(record.t) - record.windowMs;
+  const runStart = Math.min(...records.map(windowStart));
+  const saturatedAt = runStart + saturationSec(profile, rate) * 1000;
+  return { runStart, saturatedAt, windows: records.filter((r) => windowStart(r) >= saturatedAt) };
+}
+
 /** Aggregate the per-window records into the numbers the audit asked for.
  *
  *  Records are dropped rather than averaged when their schema does not match:
@@ -892,7 +1098,7 @@ const EXPECTED_SCHEMA = 2;
  *  JSONL is one file per day, an upgrade mid-day leaves both meanings in one
  *  file. Silently mixing them would shift an A/B by more than the effect it is
  *  trying to measure. */
-function summarise(records, { profile, rate }) {
+function summarise(records, { profile, rate, tabs, durationMs }) {
   const usable = records.filter((r) => r.schema === EXPECTED_SCHEMA);
   const skipped = records.length - usable.length;
   if (skipped > 0) {
@@ -904,47 +1110,76 @@ function summarise(records, { profile, rate }) {
   records = usable;
   if (records.length === 0) return null;
   const loopP99 = records.map((r) => r.loop.p99).sort((a, b) => a - b);
-  const totals = {
-    bytes: 0,
-    oscMs: 0,
-    logParseMs: 0,
-    gridRenderMs: 0,
-    gridRenders: 0,
-    batches: 0,
-    pauses: 0,
-    watchdogs: 0,
-  };
-  for (const record of records) {
-    for (const session of Object.values(record.sessions)) {
-      totals.bytes += session.bytes ?? 0;
-      totals.oscMs += session.oscMs ?? 0;
-      totals.logParseMs += session.logParseMs ?? 0;
-      totals.gridRenderMs += session.gridRenderMs ?? 0;
-      totals.gridRenders += session.gridRenders ?? 0;
-      totals.batches += session.batches ?? 0;
-      totals.pauses += session.pauses ?? 0;
-      totals.watchdogs += session.watchdogs ?? 0;
-    }
+  const totals = emptyTotals();
+  for (const record of records) accumulate(totals, record);
+
+  const { saturatedAt, runStart, windows: steady } = steadyWindows(records, profile, rate);
+  const steadyTotals = emptyTotals();
+  for (const record of steady) accumulate(steadyTotals, record);
+  const steadyEnough =
+    steady.length >= MIN_STEADY_WINDOWS && steadyTotals.gridRenders >= MIN_STEADY_RENDERS;
+  if (!steadyEnough) {
+    console.warn(
+      `[perf-load] WARNING: NO STEADY-STATE ms/render for this run. The ${LOG_BUFFER_ROWS}-row ` +
+        `buffer saturates ~${saturationSec(profile, rate).toFixed(0)}s in, leaving ` +
+        `${steady.length} window(s) and ${steadyTotals.gridRenders} render(s) after it (need ` +
+        `>=${MIN_STEADY_WINDOWS} and >=${MIN_STEADY_RENDERS}). A render costs O(retained buffer), ` +
+        `so the whole-run figure below MIXES a filling buffer with a full one and reads low — do ` +
+        `not quote it as a per-render cost, and do not compare it across profiles. Re-run longer.`,
+    );
   }
+
+  // The nominal ceiling is what `effectiveRate` can know; this is what arrived.
+  // Without the comparison a broken one-liner — a quoting slip, a shell without
+  // the builtin, a rate typo — exits 0 behind a plausible-looking summary.
+  const expectedBytes = (effectiveRate(profile, rate) * tabs * durationMs) / 1000;
+  const deliveredFraction = expectedBytes > 0 ? totals.bytes / expectedBytes : null;
+  if (deliveredFraction !== null && (deliveredFraction < DELIVERY_FLOOR || deliveredFraction > DELIVERY_CEILING)) {
+    console.warn(
+      `[perf-load] WARNING: delivered ${(totals.bytes / 1024 ** 2).toFixed(1)} MB against a nominal ` +
+        `${(expectedBytes / 1024 ** 2).toFixed(1)} MB (${(deliveredFraction * 100).toFixed(0)}% of ` +
+        `ceiling). Outside ${(DELIVERY_FLOOR * 100).toFixed(0)}-${(DELIVERY_CEILING * 100).toFixed(0)}%, ` +
+        `so the load is not the one requested — check the generated command actually runs under ` +
+        `the tab's $SHELL before reading anything else off this run.`,
+    );
+  }
+
   return {
     // Carried so summary.json says which regime produced it. Two runs of this
     // harness can differ by 32× in rate and 22× in rows per flush and otherwise
     // look identical on disk.
     profile,
     rateBytesPerSec: rate,
-    effectiveRateBytesPerSec: effectiveRate(profile, rate),
+    // NOMINAL — an upper bound the loop approaches from below, never a
+    // measurement. `deliveredFractionOfNominal` is what actually arrived.
+    nominalRateBytesPerSec: effectiveRate(profile, rate),
     rowsPerFlush: rowsPerFlush(profile, rate),
     bufferRows: LOG_BUFFER_ROWS,
+    saturationSec: Number(saturationSec(profile, rate).toFixed(1)),
     windows: records.length,
     loopP99Median: loopP99[Math.floor(loopP99.length / 2)],
     loopMaxObserved: Math.max(...records.map((r) => r.loop.max)),
     ...totals,
-    // gridRenderMs fires once per 5 s flush and costs O(retained buffer), so it
-    // does NOT scale with bytes — totalling it compares two runs' flush COUNTS
-    // as much as their render costs. Per render is the only normalisation that
-    // reads across profiles, and it is the figure the flood's saturation hides:
-    // with an empty frozen prefix every render pays the full 5050-row walk.
-    gridRenderMsPerRender:
+    deliveredFractionOfNominal:
+      deliveredFraction === null ? null : Number(deliveredFraction.toFixed(3)),
+    // ── The headline. gridRenderMs fires once per 5 s flush and costs
+    // O(retained buffer), so it does NOT scale with bytes — totalling it
+    // compares two runs' flush COUNTS as much as their render costs, and per
+    // render is the only normalisation that reads across profiles.
+    //
+    // But per render over the WHOLE run is not that normalisation either: it
+    // averages every warming-buffer render in with every full-buffer one, and
+    // the two profiles warm at very different speeds (~1.4 s vs ~31 s), so the
+    // bias does not cancel between them. Steady state is the comparable figure;
+    // the whole-run one is kept beside it, named for what it is.
+    gridRenderMsPerRenderSteady:
+      steadyEnough ? steadyTotals.gridRenderMs / steadyTotals.gridRenders : null,
+    steadyWindows: steady.length,
+    steadyRenders: steadyTotals.gridRenders,
+    steadyGridRenderMs: steadyTotals.gridRenderMs,
+    steadyFromSecIntoRun: Number(((saturatedAt - runStart) / 1000).toFixed(1)),
+    /** Whole-run mean, warm-up included. Biased low, kept for continuity. */
+    gridRenderMsPerRenderAllWindows:
       totals.gridRenders > 0 ? totals.gridRenderMs / totals.gridRenders : null,
     // The question the audit could not answer from source: of the main-thread
     // time attributable to the byte path, how is it split?
@@ -991,7 +1226,12 @@ async function main() {
         records.map((r) => JSON.stringify(r)).join('\n') + '\n',
         'utf8',
       );
-      summary[label] = summarise(records, { profile: args.profile, rate: args.rate });
+      summary[label] = summarise(records, {
+        profile: args.profile,
+        rate: args.rate,
+        tabs: args.tabs,
+        durationMs: args.durationMs,
+      });
     }
   } finally {
     // Results already live under OUT_DIR; the sandbox itself is disposable.
@@ -1005,17 +1245,27 @@ async function main() {
       console.log(`  ${label}: no records (was recording enabled?)`);
       continue;
     }
-    const perRender =
-      stats.gridRenderMsPerRender === null
+    // Steady state first and whole-run beside it, both labelled, and the sample
+    // count in view — "4.6x from 6 renders" is a very different claim from
+    // "4.6x", and the reader should not have to open summary.json to tell.
+    const steady =
+      stats.gridRenderMsPerRenderSteady === null
+        ? `NOT MEASURED (only ${stats.steadyRenders} render(s) after saturation)`
+        : `${stats.gridRenderMsPerRenderSteady.toFixed(2)} ms/render over ${stats.steadyRenders} ` +
+          `renders from ${stats.steadyFromSecIntoRun}s in`;
+    const allWindows =
+      stats.gridRenderMsPerRenderAllWindows === null
         ? '—'
-        : `${stats.gridRenderMsPerRender.toFixed(2)} ms`;
+        : `${stats.gridRenderMsPerRenderAllWindows.toFixed(2)} ms/render`;
     console.log(
       `  ${label} [${stats.profile}]: loop p99 median ${stats.loopP99Median} ms, ` +
-        `max ${stats.loopMaxObserved} ms, bytes ${(stats.bytes / 1024 ** 2).toFixed(1)} MB, ` +
+        `max ${stats.loopMaxObserved} ms, bytes ${(stats.bytes / 1024 ** 2).toFixed(1)} MB ` +
+        `(${((stats.deliveredFractionOfNominal ?? 0) * 100).toFixed(0)}% of nominal), ` +
         `osc ${stats.oscMs.toFixed(0)} ms, logParse ${stats.logParseMs.toFixed(0)} ms, ` +
-        `gridRender ${stats.gridRenderMs.toFixed(0)} ms over ${stats.gridRenders} renders ` +
-        `(${perRender}/render), pauses ${stats.pauses}, watchdogs ${stats.watchdogs}`,
+        `gridRender ${stats.gridRenderMs.toFixed(0)} ms over ${stats.gridRenders} renders, ` +
+        `pauses ${stats.pauses}, watchdogs ${stats.watchdogs}`,
     );
+    console.log(`      steady state: ${steady}   |   whole run incl. warm-up: ${allWindows}`);
   }
   if (args.ab && summary['logging-on'] && summary['logging-off']) {
     const delta = summary['logging-on'].loopP99Median - summary['logging-off'].loopP99Median;
@@ -1026,7 +1276,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[perf-load]', err);
-  process.exit(1);
-});
+// Run only when invoked as a script. The guard is what lets
+// `terminal-logger-harness-mirror.test.ts` import LOGGER_GEOMETRY_MIRROR and
+// compare it against the logger's own constants — without it, importing this
+// module would launch Electron and stage a flood inside the unit suite.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[perf-load]', err);
+    process.exit(1);
+  });
+}

@@ -142,6 +142,25 @@ const DEFAULT_FLUSH_MS = 5000;
 const COLS = 200;
 const ROWS = 50;
 
+/**
+ * The four numbers that decide how much work a grid flush is: the geometry, the
+ * default scrollback, and the flush period.
+ *
+ * Exported because `scripts/perf-load.mjs` mirrors them to report which side of
+ * the `scrollback + rows` buffer a load profile lands on, and that report is the
+ * only thing telling an operator whether a run can measure the incremental
+ * renderer at all. The harness is plain ESM run by bare `node` and cannot import
+ * this module, so it keeps its own copy — and `terminal-logger-harness-mirror.
+ * test.ts` compares the two, so a change here fails the suite instead of
+ * silently invalidating every figure the harness prints.
+ */
+export const LOGGER_GRID_GEOMETRY = {
+  cols: COLS,
+  rows: ROWS,
+  scrollback: DEFAULT_PREFS.scrollback,
+  flushMs: DEFAULT_FLUSH_MS,
+} as const;
+
 // Lazy handle on the `@xterm/headless` constructor. The import above is
 // type-only; this cached require means importing this module — which happens on
 // the pre-window boot path via `terminals` (killAll / startMemorySampling) and

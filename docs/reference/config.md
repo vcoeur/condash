@@ -353,15 +353,65 @@ the v4.97.1 incremental grid render scores exactly zero improvement under `flood
 
 `realistic` emits 80–119-character lines (one grid row each) in bursts separated by idle gaps, from a
 fixed seed so both arms of an `--ab` run see byte-identical input. Its default rate is deliberately
-**not** the flood's: short lines at 512k would land ~34 400 rows per flush, deeper into saturation
-than the flood itself. It also forks about 100× less — the lines are literals and `printf` is a shell
-builtin, so only the per-burst `sleep` forks, against the flood's ~2000 process creations/second —
-which is why absolute constants read off `flood` are upper bounds rather than measurements of the
-byte path alone.
+**not** the flood's: short lines at 512k would land ~25 795 rows per flush — 5.1× turnover, deeper
+into saturation than the flood itself. It also forks about 100× less — the lines are literals and
+`printf` is a shell builtin, so only the per-burst `sleep` forks, against the flood's ~2000 process
+creations/second — which is why absolute constants read off `flood` are upper bounds rather than
+measurements of the byte path alone.
 
-At 16k the buffer needs about 31 seconds to fill, so a `realistic` run shorter than roughly a minute
-measures the warm-up rather than the steady state. The harness prints its regime and that warm-up
-time before it starts, and records both in `summary.json`.
+Every rows-per-flush figure above is keyed to the rate you **request**, which is what the harness
+computes and prints. The flood's post-base64 output is about a third higher (699 200 B/s at `512k`),
+and the same arithmetic against *that* gives 34 401 rows and 6.8× — a different quantity, and one
+this page quoted in place of the other until 2026-07-23.
+
+#### Reading the ms-per-render figure
+
+A grid render costs O(retained buffer size), so a render taken while the buffer is still filling is
+not the same measurement as one taken after it is full. The profiles fill at very different speeds —
+about 1.4 s for `flood`, about 31 s for `realistic` at 16k — so averaging across that boundary is a
+systematic bias, and it runs in favour of whichever profile saturates first.
+
+The harness therefore drops every pre-saturation window and reports **`gridRenderMsPerRenderSteady`**
+as the headline, alongside the sample count it rests on. Below three post-saturation windows or four
+renders it refuses to report one at all and says so loudly, rather than publishing a mean of two
+samples. The unfiltered whole-run mean is kept beside it as `gridRenderMsPerRenderAllWindows`, named
+for what it is. A `realistic` run therefore needs to outlast ~31 s by several flushes: 60 s is the
+practical minimum, 120 s gives a comfortable series.
+
+Measured 2026-07-23 on one tab, matched pairs at 60 s and 120 s:
+
+| Profile | Steady ms/render | Whole-run ms/render | Delivered vs nominal |
+|---|---|---|---|
+| `flood` @ `512k` | 53.5 / 54.0 | 49.1 / 51.7 | 84 % |
+| `realistic` @ `16k` | 11.7 / 10.8 | 8.7 / 9.6 | 99 % / 100 % |
+
+That is **4.6–5.0× at steady state**, where the unfiltered means would have read 5.7× and 5.4×.
+
+**The ratio is not decomposed here, and should not be.** The two profiles differ in at least four
+ways at once — rate (32×), rows per line (55×), fork rate (114×), and steady versus bursty output —
+and a control run cannot vary them independently, because `floodCommand` derives its chunk size from
+the rate, tying line width to turnover. The observed ratio is the combined effect of all of them.
+
+#### What `realistic` does and does not represent
+
+It is a **floor** on the grid renderer's cost for a **non-cooperating** tab, not a portrait of a
+typical one:
+
+- Neither profile emits anything but printable ASCII and newlines — no alternate screen, no `RIS`,
+  no `\r` progress bars, no `CSI L`. So `GridBodyRenderer.invalidate()` and the marker-anomaly path
+  are never exercised and the frozen prefix is never dropped mid-run. Real tabs run TUIs and spinners
+  that do exactly that, and pay more than this.
+- `SessionLogger.flushNow` writes the **transcript** body whenever the session has one, and falls
+  back to the grid only otherwise. Cooperating agent tabs emit their transcript in-band over OSC and
+  so never reach `GridBodyRenderer` at all. The grid path serves non-cooperating tabs, and that is
+  the population these figures describe.
+
+The per-tab byte rate the harness prints is a **nominal ceiling** — after base64 expansion for the
+flood, before delivery — not a measurement of what reached the app. Emitting output takes wall-clock
+the fixed `sleep` never subtracts, so the loop always runs slower than its own arithmetic: a flood
+run printing 682.8 KB/s delivered 566 KB/s, which is the documented fork overhead. The summary
+reports what actually arrived as a percentage of that ceiling and warns outside 70–105 %, so a
+one-liner that silently failed to run cannot exit 0 behind a plausible-looking summary.
 
 The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
 isolation in the main process before applying any load — so it never touches your real
