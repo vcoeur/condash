@@ -334,6 +334,35 @@ To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mj
 controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,
 which isolates the cost of the logger's duplicate ANSI parse on the main thread.
 
+`--profile` selects the **shape** of that load, which matters more than the rate. The disk logger
+renders its grid body out of a headless xterm holding at most **5050 rows** and flushes every **5 s**,
+reusing the previous flush's frozen prefix — so the figure that decides what a run can measure is
+*new rows per flush against 5050*:
+
+| `--profile` | Default rate | Rows per 5 s flush | Regime |
+|---|---|---|---|
+| `flood` (default) | `512k` | ~17 600 | **3.5× full buffer turnover** — worst-case saturation |
+| `realistic` | `16k` | ~806 | **16 % of the buffer**, 84 % retained and reusable |
+
+`flood` is unchanged and stays the right tool for stressing the byte path, but it emits one
+10 924-character line per chunk, which wraps at 200 columns to 55 rows. At 64 chunks/s that replaces
+the whole buffer three and a half times per flush, so nothing is ever retained — which makes any
+optimisation that depends on retained rows invisible to it *by construction*. Measured 2026-07-23,
+the v4.97.1 incremental grid render scores exactly zero improvement under `flood` and 1.4–1.6× under
+`realistic`.
+
+`realistic` emits 80–119-character lines (one grid row each) in bursts separated by idle gaps, from a
+fixed seed so both arms of an `--ab` run see byte-identical input. Its default rate is deliberately
+**not** the flood's: short lines at 512k would land ~34 400 rows per flush, deeper into saturation
+than the flood itself. It also forks about 100× less — the lines are literals and `printf` is a shell
+builtin, so only the per-burst `sleep` forks, against the flood's ~2000 process creations/second —
+which is why absolute constants read off `flood` are upper bounds rather than measurements of the
+byte path alone.
+
+At 16k the buffer needs about 31 seconds to fill, so a `realistic` run shorter than roughly a minute
+measures the warm-up rather than the steady state. The harness prints its regime and that warm-up
+time before it starts, and records both in `summary.json`.
+
 The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
 isolation in the main process before applying any load — so it never touches your real
 `settings.json`, never floods your conception's log store, and never shares a perf JSONL with a
