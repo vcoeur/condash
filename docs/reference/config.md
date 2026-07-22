@@ -319,11 +319,16 @@ Settings modal's **Terminal → Performance recording** checkbox, and the **Perf
 Record button. The pane also shows the live values; per-tab memory, growth rate, and throttle state
 are shown there whether or not recording is on, since they come from the always-on sampler.
 
-Records are plain JSONL and are safe to delete. **Nothing prunes `.condash/perf/` yet** — unlike
-`.condash/logs/`, which has a janitor — so recording left on accumulates roughly 10 MB/day with two
-active tabs and ~80 MB/day with twenty. Turn it off when you are done measuring. `.condash/` is
-gitignored in full **in conceptions whose `.gitignore` carries that rule**; a conception created from
-the bundled template does not yet ship one.
+Records are plain JSONL and are safe to delete. Recording accumulates roughly 10 MB/day with two
+active tabs and ~80 MB/day with twenty, so **condash prunes the directory for you**: a janitor runs
+at startup and every 24 h and deletes records older than **14 days**, then — while the directory is
+still over **200 MB** — the oldest remaining files until it is under. **The current day's file is
+never deleted**, since a live recorder is appending to it.
+
+That means perf records are *not* long-term storage. If a run matters beyond a fortnight, or if a
+burst has pushed the directory over the cap, copy the JSONL somewhere else. `.condash/` is gitignored
+in full **in conceptions whose `.gitignore` carries that rule**; a conception created from the
+bundled template does not yet ship one.
 
 To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mjs` drives N tabs at a
 controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,

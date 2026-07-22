@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent, TermDeath } from '@shared/types';
+import { isAbnormalDeath } from '@shared/term-death-shape';
 import { RefreshIcon } from '../icons';
 import { createDropdownMenu } from '../dropdown-menu';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
@@ -49,6 +50,11 @@ function shortDeathLabel(death: TermDeath): string {
       return death.signal !== undefined ? `sig ${death.signal}` : 'signal';
     case 'failed':
       return `exit ${death.exitCode ?? '?'}`;
+    // A `stopped` row only survives long enough to render when the OOM killer
+    // fired during the stop — an ordinary stop auto-closes. That is the one
+    // thing worth showing about it.
+    case 'stopped':
+      return 'OOM';
     default:
       return '';
   }
@@ -269,7 +275,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 {/* Death verdict — the whole reason an abnormally-exited row is
                  *  kept on screen. Without it a killed tab was indistinguishable
                  *  from one the user closed. */}
-                <Show when={tab.death && tab.death.kind !== 'clean'}>
+                <Show when={tab.death && isAbnormalDeath(tab.death)}>
                   <span
                     class="terminal-tab-death"
                     classList={{ oom: tab.death!.kind.startsWith('oom-') }}
@@ -278,7 +284,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
                     {shortDeathLabel(tab.death!)}
                   </span>
                 </Show>
-                <Show when={tab.death && tab.death.kind !== 'clean'}>
+                <Show when={tab.death && isAbnormalDeath(tab.death)}>
                   <button
                     type="button"
                     class="terminal-tab-restart"

@@ -54,11 +54,21 @@ interface SessionCounters {
 
 /** One flushed record. Shape is the on-disk contract for `.condash/perf/`. */
 export interface PerfRecord {
+  /** Schema version of this record.
+   *
+   *  Present from v2 onward; a record without it was written by v4.96.0, whose
+   *  `loop` values carry a fixed ~10 ms offset (the sampler's own resolution was
+   *  not subtracted). Since records are appended to a per-DAY file, upgrading
+   *  mid-day produces one file holding both meanings — so anything aggregating
+   *  `loop` must discriminate rather than average across the boundary. */
+  schema: number;
   /** ISO timestamp of the flush. */
   t: string;
   /** Milliseconds covered by this window. */
   windowMs: number;
-  /** Event-loop delay over the window, in milliseconds. */
+  /** Event-loop delay over the window, in milliseconds **above the sampler's own
+   *  10 ms interval** — see `loopDelayMs`. Delays below that interval are not
+   *  resolvable and read as 0. */
   loop: { p50: number; p99: number; max: number };
   /** Main-process heap use at flush time, in bytes. */
   heapUsed: number;
@@ -117,6 +127,12 @@ function omitUndefined<T extends Record<string, number | undefined>>(
   return out;
 }
 
+/** Current `PerfRecord.schema`. Bump whenever the MEANING of a recorded field
+ *  changes, not merely when one is added — v2 exists because `loop` switched
+ *  from a raw histogram reading to delay above the sampler's interval, which is
+ *  invisible in the shape but makes the two incomparable. */
+export const PERF_SCHEMA_VERSION = 2;
+
 /** Sampling resolution (ms) of the event-loop histogram — and, crucially, the
  *  floor it reports. See {@link loopDelayMs}. */
 const LOOP_RESOLUTION_MS = 10;
@@ -130,7 +146,11 @@ const LOOP_RESOLUTION_MS = 10;
  * reports the resolution. Measured on an idle process: resolution 10 → p50
  * 10.109 ms, p99 10.297 ms, min 10.027 ms; resolution 20 → p50 20.120 ms. A 100
  * ms hard block at resolution 10 reads max 106.50 ms, so the relationship is
- * `reported ≈ true_delay + resolution`.
+ * approximately `reported ≈ true_delay + resolution`. Approximately, not
+ * exactly: subtracting a flat 10 reports that 100 ms block as 96.5 ms, a few
+ * percent low. The residual is well inside the noise these figures are read at,
+ * and far smaller than the ~10 ms bias it replaces — but the number is an
+ * estimate of delay, not a measurement of it.
  *
  * Reporting the raw value put a fixed ~10 ms — around 61 % of a 16.7 ms frame
  * budget — on the pane's headline "main loop p99" for a completely idle app.
@@ -329,6 +349,7 @@ export class PerfLog {
       };
     }
     const record: PerfRecord = {
+      schema: PERF_SCHEMA_VERSION,
       t: at.toISOString(),
       windowMs: at.getTime() - this.windowStart,
       loop: {
@@ -452,23 +473,33 @@ export async function runPerfJanitor(
   result.scanned = files.length;
   if (files.length === 0) return result;
 
-  const cutoff = new Date(now);
-  cutoff.setDate(cutoff.getDate() - PERF_RETENTION_DAYS);
-  const cutoffDay = cutoff.toISOString().slice(0, 10);
+  // UTC arithmetic throughout: filenames are stamped with `toISOString`, so
+  // deriving the cutoff with local-time `setDate` mixed two calendars and made
+  // retention wobble by a day across a DST change when the clock sat near the
+  // UTC date boundary.
+  const cutoffDay = new Date(now.getTime() - PERF_RETENTION_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
-  const drop = async (file: { name: string; bytes: number }): Promise<void> => {
+  /** Delete a record, reporting whether it actually went. The caller's byte
+   *  accounting depends on the answer — assuming success let a permission
+   *  failure under-count the directory and stop the cap pass early. */
+  const drop = async (file: { name: string; bytes: number }): Promise<boolean> => {
     try {
       await rm(join(root, file.name), { force: true });
       result.deleted.push(file.name);
+      return true;
     } catch {
-      /* leave it; it will be retried on the next sweep */
+      return false; // left in place; retried on the next sweep
     }
   };
 
   // Oldest first, so the cap pass evicts in the right order.
   files.sort((a, b) => (a.day < b.day ? -1 : 1));
+  // `<=` keeps exactly PERF_RETENTION_DAYS days including today. With `<` the
+  // cutoff day itself survived, so 14 days of retention kept 15.
   for (const file of files) {
-    if (file.name !== today && file.day < cutoffDay) await drop(file);
+    if (file.name !== today && file.day <= cutoffDay) await drop(file);
   }
 
   const survivors = files.filter((f) => !result.deleted.includes(f.name));
@@ -476,8 +507,7 @@ export async function runPerfJanitor(
   for (const file of survivors) {
     if (total <= PERF_MAX_DIR_BYTES) break;
     if (file.name === today) continue;
-    await drop(file);
-    total -= file.bytes;
+    if (await drop(file)) total -= file.bytes;
   }
   result.remainingBytes = total;
   return result;

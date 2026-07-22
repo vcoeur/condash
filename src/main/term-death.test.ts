@@ -136,12 +136,44 @@ describe('deriveDeath', () => {
       intentional: true,
     });
     expect(death.kind).toBe('stopped');
-    expect(death.label).toBe('stopped');
-    // The raw counters still ride along — the evidence is kept, only the
-    // attribution is withheld.
+    // The raw counters still ride along — the evidence is kept, only the OOM
+    // *attribution* is withheld.
     expect(death.oomKillDelta).toBe(1);
     expect(death.highDelta).toBe(800);
-    // And a deliberate stop must not pin its row on screen.
+  });
+
+  it('still reports an OOM kill that lands during a stop, and keeps the row', () => {
+    // The stop window is up to 3.5s wide (force_stop timeout + SIGKILL grace),
+    // so a tab can genuinely trip its own MemoryMax inside it. `oom_kill` only
+    // moves when the cgroup OOM killer fires, so the evidence is real whoever
+    // asked for the stop — reporting a bare 'stopped' would auto-close the row
+    // and lose the only report of it.
+    const death = deriveDeath({
+      exitCode: 0,
+      signal: 9,
+      before: events(0, 10),
+      after: events(1, 12),
+      intentional: true,
+    });
+    // NOT promoted to 'oom-cap': our own SIGKILL has destroyed the test that
+    // separates "the shell was the victim" from "a child was, and the shell
+    // survived" — promoting would blame the tab for a child's death.
+    expect(death.kind).toBe('stopped');
+    expect(death.label).toBe('stopped — out-of-memory kill in this tab');
+    expect(isAbnormal(death)).toBe(true);
+  });
+
+  it('auto-closes an ordinary stop with no memory evidence', () => {
+    const death = deriveDeath({
+      exitCode: 0,
+      signal: 9,
+      before: events(0, 100),
+      after: events(0, 900),
+      intentional: true,
+    });
+    expect(death.label).toBe('stopped');
+    // Throttling alone is not news — it is the ambient state of any tab near
+    // its soft limit, which is the whole reason the intentional guard exists.
     expect(isAbnormal(death)).toBe(false);
   });
 

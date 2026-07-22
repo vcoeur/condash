@@ -25,13 +25,10 @@ import type { TermDeath } from '../shared/types';
 
 import type { CgroupMemoryEvents } from './tab-scope';
 
-/** True when the death warrants keeping the tab row on screen instead of
- *  auto-closing. A clean `exit 0` does not, and neither does a stop condash
- *  itself issued — the user who pressed Stop does not need the outcome
- *  explained back to them, and pinning that row would defeat the close. */
-export function isAbnormal(death: TermDeath): boolean {
-  return death.kind !== 'clean' && death.kind !== 'stopped';
-}
+/** Re-export of the shared predicate. It lives in `shared/` because the renderer
+ *  needs the same answer to decide whether to draw the verdict badge and the
+ *  Restart button — two independent copies had already drifted once. */
+export { isAbnormalDeath as isAbnormal } from '../shared/term-death-shape';
 
 /** POSIX signal numbers condash names explicitly; anything else renders as its
  *  raw number, which is more useful than a wrong guess. */
@@ -129,8 +126,27 @@ export function deriveDeath(evidence: DeathEvidence): TermDeath {
   // A stop condash issued itself is not a diagnosis. Reported before any signal
   // branch: the pipeline's own SIGKILL is exactly what would otherwise be read
   // as an external kill.
+  //
+  // But it must not swallow the evidence either. The stop window is up to 3.5 s
+  // wide (force_stop timeout plus the SIGKILL grace), and a tab can genuinely
+  // trip its own MemoryMax inside it. `oom_kill` only moves when the cgroup OOM
+  // killer fires, so a positive delta is real regardless of who asked for the
+  // stop, and reporting a bare "stopped" would auto-close the row and lose it.
+  //
+  // The verdict stays `stopped` rather than `oom-cap` because our own SIGKILL
+  // has destroyed the test that separates the two: normally `signal === SIGKILL`
+  // is what shows the *shell* was the victim rather than a child (a compiler, a
+  // test runner) that the killer picked while the shell survived. During a stop
+  // that signal may be ours, so promoting to `oom-cap` would blame the tab for a
+  // child's death — the exact false positive the SIGKILL requirement was added
+  // to prevent. Report both facts and let the reader judge.
   if (evidence.intentional === true) {
-    return { ...base, kind: 'stopped', label: 'stopped' };
+    const sawOomKill = oomKillDelta !== undefined && oomKillDelta > 0;
+    return {
+      ...base,
+      kind: 'stopped',
+      label: sawOomKill ? 'stopped — out-of-memory kill in this tab' : 'stopped',
+    };
   }
 
   // Counters only attribute a death if their window contains it. `bracketsDeath`

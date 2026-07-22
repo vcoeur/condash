@@ -134,12 +134,21 @@ export function SettingsModal(props: {
   // and by that verb. Hence: live state, applied immediately, no Save needed.
   const [perfRecording, setPerfRecording] = createSignal(false);
   onMount(() => {
-    void window.condash
-      .perfVitals()
-      .then((vitals) => setPerfRecording(vitals.recording))
-      .catch(() => {
-        /* leave the checkbox unchecked; toggling it will re-sync from the reply */
-      });
+    const readVitals = (): void => {
+      void window.condash
+        .perfVitals()
+        .then((vitals) => setPerfRecording(vitals.recording))
+        .catch(() => {
+          /* keep the last reading; toggling re-syncs from the reply */
+        });
+    };
+    readVitals();
+    // Poll, don't read once. The Performance pane carries the same toggle and
+    // polls on the same cadence, so a read-once checkbox silently contradicts
+    // the pane the moment recording is flipped from there — and recording is
+    // also switched off by a conception change, which no renderer initiates.
+    const timer = setInterval(readVitals, 2500);
+    onCleanup(() => clearInterval(timer));
   });
   const applyPerfRecording = async (value: boolean): Promise<void> => {
     try {

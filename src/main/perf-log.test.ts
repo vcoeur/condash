@@ -208,6 +208,22 @@ describe('runPerfJanitor', () => {
     expect(await readdir(perfLogRoot(conception))).toEqual(['2026-07-20.jsonl']);
   });
 
+  it('keeps exactly the retention window, inclusive of today', async () => {
+    // Boundary: with a `<` compare against today−14 the cutoff day itself
+    // survived, so 14 days of retention silently kept 15.
+    const conception = await seed({
+      '2026-07-08': 10, // today − 14: the boundary, must go
+      '2026-07-09': 10, // today − 13: the oldest keeper
+      '2026-07-22': 10, // today
+    });
+    const result = await runPerfJanitor(conception, NOW);
+    expect(result.deleted).toEqual(['2026-07-08.jsonl']);
+    expect(await readdir(perfLogRoot(conception))).toEqual([
+      '2026-07-09.jsonl',
+      '2026-07-22.jsonl',
+    ]);
+  });
+
   it('evicts oldest-first while over the directory cap', async () => {
     // Three 90 MB days = 270 MB, over the 200 MB ceiling; dropping the oldest
     // one brings it under, so the second must survive.

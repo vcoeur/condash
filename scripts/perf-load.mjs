@@ -60,7 +60,7 @@
 //   node scripts/perf-load.mjs --ab            # runs logging on AND off, compares
 
 import { _electron as electron } from 'playwright';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { freemem, tmpdir, totalmem } from 'node:os';
@@ -198,6 +198,14 @@ async function assertMemorySafe({ tabs, force }) {
  * (the OSC scan, the flow controller's batching decision, the logger's parse) are
  * what the audit ranked, and a handful of huge writes would amortise exactly the
  * thing being measured. 64 chunks/second approximates a chatty agent.
+ *
+ * KNOWN LIMITATION: each iteration forks `head`, `base64`, `tr` and `sleep`, so
+ * the default 8 tabs drive ~2000 process creations/second. A meaningful share of
+ * the load is therefore process creation rather than the terminal byte path
+ * under study, which inflates the baseline in BOTH arms of the logging A/B. The
+ * A/B delta stays interpretable (the fork cost is common to both), but absolute
+ * constants read off this harness are upper bounds, not measurements of the byte
+ * path alone. Generating the bytes in-process would fix it.
  */
 function floodCommand(rate) {
   const chunksPerSec = 64;
@@ -379,8 +387,26 @@ async function readPerfRecords(conceptionPath) {
   }
 }
 
-/** Aggregate the per-window records into the numbers the audit asked for. */
+/** Records this harness knows how to compare. See `PERF_SCHEMA_VERSION`. */
+const EXPECTED_SCHEMA = 2;
+
+/** Aggregate the per-window records into the numbers the audit asked for.
+ *
+ *  Records are dropped rather than averaged when their schema does not match:
+ *  v4.96.0 wrote `loop` values carrying a fixed ~10 ms offset, and because the
+ *  JSONL is one file per day, an upgrade mid-day leaves both meanings in one
+ *  file. Silently mixing them would shift an A/B by more than the effect it is
+ *  trying to measure. */
 function summarise(records) {
+  const usable = records.filter((r) => r.schema === EXPECTED_SCHEMA);
+  const skipped = records.length - usable.length;
+  if (skipped > 0) {
+    console.warn(
+      `[perf-load] skipped ${skipped} record(s) not at schema ${EXPECTED_SCHEMA} ` +
+        `— pre-v4.97 loop values are offset by the sampler resolution and are not comparable.`,
+    );
+  }
+  records = usable;
   if (records.length === 0) return null;
   const loopP99 = records.map((r) => r.loop.p99).sort((a, b) => a - b);
   const totals = { bytes: 0, oscMs: 0, logParseMs: 0, gridRenderMs: 0, batches: 0, pauses: 0, watchdogs: 0 };
@@ -419,6 +445,16 @@ async function main() {
   const sandbox = await makeSandbox();
   console.log(`[perf-load] sandbox: ${sandbox.root}`);
   const conceptionPath = sandbox.conceptionPath;
+
+  // Ctrl-C skips `finally`, so without this the sandbox is left behind under
+  // /tmp on the one exit path an operator is most likely to take when a load
+  // run misbehaves.
+  const cleanUpAndExit = () => {
+    rmSync(sandbox.root, { recursive: true, force: true });
+    process.exit(130);
+  };
+  process.once('SIGINT', cleanUpAndExit);
+  process.once('SIGTERM', cleanUpAndExit);
 
   const modes = args.ab ? ['on', 'off'] : [args.logging];
   const summary = {};
