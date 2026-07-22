@@ -70,7 +70,9 @@ Linux + Wayland fallback for fractional-scaling issues on uncommon compositors. 
 
 ## `CONDASH_FORCE_PROD`
 
-Set by the Playwright e2e fixture to force the renderer to load the packaged `dist/` build via `file://`, bypassing the Vite dev URL. Not intended for direct use.
+Forces the renderer to load the built `dist/` bundle via `file://` instead of the Vite dev URL, for any unpackaged launch that is not `npm run dev`. Set by the Playwright e2e fixture and by every script that drives a real app — `scripts/snap.mjs`, `scripts/perf-baseline.mjs`, `scripts/perf-load.mjs`.
+
+Omitting it in such a script is a silent failure, not a loud one: `isDev` stays true, the app navigates to a dev server nobody started, and the run continues against a renderer that never mounted. Note that forcing prod mode also skips the dev `userData` redirect, so an isolated launch must pass `--user-data-dir` and verify the live path rather than relying on `CONDASH_DEV_USER_DATA_DIR`.
 
 ## Not read from the environment
 

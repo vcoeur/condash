@@ -61,7 +61,7 @@
 
 import { _electron as electron } from 'playwright';
 import { createWriteStream, rmSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { freemem, tmpdir, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -255,6 +255,59 @@ async function makeSandbox() {
 }
 
 /** Run one load window end to end and return its perf records. */
+/**
+ * Warn when `src/` is newer than the bundles the run is about to measure.
+ *
+ * Existence is not currency, and the gap is not theoretical: on 2026-07-22 a
+ * reading was taken against a `dist-electron/` seven weeks older than the tree,
+ * so the run measured old code while reporting the current version back. The
+ * preflight above would have passed it, and so would the renderer assertion — a
+ * stale bundle mounts perfectly well.
+ *
+ * A warning rather than a throw: editing a source comment after building makes
+ * the tree newer without changing what runs, and refusing to measure over that
+ * would be worse than saying so. Naming the delta is what makes it actionable —
+ * "42 days" reads very differently from "20 seconds".
+ */
+async function warnIfBuildStale(entries) {
+  const newestSource = await newestMtime(join(repoRoot, 'src'));
+  if (newestSource === 0) return;
+  let oldestBundle = Infinity;
+  for (const entry of entries) {
+    oldestBundle = Math.min(oldestBundle, (await stat(entry)).mtimeMs);
+  }
+  if (newestSource <= oldestBundle) return;
+  const staleMs = newestSource - oldestBundle;
+  const age =
+    staleMs > 86_400_000
+      ? `${(staleMs / 86_400_000).toFixed(1)} days`
+      : `${(staleMs / 60_000).toFixed(1)} min`;
+  console.warn(
+    `[perf-load] WARNING: src/ is ${age} newer than the built bundles. This run measures the ` +
+      `BUILD, not the working tree — re-run \`npm run build\` unless that is what you want.`,
+  );
+}
+
+/** Newest mtime under `dir`, recursively. 0 when the tree is unreadable. */
+async function newestMtime(dir) {
+  let newest = 0;
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, await newestMtime(path));
+    } else if (entry.isFile()) {
+      newest = Math.max(newest, (await stat(path)).mtimeMs);
+    }
+  }
+  return newest;
+}
+
 async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sandbox }) {
   const outDir = join(OUT_DIR, label);
   await mkdir(outDir, { recursive: true });
@@ -273,6 +326,7 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
       throw new Error(`Missing ${half} bundle ${entry} — run \`npm run build\` first.`);
     }
   }
+  await warnIfBuildStale([mainEntry, rendererEntry]);
 
   const gcLogPath = join(outDir, 'gc.log');
   const args = [mainEntry, `--user-data-dir=${sandbox.userDataDir}`];
@@ -378,10 +432,12 @@ async function runWindow({ label, tabs, rate, durationMs, logging, traceGc, sand
       await window.waitForSelector('#root > *', { timeout: 30_000 });
     } catch {
       throw new Error(
-        `renderer did not load: page is '${pageUrl}' with an empty #root. ` +
-          `A localhost URL means the app booted in dev mode and is waiting on a Vite server that ` +
-          `is not running (CONDASH_FORCE_PROD lost from the launch env); a file:// URL means the ` +
-          `renderer bundle itself is broken. Refusing to measure a dead renderer.`,
+        `renderer did not load: page is '${pageUrl}', #root never gained a child. ` +
+          `A chrome-error:// URL is the flagship case — the app booted in dev mode and the Vite ` +
+          `server it wants is not running, so navigation failed outright (CONDASH_FORCE_PROD lost ` +
+          `from the launch env). A localhost URL means dev mode with the server up but the app ` +
+          `not mounting; a file:// URL means the built renderer bundle is broken or stale. ` +
+          `Refusing to measure a dead renderer.`,
       );
     }
     console.log(`[perf-load] renderer loaded: ${pageUrl}`);
