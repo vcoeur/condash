@@ -125,6 +125,43 @@ export function SettingsModal(props: {
   // SearchProvider so every Subgroup can match its own keywords.
   const [searchQuery, setSearchQuery] = createSignal('');
 
+  // Perf recording is deliberately NOT part of the draft/save flow the rest of
+  // this modal uses. It routes through `perfSetEnabled`, the same verb the
+  // Performance pane calls, because that verb both read-merge-writes the
+  // `terminal` block and re-applies the preference to the running recorder. A
+  // plain config patch would persist the flag and change nothing until the next
+  // launch — `syncPerfLogging` is only called at boot, on a conception switch,
+  // and by that verb. Hence: live state, applied immediately, no Save needed.
+  const [perfRecording, setPerfRecording] = createSignal(false);
+  onMount(() => {
+    const readVitals = (): void => {
+      void window.condash
+        .perfVitals()
+        .then((vitals) => setPerfRecording(vitals.recording))
+        .catch(() => {
+          /* keep the last reading; toggling re-syncs from the reply */
+        });
+    };
+    readVitals();
+    // Poll, don't read once. The Performance pane carries the same toggle and
+    // polls on the same cadence, so a read-once checkbox silently contradicts
+    // the pane the moment recording is flipped from there — and recording is
+    // also switched off by a conception change, which no renderer initiates.
+    const timer = setInterval(readVitals, 2500);
+    onCleanup(() => clearInterval(timer));
+  });
+  const applyPerfRecording = async (value: boolean): Promise<void> => {
+    try {
+      const vitals = await window.condash.perfSetEnabled(value);
+      setPerfRecording(vitals.recording);
+    } catch (err) {
+      // Surface it: a settings write can fail (ENOSPC, read-only home), and a
+      // checkbox that silently springs back with no explanation is worse than
+      // the error itself.
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const isDirty = (): boolean =>
     globalDraft() !== null || conceptionDraft() !== null || Object.keys(textDrafts()).length > 0;
 
@@ -808,6 +845,8 @@ export function SettingsModal(props: {
                 updateLogging={updateLogging}
                 updateMemory={updateMemory}
                 updateAppScopeMemory={updateAppScopeMemory}
+                perfRecording={perfRecording}
+                setPerfRecording={applyPerfRecording}
                 setAutoRefreshOnTabSwitch={setAutoRefreshOnTabSwitch}
                 platform={platform}
               />

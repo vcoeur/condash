@@ -21,7 +21,7 @@ import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 import {
   wrapWithMemoryScope,
-  cgroupPathFor,
+  resolveScopeCgroup,
   readCgroupMemory,
   readCgroupMemoryEvents,
   type CgroupMemoryEvents,
@@ -96,6 +96,12 @@ interface Session {
   memEventsPrev?: CgroupMemoryEvents;
   /** Why the session ended; undefined while live. */
   death?: TermDeath;
+  /** Set the moment condash begins terminating this session — a Stop, a tab
+   * close, or app quit. The pipeline ends in SIGKILL, which `deriveDeath` would
+   * otherwise be free to read as an external kill and, on a tab resting near
+   * `MemoryHigh`, blame on memory pressure. Set BEFORE the first signal, since
+   * the pty can exit on the SIGTERM. */
+  stopping?: boolean;
   /** Wall-clock ms of the sample that produced `memBytes` — the other half of
    * the growth-rate calculation. */
   memSampledAt?: number;
@@ -252,8 +258,11 @@ export function rateChanged(previous: number | undefined, next: number | undefin
 
 /** Sample every scoped tab's cgroup memory and rebroadcast the snapshot when a
  *  figure moved by a meaningful step, so the renderer's per-tab meter tracks
- *  usage. One small file read per live scoped pty; unscoped tabs are skipped
- *  (their pid resolves to condash's own cgroup — not the tab's). An active
+ *  usage. One small file read per live scoped pty. A tab is sampled only once
+ *  `cgroupPath` is set, which `resolveScopeCgroup` does only after confirming
+ *  the path ends in the tab's own unit name — never on a bare `/proc` read,
+ *  which resolves to condash's own cgroup both for an unscoped tab and for a
+ *  scoped one that has not finished migrating. An active
  *  process's memory.current moves on virtually every sample, so the change test
  *  is quantized (`memSampleChanged`) — an exact-byte compare would rebroadcast
  *  the whole snapshot continuously even when the rendered meter wouldn't change
@@ -632,7 +641,7 @@ export async function spawnTerminal(
   // over the per-machine default; both may be unset (→ enabled defaults). The
   // logger keeps recording the *real* program/argv, not the wrapper.
   const memPrefs = config.terminal?.memory ?? settings.terminal?.memory;
-  const spawnTarget = wrapWithMemoryScope(program, argv, memPrefs);
+  const spawnTarget = wrapWithMemoryScope(program, argv, memPrefs, { kind: 'term', sessionId: id });
   const ptyProcess = pty.spawn(spawnTarget.program, spawnTarget.argv, {
     name: 'xterm-256color',
     cols,
@@ -710,18 +719,37 @@ export async function spawnTerminal(
   sessions.set(id, session);
   logger?.spawn();
 
-  // Resolve the cgroup path NOW, while the pid is alive. `/proc/<pid>` is gone
-  // by the time node-pty emits `exit` (it fires after waitpid and the pty socket
-  // close), so a pid-based lookup at death time always fails — which would leave
-  // every OOM classified as a bare SIGKILL — and a recycled pid would resolve to
-  // a foreign cgroup. Seeding the first `memory.events` reading here also gives
-  // a tab that dies inside the first sampling interval a baseline to diff
-  // against; a fast-allocating runaway is plausibly in exactly that window.
-  if (session.memScoped) {
-    session.cgroupPath = cgroupPathFor(ptyProcess.pid);
-    if (session.cgroupPath !== undefined) {
-      session.memEvents = readCgroupMemoryEvents(session.cgroupPath);
-    }
+  // Resolve the cgroup path while the pid is alive, but only once the child has
+  // actually MIGRATED into its scope. Both halves are load-bearing:
+  //
+  //  - Not later: `/proc/<pid>` is gone by the time node-pty emits `exit` (it
+  //    fires after waitpid and the pty socket close), so a lookup at death time
+  //    always fails — every OOM would classify as a bare SIGKILL — and a
+  //    recycled pid would resolve to a foreign cgroup.
+  //  - Not immediately: `systemd-run --scope` execs before it has asked the user
+  //    manager to create the unit, so a read taken here returns condash's OWN
+  //    app scope. Every tab then caches the same foreign path, reports the whole
+  //    app's memory as its own, and derives its death verdict from the app's
+  //    counters. `resolveScopeCgroup` waits for the named unit to appear.
+  //
+  // Seeding the first `memory.events` reading gives a tab that dies inside the
+  // first sampling interval a baseline to diff against; a fast-allocating
+  // runaway is plausibly in exactly that window. The await is deliberately not
+  // blocking the spawn's return — output flows while migration completes.
+  if (session.memScoped && spawnTarget.unitName !== undefined) {
+    void resolveScopeCgroup(
+      ptyProcess.pid,
+      spawnTarget.unitName,
+      () => sessions.get(id) === session && session.exited === undefined,
+    ).then((path) => {
+      // Re-check liveness: the tab may have exited during migration, and a
+      // closed session must not acquire a path (and start sampling) afterwards.
+      if (path === undefined || sessions.get(id) !== session || session.exited !== undefined) {
+        return;
+      }
+      session.cgroupPath = path;
+      session.memEvents = readCgroupMemoryEvents(path);
+    });
   }
 
   // Read `session.webContents` (not the spawn-time parameter) inside the
@@ -767,15 +795,31 @@ export async function spawnTerminal(
     // `/proc/<pid>` is already gone (and a recycled pid would report a foreign
     // cgroup's counters — a spurious OOM verdict).
     //
-    // Two-tier evidence, because this read still races `--collect` reaping the
-    // unit: prefer the exit-time reading diffed against the last periodic
-    // sample; if the cgroup is already gone, fall back to the last two periodic
-    // samples, which still bracket a kill that happened between them.
+    // Two-tier evidence, because this read races `--collect` reaping the unit.
+    // Measured against live systemd: the exit-time read WINS — the cgroup is
+    // still readable at `onExit` and gone ~50 ms later, for a clean exit, a slow
+    // exit, and a SIGKILL alike. So tier 1 is the normal path.
+    //
+    // Tier 2 exists for when it doesn't, and is deliberately weaker: the last
+    // two periodic samples span a window that CLOSES UP TO ONE SAMPLING INTERVAL
+    // BEFORE the death, so it cannot contain the `oom_kill` the kernel writes at
+    // the moment of death. Those counters ride along for the log footer, but
+    // `bracketsDeath: false` stops them promoting an OOM verdict — a confident
+    // wrong attribution is worse than an honest "killed — SIGKILL".
     const exitEvents =
       session.cgroupPath !== undefined ? readCgroupMemoryEvents(session.cgroupPath) : undefined;
     const before = exitEvents ? session.memEvents : session.memEventsPrev;
     const after = exitEvents ?? session.memEvents;
-    const death = deriveDeath({ exitCode, signal, before, after });
+    const death = deriveDeath({
+      exitCode,
+      signal,
+      before,
+      after,
+      bracketsDeath: exitEvents !== undefined,
+      // condash's own kill pipeline ends in SIGKILL; without this a deliberate
+      // Stop or app quit of a tab resting near MemoryHigh records as an OOM kill.
+      intentional: session.stopping === true,
+    });
     session.exited = exitCode;
     session.death = death;
     session.pty = null;
@@ -939,6 +983,10 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
   if (!session) return;
   const runFs = opts.runForceStop !== false;
   const removeEntry = opts.removeEntry !== false;
+
+  // Mark BEFORE the first signal: the pty can exit on the SIGTERM, and onExit
+  // reads this flag to tell a deliberate shutdown from an external kill.
+  session.stopping = true;
 
   const p = session.pty;
   killTree(p, 'SIGTERM');

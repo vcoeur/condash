@@ -240,7 +240,10 @@ async function runHeadless(
   // background agent can balloon just like an interactive tab. No-op on hosts
   // without systemd cgroup support. The negative-pid SIGKILL below still reaches
   // the scoped tree via the process group.
-  const scoped = wrapWithMemoryScope(shell, argv, config.terminal?.memory);
+  const scoped = wrapWithMemoryScope(shell, argv, config.terminal?.memory, {
+    kind: 'task',
+    sessionId: sid,
+  });
   // Spawn BEFORE constructing the logger (E2): `pty.spawn` throws on a bad shell
   // (ENOENT). Building the logger first would write its "running" header and
   // then never close it on the throw — the tick's log-only catch can't seal a

@@ -144,12 +144,23 @@ The verdicts that matter:
 
 - **killed — out of memory (cap)** — the tab exceeded its own `MemoryMax` and its cgroup OOM killer stopped it. Raise `terminal.memory.max`, or find what in that tab is growing.
 - **killed — out of memory (system pressure)** — the machine ran short of memory and an external killer (systemd-oomd, reacting to pressure) took the whole tab scope. The tab did **not** reach its own cap, so raising `terminal.memory.max` will not help; lowering `terminal.memory.high` so the tab throttles earlier, or reducing total load, will.
-- **killed — SIGKILL** — killed from outside with no memory evidence.
+- **killed — SIGKILL** — killed from outside with no memory evidence. Also what you get when the cgroup counters could not be read at the moment of death: condash reports the honest "cause unknown" rather than attributing the kill from a sample window that closed before it happened.
 - **exited — code N** — the program itself failed.
+- **stopped** — you stopped it, closed the tab, or quit condash. Never an OOM verdict, even though the kill pipeline ends in SIGKILL: a tab resting near its `MemoryHigh` has the throttle counter ticking under ordinary reclaim, so without this a deliberate shutdown would record as a memory kill and pollute the log history.
 
 The same verdict is written into the session's log footer under `.condash/logs/`, so a tab that died while you were away can still be diagnosed after the fact.
 
 To catch the second case before it kills anything, watch the Performance pane: a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
+
+### If every tab shows the same memory figure
+
+Fixed after v4.96.0. In v4.96.0 exactly, condash resolved a tab's cgroup immediately after spawning it — before `systemd-run` had migrated the child into its scope — so every tab cached condash's *own* app scope. The symptom is unmistakable: every row in the Performance pane shows an identical level, an identical growth rate, and moves in lockstep, because they are all reading one cgroup. Death verdicts on that build read the app's counters too, so they are not trustworthy. Upgrade; there is no workaround on that version.
+
+To check which cgroup a tab is actually in on any version:
+
+```bash
+systemctl --user list-units --type=scope 'condash-*'
+```
 
 ## CLI
 

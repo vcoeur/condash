@@ -286,7 +286,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                                                               |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section.                                               |
 | `memory`                    | `{}` (enabled)                                          | Per-tab memory containment via a systemd user scope (Linux only) — see [`terminal.memory`](#terminal-memory) below.                                                                  |
-| `perf`                      | `{}` (disabled)                                         | Main-process performance recording — see [`terminal.perf`](#terminal-perf) below. Off by default; toggled from the **Performance** pane.                                              |
+| `perf`                      | `{}` (disabled)                                         | Main-process performance recording — see [`terminal.perf`](#terminal-perf) below. Off by default; toggled from the Settings modal's **Terminal → Performance recording** subgroup, or from the **Performance** pane.                                              |
 | `autoRefreshOnTabSwitch`    | `true`                                                  | When `true` (default), switching to any tab automatically runs **Refresh** — full-screen TUIs, plain shells, and agent sessions are all repainted, so a hidden tab never shows a stale snapshot. Set explicitly to `false` to restrict auto-refresh to alternate-buffer tabs only (the previous default). See [Hidden terminal tabs parse off the main thread](../explanation/internals.md#terminal-worker). |
 
 ### Terminal perf { #terminal-perf }
@@ -306,21 +306,57 @@ batches, backpressure pauses, and the un-acked in-flight high-water mark.
 
 The event-loop delay is the most directly useful figure: main is a single thread shared by every
 terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
-clearest measure of UI stalls. The **Performance** pane in the left band shows the live values and
-toggles recording; per-tab memory, growth rate, and throttle state are shown there whether or not
-recording is on, since they come from the always-on sampler.
+clearest measure of UI stalls. It is reported as delay **in excess of the sampler's own 10 ms
+interval**: `monitorEventLoopDelay` records the gap between its own timer firings rather than the
+excess over the expected gap, so a raw reading has a floor equal to its resolution — an idle process
+measures p99 ≈ 10.3 ms. Reporting that raw put a fixed ~10 ms on the headline figure for an idle app,
+which is both the symptom under investigation and a plausible magnitude for it. Subtracting the
+resolution is what makes an idle app read ~0. Delays genuinely below 10 ms are not resolvable and
+read as 0.
 
-Records are plain JSONL and are safe to delete. `.condash/` is gitignored in full.
+Two toggles flip recording, both writing `terminal.perf.enabled` and applying immediately: the
+Settings modal's **Terminal → Performance recording** checkbox, and the **Performance** pane's
+Record button. The pane also shows the live values; per-tab memory, growth rate, and throttle state
+are shown there whether or not recording is on, since they come from the always-on sampler.
+
+Records are plain JSONL and are safe to delete. Recording accumulates roughly 10 MB/day with two
+active tabs and ~80 MB/day with twenty, so **condash prunes the directory for you**: a janitor runs
+at startup and every 24 h and deletes records older than **14 days**, then — while the directory is
+still over **200 MB** — the oldest remaining files until it is under. **The current day's file is
+never deleted**, since a live recorder is appending to it.
+
+That means perf records are *not* long-term storage. If a run matters beyond a fortnight, or if a
+burst has pushed the directory over the cap, copy the JSONL somewhere else. `.condash/` is gitignored
+in full **in conceptions whose `.gitignore` carries that rule**; a conception created from the
+bundled template does not yet ship one.
 
 To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mjs` drives N tabs at a
 controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,
 which isolates the cost of the logger's duplicate ANSI parse on the main thread.
+
+The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
+isolation in the main process before applying any load — so it never touches your real
+`settings.json`, never floods your conception's log store, and never shares a perf JSONL with a
+running instance. (The assertion is not ceremony: `--user-data-dir` alone is silently overridden by
+the dev-mode `userData` redirect, and the check is what caught it.) It also refuses to start a run
+larger than 12 tabs, or one whose estimated working set exceeds available memory, unless `--force` is
+given — per-tab caps are per tab, and the documented field failure is whole-machine pressure, which
+they do not prevent.
 
 ### Terminal memory { #terminal-memory }
 
 On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed with a throwaway scope; a **success is cached**, but a **transient failure is re-checked** on the next spawn — a momentary glitch (systemd busy under load, user manager restarting) never silently disables containment for the rest of the session. When a tab is nonetheless spawned uncapped on a capable host, condash logs a one-time warning.
 
 The per-tab scope only binds processes spawned through the tab path. A child that skips it — a non-tab helper, or a tab left uncapped because the probe failed — stays in condash's own `app-gnome-condash-*.scope`, which carries no limit; a runaway there again escalates to a *global* OOM (this recurred and took down a whole GNOME session on 2026-07-05). The **`appScope` backstop** closes that: at startup condash caps its own app scope via `systemctl --user set-property`, so any child that escapes the per-tab cap trips condash's cgroup OOM instead of the machine's global one. Same Linux + systemd gate; a no-op elsewhere.
+
+Each tab's scope is named `condash-term-<session-id>.scope` (scheduled task runs use
+`condash-task-<id>.scope`), so live tabs are listable with
+`systemctl --user list-units --type=scope 'condash-*'`. The name is not cosmetic: it is how condash
+identifies a tab's own cgroup. `systemd-run` execs the child *before* the user manager has created
+the unit and migrated it in, so reading `/proc/<pid>/cgroup` right after spawn returns condash's own
+app scope — which previously made every tab report the whole app's memory as its own and derive its
+death verdict from the app's counters. condash now waits for the named unit to appear before
+attributing any figure to a tab, and reports nothing rather than something wrong if it never does.
 
 All keys optional; sizes are systemd size strings (`"6G"`, `"512M"`, `"infinity"`).
 

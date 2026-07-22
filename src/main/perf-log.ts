@@ -22,7 +22,7 @@
  *   identified as the bottleneck, rather than inferring it from a proxy.
  */
 
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 import { dirname, join } from 'node:path';
 
@@ -54,11 +54,21 @@ interface SessionCounters {
 
 /** One flushed record. Shape is the on-disk contract for `.condash/perf/`. */
 export interface PerfRecord {
+  /** Schema version of this record.
+   *
+   *  Present from v2 onward; a record without it was written by v4.96.0, whose
+   *  `loop` values carry a fixed ~10 ms offset (the sampler's own resolution was
+   *  not subtracted). Since records are appended to a per-DAY file, upgrading
+   *  mid-day produces one file holding both meanings — so anything aggregating
+   *  `loop` must discriminate rather than average across the boundary. */
+  schema: number;
   /** ISO timestamp of the flush. */
   t: string;
   /** Milliseconds covered by this window. */
   windowMs: number;
-  /** Event-loop delay over the window, in milliseconds. */
+  /** Event-loop delay over the window, in milliseconds **above the sampler's own
+   *  10 ms interval** — see `loopDelayMs`. Delays below that interval are not
+   *  resolvable and read as 0. */
   loop: { p50: number; p99: number; max: number };
   /** Main-process heap use at flush time, in bytes. */
   heapUsed: number;
@@ -117,6 +127,51 @@ function omitUndefined<T extends Record<string, number | undefined>>(
   return out;
 }
 
+/** Current `PerfRecord.schema`. Bump whenever the MEANING of a recorded field
+ *  changes, not merely when one is added — v2 exists because `loop` switched
+ *  from a raw histogram reading to delay above the sampler's interval, which is
+ *  invisible in the shape but makes the two incomparable. */
+export const PERF_SCHEMA_VERSION = 2;
+
+/** Sampling resolution (ms) of the event-loop histogram — and, crucially, the
+ *  floor it reports. See {@link loopDelayMs}. */
+const LOOP_RESOLUTION_MS = 10;
+
+/**
+ * Convert a raw histogram reading (ns) to milliseconds of delay **in excess of
+ * the sampler's own interval**.
+ *
+ * `monitorEventLoopDelay` records the observed gap between its own timer
+ * firings, not the excess over the expected gap, so on a perfectly idle loop it
+ * reports the resolution. Measured on an idle process: resolution 10 → p50
+ * 10.109 ms, p99 10.297 ms, min 10.027 ms; resolution 20 → p50 20.120 ms. A 100
+ * ms hard block at resolution 10 reads max 106.50 ms, so the relationship is
+ * approximately `reported ≈ true_delay + resolution`. Approximately, not
+ * exactly: subtracting a flat 10 reports that 100 ms block as 96.5 ms, a few
+ * percent low. The residual is well inside the noise these figures are read at,
+ * and far smaller than the ~10 ms bias it replaces — but the number is an
+ * estimate of delay, not a measurement of it.
+ *
+ * Reporting the raw value put a fixed ~10 ms — around 61 % of a 16.7 ms frame
+ * budget — on the pane's headline "main loop p99" for a completely idle app.
+ * That is both the symptom this instrumentation was built to investigate and a
+ * plausible-looking magnitude for it, so the instrument was positioned to
+ * confirm the hypothesis it was meant to test, while masking any genuine delay
+ * below the floor.
+ *
+ * Subtracting the resolution rather than lowering it keeps the sampler's own
+ * cost off the thread being measured — a 1 ms resolution means a timer firing
+ * 1000×/s on the main loop, which is itself a perturbation.
+ *
+ * @param nanoseconds A raw reading from the interval histogram.
+ * @returns Milliseconds of delay above the sampling interval, floored at 0 and
+ *   rounded to microsecond precision.
+ */
+function loopDelayMs(nanoseconds: number): number {
+  const rawMs = nanoseconds / 1e6;
+  return Math.max(0, Math.round((rawMs - LOOP_RESOLUTION_MS) * 1e3) / 1e3);
+}
+
 /**
  * Accumulates main-process performance counters and flushes them as JSONL.
  *
@@ -160,7 +215,7 @@ export class PerfLog {
       // one transient disk error silently disabled recording for the process
       // lifetime, with the pane still showing "Recording" and nothing on disk.
       this.writeFailed = false;
-      this.histogram = monitorEventLoopDelay({ resolution: 10 });
+      this.histogram = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
       this.histogram.enable();
       this.windowStart = this.now().getTime();
     } else {
@@ -175,15 +230,23 @@ export class PerfLog {
     return this.enabled;
   }
 
+  /** Whether a record write has failed since recording was last enabled. The
+   *  latch means recording is on in name only — nothing further will be
+   *  written — so a display must be able to say so rather than keep claiming
+   *  it is recording. Cleared by the next off→on toggle. */
+  hasWriteFailed(): boolean {
+    return this.writeFailed;
+  }
+
   /** Event-loop delay percentiles (ms) for the window so far, WITHOUT resetting
    *  it. `takeRecord` is the resetting read; this one exists so a display can
    *  poll without stealing data from the recorded windows. */
   peekLoop(): { p50: number; p99: number; max: number } | undefined {
     if (!this.enabled || !this.histogram) return undefined;
     return {
-      p50: Math.round(this.histogram.percentile(50) / 1e3) / 1e3,
-      p99: Math.round(this.histogram.percentile(99) / 1e3) / 1e3,
-      max: Math.round(this.histogram.max / 1e3) / 1e3,
+      p50: loopDelayMs(this.histogram.percentile(50)),
+      p99: loopDelayMs(this.histogram.percentile(99)),
+      max: loopDelayMs(this.histogram.max),
     };
   }
 
@@ -286,12 +349,13 @@ export class PerfLog {
       };
     }
     const record: PerfRecord = {
+      schema: PERF_SCHEMA_VERSION,
       t: at.toISOString(),
       windowMs: at.getTime() - this.windowStart,
       loop: {
-        p50: Math.round(this.histogram.percentile(50) / 1e3) / 1e3,
-        p99: Math.round(this.histogram.percentile(99) / 1e3) / 1e3,
-        max: Math.round(this.histogram.max / 1e3) / 1e3,
+        p50: loopDelayMs(this.histogram.percentile(50)),
+        p99: loopDelayMs(this.histogram.percentile(99)),
+        max: loopDelayMs(this.histogram.max),
       },
       heapUsed: process.memoryUsage().heapUsed,
       sessions,
@@ -328,6 +392,11 @@ export class PerfLog {
 export function readVitals(log: PerfLog): PerfVitals {
   return {
     recording: log.isEnabled(),
+    // Report the write state, not just the intent. Swallowing a write error is
+    // right for an instrument, but a pane that keeps saying "Recording" after
+    // the disk filled lets the user believe they captured a long run and walk
+    // away with nothing.
+    writeFailed: log.hasWriteFailed(),
     loop: log.peekLoop(),
     heapUsed: process.memoryUsage().heapUsed,
   };
@@ -336,7 +405,112 @@ export function readVitals(log: PerfLog): PerfVitals {
 /** Path of the perf JSONL for a conception, one file per day. */
 export function perfLogPath(conceptionPath: string, at: Date): string {
   const day = at.toISOString().slice(0, 10);
-  return join(conceptionPath, '.condash', 'perf', `${day}.jsonl`);
+  return join(perfLogRoot(conceptionPath), `${day}.jsonl`);
+}
+
+/** Directory holding a conception's perf records. */
+export function perfLogRoot(conceptionPath: string): string {
+  return join(conceptionPath, '.condash', 'perf');
+}
+
+/** Days of perf records to keep. Short on purpose: these are diagnostic traces
+ *  taken during a specific investigation, not history worth carrying. */
+const PERF_RETENTION_DAYS = 14;
+/** Ceiling for the whole perf directory. Recording produces roughly 10 MB/day
+ *  with two active tabs and ~80 MB/day with twenty, so this bounds even a
+ *  recording session left on and forgotten. */
+const PERF_MAX_DIR_BYTES = 200 * 1024 * 1024;
+
+export interface PerfJanitorResult {
+  scanned: number;
+  deleted: string[];
+  remainingBytes: number;
+}
+
+/**
+ * Prune `<conception>/.condash/perf/`.
+ *
+ * The day-stamped filename bounds a single *file*, never the directory, and
+ * nothing else pruned it — so recording left on accumulated without limit, in a
+ * directory no UI reports the size of. Mirrors the terminal-log janitor: evict
+ * by age, then oldest-first until under the cap.
+ *
+ * **Today's file is never a victim.** A live recorder is appending to it, and
+ * deleting it mid-session throws away the run the user is in the middle of
+ * capturing — the same rule the log janitor applies to the current day-dir.
+ *
+ * Errors are swallowed per-file: a janitor must never break app start.
+ *
+ * @param conceptionPath Conception whose perf directory to prune.
+ * @param now Clock, injectable for tests.
+ * @returns What was scanned, what was deleted, and the surviving byte total.
+ */
+export async function runPerfJanitor(
+  conceptionPath: string,
+  now: Date = new Date(),
+): Promise<PerfJanitorResult> {
+  const root = perfLogRoot(conceptionPath);
+  const result: PerfJanitorResult = { scanned: 0, deleted: [], remainingBytes: 0 };
+
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return result; // no perf dir → nothing to do
+  }
+
+  const today = perfLogPath(conceptionPath, now).slice(root.length + 1);
+  const files: { name: string; day: string; bytes: number }[] = [];
+  for (const name of names) {
+    const match = /^(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(name);
+    if (!match) continue;
+    try {
+      files.push({ name, day: match[1], bytes: (await stat(join(root, name))).size });
+    } catch {
+      /* vanished between readdir and stat */
+    }
+  }
+  result.scanned = files.length;
+  if (files.length === 0) return result;
+
+  // UTC arithmetic throughout: filenames are stamped with `toISOString`, so
+  // deriving the cutoff with local-time `setDate` mixed two calendars and made
+  // retention wobble by a day across a DST change when the clock sat near the
+  // UTC date boundary.
+  const cutoffDay = new Date(now.getTime() - PERF_RETENTION_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  /** Delete a record, reporting whether it actually went. The caller's byte
+   *  accounting depends on the answer — assuming success let a permission
+   *  failure under-count the directory and stop the cap pass early. */
+  const drop = async (file: { name: string; bytes: number }): Promise<boolean> => {
+    try {
+      await rm(join(root, file.name), { force: true });
+      result.deleted.push(file.name);
+      return true;
+    } catch {
+      return false; // left in place; retried on the next sweep
+    }
+  };
+
+  // Oldest first, so the cap pass evicts in the right order.
+  files.sort((a, b) => (a.day < b.day ? -1 : 1));
+  // `<=` keeps exactly PERF_RETENTION_DAYS days including today. With `<` the
+  // cutoff day itself survived, so 14 days of retention kept 15.
+  for (const file of files) {
+    if (file.name !== today && file.day <= cutoffDay) await drop(file);
+  }
+
+  const survivors = files.filter((f) => !result.deleted.includes(f.name));
+  let total = survivors.reduce((sum, f) => sum + f.bytes, 0);
+  for (const file of survivors) {
+    if (total <= PERF_MAX_DIR_BYTES) break;
+    if (file.name === today) continue;
+    if (await drop(file)) total -= file.bytes;
+  }
+  result.remainingBytes = total;
+  return result;
 }
 
 /** Process-wide instance. Terminal hot paths call into it unconditionally; it

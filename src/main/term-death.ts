@@ -25,11 +25,10 @@ import type { TermDeath } from '../shared/types';
 
 import type { CgroupMemoryEvents } from './tab-scope';
 
-/** True when the verdict is anything other than a clean `exit 0`. Drives whether
- *  the tab row is kept on screen instead of auto-closing. */
-export function isAbnormal(death: TermDeath): boolean {
-  return death.kind !== 'clean';
-}
+/** Re-export of the shared predicate. It lives in `shared/` because the renderer
+ *  needs the same answer to decide whether to draw the verdict badge and the
+ *  Restart button — two independent copies had already drifted once. */
+export { isAbnormalDeath as isAbnormal } from '../shared/term-death-shape';
 
 /** POSIX signal numbers condash names explicitly; anything else renders as its
  *  raw number, which is more useful than a wrong guess. */
@@ -63,6 +62,16 @@ export interface DeathEvidence {
   before?: CgroupMemoryEvents;
   /** cgroup `memory.events` sampled at exit, before the scope is reaped. */
   after?: CgroupMemoryEvents;
+  /** True when `after` was read at exit and therefore the `before`→`after`
+   *  window actually contains the death. False when the exit-time read lost its
+   *  race with `--collect` and the caller substituted the last two periodic
+   *  samples — a window that closes *before* the death and so cannot contain
+   *  the event it would be used to attribute. See {@link deriveDeath}. */
+  bracketsDeath?: boolean;
+  /** True when condash itself terminated the session — a user Stop, a tab close,
+   *  or the app quitting. The kill pipeline ends in SIGKILL, which is otherwise
+   *  indistinguishable from an external kill. */
+  intentional?: boolean;
 }
 
 /**
@@ -77,6 +86,22 @@ export interface DeathEvidence {
  * test runner), leaving the shell alive to report the failure and exit on its
  * own. That tab was not killed, so it does not get a "killed" label; the raw
  * `oomKillDelta` still rides along on the verdict for the log footer.
+ *
+ * Two further guards keep the record honest, because this verdict is persisted
+ * to the session log footer and is the longitudinal evidence the whole feature
+ * exists to produce — a false entry is worse than a missing one:
+ *
+ * - **An intentional stop is never an OOM verdict.** condash's own kill pipeline
+ *   ends in SIGKILL, and a tab resting near `MemoryHigh` has `high` ticking
+ *   under ordinary reclaim. Without this, quitting the app with a memory-active
+ *   tab open manufactures a "killed — out of memory" record for a deliberate
+ *   shutdown.
+ * - **Counters that do not bracket the death cannot attribute it.** When the
+ *   exit-time read loses its race with `--collect`, the caller can only offer
+ *   the last two periodic samples — a window closing up to one sampling interval
+ *   *before* the death, which therefore cannot contain the `oom_kill` written at
+ *   the moment of death. Such counters still ride along for the footer, but they
+ *   do not promote a verdict.
  *
  * @param evidence Exit status, signal, and the cgroup counters bracketing the death.
  * @returns The verdict, carrying both the classification and its evidence.
@@ -98,10 +123,41 @@ export function deriveDeath(evidence: DeathEvidence): TermDeath {
 
   const base = { exitCode, signal, oomKillDelta, highDelta };
 
-  if (signal === SIGKILL && oomKillDelta !== undefined && oomKillDelta > 0) {
+  // A stop condash issued itself is not a diagnosis. Reported before any signal
+  // branch: the pipeline's own SIGKILL is exactly what would otherwise be read
+  // as an external kill.
+  //
+  // But it must not swallow the evidence either. The stop window is up to 3.5 s
+  // wide (force_stop timeout plus the SIGKILL grace), and a tab can genuinely
+  // trip its own MemoryMax inside it. `oom_kill` only moves when the cgroup OOM
+  // killer fires, so a positive delta is real regardless of who asked for the
+  // stop, and reporting a bare "stopped" would auto-close the row and lose it.
+  //
+  // The verdict stays `stopped` rather than `oom-cap` because our own SIGKILL
+  // has destroyed the test that separates the two: normally `signal === SIGKILL`
+  // is what shows the *shell* was the victim rather than a child (a compiler, a
+  // test runner) that the killer picked while the shell survived. During a stop
+  // that signal may be ours, so promoting to `oom-cap` would blame the tab for a
+  // child's death — the exact false positive the SIGKILL requirement was added
+  // to prevent. Report both facts and let the reader judge.
+  if (evidence.intentional === true) {
+    const sawOomKill = oomKillDelta !== undefined && oomKillDelta > 0;
+    return {
+      ...base,
+      kind: 'stopped',
+      label: sawOomKill ? 'stopped — out-of-memory kill in this tab' : 'stopped',
+    };
+  }
+
+  // Counters only attribute a death if their window contains it. `bracketsDeath`
+  // defaults to true so a caller that supplies a genuine exit-time reading needs
+  // no ceremony; only the degraded fallback has to say so.
+  const attributable = evidence.bracketsDeath !== false;
+
+  if (attributable && signal === SIGKILL && oomKillDelta !== undefined && oomKillDelta > 0) {
     return { ...base, kind: 'oom-cap', label: 'killed — out of memory (cap)' };
   }
-  if (signal === SIGKILL && highDelta !== undefined && highDelta > 0) {
+  if (attributable && signal === SIGKILL && highDelta !== undefined && highDelta > 0) {
     return {
       ...base,
       kind: 'oom-pressure',

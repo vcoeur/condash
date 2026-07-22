@@ -84,6 +84,8 @@ interface TerminalSectionProps {
   updateMemory: (patch: Partial<TerminalMemoryPrefs>) => Promise<void>;
   updateAppScopeMemory: (patch: Partial<AppScopeMemoryPrefs>) => Promise<void>;
   setAutoRefreshOnTabSwitch: (value: boolean | undefined) => Promise<void>;
+  perfRecording: () => boolean;
+  setPerfRecording: (value: boolean) => Promise<void>;
   platform: () => Platform | undefined;
 }
 
@@ -122,6 +124,8 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         updateMemory={props.updateMemory}
         updateAppScopeMemory={props.updateAppScopeMemory}
         setAutoRefreshOnTabSwitch={props.setAutoRefreshOnTabSwitch}
+        perfRecording={props.perfRecording}
+        setPerfRecording={props.setPerfRecording}
         platform={props.platform}
       />
     </SectionShell>

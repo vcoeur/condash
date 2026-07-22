@@ -206,8 +206,17 @@ export interface PerfVitals {
    * growth rate, and throttle state come from the always-on sampler. The
    * event-loop figures do not. */
   recording: boolean;
-  /** Event-loop delay in ms over the current window; present only while
-   * recording. The most direct measure of UI lag on the shared main thread. */
+  /** True when a record write has failed since recording was enabled — the disk
+   * filled, the tree went read-only. Recording is then on in name only and
+   * nothing further reaches disk, so a display must say so instead of
+   * continuing to claim it is recording. */
+  writeFailed: boolean;
+  /** Event-loop delay in ms over the current window, measured **in excess of the
+   * sampler's own 10 ms interval**; present only while recording. The most
+   * direct measure of UI lag on the shared main thread. A raw
+   * `monitorEventLoopDelay` reading has a floor equal to its resolution, so an
+   * idle app would otherwise report ~10 ms of lag that does not exist. Delays
+   * genuinely below the interval are not resolvable and read as 0. */
   loop?: { p50: number; p99: number; max: number };
   /** Main-process heap use in bytes. */
   heapUsed: number;
@@ -238,6 +247,11 @@ export type TermDeathKind =
   | 'signal'
   /** Ran to completion with a non-zero status. */
   | 'failed'
+  /** condash terminated it — a Stop, a tab close, or app quit. Its own kill
+   *  pipeline ends in SIGKILL, so without this verdict a deliberate shutdown of
+   *  a tab resting near `MemoryHigh` records as an OOM kill and corrupts the
+   *  longitudinal evidence the verdicts exist to provide. */
+  | 'stopped'
   /** Ran to completion with status 0. */
   | 'clean';
 

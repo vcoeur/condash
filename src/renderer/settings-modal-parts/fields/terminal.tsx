@@ -54,6 +54,11 @@ export function TerminalFields(props: {
   updateMemory: (patch: Partial<TerminalMemoryPrefs>) => Promise<void>;
   updateAppScopeMemory: (patch: Partial<AppScopeMemoryPrefs>) => Promise<void>;
   setAutoRefreshOnTabSwitch: (value: boolean | undefined) => Promise<void>;
+  /** Whether main-process perf recording is currently on. Read from the live
+   *  recorder rather than from config, so the checkbox reflects what is actually
+   *  running — the two diverge when config is edited outside the app. */
+  perfRecording: () => boolean;
+  setPerfRecording: (value: boolean) => Promise<void>;
   platform: () => Platform | undefined;
 }): JSX.Element {
   const logging = (): TerminalLoggingPrefs => props.prefs().logging ?? {};
@@ -557,6 +562,31 @@ export function TerminalFields(props: {
             <small class="settings-field-hint">
               The lever that stops a runaway from thrashing all of system swap.
             </small>
+          </label>
+        </div>
+      </Subgroup>
+
+      <Subgroup
+        id={subgroupId('perf')}
+        title="Performance recording"
+        keywords="perf performance profiling instrumentation counters event loop lag latency diagnostics jsonl record measure"
+      >
+        <p class="settings-hint">
+          Records main-process counters — event-loop delay, the OSC scan, the log parse, grid
+          renders — to <code>.condash/perf/</code> as JSONL, one record every 2.5 s. Off by default;
+          while off the instrumentation is inert and an ordinary run pays nothing. Records older
+          than 14 days are pruned automatically, as are the oldest files whenever the directory
+          exceeds 200 MB — copy anything you need to keep. The same toggle sits in the{' '}
+          <strong>Performance</strong> pane, next to the figures it feeds.
+        </p>
+        <div class="settings-grid">
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={props.perfRecording()}
+              onChange={(e) => void props.setPerfRecording(e.currentTarget.checked)}
+            />
+            <span>Record main-process performance counters</span>
           </label>
         </div>
       </Subgroup>
