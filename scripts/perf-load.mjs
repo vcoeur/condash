@@ -936,7 +936,7 @@ function summariseCpuProfile(profile) {
       continue;
     }
     const url = node.callFrame.url || '(native)';
-    const key = `${name} ${url}:${node.callFrame.lineNumber}`;
+    const key = `${name}\x00${url}:${node.callFrame.lineNumber}`;
     const entry = selfByKey.get(key);
     if (entry) entry.selfUs += us;
     else selfByKey.set(key, { name, url, line: node.callFrame.lineNumber, selfUs: us });
