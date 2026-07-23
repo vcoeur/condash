@@ -1,7 +1,7 @@
-import { mkdtemp, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { PerfLog, perfLogPath, perfLogRoot, runPerfJanitor } from './perf-log';
 
@@ -178,9 +178,26 @@ describe('perfLogPath', () => {
 describe('runPerfJanitor', () => {
   const NOW = new Date('2026-07-22T10:00:00.000Z');
 
+  // Every temp conception this suite mints, torn down after each test. The
+  // maxDirMb cases seed ~500 MB apiece, so leaking them fills the disk fast: a
+  // day of repeated `vitest run`s left 125 dirs / 14 GB in /tmp and a full disk
+  // that failed unrelated tests with ENOSPC. mkdtemp does not clean up after
+  // itself — the test must.
+  const tempConceptions: string[] = [];
+  afterEach(async () => {
+    await Promise.all(
+      tempConceptions.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+  async function makeConception(): Promise<string> {
+    const conception = await mkdtemp(join(tmpdir(), 'condash-perf-janitor-'));
+    tempConceptions.push(conception);
+    return conception;
+  }
+
   /** A conception dir seeded with perf files of the given day → size. */
   async function seed(files: Record<string, number>): Promise<string> {
-    const conception = await mkdtemp(join(tmpdir(), 'condash-perf-janitor-'));
+    const conception = await makeConception();
     const root = perfLogRoot(conception);
     await mkdir(root, { recursive: true });
     for (const [day, bytes] of Object.entries(files)) {
@@ -190,7 +207,7 @@ describe('runPerfJanitor', () => {
   }
 
   it('does nothing when there is no perf directory', async () => {
-    const conception = await mkdtemp(join(tmpdir(), 'condash-perf-janitor-'));
+    const conception = await makeConception();
     await expect(runPerfJanitor(conception, NOW)).resolves.toMatchObject({
       scanned: 0,
       deleted: [],
