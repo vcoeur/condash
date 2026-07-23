@@ -1,7 +1,7 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   dashboardStatePath,
   emptyDashboardState,
@@ -10,6 +10,20 @@ import {
   saveDashboardState,
 } from './state';
 import type { DashboardState } from '../../shared/types';
+
+// Every temp conception these tests mint, torn down afterward. mkdtemp does not
+// clean up after itself, and a full suite run used to leave dozens of
+// condash-dash-{save,state,fields}-* dirs in /tmp per run — the same leak class
+// that filled the disk from perf-log.test.ts's 500 MB janitor fixtures.
+const tempDirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+async function tempConception(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
 
 function stateWith(eventCount: number): DashboardState {
   const events = Array.from({ length: eventCount }, (_, i) => ({ at: i, text: `e${i}` }));
@@ -71,7 +85,7 @@ describe('saveDashboardState', () => {
     // mkdir it here: without the save's own mkdir, `atomicWrite` throws ENOENT
     // and every persist silently fails (the bug this guards against). Note the
     // sibling load test mkdir's the dir itself, which is exactly what masked it.
-    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-save-'));
+    const dir = await tempConception('condash-dash-save-');
     await expect(saveDashboardState(dir, emptyDashboardState(7))).resolves.toBeUndefined();
     const loaded = await loadDashboardState(dir);
     expect(loaded?.updatedAt).toBe(7);
@@ -80,7 +94,7 @@ describe('saveDashboardState', () => {
 
 describe('loadDashboardState', () => {
   it('keeps summarized tabs but resets the live roster to empty', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-state-'));
+    const dir = await tempConception('condash-dash-state-');
     const path = dashboardStatePath(dir);
     await mkdir(join(dir, '.condash', 'dashboard'), { recursive: true });
     // A persisted roster is stale the moment the app reopens, so load must drop
@@ -116,7 +130,7 @@ describe('loadDashboardState', () => {
   });
 
   it('round-trips the redesign tab fields (subtitle, activity, provenance) when present', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-fields-'));
+    const dir = await tempConception('condash-dash-fields-');
     await mkdir(join(dir, '.condash', 'dashboard'), { recursive: true });
     await writeFile(
       dashboardStatePath(dir),

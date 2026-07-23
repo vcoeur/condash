@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { exec as execFile } from '../exec';
 import { removeBranchWorktrees } from './remove';
 
@@ -317,4 +317,12 @@ describe('long-lived branch protection', () => {
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
+});
+
+// "no trace" was aspirational: the per-test `tmp` dirs are reaped in afterEach,
+// but this beforeAll-scoped XDG home was not, leaking one condash-xdg-* per run.
+// Cleanup must be an `afterAll`, not the process.on('exit') above — under
+// vitest's pooled workers the 'exit' event does not fire between files.
+afterAll(() => {
+  if (xdgHome) rmSync(xdgHome, { recursive: true, force: true });
 });
