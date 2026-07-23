@@ -46,7 +46,7 @@ export function CodeRunRows(props: CodeRunRowsProps) {
           <span class="name">ACTIVE RUNS</span>
           <span class="count">{props.sessions.length}</span>
         </h2>
-        <div class="code-runs-list">
+        <div class="code-runs-list card-grid">
           <For each={props.sessions}>
             {(session) => (
               <CodeRunRow

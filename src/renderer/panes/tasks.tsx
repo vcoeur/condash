@@ -237,6 +237,8 @@ export function TasksView(props: {
         <div class="tasks-pane-actions">
           <button
             type="button"
+            class="btn btn--sm btn--default"
+            data-tone="add"
             onClick={() => void startCreate()}
             disabled={!props.hasConception()}
           >
@@ -247,22 +249,22 @@ export function TasksView(props: {
 
       <Show
         when={props.hasConception()}
-        fallback={<p class="tasks-pane-empty">Open a conception to manage its tasks.</p>}
+        fallback={<p class="tasks-pane-empty pane-empty">Open a conception to manage its tasks.</p>}
       >
         <Show
           when={props.tasks().length > 0}
           fallback={
-            <p class="tasks-pane-empty">
+            <p class="tasks-pane-empty pane-empty">
               No tasks yet. A task is a referenced agent plus a markdown prompt with fillable{' '}
               <code>{'{markers}'}</code>. Click <strong>+ New task</strong> to define one.
             </p>
           }
         >
-          <div class="tasks-grid">
+          <div class="tasks-grid card-grid">
             <For each={props.tasks()}>
               {(task) => (
                 <div
-                  class="tasks-row tasks-row-clickable"
+                  class="tasks-row tasks-row-clickable card"
                   role="button"
                   tabindex={0}
                   title="Click to edit this task"
@@ -286,7 +288,8 @@ export function TasksView(props: {
                   <div class="tasks-row-actions">
                     <button
                       type="button"
-                      class="tasks-run"
+                      class="tasks-run btn btn--sm btn--default"
+                      data-tone="run"
                       title={
                         task.agentPresent
                           ? 'Fill markers and run'

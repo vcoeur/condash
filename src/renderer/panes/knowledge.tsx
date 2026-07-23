@@ -118,7 +118,7 @@ function KnowledgeCard(props: { node: KnowledgeNode; todayISO: string; onOpen: (
   const bucket = (): BucketId => bucketOf(props.node.relPath);
   return (
     <article
-      class="knowledge-card"
+      class="knowledge-card card"
       data-bucket={bucket()}
       title={props.node.path}
       onClick={() => props.onOpen()}

@@ -208,16 +208,17 @@ export function TaskEditor(props: {
             <Button
               type="button"
               variant="danger"
+              size="sm"
               class="tasks-editor-delete"
               onClick={() => setConfirmDelete(true)}
             >
               Delete
             </Button>
           </Show>
-          <Button type="button" variant="default" onClick={props.onCancel}>
+          <Button type="button" variant="default" size="sm" onClick={props.onCancel}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={props.onSave}>
+          <Button type="button" variant="primary" size="sm" onClick={props.onSave}>
             Save
           </Button>
         </ActionBar>

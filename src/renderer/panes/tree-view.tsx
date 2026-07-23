@@ -185,7 +185,7 @@ export function TreeView<TFile extends TreeViewBaseNode>(props: TreeViewProps<TF
             )}
           </For>
           <Show when={childFiles().length > 0}>
-            <div class="tree-files">
+            <div class="tree-files card-grid">
               <For each={childFiles()}>{(file) => props.renderFile(file)}</For>
             </div>
           </Show>

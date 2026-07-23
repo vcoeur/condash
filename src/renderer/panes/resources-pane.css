@@ -1,33 +1,25 @@
 .resources-pane {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 14px 24px;
-  background: var(--bg-base);
+  padding: 14px 18px 24px;
+  background: var(--bg-panel);
+  /* Consumed by the tree's `.tree-files.card-grid` (primitives.css): min
+   * column width from settings.json `cardMinWidth.resources`; the fallback
+   * mirrors DEFAULT_CARD_MIN_WIDTH. */
+  --card-min: var(--card-min-resources, 280px);
+  --card-gap: 8px;
 }
 
-.resources-grid {
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(var(--card-min-resources, 280px), 100%), 1fr)
-  );
-  gap: 8px;
-}
-
+/* Silhouette (fill / border / radius / shadow / hover) comes from the
+ * shared `.card` (primitives.css) — a deliberate upgrade to radius-lg +
+ * border-strong + shadow + hover lift. This keeps only the Resources
+ * identity: internal layout, density, and base font-size. */
 .resources-card {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg-elevated);
   padding: 8px 10px;
   font-size: var(--text-md);
-  transition: border-color 120ms;
-}
-
-.resources-card:hover {
-  border-color: var(--border-strong);
 }
 
 .resources-card-body {
@@ -44,45 +36,13 @@
   width: 100%;
 }
 
+/* Chip look (fill / colour map / typography) comes from the shared
+ * `.file-glyph` (primitives.css), keyed on the glyph's `data-cat`; only the
+ * Resources size override stays here. binary / archive / other carry no
+ * matching `data-cat`, so they fall to the primitive's neutral default. */
 .resources-card-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   width: 36px;
   height: 28px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.resources-card[data-category='markdown'] .resources-card-glyph {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-}
-
-.resources-card[data-category='pdf'] .resources-card-glyph {
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
-  color: var(--warn);
-}
-
-.resources-card[data-category='image'] .resources-card-glyph {
-  background: color-mix(in srgb, var(--col-soon, var(--accent)) 14%, transparent);
-  color: var(--col-soon, var(--accent));
-}
-
-.resources-card[data-category='html'] .resources-card-glyph {
-  background: color-mix(in srgb, var(--col-later, var(--accent)) 16%, transparent);
-  color: var(--col-later, var(--accent));
-}
-
-.resources-card[data-category='binary'] .resources-card-glyph,
-.resources-card[data-category='archive'] .resources-card-glyph,
-.resources-card[data-category='other'] .resources-card-glyph {
-  background: var(--bg-base);
-  color: var(--text-muted);
 }
 
 .resources-card-text {

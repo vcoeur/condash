@@ -5,7 +5,12 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: var(--bg);
+  background: var(--bg-panel);
+  /* Consumed by the tree's `.tree-files.card-grid` (primitives.css): min
+   * column width from settings.json `cardMinWidth.knowledge`; the fallback
+   * mirrors DEFAULT_CARD_MIN_WIDTH. */
+  --card-min: var(--card-min-knowledge, 520px);
+  --card-gap: 10px;
 }
 
 /* INDEX special-file row — the dir's `index.md` rendered as the first
@@ -44,35 +49,15 @@
   gap: 10px;
 }
 
-/* Same two-up grid as the Code-pane `.repos-grid` — single column below
- * the configured min-width so a narrow pane never holds an awkward
- * shrunken card. The min is set from settings.json
- * (`cardMinWidth.knowledge`); the fallback below mirrors the bundled
- * default in `DEFAULT_CARD_MIN_WIDTH`. */
-.knowledge-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-knowledge, 520px)), 1fr));
-  gap: 10px;
-}
-
+/* Silhouette (fill / border / radius / shadow / hover / position) comes
+ * from the shared `.card` (primitives.css); this keeps only the Knowledge
+ * identity: internal flex layout, density, cursor, and the bucket stripe. */
 .knowledge-card {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
   padding: 10px 14px 10px 18px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.knowledge-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
 }
 
 /* Per-bucket stripe — echoes the projects-pane `.row::before` indicator
@@ -241,13 +226,8 @@
   background: var(--accent);
 }
 
-/* Knowledge variant of .empty — overrides the centered flex with a dashed
- * "card-shaped" placeholder so the empty state reads as inline help, not
- * "we couldn't find your tree". Keep here, not in styles.css, because the
- * dashed-border treatment is pane-specific design. */
-.knowledge-pane .empty {
-  padding: 14px 16px;
-  background: var(--bg-elevated);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-}
+/* Knowledge empty state adopts the shared `.pane-empty` primitive
+ * (primitives.css) — the dashed "card-shaped" placeholder that used to live
+ * here. The empty markup is the fallback `<div class="empty">` in main.tsx,
+ * rendered as a sibling of `.knowledge-pane` (not a descendant), so this
+ * pane owns no `.empty` node to re-class; `pane-empty` must be added there. */

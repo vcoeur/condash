@@ -97,7 +97,7 @@ function RunningRunRow(props: {
         <span class="spacer" />
         <button
           type="button"
-          class="tasks-danger tasks-run-kill"
+          class="tasks-danger tasks-run-kill btn btn--sm btn--danger"
           title="Kill and discard this run"
           onClick={(e) => {
             e.stopPropagation();

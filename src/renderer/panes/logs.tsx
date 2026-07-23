@@ -12,6 +12,7 @@ import {
 import { createStore } from 'solid-js/store';
 import type { LogsOpenRequest, TermLogSessionMeta } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
+import { Caret } from '../icons';
 import { LogsViewerModal } from '../logs-modal';
 import {
   dayLabel,
@@ -192,7 +193,7 @@ export function LogsView(props: {
             </Show>
           </span>
           <span class="logs-toolbar-spacer" />
-          <button type="button" class="logs-refresh" onClick={refreshAll}>
+          <button type="button" class="logs-refresh btn btn--sm" onClick={refreshAll}>
             Refresh
           </button>
         </div>
@@ -226,11 +227,11 @@ export function LogsView(props: {
 
       <Show when={view() === 'taskruns'}>
         <section class="logs-list logs-taskruns">
-          <Show when={!taskRuns.loading} fallback={<div class="empty">Loading…</div>}>
+          <Show when={!taskRuns.loading} fallback={<div class="empty pane-empty">Loading…</div>}>
             <Show
               when={(taskRuns() ?? []).length > 0}
               fallback={
-                <div class="empty">
+                <div class="empty pane-empty">
                   No task runs yet. Scheduled runs and manual runs flagged “Keep out of logs” land
                   here, kept separate from the normal session logs.
                 </div>
@@ -248,10 +249,10 @@ export function LogsView(props: {
 
       <Show when={view() === 'sessions'}>
         <section class="logs-list">
-          <Show when={!days.loading} fallback={<div class="empty">Loading…</div>}>
+          <Show when={!days.loading} fallback={<div class="empty pane-empty">Loading…</div>}>
             <Show
               when={(days() ?? []).length > 0}
-              fallback={<div class="empty">No sessions captured yet.</div>}
+              fallback={<div class="empty pane-empty">No sessions captured yet.</div>}
             >
               {/* Recent band: one group per day for the last 7 days. Today is
                 always expanded and non-collapsible; the other days are
@@ -276,7 +277,7 @@ export function LogsView(props: {
                   >
                     <details class="logs-day-group">
                       <summary class="logs-day-header">
-                        <span class="logs-caret" aria-hidden="true" />
+                        <Caret />
                         <span class="logs-day-label">{dayLabel(d.day)}</span>
                         <span class="logs-group-count">{d.sessions}</span>
                       </summary>
@@ -301,7 +302,7 @@ export function LogsView(props: {
                     }}
                   >
                     <summary class="logs-month-header">
-                      <span class="logs-caret" aria-hidden="true" />
+                      <Caret />
                       <span class="logs-month-label">{monthLabel(month.key)}</span>
                       <span class="logs-group-count">
                         {month.days.reduce((n, d) => n + d.sessions, 0)}

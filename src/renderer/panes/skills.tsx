@@ -123,7 +123,7 @@ export function SkillsView(props: {
   ));
 
   const emptyState = () => (
-    <div class="empty">
+    <div class="empty pane-empty">
       <p>No skills available.</p>
       <Show
         when={props.scope === 'conception'}
@@ -215,7 +215,7 @@ function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
 
   return (
     <article
-      class="skills-card"
+      class="skills-card card"
       data-shipped={shippedStatus()}
       data-kind="md"
       title={props.node.path}

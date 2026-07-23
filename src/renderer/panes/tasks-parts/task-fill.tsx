@@ -176,7 +176,8 @@ export function TaskFill(props: {
           </label>
           <button
             type="button"
-            class="tasks-run tasks-fill-run"
+            class="tasks-run tasks-fill-run btn btn--sm btn--default"
+            data-tone="run"
             disabled={!agentOk()}
             title={
               !agentOk()

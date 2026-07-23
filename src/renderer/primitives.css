@@ -3,7 +3,17 @@
  * width-tier token set (modal-base.css): a named base in one shared file,
  * with per-component opt-outs only where deliberate.
  *
- * Two primitives live here for now:
+ * The primitives:
+ *   .card            — the secondary-card silhouette every card pane shares
+ *                      (fill / border / radius / shadow / hover). Identity
+ *                      (stripes, tints, density) stays on the pane class.
+ *   .card-grid       — the shared auto-fill card grid, keyed on --card-min /
+ *                      --card-gap set by the pane's grid class.
+ *   .status-pill     — the item-status chip, coloured via data-status.
+ *   .file-glyph      — the file-kind chip (md / pdf / html / image / url /
+ *                      wiki), one colour map for every pane.
+ *   .pane-empty      — the dashed empty-state placeholder.
+ *   .card-reveal     — the quiet square reveal-in-file-manager side button.
  *   .section-header  — the uppercase "label · count · rule" bar that groups
  *                      a list of cards. The generic TreeView already owns
  *                      the live pane variant (.tree-dir-header in
@@ -84,4 +94,175 @@
 }
 .caret-icon[data-expanded='true'] svg {
   transform: rotate(90deg);
+}
+
+/* Native-`<details>` surfaces (Deliverables / Logs groups) can't thread an
+ * `expanded` prop into the Caret component — the open state lives on the
+ * element. One structural rule covers them all. */
+details[open] > summary .caret-icon svg {
+  transform: rotate(90deg);
+}
+
+/* Card base. The one secondary-card silhouette shared by every card pane
+ * (Code repos, Knowledge, Resources, Skills, Tasks, Logs, Deliverables):
+ * elevated fill, strong hairline, large radius, resting card shadow, and the
+ * bg + lift hover. Panes keep their identity (stripes, tints, density) on
+ * their own class; the Projects `.row` deliberately keeps its heavier
+ * family-framed chrome and does not compose this. */
+.card {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  contain: layout paint;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.card:hover {
+  background: var(--bg-hover);
+  box-shadow: var(--shadow-lift);
+}
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Card grid. The shared auto-fill grid every card pane re-declared: columns
+ * stay at least --card-min wide (the per-pane `cardMinWidth.*` setting) and
+ * a lone card stays capped instead of stretching (`auto-fill`, never
+ * `auto-fit`). Panes set --card-min / --card-gap on their own grid class. */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min, 400px), 100%), 1fr));
+  gap: var(--card-gap, 10px);
+}
+
+/* Status pill. The one item-status chip (now / review / later / backlog /
+ * done) — text + border + tint keyed off --col-status via data-status, so
+ * every surface renders a status identically. */
+.status-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--col-status, var(--text-muted));
+  background: color-mix(in srgb, var(--col-status, var(--text-muted)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-status, var(--text-muted)) 35%, transparent);
+}
+.status-pill[data-status='now'] {
+  --col-status: var(--col-now);
+}
+.status-pill[data-status='review'] {
+  --col-status: var(--col-review);
+}
+.status-pill[data-status='later'] {
+  --col-status: var(--col-later);
+}
+.status-pill[data-status='backlog'] {
+  --col-status: var(--col-backlog);
+}
+.status-pill[data-status='done'] {
+  --col-status: var(--col-done);
+}
+.status-pill[data-status='?'] {
+  --col-status: var(--col-unknown);
+}
+
+/* File-kind glyph. The small coloured type chip in front of a file-ish card
+ * (Resources categories, Deliverables kinds). One colour map so the same
+ * kind reads the same colour in every pane. */
+.file-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--glyph-color, var(--text-muted)) 13%, transparent);
+  color: var(--glyph-color, var(--text-muted));
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.file-glyph[data-cat='markdown'],
+.file-glyph[data-cat='mdx'] {
+  --glyph-color: var(--accent);
+}
+.file-glyph[data-cat='pdf'] {
+  --glyph-color: var(--warn);
+}
+.file-glyph[data-cat='image'] {
+  --glyph-color: var(--col-soon, var(--accent));
+}
+.file-glyph[data-cat='html'] {
+  --glyph-color: var(--col-later, var(--accent));
+}
+.file-glyph[data-cat='url'] {
+  --glyph-color: var(--accent);
+}
+.file-glyph[data-cat='wiki'] {
+  --glyph-color: var(--col-review, var(--accent));
+}
+
+/* Empty state. The dashed "card-shaped" placeholder the Projects and
+ * Knowledge panes already used — inline help, not an error. */
+.pane-empty {
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.pane-empty code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* Reveal-in-file-manager side button. Deliverable / log cards can't nest it
+ * inside their open <button> (button-in-button is invalid), so it rides as a
+ * sibling — a quiet square that only grows chrome on hover, instead of a
+ * full-height bordered slab beside the card. */
+.card-reveal {
+  flex-shrink: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-faint);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+.card-reveal:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+.card-reveal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

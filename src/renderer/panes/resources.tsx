@@ -60,7 +60,7 @@ export function ResourcesView(props: {
       <Show
         when={props.root}
         fallback={
-          <div class="empty">
+          <div class="empty pane-empty">
             <p>No resources directory yet.</p>
             <p>
               Drop any file under <code>resources/</code> at the conception root.
@@ -142,14 +142,14 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
   };
 
   return (
-    <article class="resources-card" data-category={cat()} title={props.node.path}>
+    <article class="resources-card card" data-category={cat()} title={props.node.path}>
       <button
         type="button"
         class="resources-card-body"
         onClick={handleCardClick}
         title={canViewInline() ? 'View' : 'Open in main IDE'}
       >
-        <span class="resources-card-glyph" aria-hidden="true">
+        <span class="resources-card-glyph file-glyph" data-cat={cat()} aria-hidden="true">
           <CategoryGlyph category={cat()} />
         </span>
         <span class="resources-card-text">
