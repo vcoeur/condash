@@ -429,6 +429,40 @@ run that exited 0 with numbers off by up to 9×; and the GC-record count caught 
 going to **stdout** while only stderr was captured, so `gc.log` had never held a single GC record.
 Requires a current `npm run build` — both the main bundle and the renderer bundle.
 
+#### Renderer CPU profile { #renderer-cpu-profile }
+
+Every counter above lives in the **main** process. `--renderer-profile` adds the one measurement the
+line never had — a CPU trace of the **renderer main thread** under the flood — by attaching a CDP
+`Profiler` to the renderer page (`page.context().newCDPSession(page)`, then `Profiler.enable` /
+`setSamplingInterval` / `start` … `stop`) around the flood window and writing a `.cpuprofile` beside
+`perf.jsonl`. It is a flag, not a sibling script, on purpose: the one property the harness exists to
+guarantee is isolation, so the renderer trace reuses the same sandbox, launch env, runtime assertions,
+memory guard and tab ceiling literally in place rather than re-deriving them. Opt-in and incompatible
+with `--ab` (a profile is a single trace); `--profiler-interval` sets the sampling interval in
+microseconds (default 250, finer than V8's 1000 so the OSC/clone/parse split resolves).
+
+The trace is **asserted real** before it is trusted — a profile with no samples, or one whose samples
+are all synthetic `(idle)`/`(program)`, means the profiler never attached to a busy renderer, and the
+run fails loudly rather than reporting a clean-looking empty trace (the exact hole `--trace-gc` hid).
+It also asserts the hidden-tab path is actually engaged: in the sandbox the terminal pane opens on the
+terminal view, so spawning N tabs leaves **one** visible DOM Terminal and demotes the other N-1 into
+the shared worker — and a demote **removes** the tab's DOM element, so `.xterm` collapsing to 1 is the
+runtime proof that the F7/F8 double-copy path is live. Rank a written profile with
+`node scripts/analyze-cpuprofile.mjs <file.cpuprofile>`, which aggregates self-time by function.
+
+What it reaches: **F7/F8** (the hidden-tab worker feed and the F8 IPC-deserialize-then-postMessage
+double copy, both on the renderer main thread). What it does not: **F6**, whose Code-pane run rows need
+a code-side session from a repo's Run button that the all-`my`-side flood cannot stage — scoped out
+rather than faked. The Profiler sees the page main thread only; the worker thread's own parse of the
+hidden tabs is a separate context, which is fine, because F8's claim is about the **main-thread** copy
+cost specifically. Measured 2026-07-23 under an 8-tab flood at machine load ~7.5 (a sampling profile is
+proportional, so self-time **shares** stay interpretable even though absolute ms are inflated by OS
+descheduling): among named renderer JS work, xterm ANSI parse/render of the single visible tab is
+~5.7 s and the F8 structured-clone/postMessage path is ~0.2 s — a ~28× gap. **F8 is real in the code
+but negligible in cost** (a data-transfer bound puts the two copies of 160 MB at tens of ms of memcpy),
+so it is refuted as a bottleneck; the worker offload the architecture pays for is precisely what keeps
+the main thread parsing one tab instead of eight.
+
 ### Terminal memory { #terminal-memory }
 
 On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed with a throwaway scope; a **success is cached**, but a **transient failure is re-checked** on the next spawn — a momentary glitch (systemd busy under load, user manager restarting) never silently disables containment for the rest of the session. When a tab is nonetheless spawned uncapped on a capable host, condash logs a one-time warning.
