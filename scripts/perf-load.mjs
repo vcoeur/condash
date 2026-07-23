@@ -127,16 +127,73 @@
 //      `GridBodyRenderer` entirely. The grid path serves non-cooperating tabs,
 //      and that is the population this profile measures.
 //
+// ## Renderer CPU profile (--renderer-profile)
+//
+// Everything above measures the MAIN process: the in-app perf counters, the
+// logging A/B, GC. The 2026-07-21 audit's three highest-ranked findings after F5
+// are all RENDERER-side and were completely unmeasured — F6 (Code-pane run rows
+// never demote, so N previously-expanded rows = N ANSI parsers on the UI
+// thread), F7 (one shared Web Worker for every hidden tab; a tab-switch awaits
+// `worker.serialize` behind a 10 s watchdog), F8 (the renderer main thread copies
+// every hidden tab's bytes twice — IPC structured-clone deserialize on
+// `onTermData`, then a second structured-clone serialize into the worker's
+// `postMessage`). Audit note 04 named the missing experiment outright: "a
+// renderer performance trace under a synthetic multi-tab output flood" to settle
+// "which stage dominates wall-clock — OSC scan vs structured clone vs xterm
+// parse". `--renderer-profile` is that experiment.
+//
+// It is a FLAG on this script, not a sibling, on purpose (decided 2026-07-23).
+// The one property this harness exists to guarantee is isolation — an earlier
+// version drove the user's real app state and did real damage (see ## Isolation),
+// and that whole class was closed by asserting isolation at runtime. A sibling
+// script would have had to re-derive or import the sandbox, the launch env, the
+// two runtime assertions, the memory guard and the tab ceiling; a flag reuses
+// every one of them literally in place, so there is exactly one launch path and
+// it cannot drift. The renderer trace is a small, opt-in insertion inside
+// `runWindow` (attach a CDP Profiler around the existing flood, write the
+// `.cpuprofile`), and the assert-don't-assume posture the rest of the file has is
+// extended to it: a profile with no samples, or one whose samples are all
+// synthetic `(idle)`/`(program)`, means the profiler never attached to the busy
+// renderer, and the run says so loudly rather than reporting a clean-looking
+// empty trace (exactly the failure `--trace-gc` hid for weeks).
+//
+// What the flood reaches, and what it does not:
+//   - F7/F8 ARE reached. In the sandbox the default layout has the terminal pane
+//     open on the terminal view, so spawning N `my`-side tabs leaves ONE visible
+//     DOM Terminal and demotes the other N-1 into the shared worker (a demote
+//     REMOVES the tab's DOM element, so `document.querySelectorAll('.xterm')`
+//     collapsing to 1 is the runtime proof that N-1 tabs are worker-owned — the
+//     harness asserts it). Every hidden tab's flood bytes then travel the F8
+//     double-copy path on the renderer main thread, and the harness also drives a
+//     few tab switches so the F7 serialize/hydrate round-trip is in the trace.
+//   - F6 is NOT reached and is deliberately scoped out. Code-pane run rows need a
+//     code-SIDE session started from a repo's Run button (real repo, real
+//     worktree, real `make run`), which the flood — all `my`-side terminal tabs —
+//     has no path to stage. Faking it would measure a different thing; the trace
+//     covers the hidden-tab worker + double-copy path (F7/F8), which the terminal
+//     flood does reach, and F6 is left for a harness that can stage a code run.
+//
+// The CDP Profiler attaches to the PAGE's main execution context, so it measures
+// the renderer MAIN thread only — which is precisely where F8's double copy and
+// the visible tab's ANSI parse run. The worker thread's own parse of the hidden
+// tabs is a SEPARATE context this page profile does not see (and is not what F8
+// claims): F8 is about the main-thread copy cost, and that is what this settles.
+//
 // Output:
-//   /tmp/perf-load/<label>/perf.jsonl    per-window counter records
-//   /tmp/perf-load/<label>/gc.log        raw --trace-gc output
-//   /tmp/perf-load/summary.json          parsed comparison across labels
+//   /tmp/perf-load/<label>/perf.jsonl           per-window counter records
+//   /tmp/perf-load/<label>/gc.log               raw --trace-gc output
+//   /tmp/perf-load/<label>/renderer.cpuprofile  --renderer-profile only
+//   /tmp/perf-load/summary.json                 parsed comparison across labels
+//
+// Analyse a written .cpuprofile with `scripts/analyze-cpuprofile.mjs`, which
+// aggregates self-time by function and ranks the top consumers.
 //
 // Usage:
 //   node scripts/perf-load.mjs --tabs 8 --rate 512k --duration 60s
 //   node scripts/perf-load.mjs --tabs 8 --rate 512k --duration 60s --logging off
 //   node scripts/perf-load.mjs --ab            # runs logging on AND off, compares
 //   node scripts/perf-load.mjs --profile realistic --duration 90s
+//   node scripts/perf-load.mjs --renderer-profile --tabs 8 --duration 45s
 //
 //   --profile flood        DEFAULT, behaviour unchanged — worst-case saturation,
 //                          and still the documented way to stress the byte path
@@ -145,6 +202,13 @@
 //   --rate                 per-tab byte rate. The default is PER PROFILE
 //                          (512k flood, 16k realistic); an explicit --rate wins
 //                          for either, whatever the flag order.
+//   --renderer-profile     attach a CDP CPU Profiler to the renderer main thread
+//                          for the flood window and write a .cpuprofile. Opt-in;
+//                          incompatible with --ab (a profile is a single trace).
+//   --profiler-interval    CDP sampling interval in microseconds (default 250 —
+//                          finer than V8's 1000 default so the OSC/clone/parse
+//                          split resolves, coarse enough that the sampler is not
+//                          itself a load under machine contention).
 
 import { _electron as electron } from 'playwright';
 import { createWriteStream, rmSync } from 'node:fs';
@@ -225,6 +289,27 @@ const PROFILE_DEFAULT_RATE = {
   realistic: 16 * 1024,
 };
 
+/** Default CDP CPU-profile sampling interval, microseconds. Finer than V8's
+ *  1000 default so the OSC-scan / structured-clone / xterm-parse split the audit
+ *  asked about resolves into distinct frames rather than blurring into one
+ *  sample; still coarse enough that the sampler's own wakeups are not a material
+ *  load on a machine already under contention (this run is launched at ~6 load).
+ *  Overridable with --profiler-interval. */
+const DEFAULT_PROFILER_INTERVAL_US = 250;
+
+/** Tab switches to drive across the profiled flood window, so the F7
+ *  serialize/hydrate round-trip (promote pulls `worker.serialize`, demote runs
+ *  the main-thread SerializeAddon) lands in the trace rather than only the steady
+ *  F8 double-copy. Kept small: the point is to SAMPLE the switch path under a
+ *  saturated worker, not to benchmark switching. */
+const RENDERER_PROFILE_TAB_SWITCHES = 6;
+
+/** Below this fraction of non-synthetic samples the renderer was effectively idle
+ *  for the whole trace, which means the Profiler never attached to the busy page
+ *  (or the flood never reached it). Treated as a hard failure — a clean-looking
+ *  empty profile is the exact class of silent hole `--trace-gc` hid for weeks. */
+const PROFILE_BUSY_FLOOR = 0.05;
+
 /** Smallest rate that still produces a load. Below this the flood's `head -c`
  *  goes to 1 byte and, at rate 0, `realisticBurst` divides by zero and emits
  *  `sleep Infinity` — a tab that outputs nothing, a run that measures nothing,
@@ -269,6 +354,8 @@ function parseArgs(argv) {
     traceGc: true,
     ab: false,
     force: false,
+    rendererProfile: false,
+    profilerIntervalUs: DEFAULT_PROFILER_INTERVAL_US,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -305,6 +392,13 @@ function parseArgs(argv) {
       case '--ab':
         args.ab = true;
         break;
+      case '--renderer-profile':
+        args.rendererProfile = true;
+        break;
+      case '--profiler-interval':
+        args.profilerIntervalUs = Number.parseInt(value, 10);
+        i++;
+        break;
       case '--force':
         args.force = true;
         break;
@@ -323,6 +417,15 @@ function parseArgs(argv) {
     }
   }
   if (!Number.isInteger(args.tabs) || args.tabs < 1) throw new Error('--tabs must be a positive int');
+  // A CPU profile is one contiguous trace of one flood window; an A/B is two
+  // windows. Rejecting the combination rather than silently picking one keeps the
+  // written .cpuprofile unambiguous about which load produced it.
+  if (args.rendererProfile && args.ab) {
+    throw new Error('--renderer-profile is incompatible with --ab: a CPU profile captures a single flood window, not an A/B.');
+  }
+  if (args.rendererProfile && (!Number.isInteger(args.profilerIntervalUs) || args.profilerIntervalUs < 1)) {
+    throw new Error('--profiler-interval must be a positive integer number of microseconds');
+  }
   args.rate ??= PROFILE_DEFAULT_RATE[args.profile];
   return args;
 }
@@ -793,7 +896,150 @@ async function newestMtime(dir) {
   return newest;
 }
 
-async function runWindow({ label, tabs, profile, rate, durationMs, logging, traceGc, sandbox }) {
+/**
+ * Aggregate a CDP CPU profile into self-time by function, plus the synthetic-vs-
+ * busy split that proves the profiler saw a running renderer.
+ *
+ * Self-time is the time a function spent on TOP of the stack: each entry in
+ * `profile.samples` names the node then executing and `profile.timeDeltas[i]`
+ * (microseconds) is how long until the next sample, so summing timeDeltas per top
+ * node and grouping by its callFrame gives self-time per function — the same
+ * reduction Chrome DevTools' "Self time" column performs. V8 folds non-JS time
+ * into synthetic nodes: `(idle)` (thread parked), `(program)` (VM work not
+ * attributed to a JS frame — where native structured-clone / postMessage cost
+ * tends to land), `(garbage collector)`, `(root)`. If those are essentially the
+ * whole trace, the profiler attached but the renderer never ran the flood.
+ *
+ * @param profile the `Profiler.stop` payload.
+ * @returns sample count, wall/busy ms, busy fraction, and functions ranked by
+ *   self-time (descending).
+ */
+function summariseCpuProfile(profile) {
+  const nodeById = new Map();
+  for (const node of profile.nodes) nodeById.set(node.id, node);
+  const samples = profile.samples ?? [];
+  const deltas = profile.timeDeltas ?? [];
+  const synthetic = new Set(['(idle)', '(program)', '(garbage collector)', '(root)']);
+  const selfByKey = new Map();
+  let totalUs = 0;
+  let syntheticUs = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const node = nodeById.get(samples[i]);
+    if (!node) continue;
+    // The first delta is the gap from profile start to the first sample (dead
+    // time before tracing began); clamp negatives a paused VM can emit.
+    const us = Math.max(0, deltas[i] ?? 0);
+    totalUs += us;
+    const name = node.callFrame.functionName || '(anonymous)';
+    if (synthetic.has(name)) {
+      syntheticUs += us;
+      continue;
+    }
+    const url = node.callFrame.url || '(native)';
+    const key = `${name} ${url}:${node.callFrame.lineNumber}`;
+    const entry = selfByKey.get(key);
+    if (entry) entry.selfUs += us;
+    else selfByKey.set(key, { name, url, line: node.callFrame.lineNumber, selfUs: us });
+  }
+  const ranked = [...selfByKey.values()].sort((a, b) => b.selfUs - a.selfUs);
+  const busyUs = totalUs - syntheticUs;
+  return {
+    samples: samples.length,
+    wallMs: totalUs / 1000,
+    busyMs: busyUs / 1000,
+    busyFraction: totalUs > 0 ? busyUs / totalUs : 0,
+    ranked,
+  };
+}
+
+/**
+ * Wait out the flood window, clicking through tabs at even intervals so the F7
+ * promote (a hidden tab's `worker.serialize` round-trip) and its paired demote
+ * (the previous active tab's main-thread SerializeAddon) are sampled, not just
+ * the steady F8 double copy. Best-effort: the flood is the measurement, so a
+ * click that misses a tab element is logged and skipped rather than aborting the
+ * trace. Clicks use the stable `data-sid` the column renders (column.tsx).
+ */
+async function driveFloodWithSwitches({ window, sids, durationMs }) {
+  const switches = Math.min(RENDERER_PROFILE_TAB_SWITCHES, Math.max(0, sids.length - 1));
+  if (switches === 0) {
+    await window.waitForTimeout(durationMs);
+    return;
+  }
+  const step = Math.floor(durationMs / (switches + 1));
+  for (let n = 0; n < switches; n++) {
+    await window.waitForTimeout(step);
+    // Rotate through the earlier (hidden) tabs; the last-spawned starts visible.
+    const sid = sids[n % sids.length];
+    try {
+      await window.locator(`.terminal-tab[data-sid="${sid}"]`).first().click({ timeout: 2000 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.warn(`[perf-load] tab switch to ${sid} skipped: ${msg}`);
+    }
+  }
+  await window.waitForTimeout(Math.max(0, durationMs - step * switches));
+}
+
+/**
+ * Attach a CDP CPU Profiler to the renderer main thread for the flood window and
+ * write the `.cpuprofile`. Asserts the trace is real — samples present and the
+ * renderer actually busy — rather than trusting the flag fired: a profile that is
+ * all `(idle)`/`(program)` means the profiler never attached to the busy page, and
+ * that is the silent-empty-capture failure the rest of this harness exists to
+ * refuse (see --trace-gc). `page.context().newCDPSession(page)` is the documented
+ * Playwright path and works against the Electron renderer page (verified against
+ * playwright 1.59.1's Profiler protocol on 2026-07-23).
+ *
+ * @returns the written path and the self-time summary.
+ */
+async function captureRendererProfile({ window, outDir, label, sids, durationMs, intervalUs }) {
+  const client = await window.context().newCDPSession(window);
+  await client.send('Profiler.enable');
+  await client.send('Profiler.setSamplingInterval', { interval: intervalUs });
+  await client.send('Profiler.start');
+  console.log(
+    `[perf-load] ${label}: renderer CPU profiler started (interval ${intervalUs}µs), ` +
+      `tracing ${(durationMs / 1000).toFixed(0)}s with ${Math.min(RENDERER_PROFILE_TAB_SWITCHES, Math.max(0, sids.length - 1))} tab switches…`,
+  );
+
+  await driveFloodWithSwitches({ window, sids, durationMs });
+
+  const { profile } = await client.send('Profiler.stop');
+  await client.detach().catch(() => {});
+
+  const profilePath = join(outDir, 'renderer.cpuprofile');
+  await writeFile(profilePath, JSON.stringify(profile), 'utf8');
+  const summary = summariseCpuProfile(profile);
+
+  if (summary.samples === 0) {
+    throw new Error(
+      `renderer profile captured ZERO samples → ${profilePath}. The CDP Profiler did not attach to ` +
+        `the renderer page, so there is no renderer measurement here — do not read one off this run.`,
+    );
+  }
+  if (summary.busyFraction < PROFILE_BUSY_FLOOR) {
+    throw new Error(
+      `renderer profile is ${(100 - summary.busyFraction * 100).toFixed(1)}% synthetic ` +
+        `(idle/program/gc) across ${summary.samples} samples → ${profilePath}. The renderer was ` +
+        `essentially idle for the whole trace, so the profiler attached to a page the flood never ` +
+        `reached. Refusing to claim a renderer measurement.`,
+    );
+  }
+  console.log(
+    `[perf-load] ${label}: renderer profile OK — ${summary.samples} samples, ` +
+      `${summary.wallMs.toFixed(0)}ms wall, ${(summary.busyFraction * 100).toFixed(0)}% busy (non-idle) ` +
+      `→ ${profilePath}`,
+  );
+  const top = summary.ranked
+    .slice(0, 5)
+    .map((f, i) => `    ${i + 1}. ${(f.selfUs / 1000).toFixed(0)}ms  ${f.name}  ${f.url}`)
+    .join('\n');
+  console.log(`[perf-load] ${label}: top renderer self-time (see analyze-cpuprofile.mjs for full ranking):\n${top}`);
+  return { profilePath, summary };
+}
+
+async function runWindow({ label, tabs, profile, rate, durationMs, logging, traceGc, sandbox, rendererProfile, profilerIntervalUs }) {
   const outDir = join(OUT_DIR, label);
   await mkdir(outDir, { recursive: true });
 
@@ -963,7 +1209,38 @@ async function runWindow({ label, tabs, profile, rate, durationMs, logging, trac
     );
     console.log(`[perf-load] ${label}: spawned ${sids.length} tabs, running…`);
 
-    await window.waitForTimeout(durationMs);
+    let rendererProfileResult = null;
+    if (rendererProfile) {
+      // Let visibility settle so the N-1 non-active tabs demote into the shared
+      // worker. A demote REMOVES the tab's DOM element (controller.syncVisibility),
+      // so `.xterm` collapsing toward 1 is the runtime proof the hidden-tab
+      // worker path (F7/F8) is actually engaged — a profile of N live DOM
+      // Terminals would measure the F6-shaped on-thread parse instead, a
+      // different finding. Assert it rather than assume it.
+      await window.waitForTimeout(1500);
+      const liveTerms = await window.evaluate(() => document.querySelectorAll('.xterm').length);
+      if (tabs > 1 && liveTerms >= tabs) {
+        throw new Error(
+          `renderer profile precondition failed: ${liveTerms} live DOM terminals for ${tabs} tabs — ` +
+            `none demoted to the worker, so the F7/F8 hidden-tab path is NOT exercised. The terminal ` +
+            `pane must be open on the terminal view (the sandbox default) for demotion to run.`,
+        );
+      }
+      console.log(
+        `[perf-load] ${label}: ${liveTerms} live DOM terminal(s) of ${tabs} tabs — ` +
+          `${tabs - liveTerms} demoted to the shared worker (F7/F8 double-copy path active).`,
+      );
+      rendererProfileResult = await captureRendererProfile({
+        window,
+        outDir,
+        label,
+        sids,
+        durationMs,
+        intervalUs: profilerIntervalUs,
+      });
+    } else {
+      await window.waitForTimeout(durationMs);
+    }
 
     const vitals = await window.evaluate(async () => window.condash.perfVitals());
     console.log(
@@ -978,7 +1255,7 @@ async function runWindow({ label, tabs, profile, rate, durationMs, logging, trac
       [sids],
     );
 
-    return { vitals, sids };
+    return { vitals, sids, rendererProfile: rendererProfileResult };
   } finally {
     await app.close().catch(() => {});
     await new Promise((done) => gcStream.end(done));
@@ -1219,7 +1496,13 @@ async function main() {
     for (const logging of modes) {
       const label = `logging-${logging}`;
       const before = (await readPerfRecords(conceptionPath)).length;
-      await runWindow({ ...args, logging, label, sandbox });
+      const window = await runWindow({ ...args, logging, label, sandbox });
+      if (window.rendererProfile) {
+        console.log(
+          `\n[perf-load] renderer CPU profile → ${window.rendererProfile.profilePath}\n` +
+            `[perf-load] rank it: node scripts/analyze-cpuprofile.mjs ${window.rendererProfile.profilePath}`,
+        );
+      }
       const records = (await readPerfRecords(conceptionPath)).slice(before);
       await writeFile(
         join(OUT_DIR, label, 'perf.jsonl'),
