@@ -7,7 +7,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { exec as execFile } from '../exec';
 import { isSafeRelativePath, resolveBase, setupBranchWorktrees } from './setup';
 import { removeBranchWorktrees } from './remove';
@@ -776,4 +776,12 @@ describe('checkBranchState input validation + active-only union', () => {
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
+});
+
+// The per-test `tmp` dirs are reaped in afterEach; this beforeAll-scoped XDG home
+// is not, so every suite run leaked one condash-xdg-* dir. Cleanup must be an
+// `afterAll`, not the process.on('exit') above: under vitest's pooled workers the
+// 'exit' event does not fire between files, so an exit handler never runs here.
+afterAll(() => {
+  if (xdgHome) rmSync(xdgHome, { recursive: true, force: true });
 });
