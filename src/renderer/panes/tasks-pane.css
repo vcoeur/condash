@@ -8,19 +8,22 @@
   height: 100%;
   min-height: 0;
   overflow: auto;
-  padding: 0.5rem 0.75rem 1rem;
+  padding: 14px 18px 24px;
+  /* Standard pane scroll surface — the panel layer, matching the other panes. */
+  background: var(--bg-panel);
 }
 
 .tasks-pane-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding-bottom: 0.5rem;
+  gap: 12px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--bg);
+  /* Match the pane scroll surface so scrolled rows hide behind the sticky header. */
+  background: var(--bg-panel);
   z-index: 1;
 }
 
@@ -35,76 +38,41 @@
   gap: 0.4rem;
 }
 
-.tasks-pane button {
-  font-size: var(--text-sm);
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: inherit;
-  border-radius: 4px;
-  cursor: pointer;
-}
+/* Buttons adopt the shared `.btn` vocabulary (actions.css) via class names on
+ * the elements — the former blanket `.tasks-pane button` chrome (base / hover /
+ * disabled) and the bespoke `.tasks-danger` / `.tasks-run` rules are gone; the
+ * `.btn` variants (`.btn--default` / `.btn--danger`) and verb tones own them. */
 
-.tasks-pane button:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.tasks-pane button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tasks-pane button.tasks-danger:hover:not(:disabled) {
-  background: var(--warn);
-  color: #fff;
-}
-
-.tasks-pane button.tasks-run {
-  border-color: var(--accent);
-}
-
-.tasks-pane-empty {
-  color: var(--text-muted);
-  font-size: var(--text-md);
-  padding: 1rem 0.25rem;
-  line-height: 1.5;
-}
-
+/* Empty state uses the shared `.pane-empty` placeholder (primitives.css); keep
+ * only the code colour, which `.pane-empty code` doesn't set. */
 .tasks-pane-empty code {
-  font-family: var(--font-mono);
   color: var(--text);
 }
 
-/* Card grid like the Projects / Code panes — task cards reflow to more
- * columns as the pane widens. Min column width is the user's
+/* Card grid like the Projects / Code panes — task cards reflow to more columns
+ * as the pane widens. Grid mechanics come from the shared `.card-grid`
+ * primitive; this only sets its keys. Min column width is the user's
  * `cardMinWidth.tasks` setting; the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
 .tasks-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-tasks, 340px), 100%), 1fr));
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  --card-min: var(--card-min-tasks, 340px);
+  --card-gap: 8px;
+  margin-top: 8px;
 }
 
+/* Task card. Silhouette (elevated fill / border / radius / shadow / hover)
+ * comes from the shared `.card` primitive; this keeps only the flex row. */
 .tasks-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.5rem 0.6rem;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  gap: 10px;
+  padding: 8px 10px;
 }
 
+/* `.card` owns the hover (bg + lift) and focus-visible ring; keep only the
+ * pointer cursor for the whole-card click target. */
 .tasks-row-clickable {
   cursor: pointer;
-}
-
-.tasks-row-clickable:hover,
-.tasks-row-clickable:focus-visible {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  outline: none;
 }
 
 .tasks-row-main {
@@ -149,10 +117,11 @@
   color: var(--text-muted);
 }
 
+/* Theme-token tinted chip (was light-only hex) — warn hue for a dangling agent. */
 .tasks-agent-missing {
   color: var(--warn);
-  border-color: #c4444433;
-  background: #c4444414;
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
 
 .tasks-markers {
@@ -171,16 +140,19 @@
   color: var(--text-muted);
 }
 
+/* Theme-token tinted chips (were light-only hex): green for an {APP} marker,
+ * blue for a {PROJECT} one — distinct from the muted default field chip and
+ * legible in both themes. */
 .tasks-marker[data-kind='app'] {
-  color: #1a7f37;
-  border-color: #1a7f3733;
-  background: #1a7f3714;
+  color: var(--col-now);
+  border-color: color-mix(in srgb, var(--col-now) 30%, transparent);
+  background: color-mix(in srgb, var(--col-now) 12%, transparent);
 }
 
 .tasks-marker[data-kind='project'] {
-  color: #2563eb;
-  border-color: #2563eb33;
-  background: #2563eb14;
+  color: var(--col-later);
+  border-color: color-mix(in srgb, var(--col-later) 30%, transparent);
+  background: color-mix(in srgb, var(--col-later) 12%, transparent);
 }
 
 .tasks-config-view,

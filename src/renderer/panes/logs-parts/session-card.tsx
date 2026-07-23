@@ -30,7 +30,7 @@ export function SessionCard(props: {
     <li class="logs-session-li">
       <button
         type="button"
-        class="logs-session-card"
+        class="logs-session-card card"
         classList={{ running: isRunning(), failed: isFailure(), sealed: isSealed() }}
         onClick={props.onOpen}
       >
@@ -46,7 +46,7 @@ export function SessionCard(props: {
       </button>
       <button
         type="button"
-        class="logs-session-reveal"
+        class="logs-session-reveal card-reveal"
         title="Reveal in file manager"
         aria-label="Reveal in file manager"
         onClick={() => props.onReveal(props.sess.path)}

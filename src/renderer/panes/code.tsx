@@ -153,7 +153,7 @@ export function CodeView(props: {
               <Show
                 when={group.section !== null}
                 fallback={
-                  <div class="repos-grid">
+                  <div class="repos-grid card-grid">
                     <For each={group.repos}>{renderCard}</For>
                   </div>
                 }
@@ -170,7 +170,7 @@ export function CodeView(props: {
                     <span class="repos-section-count">{group.repos.length}</span>
                   </button>
                   <Show when={!isCollapsed()}>
-                    <div class="repos-grid">
+                    <div class="repos-grid card-grid">
                       <For each={group.repos}>{renderCard}</For>
                     </div>
                   </Show>

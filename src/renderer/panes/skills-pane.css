@@ -3,7 +3,12 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-base);
+  background: var(--bg-panel);
+  /* Consumed by the tree's `.tree-files.card-grid` (primitives.css): min
+   * column width from settings.json `cardMinWidth.skills`; the fallback
+   * mirrors DEFAULT_CARD_MIN_WIDTH. */
+  --card-min: var(--card-min-skills, 280px);
+  --card-gap: 8px;
 }
 
 /* Row 1: local/global scope toggle (left) + refresh button (right). */
@@ -102,10 +107,8 @@
   margin-bottom: 14px;
 }
 
-.skills-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
+/* The card focus ring comes from the shared `.card:focus-visible`
+ * (primitives.css) — outline 2px accent, offset 2px. */
 
 /* SKILL special-file row — the dir's `SKILL.md` rendered as the first
  * card inside the dir's expanded body. Inherits the generic
@@ -127,26 +130,16 @@
   color: var(--col-running);
 }
 
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-skills, 280px), 100%), 1fr));
-  gap: 8px;
-}
-
+/* Silhouette (fill / border / radius / shadow / hover / focus ring) comes
+ * from the shared `.card` (primitives.css); this keeps only the Skills
+ * identity: internal layout, density, cursor, and the left-border accents
+ * below. */
 .skills-card {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg-elevated);
   padding: 10px 12px;
   cursor: pointer;
-  transition: border-color 120ms;
-}
-
-.skills-card:hover {
-  border-color: var(--border-strong);
 }
 
 .skills-card[data-shipped='diverged'] {

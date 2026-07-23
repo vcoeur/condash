@@ -161,10 +161,11 @@
   color: var(--text);
 }
 
+/* File cards reflow in the shared `.card-grid` (primitives.css); each host
+ * pane root sets --card-min from its `cardMinWidth.*` setting (which the old
+ * single-column flex silently ignored) and --card-gap. */
 .tree-files {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  --card-gap: 8px;
 }
 
 /* Special-file slot — wraps the per-pane `renderSpecialFile` render

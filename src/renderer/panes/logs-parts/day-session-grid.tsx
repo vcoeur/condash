@@ -13,7 +13,7 @@ export function DaySessionGrid(props: {
       when={props.sessions.length > 0}
       fallback={<div class="logs-day-empty">No sessions.</div>}
     >
-      <ul class="logs-day-sessions">
+      <ul class="logs-day-sessions card-grid">
         <For each={props.sessions}>
           {(sess) => (
             <SessionCard

@@ -17,8 +17,8 @@
 .logs-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem 0.75rem;
+  gap: 6px;
+  padding: 8px 18px;
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
 }
@@ -44,19 +44,7 @@
   flex: 1 1 auto;
 }
 
-.logs-refresh {
-  font-size: var(--text-sm);
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: inherit;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.logs-refresh:hover {
-  background: var(--bg-hover);
-}
+/* The Refresh button is the shared compact button `.btn.btn--sm` (actions.css). */
 
 /* Sessions | Task runs view switcher is the shared compact segmented control
  * .seg.seg--sm / .seg-item (actions.css). */
@@ -72,23 +60,26 @@
   color: var(--text-muted);
 }
 
+/* Tinted-chip tokens (the standard chip pattern) so both triggers hold contrast
+ * in light and dark, instead of the former hardcoded light-only hex. */
 .logs-taskrun-trigger[data-trigger='scheduled'] {
-  background: #e6f0ff;
-  color: #00357a;
-  border-color: #b9d2ff;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .logs-taskrun-trigger[data-trigger='manual'] {
-  background: #fdecd9;
-  color: #6b3b00;
-  border-color: #f0cba0;
+  color: var(--col-later);
+  background: color-mix(in srgb, var(--col-later) 12%, transparent);
+  border-color: color-mix(in srgb, var(--col-later) 30%, transparent);
 }
 
 .logs-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 0.5rem 0.75rem 1rem;
+  padding: 10px 18px 24px;
+  background: var(--bg-panel);
 }
 
 .logs-day-group,
@@ -134,21 +125,8 @@
   font-weight: 600;
 }
 
-/* Disclosure caret — right-pointing triangle that rotates open (mirrors the
- * Deliverables pane). */
-.logs-caret {
-  flex: none;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 4px 0 4px 6px;
-  border-color: transparent transparent transparent var(--text-muted);
-  transition: transform 0.12s ease;
-}
-.logs-day-group[open] > .logs-day-header .logs-caret,
-.logs-month-group[open] > .logs-month-header .logs-caret {
-  transform: rotate(90deg);
-}
+/* Disclosure caret is the shared `<Caret />` component (icons.tsx); the
+ * `details[open] > summary .caret-icon` rule in primitives.css rotates it. */
 
 .logs-day-label,
 .logs-month-label {
@@ -183,16 +161,15 @@
   padding: 0.4rem 0;
 }
 
+/* Card grid — columns from the shared `.card-grid` (primitives.css); the min
+ * column width is the user's `cardMinWidth.logs` setting, the fallback mirrors
+ * DEFAULT_CARD_MIN_WIDTH. */
 .logs-day-sessions {
+  --card-min: var(--card-min-logs, 400px);
+  --card-gap: 8px;
   list-style: none;
   margin: 0;
   padding: 0;
-  /* Card grid like the Projects / Code panes — reflows to more columns as the
-   * pane widens. Min column width is the user's `cardMinWidth.logs` setting;
-   * the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-logs, 400px), 100%), 1fr));
-  gap: 0.4rem;
 }
 
 /* Each grid cell is a flex row: the clickable card plus a reveal button. The
@@ -205,45 +182,29 @@
   min-width: 0;
 }
 
-.logs-session-reveal {
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 0.6rem;
-  font-size: var(--text-base);
-  line-height: 1;
-}
+/* The reveal side-button is the shared `.card-reveal` (primitives.css) — a
+ * quiet 26px square that self-centres as a flex sibling of the card. */
 
-.logs-session-reveal:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
+/* Composes the shared `.card` base (fill / border / radius / shadow / hover
+ * from primitives.css). Only the card's identity stays here: the five-column
+ * grid, mono face, and the status left rail — a 3px-wide left border re-coloured
+ * per state on top of the card frame. */
 .logs-session-card {
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;
-  gap: 0.7rem;
+  gap: 11px;
   align-items: center;
   flex: 1;
   min-width: 0;
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 8px 12px;
   font-size: var(--text-sm);
   color: inherit;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-  border-radius: 4px;
+  border-left-width: 3px;
+  border-left-color: var(--border-strong);
   cursor: pointer;
   text-align: left;
   font-family: var(--ui-font-terminal, var(--font-mono-base));
-}
-
-.logs-session-card:hover {
-  background: var(--bg-hover);
 }
 
 .logs-session-card.failed {
@@ -309,8 +270,5 @@
   font-style: italic;
 }
 
-.logs-pane .empty {
-  color: var(--text-muted);
-  padding: 1rem;
-  font-size: var(--text-md);
-}
+/* Empty / loading states use the shared `.pane-empty` placeholder
+ * (primitives.css). */

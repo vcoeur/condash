@@ -18,16 +18,13 @@
   padding: 14px 18px 18px;
 }
 
+/* Columns/gap come from `.card-grid` in primitives.css; this only feeds it the
+ * pane's card min-width and gap. The min is set from settings.json
+ * (`cardMinWidth.code`, injected as `--card-min-code`); the fallback below
+ * mirrors the bundled default in `DEFAULT_CARD_MIN_WIDTH`. */
 .repos-grid {
-  display: grid;
-  /* Cards stay one-per-row until the grid can fit two cards each at the
-   * configured min-width. Below that breakpoint the single column expands
-   * to fill the pane (the `1fr` upper bound), so there's no awkward
-   * shrunken card on narrow windows. The min is set from settings.json
-   * (`cardMinWidth.code`); the fallback below mirrors the bundled
-   * default in `DEFAULT_CARD_MIN_WIDTH`. */
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-code, 650px), 100%), 1fr));
-  gap: 12px;
+  --card-min: var(--card-min-code, 650px);
+  --card-gap: 12px;
 }
 
 .repos-section {
@@ -132,16 +129,14 @@
   color: var(--text-faint);
 }
 
+/* Shares `.card-grid` (primitives.css) so a running-indicator card respects the
+ * same `cardMinWidth.code` setting as the repo cards it sits below — without
+ * this the cards stretch to the full dock width even when the pane is wide
+ * enough to fit two side by side. `.card-grid`'s `auto-fill` keeps the empty
+ * track so a single card stays capped at the min-width instead of expanding. */
 .code-runs-list {
-  /* Mirror `.repos-grid` above so a running-indicator card respects the
-   * same `cardMinWidth.code` setting as the repo cards it sits below —
-   * without this the cards stretch to the full dock width even when the
-   * pane is wide enough to fit two side by side. `auto-fill` (not
-   * `auto-fit`) keeps the empty track so a single card stays capped at
-   * the configured min-width instead of expanding to fill the pane. */
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-code, 650px), 100%), 1fr));
-  gap: 8px;
+  --card-min: var(--card-min-code, 650px);
+  --card-gap: 8px;
 }
 
 /* When a card is expanded the embedded xterm needs the full dock width
@@ -300,21 +295,15 @@
   background: transparent !important;
 }
 
+/* Silhouette (fill / border / radius / shadow / hover) comes from the shared
+ * `.card` in primitives.css; this rule keeps only the repo-card identity — the
+ * status stripe and the flex layout. */
 .repo-row {
   --repo-stripe: var(--border-strong);
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px 10px 18px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease,
-    border-color 120ms ease;
 }
 
 .repo-row::before {
@@ -326,12 +315,6 @@
   width: 5px;
   border-radius: 999px;
   background: var(--repo-stripe);
-}
-
-.repo-row:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-lift);
 }
 
 .repo-row[data-status='clean'] {

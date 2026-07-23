@@ -122,7 +122,7 @@ export function GroupBlock(props: {
         <Show
           when={props.bodySlot}
           fallback={
-            <div class="group-body">
+            <div class="group-body card-grid">
               <For each={props.group.items}>
                 {(item) => (
                   <Card
@@ -192,7 +192,7 @@ export function SubGroup(props: {
         <span class="count">{props.items.length}</span>
       </header>
       <Show when={isOpen()}>
-        <div class="group-body">
+        <div class="group-body card-grid">
           <For each={props.items}>
             {(item) => (
               <Card

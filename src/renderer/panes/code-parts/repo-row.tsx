@@ -73,7 +73,7 @@ export function RepoRow(props: {
 
   return (
     <article
-      class="repo-row"
+      class="repo-row card"
       classList={{
         missing: props.repo.missing,
       }}

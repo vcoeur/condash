@@ -242,15 +242,11 @@ body[data-dragging='project'] .group-block.drag-over {
  * collapsed stack enough structure to read at a glance. */
 
 .group-body {
-  display: grid;
-  /* Cards stay one-per-row until the grid can fit two cards each at the
-   * configured min-width. Below that breakpoint the single column expands
-   * to fill the pane (the `1fr` upper bound), so there's no awkward
-   * shrunken card on narrow windows. The min is set from settings.json
-   * (`cardMinWidth.projects`); the fallback below mirrors the bundled
-   * default in `DEFAULT_CARD_MIN_WIDTH`. */
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-projects, 520px), 100%), 1fr));
-  gap: 12px;
+  /* Columns come from the shared `.card-grid` (primitives.css); this only
+   * feeds it the pane's min-width (settings.json `cardMinWidth.projects`;
+   * the fallback mirrors DEFAULT_CARD_MIN_WIDTH) and the Projects gap. */
+  --card-min: var(--card-min-projects, 520px);
+  --card-gap: 12px;
   padding: 0;
 }
 

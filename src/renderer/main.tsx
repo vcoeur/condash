@@ -642,7 +642,7 @@ function App() {
                     <Show
                       when={knowledge()}
                       fallback={
-                        <div class="empty">
+                        <div class="empty pane-empty">
                           No knowledge/ directory under the selected conception path.
                         </div>
                       }

@@ -1,5 +1,6 @@
 import { For, type JSX } from 'solid-js';
 import type { TaskRunGroup } from '@shared/types';
+import { Caret } from '../../icons';
 import { formatBytes } from './data';
 
 /** One task's run group in the "Task runs" view — a collapsible header with a
@@ -12,20 +13,20 @@ export function TaskRunGroupView(props: {
   return (
     <details class="logs-day-group" open>
       <summary class="logs-day-header">
-        <span class="logs-caret" aria-hidden="true" />
+        <Caret />
         <span class="logs-day-label">{props.group.taskSlug}</span>
         <span class="logs-taskrun-trigger" data-trigger={props.group.trigger}>
           {props.group.trigger}
         </span>
         <span class="logs-group-count">{props.group.runs.length}</span>
       </summary>
-      <ul class="logs-day-sessions">
+      <ul class="logs-day-sessions card-grid">
         <For each={props.group.runs}>
           {(run) => (
             <li class="logs-session-li">
               <button
                 type="button"
-                class="logs-session-card"
+                class="logs-session-card card"
                 onClick={() => props.onOpen(run.path)}
               >
                 <span class="logs-session-time">
@@ -36,7 +37,7 @@ export function TaskRunGroupView(props: {
               </button>
               <button
                 type="button"
-                class="logs-session-reveal"
+                class="logs-session-reveal card-reveal"
                 title="Reveal in file manager"
                 aria-label="Reveal in file manager"
                 onClick={() => props.onReveal(run.path)}

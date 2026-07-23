@@ -1,6 +1,7 @@
 import { For, Show } from 'solid-js';
 import type { Deliverable, Project } from '@shared/types';
 import './deliverables-pane.css';
+import { Caret } from '../icons';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 
 const KNOWN_STATUSES = ['now', 'review', 'later', 'backlog', 'done'];
@@ -16,6 +17,12 @@ function deliverableKind(deliverable: Deliverable): string {
   if (ext === 'md' || ext === 'markdown') return 'md';
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'].includes(ext)) return 'image';
   return 'file';
+}
+
+/** Kind → shared `.file-glyph` colour category (primitives.css), so a pdf
+ *  deliverable wears the same colour as a pdf resource. */
+function glyphCategory(kind: string): string {
+  return kind === 'md' ? 'markdown' : kind;
 }
 
 /**
@@ -46,7 +53,7 @@ export function DeliverablesView(props: {
       <Show
         when={groups().length > 0}
         fallback={
-          <div class="deliverables-empty">
+          <div class="deliverables-empty pane-empty">
             No deliverables yet — link artifacts under a project's
             <code>## Deliverables</code>.
           </div>
@@ -60,51 +67,60 @@ export function DeliverablesView(props: {
           {(project) => (
             <details class="deliverables-group" open>
               <summary class="deliverables-group-head">
-                <span class="deliverables-caret" aria-hidden="true" />
+                <Caret />
                 <span class="deliverables-group-title">{project.title}</span>
                 <span
-                  class="deliverables-status"
+                  class="status-pill"
                   data-status={KNOWN_STATUSES.includes(project.status) ? project.status : '?'}
                 >
                   {project.status}
                 </span>
                 <span class="deliverables-group-date">{project.slug.slice(0, 10)}</span>
               </summary>
-              <ul class="deliverables-list deliverables-rows">
+              <ul class="deliverables-rows card-grid">
                 <For each={project.deliverables}>
-                  {(deliverable) => (
-                    <li class="deliverable-row">
-                      <button
-                        class="deliverable-button"
-                        onClick={() => props.onOpenDeliverable(deliverable)}
-                        title={deliverable.path}
-                      >
-                        <span class="deliverables-kind" data-kind={deliverableKind(deliverable)}>
-                          {deliverableKind(deliverable)}
-                        </span>
-                        <span class="deliverable-label">{deliverable.label}</span>
-                        <Show when={deliverable.description}>
-                          <span class="deliverable-desc">— {deliverable.description}</span>
-                        </Show>
-                        <span class="deliverable-path">
-                          {deliverable.kind === 'wikilink'
-                            ? `[[${deliverable.path}]]`
-                            : deliverable.path}
-                        </span>
-                      </button>
-                      <Show when={deliverable.kind === 'file'}>
+                  {(deliverable) => {
+                    const kind = deliverableKind(deliverable);
+                    return (
+                      <li class="deliverable-row card">
                         <button
-                          type="button"
-                          class="deliverable-reveal"
-                          title="Reveal in file manager"
-                          aria-label="Reveal in file manager"
-                          onClick={() => props.onReveal(deliverable.path)}
+                          class="deliverable-button"
+                          onClick={() => props.onOpenDeliverable(deliverable)}
+                          title={deliverable.path}
                         >
-                          ⤷
+                          <span class="deliverable-head">
+                            <span
+                              class="deliverables-kind file-glyph"
+                              data-kind={kind}
+                              data-cat={glyphCategory(kind)}
+                            >
+                              {kind}
+                            </span>
+                            <span class="deliverable-label">{deliverable.label}</span>
+                          </span>
+                          <Show when={deliverable.description}>
+                            <span class="deliverable-desc">{deliverable.description}</span>
+                          </Show>
+                          <span class="deliverable-path">
+                            {deliverable.kind === 'wikilink'
+                              ? `[[${deliverable.path}]]`
+                              : deliverable.path}
+                          </span>
                         </button>
-                      </Show>
-                    </li>
-                  )}
+                        <Show when={deliverable.kind === 'file'}>
+                          <button
+                            type="button"
+                            class="deliverable-reveal card-reveal"
+                            title="Reveal in file manager"
+                            aria-label="Reveal in file manager"
+                            onClick={() => props.onReveal(deliverable.path)}
+                          >
+                            ⤷
+                          </button>
+                        </Show>
+                      </li>
+                    );
+                  }}
                 </For>
               </ul>
             </details>

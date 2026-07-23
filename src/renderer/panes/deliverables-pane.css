@@ -1,13 +1,17 @@
 /* Deliverables pane — left-band aggregation of every project's `## Deliverables`,
- * grouped by project. Deliverable rows reuse the global `.deliverable-*`
- * classes from project-preview.css; only the grouping scaffolding and the
- * per-item kind tag live here. */
+ * grouped by project. Each item is a real card (shared `.card` base from
+ * primitives.css) with a coloured kind glyph, its own label / description /
+ * path lines, and a quiet reveal side-button — not the popup's one-line
+ * `.deliverable-button` row, which never survived the reflow into a grid.
+ * The `.deliverable-button` / `.deliverable-row` class names stay because the
+ * e2e spec and the popup share them; every rule here is scoped under
+ * `.deliverables-rows` so the popup keeps its own layout. */
 
 .deliverables-stack {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px 16px;
+  padding: 14px 18px 24px;
   background: var(--bg-panel);
 }
 
@@ -20,14 +24,14 @@
 }
 
 .deliverables-group {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .deliverables-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 2px;
+  padding: 6px 2px;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -36,24 +40,14 @@
   display: none;
 }
 
-/* Disclosure caret — a right-pointing triangle that rotates open. */
-.deliverables-caret {
-  flex: none;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 4px 0 4px 6px;
-  border-color: transparent transparent transparent var(--text-muted);
-  transition: transform 0.12s ease;
-}
-.deliverables-group[open] > .deliverables-group-head .deliverables-caret {
-  transform: rotate(90deg);
-}
-
 .deliverables-group-title {
   flex: 1 1 auto;
-  font-weight: 600;
-  color: var(--text-primary);
+  /* Card & list titles category (`--ui-font-card-title`) — the group title
+   * names a project, so it wears the same face as the project cards. */
+  font-family: var(--ui-font-card-title, var(--font-serif-base));
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -66,110 +60,96 @@
   color: var(--text-muted);
 }
 
-/* Status pill — colour keyed off the same per-status variables the
- * Projects pane uses. */
-.deliverables-status {
-  flex: none;
-  font-size: var(--text-3xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 999px;
-  color: var(--col-status, var(--text-muted));
-  border: 1px solid var(--col-status, var(--border));
-}
-.deliverables-status[data-status='now'] {
-  --col-status: var(--col-now);
-}
-.deliverables-status[data-status='review'] {
-  --col-status: var(--col-review);
-}
-.deliverables-status[data-status='later'] {
-  --col-status: var(--col-later);
-}
-.deliverables-status[data-status='backlog'] {
-  --col-status: var(--col-backlog);
-}
-.deliverables-status[data-status='done'] {
-  --col-status: var(--col-done);
-}
-.deliverables-status[data-status='?'] {
-  --col-status: var(--col-unknown);
-}
-
-/* Card grid like the Projects / Code panes — deliverable cards reflow to more
- * columns as the pane widens. The compound selector outweighs the shared
- * `.deliverables-list` flex rule (project-preview.css) regardless of load
- * order. Min column width is the user's `cardMinWidth.deliverables` setting;
- * the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
-.deliverables-list.deliverables-rows {
+/* Card grid — columns from the shared `.card-grid` (primitives.css); the min
+ * column width is the user's `cardMinWidth.deliverables` setting, the
+ * fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
+.deliverables-rows {
+  --card-min: var(--card-min-deliverables, 340px);
+  list-style: none;
+  margin: 0;
   padding: 4px 0 4px 14px;
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(var(--card-min-deliverables, 340px), 100%), 1fr)
-  );
-  gap: 4px;
 }
 
-/* Each grid cell is a flex row: the open button flexes to fill, the reveal
- * button sits beside it. Scoped to the pane (`.deliverables-rows`) so the
- * project-preview's deliverable rows keep their own layout. */
+/* The li is the card; the open button fills it and the reveal button rides
+ * the top-right corner. */
 .deliverables-rows .deliverable-row {
   display: flex;
-  align-items: stretch;
-  gap: 4px;
   min-width: 0;
 }
 
 .deliverables-rows .deliverable-button {
   flex: 1;
   min-width: 0;
-}
-
-.deliverable-reveal {
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-subtle);
-  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 9px 12px 8px;
+  margin: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
-  padding: 0 10px;
+}
+.deliverables-rows .deliverable-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-lg);
+}
+
+.deliverables-rows .deliverable-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* Clear the corner reveal button. */
+  padding-right: 26px;
+}
+
+.deliverables-rows .deliverable-label {
+  font-family: var(--ui-font-card-title, var(--font-sans-base));
   font-size: var(--text-md);
-  line-height: 1;
-}
-
-.deliverable-reveal:hover {
-  background: var(--bg-hover);
+  font-weight: 600;
   color: var(--text);
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
-/* Coarse type tag in front of each deliverable label. */
-.deliverables-kind {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  text-transform: uppercase;
+.deliverables-rows .deliverable-desc {
+  font-size: var(--text-xs);
+  line-height: 1.4;
   color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 4px;
-  min-width: 34px;
-  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
 }
-.deliverables-kind[data-kind='url'] {
-  color: var(--accent);
-  border-color: var(--accent);
+
+.deliverables-rows .deliverable-path {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deliverables-rows .deliverable-reveal {
+  position: absolute;
+  top: 8px;
+  right: 8px;
 }
 
 .deliverables-empty {
-  padding: 20px 16px;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
-  line-height: 1.5;
-}
-.deliverables-empty code {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  margin: 6px 2px;
 }
