@@ -33,11 +33,27 @@ const SYNTHETIC = new Set(['(idle)', '(program)', '(garbage collector)', '(root)
  *  name and url in order; first hit wins. Deliberately conservative — a frame
  *  that matches nothing lands in `other`, which is reported, not silently
  *  absorbed. */
+// ORDER MATTERS — first hit wins, and two of these buckets live in the SAME
+// minified xterm bundle, so a URL-only test cannot separate them. The
+// SerializeAddon (F7's main-thread demote-serialize) and the ANSI parser/renderer
+// both resolve to `xterm-mount-*.js`; only the retained function names tell them
+// apart, so the name-based SerializeAddon bucket MUST precede the URL-based parse
+// bucket. Putting parse first (as an earlier version did) stamped the whole
+// bundle "parse" and folded ~1.4 s of F7 serialize into it — hiding that F7 has a
+// real main-thread cost, larger than F8's. `clone` (BufferLine.clone, on the
+// scroll path) is genuinely parse-side and is deliberately NOT in the serialize
+// set, so it still lands in parse.
+//
+// This relies on those SerializeAddon symbol names surviving the build; if a
+// future bundle mangles them, the serialize frames fall back into parse (an
+// over-count of parse, never a mislabel of F8) — flagged here so the next reader
+// re-checks rather than trusts.
 const STAGES = [
-  { stage: 'xterm parse (ANSI/OSC write)', test: (name, url) => /xterm|InputHandler|EscapeSequenceParser|_parse|WriteBuffer|Terminal\b/.test(name) || /xterm/i.test(url) },
-  { stage: 'structured clone / postMessage (F8)', test: (name) => /postMessage|structuredClone|serialize|deserialize|clone|Serializer/i.test(name) },
+  { stage: 'xterm SerializeAddon (F7 demote-serialize)', test: (name, url) => /xterm/i.test(url) && /(^|\b)serialize|_serializeBuffer|_nextCell|_diffStyle|attributesEquals/i.test(name) },
+  { stage: 'xterm parse + render (ANSI/OSC write)', test: (name, url) => /xterm|InputHandler|EscapeSequenceParser|_parse|WriteBuffer|Terminal\b/.test(name) || /xterm/i.test(url) },
+  { stage: 'structured clone / postMessage (F8, send side)', test: (name, url) => !/xterm/i.test(url) && /postMessage|structuredClone|deserialize|Serializer/i.test(name) },
   { stage: 'IPC / termData dispatch', test: (name, url) => /onTermData|ipcRenderer|emit|dispatch|termData/i.test(name) || /preload/i.test(url) },
-  { stage: 'worker manager (write/serialize RPC)', test: (name, url) => /terminal-worker|worker/i.test(url) && /write|request|serialize|ensureWorker/i.test(name) },
+  { stage: 'worker manager (write/serialize RPC)', test: (name, url) => /terminal-worker|worker/i.test(url) && /write|request|ensureWorker/i.test(name) },
   { stage: 'solid / render', test: (name, url) => /solid/i.test(url) || /createEffect|runComputation|updateComputation/i.test(name) },
 ];
 
