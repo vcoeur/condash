@@ -18,6 +18,7 @@ import { decideFit, MAX_FIT_ATTEMPTS } from './fit-when-ready';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
+import { createTransitionBuffers } from './transition-buffers';
 import { type Column, displayName, sameStringList, type Tab } from './types';
 import { desiredDomIds, domVisibility, planVisibility } from './visibility-plan';
 import { mountForSession, type XtermHandle } from './mount-session';
@@ -93,7 +94,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   // Tabs that are mid-transition (serialize/mount) must not accept writes on
   // either side; they are buffered and flushed once the destination exists.
   const transitioning = new Set<string>();
-  const transitionBuffers = new Map<string, string[]>();
+  const transitionBuffers = createTransitionBuffers();
   // Per-column count of in-flight visibility transitions. The #397 focus-churn
   // guard (`promote`) gates on the tab's OWN column via this — not the global
   // `transitioning` set — so a stuck transition (e.g. a lost worker RPC before
@@ -116,22 +117,21 @@ export function createTerminalController(props: TerminalPaneProps) {
   // any session listed here until the nudge restores the size itself.
   const nudging = new Set<string>();
 
-  const bufferTransitionWrite = (id: string, chunk: string): void => {
-    const arr = transitionBuffers.get(id);
-    if (arr) arr.push(chunk);
-    else transitionBuffers.set(id, [chunk]);
-  };
-
   const flushTransitionBuffer = (id: string, target: 'dom' | 'worker'): void => {
-    const chunks = transitionBuffers.get(id);
-    if (!chunks || chunks.length === 0) return;
-    transitionBuffers.delete(id);
-    const data = chunks.join('');
-    if (target === 'dom') {
-      xterms.get(id)?.term.write(data);
-    } else {
-      worker.write(id, data);
-    }
+    transitionBuffers.flush(id, (data) => {
+      if (target === 'worker') {
+        worker.write(id, data);
+        return true;
+      }
+      // No DOM Terminal to write into (the mount bailed on its race guard or its
+      // dynamic import threw): report the miss so the chunks stay buffered for
+      // the next flush. Dropping them here loses the bytes for good — main keeps
+      // only a 64 KB pty tail, so no Refresh can bring them back.
+      const handle = xterms.get(id);
+      if (!handle) return false;
+      handle.term.write(data);
+      return true;
+    });
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -264,15 +264,13 @@ export function createTerminalController(props: TerminalPaneProps) {
             // active tab blank: mount with whatever buffered tail we have so the
             // user gets a live terminal (scrollback may be lost) rather than an
             // empty pane, and the transition still clears via the finally (R1).
-            replay = transitionBuffers.get(id)?.join('') ?? '';
-            transitionBuffers.delete(id);
+            replay = transitionBuffers.take(id);
           }
         } else {
           // Defensive: this tab never had a worker Terminal (shown before it was
           // ever demoted). Replay the buffered tail and drop it here so the
           // flush below does not write the same bytes a second time.
-          replay = transitionBuffers.get(id)?.join('') ?? '';
-          transitionBuffers.delete(id);
+          replay = transitionBuffers.take(id);
         }
         workerSessions.delete(id);
         // The snapshot captured everything; the worker Terminal is now stale.
@@ -429,7 +427,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       // this tab is first demoted to the worker. Chunks that land during the
       // async mount below are re-buffered and flushed once the DOM Terminal
       // exists.
-      transitionBuffers.delete(s.id);
+      transitionBuffers.drop(s.id);
       await mountForSession(mountCtx, s.id, column, attach?.output);
       flushTransitionBuffer(s.id, 'dom');
       setActiveIn(column, s.id);
@@ -491,7 +489,7 @@ export function createTerminalController(props: TerminalPaneProps) {
         // renderer (R1).
         void worker.dispose(id).catch(() => undefined);
       }
-      transitionBuffers.delete(id);
+      transitionBuffers.drop(id);
       // The tab is gone from the snapshot — its close has landed, so the
       // closing guard can be released (otherwise the set grows forever).
       closingTabs.delete(id);
@@ -586,7 +584,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   // ---- live data + exit notification ----
   const offTermData = window.condash.onTermData(({ id, data }) => {
     if (transitioning.has(id)) {
-      bufferTransitionWrite(id, data);
+      transitionBuffers.buffer(id, data);
     } else if (xterms.has(id)) {
       xterms.get(id)!.term.write(data);
     } else if (workerSessions.has(id)) {
@@ -594,7 +592,7 @@ export function createTerminalController(props: TerminalPaneProps) {
     } else {
       // Tab exists in the snapshot but has not been mounted or seeded yet
       // (race between termData and reconcile). Buffer for the first show.
-      bufferTransitionWrite(id, data);
+      transitionBuffers.buffer(id, data);
     }
   });
   const offTermExit = window.condash.onTermExit(({ id, code, death, abnormal }) => {
