@@ -21,10 +21,14 @@
 //      checked against the terminal's actual size rather than only against
 //      itself.
 //
-// The LAST row is deliberately left blank. condash's nudge shrinks the grid by
-// one row and grows it back; on the alternate buffer (which never reflows) xterm
-// pops the bottom line and pushes a fresh blank one, so a frame that used the
-// bottom row would lose it to the nudge for reasons unrelated to hydration.
+// The frame fills EVERY row, bottom row included. It used to leave the last row
+// blank, which quietly accommodated a real defect: condash's repaint nudge
+// shrinks the grid a row and grows it back, and on the alternate buffer — which
+// never reflows — xterm services that by popping the bottom line and pushing a
+// fresh blank one (`Buffer.resize`), shearing the bottom row off a frame that was
+// correct. A fixture that never used that row could not see it. The nudge is now
+// skipped when the hydrated frame is provably exact, so painting the full frame
+// asserts the whole grid rather than the grid minus the row the nudge destroys.
 //
 // Freeze is explicit, not timed: the test writes "F" to the pty and waits for the
 // FROZEN marker, so there is no settling race.
@@ -42,17 +46,17 @@ function paint() {
   // the alternate buffer never reflows, so a shrink just drops rows off the
   // bottom and the survivors keep their old text.
   let frame = '\x1b[H\x1b[2J';
-  // Rows 1..rows-1 (1-based); the last row stays blank — see the header.
-  for (let row = 1; row <= rows - 1; row++) {
+  // Every row, 1..rows (1-based) — see the header on why the bottom one matters.
+  for (let row = 1; row <= rows; row++) {
     const head = row === 1 ? `TUI ${state} cols=${cols} rows=${rows} ` : `ROW${row} `;
     const sentinel = `|${row % 10}|`;
     const fillWidth = Math.max(0, cols - head.length - sentinel.length);
     const line = (head + '='.repeat(fillWidth) + sentinel).slice(0, cols);
     frame += `\x1b[${row};1H\x1b[2K${line}`;
   }
-  // Park the cursor at home so it is never on the bottom row: xterm's alt-buffer
-  // shrink pops the bottom line only while the cursor sits above it, and trims
-  // from the TOP otherwise.
+  // Park the cursor at home. Writing the bottom row leaves the cursor there, and
+  // an alt-buffer shrink with the cursor on the last line trims from the TOP
+  // instead of popping the bottom — a different corruption again.
   frame += '\x1b[H';
   out.write(frame);
 }

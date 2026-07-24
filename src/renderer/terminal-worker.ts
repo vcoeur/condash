@@ -5,7 +5,6 @@
 import './terminal-worker-polyfill';
 import { Terminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
-import { SNAPSHOT_SCROLLBACK_ROWS } from './terminal-snapshot';
 
 type WorkerMessage =
   | { type: 'create'; sid: string; rid: number; cols: number; rows: number; scrollback: number }
@@ -65,7 +64,7 @@ function handleSerialize(msg: Extract<WorkerMessage, { type: 'serialize' }>): vo
     return;
   }
   try {
-    reply(msg.rid, session.serialize.serialize({ scrollback: SNAPSHOT_SCROLLBACK_ROWS }));
+    reply(msg.rid, session.serialize.serialize());
   } catch (err) {
     replyError(msg.rid, err instanceof Error ? err.message : String(err));
   }

@@ -126,15 +126,22 @@ function CodeRunRow(props: {
     mountPromise = (async () => {
       // xterm + its addons are dynamic-imported on first terminal open so they
       // stay out of the boot chunk (the module is cached after the first load).
-      const [{ mountXterm }, attach] = await Promise.all([
+      // The pty's geometry rides along on the same Promise.all: the replay below
+      // is a raw pty tail, and parsing it at xterm's 80×24 default wraps every
+      // row a wider pty emitted. An alternate-screen `run:` command (bacon,
+      // cargo-watch, an agent) is affected exactly as a "my terms" tab is —
+      // and this pane has no Refresh affordance to repair it afterwards.
+      const [{ mountXterm }, attach, geometry] = await Promise.all([
         import('./xterm-mount'),
         window.condash.termAttach(props.session.id),
+        Promise.resolve(window.condash.termGeometry?.(props.session.id) ?? null).catch(() => null),
       ]);
       // The row may have unmounted while the chunk / attach were in flight —
       // bail before creating the Terminal (mountXterm itself is synchronous).
       if (disposed) return;
       mounted = mountXterm(xtermElement, props.session.id, {
         replay: attach?.output,
+        geometry: geometry ?? undefined,
         prefs: props.xtermPrefs,
       });
     })();

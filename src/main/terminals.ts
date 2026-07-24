@@ -890,17 +890,22 @@ export function ackTerminal(id: string, bytes: number, epoch?: number): void {
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {
   const session = sessions.get(id);
-  if (!session?.pty) return;
+  if (!session) return;
   const safeCols = Math.max(1, cols);
   const safeRows = Math.max(1, rows);
-  try {
-    session.pty.resize(safeCols, safeRows);
-  } catch {
-    /* the pty may have just exited */
-    return;
+  if (session.pty) {
+    try {
+      session.pty.resize(safeCols, safeRows);
+    } catch {
+      /* the pty may have just exited */
+      return;
+    }
   }
-  // Record only what the pty accepted, so `terminalGeometry` can never report a
-  // size the running program was never told about.
+  // Record the size even when the pty has already exited: the tab row lingers
+  // (with its last frame) until the renderer closes it, and the renderer keeps
+  // fitting it. Freezing the recorded geometry at the moment of exit would make
+  // `terminalGeometry` report a stale size for the rest of that tab's life, and
+  // a later promote would hydrate the dead tab's frame at the wrong width.
   session.cols = safeCols;
   session.rows = safeRows;
 }
