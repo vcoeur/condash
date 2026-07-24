@@ -56,6 +56,15 @@ interface Session {
   /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
    * so the Code pane can match a session to the worktree it was started in. */
   cwd: string;
+  /** The pty's current winsize — the geometry the running program is drawing
+   * for. Main owns the pty, so this is the authority: the renderer only ever
+   * *writes* geometry (a fit → `termResize`), and a hidden tab's renderer-side
+   * state can drift from it (nothing refits a hidden tab, and the worker
+   * protocol has no resize message at all). The promote path reads it back via
+   * `terminalGeometry` so a snapshot is replayed into a grid the frame was
+   * actually drawn for. Written at spawn and after every successful resize. */
+  cols: number;
+  rows: number;
   /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
   forceStop?: string;
   /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
@@ -693,6 +702,8 @@ export async function spawnTerminal(
     cmd: commandLabel,
     bytesSeen: 0,
     cwd,
+    cols,
+    rows,
     forceStop,
     buffer: '',
     logger,
@@ -880,11 +891,30 @@ export function ackTerminal(id: string, bytes: number, epoch?: number): void {
 export function resizeTerminal(id: string, cols: number, rows: number): void {
   const session = sessions.get(id);
   if (!session?.pty) return;
+  const safeCols = Math.max(1, cols);
+  const safeRows = Math.max(1, rows);
   try {
-    session.pty.resize(Math.max(1, cols), Math.max(1, rows));
+    session.pty.resize(safeCols, safeRows);
   } catch {
     /* the pty may have just exited */
+    return;
   }
+  // Record only what the pty accepted, so `terminalGeometry` can never report a
+  // size the running program was never told about.
+  session.cols = safeCols;
+  session.rows = safeRows;
+}
+
+/** The pty's current winsize, or null for an unknown session. Read by the
+ *  renderer when it hydrates a hidden tab back into a DOM Terminal: building
+ *  that terminal at any other size replays the snapshot into a grid the frame
+ *  was not drawn for, and the alternate buffer never reflows, so a full-screen
+ *  TUI's frame is mangled by construction. Survives the pty's exit — a dead
+ *  tab's last frame is still worth showing at the size it was painted. */
+export function terminalGeometry(id: string): { cols: number; rows: number } | null {
+  const session = sessions.get(id);
+  if (!session) return null;
+  return { cols: session.cols, rows: session.rows };
 }
 
 /** Send SIGTERM to the pty's process group. node-pty allocates a session

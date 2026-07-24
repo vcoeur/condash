@@ -22,6 +22,7 @@ import { type Column, displayName, sameStringList, type Tab } from './types';
 import { desiredDomIds, domVisibility, planVisibility } from './visibility-plan';
 import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
+import { SNAPSHOT_SCROLLBACK_ROWS } from '../terminal-snapshot';
 import type {
   AgentChoice,
   SpawnOptions,
@@ -254,6 +255,14 @@ export function createTerminalController(props: TerminalPaneProps) {
       const col = tab?.column ?? 'left';
       beginTransition(id, col);
       try {
+        // Ask main for the pty's winsize now, concurrently with the worker
+        // round-trip below, so resolving it costs no extra latency on the switch
+        // path. Main owns the pty and is the only place this is known: the
+        // renderer writes geometry and is never told it, the worker protocol has
+        // no resize message, and nothing refits a hidden tab — so neither the
+        // demoted DOM Terminal's last size nor the worker Terminal's is
+        // trustworthy after the pane or window has changed size.
+        const geometryPromise = window.condash.termGeometry(id).catch(() => null);
         const fromWorker = workerSessions.has(id);
         let replay: string;
         if (fromWorker) {
@@ -281,7 +290,13 @@ export function createTerminalController(props: TerminalPaneProps) {
         // Fire-and-forget, but `.catch` it: the dispose RPC can now reject via the
         // watchdog, and an unhandled rejection would spam the renderer (R1).
         if (fromWorker) void worker.dispose(id).catch(() => undefined);
-        await mountForSession(mountCtx, id, col, replay);
+        // Build the replacement Terminal at the pty's own geometry BEFORE the
+        // replay is written into it. At xterm's 80×24 default the snapshot is
+        // parsed at the wrong width, and the alternate buffer never reflows on
+        // resize — so a full-screen TUI's frame is mangled by construction and
+        // no later fit can repair it, only a repaint from the program itself.
+        // That is the mechanism the repaint nudge exists to paper over.
+        await mountForSession(mountCtx, id, col, replay, (await geometryPromise) ?? undefined);
         flushTransitionBuffer(id, 'dom');
       } finally {
         endTransition(id, col);
@@ -295,7 +310,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       const demoteColumn = h.column;
       beginTransition(tid, demoteColumn);
       try {
-        const snapshot = h.serialize.serialize();
+        const snapshot = h.serialize.serialize({ scrollback: SNAPSHOT_SCROLLBACK_ROWS });
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
         worker.write(tid, snapshot);
         workerSessions.add(tid);
@@ -394,7 +409,15 @@ export function createTerminalController(props: TerminalPaneProps) {
       // Await termAttach first so that any in-flight `spawn` invoke reply has
       // resolved by the time we build the tab — `pendingSpawnIntent` is set
       // synchronously after `termSpawn` returns, and we want to read it here.
-      const attach = await window.condash.termAttach(s.id);
+      // The geometry rides along on the same await so the raw pty tail below is
+      // replayed at the size the program emitted it for, not at 80×24: after a
+      // renderer reload the pty keeps whatever winsize it had, and a restored
+      // full-screen tab is exactly the case that never gets a repaint nudge
+      // (there is no previous active id to switch away from).
+      const [attach, geometry] = await Promise.all([
+        window.condash.termAttach(s.id),
+        window.condash.termGeometry(s.id).catch(() => null),
+      ]);
       // Re-check membership after the await: `known` was snapshotted at
       // entry, so without this a session inserted by another path while the
       // attach was in flight would be inserted twice (duplicate tab rows).
@@ -430,7 +453,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       // async mount below are re-buffered and flushed once the DOM Terminal
       // exists.
       transitionBuffers.delete(s.id);
-      await mountForSession(mountCtx, s.id, column, attach?.output);
+      await mountForSession(mountCtx, s.id, column, attach?.output, geometry ?? undefined);
       flushTransitionBuffer(s.id, 'dom');
       setActiveIn(column, s.id);
       setActiveColumn(column);

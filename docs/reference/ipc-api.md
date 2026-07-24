@@ -94,6 +94,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `termWrite(id, data)` | Forward stdin bytes. |
 | `clipboardReadText()` | Read the system clipboard via the main-process Electron `clipboard`. Backs the terminal's `Ctrl+V` handler — the renderer's `navigator.clipboard.readText()` is permission-gated and unreliable. |
 | `termResize(id, cols, rows)` | `TIOCSWINSZ` on the pty. |
+| `termGeometry(id)` | The pty's current winsize, or `null` for an unknown session. Main owns the pty, so this is the only authoritative geometry — the renderer writes size but is never told it. Read when hydrating a hidden tab so the snapshot is replayed at the size its frame was drawn for. |
 | `termClose(id)` | Run the kill pipeline: `SIGTERM` → optional `force_stop` → 500ms wait → `SIGKILL` on the process group. |
 | `termList()` | Snapshot of live (or recently-exited) sessions. Used by the panel rebuild on pane switch. |
 | `termAttach(id)` | Pull the buffered output for an existing session, used on renderer mount to replay history into a freshly-created xterm. |
