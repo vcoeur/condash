@@ -435,6 +435,72 @@ export function compactRepos(repos: RawRepo[]): RawRepo[] {
   });
 }
 
+/** Stable JSON-based deep equality. Object keys are sorted recursively so
+ *  the same logical shape always serialises identically. Backs both the
+ *  per-section unsaved-changes pip and {@link mergeRawConfig}'s
+ *  did-this-side-change test. */
+export function stableEqual(a: unknown, b: unknown): boolean {
+  return canonicalise(a) === canonicalise(b);
+}
+
+function canonicalise(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalise).join(',')}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalise(v)}`).join(',')}}`;
+}
+
+/** A JSON object literal — the only shape {@link mergeRawConfig} recurses into.
+ *  Arrays are deliberately excluded: see the merge's array note. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Three-way merge of a settings tree whose file changed on disk underneath a
+ * staged edit.
+ *
+ * `base` is the file as it stood when the draft was seeded, `ours` is the
+ * staged draft, `theirs` is the file as it stands now. A subtree only one side
+ * moved takes that side's value; a subtree both sides moved recurses, so an
+ * external write to `terminal.perf` survives a staged edit to
+ * `terminal.logging` even though both sit under the same top-level key.
+ *
+ * Two deliberate asymmetries:
+ *
+ * - **Arrays and scalars are leaves.** Merging `repositories[]` element-wise
+ *   would need a per-element identity the settings format does not carry, so a
+ *   half-merged array is a worse outcome than picking a side.
+ * - **On a genuine leaf conflict, `ours` wins.** The staged value is the one
+ *   the user is looking at and about to Save; silently substituting the disk
+ *   value would make Save do something other than what the modal shows.
+ *
+ * Keys the user deleted stay deleted: absent in `ours` but present in `base` is
+ * a change like any other, so `ours` (undefined) wins over a `theirs` that
+ * still carries it.
+ */
+export function mergeRawConfig(base: RawConfig, ours: RawConfig, theirs: RawConfig): RawConfig {
+  return mergeValue(base, ours, theirs) as RawConfig;
+}
+
+function mergeValue(base: unknown, ours: unknown, theirs: unknown): unknown {
+  if (stableEqual(ours, base)) return theirs;
+  if (stableEqual(theirs, base)) return ours;
+  if (isPlainObject(base) && isPlainObject(ours) && isPlainObject(theirs)) {
+    const merged: Record<string, unknown> = {};
+    for (const key of new Set([...Object.keys(ours), ...Object.keys(theirs)])) {
+      const value = mergeValue(base[key], ours[key], theirs[key]);
+      if (value !== undefined) merged[key] = value;
+    }
+    return merged;
+  }
+  return ours;
+}
+
 /** Strip undefined / empty-string / null leaves so the JSON file stays clean. */
 export function pruneEmpty(value: unknown): unknown {
   if (Array.isArray(value)) {

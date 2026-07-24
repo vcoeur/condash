@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { resolveThemePreset } from '@shared/themes';
 import { resetMermaidTheme } from '../markdown';
-import { refreshAllXtermThemes } from '../xterm-registry';
+import { scheduleXtermThemeRefresh } from '../xterm-registry';
 import { getBootstrap } from '../bootstrap';
 
 export interface UseThemeDeps {
@@ -96,14 +96,25 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
   // so the preview overlay gets the same treatment as a committed change. Runs
   // once on mount — harmless, the tokens already match.
   //
-  // `resetMermaidTheme()` only drops the cached engine so the *next* render
-  // picks up the new palette — already-rendered SVGs keep their old colours
-  // either way (pre-existing, and true on the committed path too). It is not a
-  // repaint.
+  // The two consumers are split by cost, and the split is load-bearing both ways:
+  //
+  // - `resetMermaidTheme()` only drops the cached engine so the *next* render
+  //   picks up the new palette (already-rendered SVGs keep their old colours
+  //   either way — pre-existing, and true on the committed path too). One
+  //   assignment, and it must stay immediate: a render starting between the
+  //   preset change and a deferred reset would build against the stale engine.
+  // - The xterm refresh is the expensive half, so it is coalesced to a settled
+  //   selection — the picker selects on arrow-key move, and a held arrow used to
+  //   drive the whole per-terminal pass per key repeat. See
+  //   `scheduleXtermThemeRefresh`.
+  //
+  // No cleanup for the pending timer: this hook lives for the app's lifetime, so
+  // its only teardown is the app going away, and `liveTerms` is pruned on
+  // dispose — a refresh that lands then iterates an empty set.
   createEffect(() => {
     preset();
-    refreshAllXtermThemes();
     resetMermaidTheme();
+    scheduleXtermThemeRefresh();
   });
 
   void getBootstrap()
