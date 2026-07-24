@@ -14,15 +14,29 @@
  * - **Off by default and inert when off.** Nothing samples, nothing allocates
  *   and no IPC is sent unless main says it is recording. Every entry point is a
  *   compare-and-return in that state.
- * - **One message per window, never per frame.** The drain rides the same 2.5 s
- *   cadence main flushes on, so the reporting cost is one `invoke` per 2.5 s —
- *   not one per animation frame, which would itself be the stall.
+ * - **One message per window, never per frame** — and none at all for a window
+ *   with nothing in it. The drain rides the same 2.5 s cadence main flushes on,
+ *   so the reporting cost is one `invoke` per 2.5 s while something is
+ *   happening, not one per animation frame, which would itself be the stall.
  * - **Comparable to main by construction.** The loop probe measures the gap
- *   between its own firings and reports the excess over its interval, which is
- *   what `loopDelayMs` does for `monitorEventLoopDelay` on main. A number from
- *   this module and a number from that one mean the same thing.
+ *   between its own firings and reports the excess over its interval through the
+ *   *same* function main uses (`shared/loop-delay.ts`). A number from this
+ *   module and a number from that one mean the same thing.
+ *
+ * ## The throttling trap
+ *
+ * Electron's `backgroundThrottling` defaults to true, so Chromium drops renderer
+ * timers to roughly 1 Hz whenever the window is occluded, minimised or hidden. A
+ * naive probe then reports ~990 ms of "event-loop delay" that never happened,
+ * for as long as the user looks at another window — inverting the one question
+ * this module exists to answer. So samples taken while the page is hidden are
+ * **not recorded at all**, the clock restarts on the way back to visible, and
+ * every report carries `hiddenMs` plus its `samples` count so a reader can see
+ * both that a window was partly hidden and whether the sampler ran at its
+ * nominal rate.
  */
 
+import { delayAboveInterval, IDLE_LOOP_MAX_MS } from '@shared/loop-delay';
 import type { RendererPerfReport } from '@shared/types';
 
 /** Loop-probe interval (ms). Matches the main process's histogram resolution,
@@ -43,6 +57,12 @@ const LONG_FRAME_MS = 50;
  *  the probe interval this is ~40 s of samples. */
 const MAX_LOOP_SAMPLES = 4000;
 
+/** Drains after which an idle renderer sends one report anyway, purely to hear
+ *  main's `recording` reply. 12 × 2.5 s = 30 s. Main's own gate discards an idle
+ *  renderer block, so this costs a message and never a record; it is the
+ *  backstop for a `perfState` push that never arrived. */
+const KEEPALIVE_DRAINS = 12;
+
 /** Sentinel returned by {@link RendererPerf.startSpan} while disabled — `-1`
  *  rather than `0`, which is a legal `performance.now()` reading. */
 const NO_SPAN = -1;
@@ -51,6 +71,13 @@ const NO_SPAN = -1;
 interface SpanTotals {
   ms: number;
   n: number;
+}
+
+/** The slice of xterm's `Terminal` {@link RendererPerf.timeWrite} needs.
+ *  Structural so the module never imports xterm — it is loaded lazily on first
+ *  terminal open and must stay out of the boot chunk. */
+export interface XtermWriteTarget {
+  write(data: string, callback?: () => void): void;
 }
 
 /**
@@ -74,6 +101,14 @@ export class RendererPerf {
   private windowStart = 0;
   private spans = new Map<string, SpanTotals>();
   private counts = new Map<string, number>();
+  private maxima = new Map<string, number>();
+  /** Ms of the current window spent hidden, closed on each visibility change. */
+  private hiddenMs = 0;
+  /** When the page went hidden, or undefined while visible. */
+  private hiddenSince: number | undefined;
+  /** Drains since the last report actually sent — see {@link KEEPALIVE_DRAINS}. */
+  private silentDrains = 0;
+  private visibilityListener: (() => void) | undefined;
 
   /** Whether counters are being collected. */
   isEnabled(): boolean {
@@ -93,7 +128,8 @@ export class RendererPerf {
     if (enabled) {
       this.resetWindow();
       this.lastProbeAt = performance.now();
-      this.lastFrameAt = 0;
+      this.hiddenSince = this.pageHidden() ? performance.now() : undefined;
+      this.watchVisibility();
       this.loopTimer = setInterval(() => this.probeLoop(), LOOP_PROBE_MS);
       this.reportTimer = setInterval(() => void this.drainAndSend(), REPORT_MS);
       this.scheduleFrame();
@@ -106,6 +142,8 @@ export class RendererPerf {
       this.loopTimer = undefined;
       this.reportTimer = undefined;
       this.rafHandle = undefined;
+      this.unwatchVisibility();
+      this.hiddenSince = undefined;
       this.resetWindow();
     }
   }
@@ -150,6 +188,46 @@ export class RendererPerf {
   }
 
   /**
+   * Observe a level whose interesting value is its peak, not its total — the
+   * transition buffer's depth being the case that matters (an unbounded
+   * renderer-side buffer is the G5 hazard, and a sum of depths would say
+   * nothing about it).
+   *
+   * @param name Name, as it will appear in `renderer.maxima`.
+   * @param value The current level.
+   */
+  observeMax(name: string, value: number): void {
+    if (!this.enabled) return;
+    const seen = this.maxima.get(name);
+    if (seen === undefined || value > seen) this.maxima.set(name, value);
+  }
+
+  /**
+   * Time an xterm write, which is asynchronous.
+   *
+   * `Terminal.write` queues the data and processes it later, yielding every
+   * 12 ms, so bracketing the call itself measures the enqueue (≈ 0 ms) and not
+   * the parse — the same "the span stops before the work does" defect this
+   * whole change exists to correct, reproduced on the renderer side. The
+   * callback fires when the data has actually been processed.
+   *
+   * The resulting span is therefore **elapsed until processed**, including the
+   * parser's own yields: an upper bound on block time, not block time.
+   *
+   * @param term The terminal to write into.
+   * @param data The chunk.
+   * @param name Span name, as it will appear in `renderer.spans`.
+   */
+  timeWrite(term: XtermWriteTarget, data: string, name: string): void {
+    if (!this.enabled) {
+      term.write(data);
+      return;
+    }
+    const span = this.startSpan();
+    term.write(data, () => this.endSpan(name, span));
+  }
+
+  /**
    * Take the window's counters and reset.
    *
    * @returns The report, or undefined while disabled.
@@ -157,6 +235,7 @@ export class RendererPerf {
   takeReport(): RendererPerfReport | undefined {
     if (!this.enabled) return undefined;
     const now = performance.now();
+    this.closeHiddenSlice(now);
     const samples = this.loopSamples;
     const report: RendererPerfReport = {
       windowMs: Math.round(now - this.windowStart),
@@ -165,6 +244,8 @@ export class RendererPerf {
         p99: percentile(samples, 99),
         max: samples.length === 0 ? 0 : round3(Math.max(...samples)),
       },
+      samples: samples.length,
+      hiddenMs: Math.round(this.hiddenMs),
       frames: this.frames,
       longFrames: this.longFrames,
       frameMaxMs: round3(this.frameMaxMs),
@@ -179,9 +260,33 @@ export class RendererPerf {
           }
         : {}),
       ...(this.counts.size > 0 ? { counts: Object.fromEntries(this.counts) } : {}),
+      ...(this.maxima.size > 0 ? { maxima: Object.fromEntries(this.maxima) } : {}),
     };
     this.resetWindow();
     return report;
+  }
+
+  /**
+   * Whether a report is worth sending.
+   *
+   * Deliberately NOT "did anything arrive": with recording on, the probe fires
+   * 100×/s and the frame chain runs continuously, so "some sample exists" is
+   * true in every window and would make main's idle gate unreachable — an idle
+   * app then writes ~11 MB/day of records saying nothing happened. The test is
+   * the same one main applies: a real delay, a dropped frame, or some named
+   * work.
+   *
+   * @param report A drained report.
+   * @returns True when the window carries something a reader could use.
+   */
+  static isReportable(report: RendererPerfReport): boolean {
+    return (
+      report.loop.max >= IDLE_LOOP_MAX_MS ||
+      report.longFrames > 0 ||
+      report.spans !== undefined ||
+      report.counts !== undefined ||
+      report.maxima !== undefined
+    );
   }
 
   /** Drop every accumulator and restamp the window. */
@@ -190,17 +295,73 @@ export class RendererPerf {
     this.frames = 0;
     this.longFrames = 0;
     this.frameMaxMs = 0;
+    this.hiddenMs = 0;
+    // Without this, the first frame after an occlusion charges the whole
+    // occluded stretch to one gap: ten minutes behind another window would be
+    // recorded as a ten-minute frame.
+    this.lastFrameAt = 0;
     this.spans.clear();
     this.counts.clear();
+    this.maxima.clear();
     this.windowStart = performance.now();
   }
 
-  /** One loop-delay sample: how much later than promised this timer fired. */
+  /** True while the page is hidden — occluded, minimised, or on another tab. */
+  private pageHidden(): boolean {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  }
+
+  /** Fold any open hidden stretch into `hiddenMs`, restarting it if still
+   *  hidden so a window that never becomes visible still accounts for itself. */
+  private closeHiddenSlice(now: number): void {
+    if (this.hiddenSince === undefined) return;
+    this.hiddenMs += now - this.hiddenSince;
+    this.hiddenSince = now;
+  }
+
+  /** Follow page visibility: stop trusting the probe while hidden, and restart
+   *  both clocks on the way back so the first visible sample is not the
+   *  throttled gap that spans the occlusion. */
+  private watchVisibility(): void {
+    if (typeof document === 'undefined' || this.visibilityListener) return;
+    const listener = (): void => {
+      const now = performance.now();
+      if (this.pageHidden()) {
+        this.hiddenSince = now;
+      } else {
+        this.closeHiddenSlice(now);
+        this.hiddenSince = undefined;
+        this.lastProbeAt = now;
+        this.lastFrameAt = 0;
+      }
+    };
+    document.addEventListener('visibilitychange', listener);
+    this.visibilityListener = listener;
+  }
+
+  /** Stop following visibility changes. */
+  private unwatchVisibility(): void {
+    if (!this.visibilityListener || typeof document === 'undefined') return;
+    document.removeEventListener('visibilitychange', this.visibilityListener);
+    this.visibilityListener = undefined;
+  }
+
+  /** One loop-delay sample: how much later than promised this timer fired.
+   *  Samples taken while the page is hidden are discarded rather than recorded
+   *  — Chromium throttles the timer to ~1 Hz there, and a 990 ms "delay" that
+   *  is really the browser saving power would be the loudest number in the
+   *  file. */
   private probeLoop(): void {
     const now = performance.now();
-    const delay = now - this.lastProbeAt - LOOP_PROBE_MS;
+    const gap = now - this.lastProbeAt;
     this.lastProbeAt = now;
-    if (delay > 0 && this.loopSamples.length < MAX_LOOP_SAMPLES) this.loopSamples.push(delay);
+    if (this.pageHidden()) return;
+    // Every sample is kept, floored at 0 — the same population main's histogram
+    // reports. Dropping the non-positive ones biased the renderer's median above
+    // main's while both claimed to mean the same thing.
+    if (this.loopSamples.length < MAX_LOOP_SAMPLES) {
+      this.loopSamples.push(delayAboveInterval(gap, LOOP_PROBE_MS));
+    }
   }
 
   /** One animation-frame sample. Re-arms itself; an occluded window simply
@@ -222,13 +383,19 @@ export class RendererPerf {
     });
   }
 
-  /** Ship the window to main. A failed send drops that window rather than
-   *  retrying — an instrument must never queue work against the thread it
-   *  measures. Main's reply doubles as the authority on whether to keep
-   *  sampling, so recording turned off anywhere stops this side too. */
+  /** Ship the window to main, unless there is nothing in it. A failed send drops
+   *  that window rather than retrying — an instrument must never queue work
+   *  against the thread it measures. Main's reply doubles as the authority on
+   *  whether to keep sampling, so recording turned off anywhere stops this side
+   *  too; an idle renderer sends one report every {@link KEEPALIVE_DRAINS}
+   *  drains so that authority is still heard. */
   private async drainAndSend(): Promise<void> {
     const report = this.takeReport();
     if (!report) return;
+    this.silentDrains += 1;
+    const keepalive = this.silentDrains >= KEEPALIVE_DRAINS;
+    if (!RendererPerf.isReportable(report) && !keepalive) return;
+    this.silentDrains = 0;
     try {
       const { recording } = await window.condash.perfRendererReport(report);
       if (!recording) this.setEnabled(false);

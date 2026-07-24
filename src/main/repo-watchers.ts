@@ -188,19 +188,26 @@ function broadcast(events: RepoEvent[]): void {
 
 async function recomputeAndEmit(target: WatchedPath): Promise<void> {
   const span = perfLog.startSpan();
-  invalidateForPath(target.path);
-  // Run dirty + upstream in parallel — they hit different git plumbing
-  // commands and don't share state. Both broadcasts go out together so
-  // the renderer patches once, not twice.
-  const [dirty, upstream] = await Promise.all([
-    getDirtyCount(target.path, target.scopeToSubtree ? { scopeToSubtree: true } : {}),
-    getUpstreamStatus(target.path),
-  ]);
-  broadcast([
-    { kind: 'repo-dirty', path: target.path, dirty },
-    { kind: 'repo-upstream', path: target.path, upstream },
-  ]);
-  perfLog.endSpan('repoRecompute', span);
+  try {
+    invalidateForPath(target.path);
+    // Run dirty + upstream in parallel — they hit different git plumbing
+    // commands and don't share state. Both broadcasts go out together so
+    // the renderer patches once, not twice.
+    const [dirty, upstream] = await Promise.all([
+      getDirtyCount(target.path, target.scopeToSubtree ? { scopeToSubtree: true } : {}),
+      getUpstreamStatus(target.path),
+    ]);
+    broadcast([
+      { kind: 'repo-dirty', path: target.path, dirty },
+      { kind: 'repo-upstream', path: target.path, upstream },
+    ]);
+  } finally {
+    // In a `finally` like every other span site: the caller fires this as
+    // `void recomputeAndEmit(...)` with no catch, so a rejection would
+    // otherwise drop the span silently — losing exactly the slow recomputes
+    // that failed.
+    perfLog.endSpan('repoRecompute', span);
+  }
 }
 
 function scheduleRecompute(target: WatchedPath): void {

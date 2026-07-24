@@ -350,6 +350,13 @@ export interface CondashApi {
    * permission-gated and unreliable in Electron. */
   clipboardReadText(): Promise<string>;
   termResize(id: string, cols: number, rows: number): Promise<void>;
+  /** The pty's current winsize, or null for an unknown session. Main owns the
+   *  pty, so this is the only authoritative geometry — the renderer writes
+   *  geometry but is never told it. Read when hydrating a hidden tab back into a
+   *  DOM Terminal so the snapshot is replayed at the size its frame was drawn
+   *  for (the alternate buffer never reflows, so replaying at any other size
+   *  mangles a full-screen TUI irrecoverably). */
+  termGeometry(id: string): Promise<{ cols: number; rows: number } | null>;
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
   /** Replace the persisted terminal prefs in settings.json. The patch is a

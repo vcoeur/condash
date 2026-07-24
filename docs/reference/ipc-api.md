@@ -96,6 +96,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `termWrite(id, data)` | Forward stdin bytes. |
 | `clipboardReadText()` | Read the system clipboard via the main-process Electron `clipboard`. Backs the terminal's `Ctrl+V` handler — the renderer's `navigator.clipboard.readText()` is permission-gated and unreliable. |
 | `termResize(id, cols, rows)` | `TIOCSWINSZ` on the pty. |
+| `termGeometry(id)` | The pty's current winsize, or `null` for an unknown session. Main owns the pty, so this is the only authoritative geometry — the renderer writes size but is never told it. Read when hydrating a hidden tab so the snapshot is replayed at the size its frame was drawn for. |
 | `termClose(id)` | Run the kill pipeline: `SIGTERM` → optional `force_stop` → 500ms wait → `SIGKILL` on the process group. |
 | `termList()` | Snapshot of live (or recently-exited) sessions. Used by the panel rebuild on pane switch. |
 | `termAttach(id)` | Pull the buffered output for an existing session, used on renderer mount to replay history into a freshly-created xterm. |
@@ -107,6 +108,10 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `onTermExit(cb)` | Subscribe to session-exit events. |
 | `onTermSessions(cb)` | Sessions changed (spawn / exit / close). Receives the full snapshot. |
 | `termTabsContext()` | The open, live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}` provided-var payload (capability 2), used to seed a manual task run. A manual run seeds `{UPDATED_TABS}` from the same list (no per-run watermark to diff against). |
+| `perfVitals()` | Read main-process performance vitals (recording state, write-failure latch, live event-loop delay, heap) without disturbing the recording window. Cheap enough for the Performance pane to poll. |
+| `perfSetEnabled(enabled)` | Flip `terminal.perf.enabled`, re-open the recorder against the active conception, and return the resulting vitals. Merges over the current terminal prefs — `setTerminalPrefs` replaces the whole block. |
+| `perfRendererReport(report)` | Ship one window of renderer counters (loop delay, frames, spans, counters, peaks) into the main-process perf record. Sent once per 2.5 s drain while recording and only when the window holds something — never per frame. The reply `{recording}` is authoritative: the renderer stops sampling on a `false`. |
+| `onPerfState(cb)` | Subscribe to performance-recording state on the `perf-state` channel, pushed whenever main applies `terminal.perf.enabled`. This is what starts and stops the renderer's own counters, so recording flipped from the pane, the Settings modal, a hand-edited `settings.json`, or a conception switch reaches both halves of the instrument. |
 
 > **Flow control (`termAck`).** `onTermData` payloads carry an `epoch` field, and for every payload the preload fires a fire-and-forget `ipcRenderer.invoke('termAck', id, byteLength, epoch)` back to main. This is a backpressure ack — main counts the acked bytes to decide when to pause / resume the pty — **not** part of the typed `CondashApi`; it lives below the interface as a preload-internal channel. The `epoch` guards against a stale ack (minted before a renderer re-navigation flow reset) debiting the fresh flow. It fails soft: a dropped ack can only stall the pty, never corrupt it.
 

@@ -38,6 +38,49 @@ export function desiredDomIds(active: ActiveByColumn): Set<string> {
   return ids;
 }
 
+/**
+ * The active-id map to write after a set of tabs leaves the session snapshot — a
+ * user close, or the automatic close on a clean process exit. A column whose
+ * active tab is gone (or that has no active tab at all) falls back to its last
+ * remaining tab.
+ *
+ * This is deliberately ONE function producing ONE value, because the controller
+ * must make ONE signal write. Nulling the dropped ids and then writing each
+ * column's fallback separately publishes an intermediate `{left: null}` that the
+ * switch detector sees: `refreshOnSwitchTargets` reads it as "previous was
+ * null", so the tab promoted in place of the closed one gets no repaint target
+ * and hydrates into a garbled frame until the user hits Refresh.
+ *
+ * @param previous The active id per column before the drop.
+ * @param remaining The still-open tabs, in strip order (dropped ids are ignored
+ *   if present, so the caller may pass the pre- or post-filter list).
+ * @param dropped The ids that left the snapshot.
+ * @returns The next active id per column — `previous` itself when nothing moved,
+ *   so the signal does not notify for a drop that changed no column.
+ */
+export function activeIdsAfterDrop(
+  previous: ActiveByColumn,
+  remaining: Iterable<{ id: string; column: Column }>,
+  dropped: ReadonlySet<string>,
+): ActiveByColumn {
+  const lastInColumn = new Map<Column, string>();
+  for (const tab of remaining) {
+    if (dropped.has(tab.id)) continue;
+    lastInColumn.set(tab.column, tab.id);
+  }
+  const next = { ...previous };
+  let changed = false;
+  for (const col of ['left', 'right'] as Column[]) {
+    const current = previous[col];
+    if (current && !dropped.has(current)) continue;
+    const fallback = lastInColumn.get(col) ?? null;
+    if (fallback === current) continue;
+    next[col] = fallback;
+    changed = true;
+  }
+  return changed ? next : previous;
+}
+
 /** Which tabs to hydrate into DOM Terminals and which to serialize back into the
  *  worker, computed from the desired-visible / currently-mounted / mid-transition
  *  sets. */

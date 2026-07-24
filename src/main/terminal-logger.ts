@@ -235,7 +235,25 @@ export const MAX_GRID_BODY_BYTES = 2 * 1024 * 1024;
  *  handed to `perfLog.recordFlush` at the end. Null while perf recording is
  *  off — every `spans ?` guard below is what keeps an un-instrumented flush from
  *  reading a single clock. */
-type MutableFlushSpans = { composeNs: bigint; encodeNs: bigint; writeNs: bigint };
+type MutableFlushSpans = { syncNs: bigint; composeNs: bigint; encodeNs: bigint; writeNs: bigint };
+
+/** Read the clock, or return 0n when the flush is not being timed. */
+function clockIf(spans: MutableFlushSpans | null): bigint {
+  return spans ? process.hrtime.bigint() : 0n;
+}
+
+/**
+ * Close a synchronous slice into the flush's block-time total.
+ *
+ * A flush is a handful of synchronous stretches separated by awaits, and only
+ * those stretches hold the main thread. Summing them is the flush's real cost;
+ * the elapsed total is a different quantity that absorbs every unrelated task
+ * the loop runs between them (measured: 2 ms idle → 209 ms behind a 26 ms
+ * per-turn block, for the same write).
+ */
+function addSync(spans: MutableFlushSpans | null, start: bigint): void {
+  if (spans) spans.syncNs += process.hrtime.bigint() - start;
+}
 
 /** Sentinel prefix for the metadata header / footer lines inside a
  * `.txt`. The `# ` mimics shell-comment syntax — readable in `cat`,
@@ -775,7 +793,7 @@ export class SessionLogger {
   }
 
   /**
-   * Time the whole flush, then run it.
+   * Time the flush, then run it.
    *
    * `gridRenderMs` brackets `GridBodyRenderer.render()` and nothing else, but
    * every remaining step of a flush is O(retained size) too: the compose join
@@ -783,14 +801,20 @@ export class SessionLogger {
    * encodes the same text a second time. Measuring only the render therefore
    * understated the flush and — worse — put the parts an optimisation would
    * remove *outside* the instrument, so the optimisation could not be scored.
-   * The sub-spans ride the same accumulator so a reading can attribute within
-   * the flush rather than just bound it.
+   *
+   * Two totals come out, and they are not interchangeable. `syncNs` sums the
+   * flush's synchronous stretches — its actual hold on the main thread, the
+   * number to weigh against `loop.max`. `totalNs` is elapsed across the xterm
+   * drain and five libuv round trips, so it grows with whatever *else* the loop
+   * is doing; reading it as cost would let one session's render inflate
+   * another's flush and turn "share of the stall explained by measured work"
+   * into a tautology.
    */
   private async flushNow(sync = false): Promise<void> {
     if (!this.dirty || this.closed) return;
     const started = perfLog.startSpan();
     if (started === 0n) return this.flushBody(sync, null);
-    const spans: MutableFlushSpans = { composeNs: 0n, encodeNs: 0n, writeNs: 0n };
+    const spans: MutableFlushSpans = { syncNs: 0n, composeNs: 0n, encodeNs: 0n, writeNs: 0n };
     try {
       await this.flushBody(sync, spans);
     } finally {
@@ -809,8 +833,12 @@ export class SessionLogger {
    *  atomic tmp → (fsync) → rename rewrite.
    *
    *  `spans` accumulates the flush's sub-span timings, or is null while perf
-   *  recording is off — in which case not one clock is read. */
+   *  recording is off — in which case not one clock is read. Each synchronous
+   *  stretch between this method's awaits is closed into `spans.syncNs`, which
+   *  is what makes the recorded cost independent of what else the loop is
+   *  doing. */
   private async flushBody(sync: boolean, spans: MutableFlushSpans | null): Promise<void> {
+    let syncSlice = clockIf(spans);
     this.dirty = false;
     // Snapshot the grid byte watermark BEFORE the drain below: it counts bytes
     // handed to the term, and only those written ahead of the drain marker are
@@ -825,9 +853,14 @@ export class SessionLogger {
     // the first grid byte arrives (lazy), so a transcript-only / never-wrote
     // session has nothing to drain.
     if (this.term) {
+      addSync(spans, syncSlice);
       await new Promise<void>((resolve) => this.term!.write('', () => resolve()));
+      syncSlice = clockIf(spans);
     }
-    if (this.closed) return;
+    if (this.closed) {
+      addSync(spans, syncSlice);
+      return;
+    }
     // A session that emitted an in-band transcript gets the clean transcript
     // as its body; everything else falls back to the rendered grid.
     const isTranscript = this.oscTranscript.hasTranscript();
@@ -848,10 +881,14 @@ export class SessionLogger {
       this.termBytesSeen === this.lastGridBytes &&
       this.gridMarkers.length === this.lastGridMarkerCount
     ) {
+      addSync(spans, syncSlice);
       return;
     }
 
     if (!isTranscript) {
+      // Close this method's open slice; flushGridBody opens and manages its own,
+      // so the grid path's I/O waits never land in syncNs.
+      addSync(spans, syncSlice);
       await this.flushGridBody(sync, headerLine, renderGridBytes, spans);
       return;
     }
@@ -872,14 +909,20 @@ export class SessionLogger {
       this.bodyCursor.appended > this.bodyCursor.trimmed // prior body non-empty
     ) {
       const delta = this.oscTranscript.appendedSince(this.bodyCursor);
+      addSync(spans, syncSlice);
+      // The append path closes its own sync slices (its encode and its
+      // post-write bookkeeping); everything after it here reopens one.
       if (delta !== null && (await this.appendTranscriptDelta(delta, spans))) return;
+      syncSlice = clockIf(spans);
       // delta === null (a cap trim dropped written lines) or the tail/length
       // guard failed → fall through to the full rewrite, which re-establishes
       // the file and the bookkeeping exactly.
     }
 
-    // Full atomic rewrite: first write, header/kind flip, a cap trim, a guard
-    // mismatch, or any terminal (sync) flush.
+    // Full atomic rewrite. Only a TRANSCRIPT body reaches here — the grid path
+    // returned through `flushGridBody` above — so this is the transcript's first
+    // write, a header/kind flip, a cap trim, a guard mismatch, or a terminal
+    // (sync) flush.
     const body = this.oscTranscript.render();
     // Snapshot the transcript watermark that describes *this* body at render
     // time, BEFORE the async write window below. Pty output() runs synchronously
@@ -890,10 +933,14 @@ export class SessionLogger {
     // extractor is updated synchronously, so it matches render()'s output
     // byte-for-byte.
     const renderCursor = this.oscTranscript.cursor();
-    const composeStart = spans ? process.hrtime.bigint() : 0n;
+    const composeStart = clockIf(spans);
     const text = this.composeFileContent(body, kind);
     if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
+    // Everything above this point ran without yielding — close the slice before
+    // the write's round trips, which are not this flush's block time.
+    addSync(spans, syncSlice);
     if (await this.writeFileAtomically(text, sync, spans)) {
+      syncSlice = clockIf(spans);
       this.recordWrite(
         text,
         kind,
@@ -903,6 +950,7 @@ export class SessionLogger {
         this.gridMarkers.length,
         spans,
       );
+      addSync(spans, syncSlice);
     }
   }
 
@@ -911,18 +959,21 @@ export class SessionLogger {
    * Returns false on any error, with the bookkeeping already reset so the next
    * flush re-establishes the file exactly.
    *
-   * The rename keeps the file from ever being torn / zero-length; fsync makes
-   * the content itself durable across power loss. Periodic flushes skip the
-   * fsync (a live session re-snapshots every few seconds — fsync-ing each stalls
-   * the main process's libuv threadpool for durability the log viewer doesn't
-   * need); the exit / close flushes pass `sync`.
+   * Its write region is five libuv round trips, not main-thread block time, so
+   * the caller closes its `syncNs` slice before calling and reopens after; this
+   * helper adds only `writeNs` (the elapsed write). The rename keeps the file
+   * from ever being torn / zero-length; fsync makes the content durable across
+   * power loss. Periodic flushes skip the fsync (a live session re-snapshots
+   * every few seconds — fsync-ing each stalls the main process's libuv
+   * threadpool for durability the log viewer doesn't need); the exit / close
+   * flushes pass `sync`.
    */
   private async writeFileAtomically(
     text: string,
     sync: boolean,
     spans: MutableFlushSpans | null,
   ): Promise<boolean> {
-    const writeStart = spans ? process.hrtime.bigint() : 0n;
+    const writeStart = clockIf(spans);
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
       const tmp = `${this.txtPath}.tmp`;
@@ -970,6 +1021,12 @@ export class SessionLogger {
     renderGridBytes: number,
     spans: MutableFlushSpans | null,
   ): Promise<void> {
+    // This method owns its own `syncNs` slice: the caller closed its slice
+    // before awaiting here, so every synchronous stretch below is opened with
+    // `clockIf` and closed with `addSync` around each await — the grid path's
+    // I/O waits stay out of the flush's block-time total, exactly as the
+    // transcript path's do.
+    let syncSlice = clockIf(spans);
     const headerBytes = Buffer.byteLength(headerLine, 'utf8') + 2;
     const appendable =
       this.diskLen !== null &&
@@ -984,7 +1041,8 @@ export class SessionLogger {
     // `gridRenderMs` brackets the body-building work of one grid flush, and
     // nothing else — the same position it has always held. What it MEASURES has
     // narrowed with the append (see PERF_SCHEMA_VERSION 4), which is why the
-    // schema moved rather than the span.
+    // schema moved rather than the span. The render is synchronous, so it is in
+    // the open `syncNs` slice as well as its own `gridRenderMs`.
     const gridStart = perfLog.isEnabled() ? process.hrtime.bigint() : 0n;
     let delta = this.gridBody ? this.gridBody.renderDelta() : EMPTY_GRID_DELTA;
     if (gridStart !== 0n) {
@@ -995,10 +1053,15 @@ export class SessionLogger {
     const renderGridMarkerCount = this.gridMarkers.length;
 
     if (appendable && !overCap) {
+      // appendGridDelta closes its own sync slices (its compose/encode and its
+      // post-write bookkeeping); close ours before it and reopen after.
+      addSync(spans, syncSlice);
       const outcome = await this.appendGridDelta(delta, sync, headerBytes, spans);
+      syncSlice = clockIf(spans);
       if (outcome === 'written') {
         this.gridBody?.commit();
         this.recordGridWrite(headerLine, renderGridBytes, renderGridMarkerCount);
+        addSync(spans, syncSlice);
         return;
       }
       if (outcome === 'retry') {
@@ -1007,6 +1070,7 @@ export class SessionLogger {
         // nothing, and come back.
         this.gridBody?.abandon();
         this.retryFlush();
+        addSync(spans, syncSlice);
         return;
       }
       // 'rewrite' — the file no longer matches our watermark, or the body's
@@ -1021,14 +1085,17 @@ export class SessionLogger {
     // Recover the history that exists only on disk. `null` = the read itself
     // failed, which is NOT the same as "there is no history": rewriting on a
     // failed read is exactly the wipe this method exists to prevent.
+    addSync(spans, syncSlice);
     const kept = await this.readGridHistory(headerBytes, overCap);
+    syncSlice = clockIf(spans);
     if (kept === null) {
       this.gridBody?.abandon();
       this.gridBody?.reset();
       this.retryFlush();
+      addSync(spans, syncSlice);
       return;
     }
-    const composeStart = spans ? process.hrtime.bigint() : 0n;
+    const composeStart = clockIf(spans);
     const frozenText = joinBodyParts([kept, delta.frozen.join('\n')]);
     const text = this.composeFileContent(
       joinBodyParts([frozenText, delta.tail.join('\n')]),
@@ -1036,7 +1103,10 @@ export class SessionLogger {
     );
     if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
     const historyBefore = this.gridHistoryEnd;
+    // Close before the write's round trips; writeFileAtomically adds only writeNs.
+    addSync(spans, syncSlice);
     if (await this.writeFileAtomically(text, sync, spans)) {
+      syncSlice = clockIf(spans);
       this.recordWrite(
         text,
         'grid',
@@ -1049,7 +1119,9 @@ export class SessionLogger {
       this.gridFrozenEnd = headerBytes + Buffer.byteLength(frozenText, 'utf8');
       this.gridHistoryEnd = this.gridFrozenEnd;
       this.gridBody?.commit();
+      addSync(spans, syncSlice);
     } else {
+      syncSlice = clockIf(spans);
       // `writeFileAtomically` writes to a tmp and renames, so a failure leaves
       // the previous file — and its history — untouched on disk. Restore the
       // offset its own `resetBookkeeping` just cleared so the retry can still
@@ -1058,6 +1130,7 @@ export class SessionLogger {
       this.gridBody?.reset();
       this.gridHistoryEnd = historyBefore;
       this.retryFlush();
+      addSync(spans, syncSlice);
     }
   }
 
@@ -1084,6 +1157,13 @@ export class SessionLogger {
    * Bounded by {@link maxGridBodyBytes}, and on the trim path reached once per
    * that many bytes of output — rare, but it is the one grid operation that is
    * O(file), which is why the cap exists rather than a per-flush trim.
+   *
+   * Not passed `spans`: this runs only on the rare rewrite / trim fallback, and
+   * its synchronous decode is left OUT of `syncNs` (it lands in the flush's
+   * elapsed `totalNs`, never in the block-time cost). Under-counting a rare
+   * fallback is the safe direction — #467's whole correction was to stop cost
+   * fields absorbing elapsed time; the steady-state append path is fully
+   * accounted.
    */
   private async readGridHistory(headerBytes: number, trim: boolean): Promise<string | null> {
     const frozenEnd = this.gridHistoryEnd;
@@ -1165,16 +1245,20 @@ export class SessionLogger {
     if (!bodyHasRows && tailChunk.length === 0 && this.composeTrailer('grid', true).length === 0) {
       return 'rewrite';
     }
-    const composeStart = spans ? process.hrtime.bigint() : 0n;
+    // `composeStart` doubles as this method's sync-slice start (the caller closed
+    // its own slice before awaiting here). Compose + encode are the only
+    // synchronous work before the write's round trips.
+    const composeStart = clockIf(spans);
     const frozenSuffix = (hasPriorRows && frozenChunk.length > 0 ? '\n' : '') + frozenChunk;
     const tailSuffix = (bodyHasRows && tailChunk.length > 0 ? '\n' : '') + tailChunk;
     const bodyEmpty = !bodyHasRows && tailChunk.length === 0;
     const text = `${frozenSuffix}${tailSuffix}${this.composeTrailer('grid', bodyEmpty)}\n`;
     if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
-    const encodeStart = spans ? process.hrtime.bigint() : 0n;
+    const encodeStart = clockIf(spans);
     const suffix = Buffer.from(text, 'utf8');
     if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
-    const writeStart = spans ? process.hrtime.bigint() : 0n;
+    addSync(spans, composeStart);
+    const writeStart = clockIf(spans);
     try {
       if (!(await this.diskTailMatches())) return 'rewrite';
       const size = frozenEnd + suffix.length;
@@ -1206,8 +1290,10 @@ export class SessionLogger {
         await fh.close();
       }
       if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
+      const bookkeepStart = clockIf(spans);
       this.gridFrozenEnd = frozenEnd + Buffer.byteLength(frozenSuffix, 'utf8');
       this.gridHistoryEnd = this.gridFrozenEnd;
+      addSync(spans, bookkeepStart);
       return 'written';
     } catch (err) {
       // A vanished file (the Logs pane's delete button, an external sweep) has
@@ -1244,10 +1330,12 @@ export class SessionLogger {
       this.bodyCursor = delta.cursor; // nothing new to write; watermark still advances
       return true;
     }
-    const encodeStart = spans ? process.hrtime.bigint() : 0n;
+    const encodeStart = clockIf(spans);
     const deltaBytes = Buffer.from(`${delta.appended.slice(1)}\n`, 'utf8');
     if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
-    const writeStart = spans ? process.hrtime.bigint() : 0n;
+    // The encode is the only synchronous work before the append's own awaits.
+    addSync(spans, encodeStart);
+    const writeStart = clockIf(spans);
     try {
       if (!(await this.diskTailMatches())) return false;
       const fh = await open(this.txtPath, 'a');
@@ -1257,12 +1345,14 @@ export class SessionLogger {
         await fh.close();
       }
       if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
+      const bookkeepStart = clockIf(spans);
       this.diskLen = (this.diskLen ?? 0) + deltaBytes.length;
       this.writtenTail = tailBytes(
         Buffer.concat([this.writtenTail, deltaBytes]),
         TAIL_SAMPLE_BYTES,
       );
       this.bodyCursor = delta.cursor;
+      addSync(spans, bookkeepStart);
       return true;
     } catch (err) {
       process.stderr.write(`condash terminal-logger: append failed: ${(err as Error).message}\n`);
@@ -1295,8 +1385,12 @@ export class SessionLogger {
    *  window) — NOT the extractor's current state, which output() may have
    *  advanced during the awaits (L1).
    *
-   *  The `Buffer.from` here is the file's SECOND full UTF-8 encode — `writeFile`
-   *  already encoded the same string — which is why it gets its own span. */
+   *  #467 spanned a full second `Buffer.from(text)` here — the file's SECOND
+   *  UTF-8 encode, since `writeFile` already encoded the same string. The A6
+   *  half of the append work removed it: `Buffer.byteLength` + a 64-byte tail
+   *  slice read the length and the sample without the megabyte-scale copy. The
+   *  `encodeNs` span stays and now honestly reports ~0 on this path — the
+   *  measurement of a cost that is gone, not an omission. */
   private recordWrite(
     text: string,
     kind: LogKind,
@@ -1306,12 +1400,7 @@ export class SessionLogger {
     renderGridMarkerCount: number,
     spans: MutableFlushSpans | null,
   ): void {
-    // `Buffer.byteLength` + a tail slice, never a whole-file `Buffer.from`:
-    // `writeFile(text, 'utf8')` has already encoded this string once, and
-    // encoding a second megabyte-scale copy purely to read a length and 64
-    // trailing bytes was pure waste on the main thread. The span stays, and now
-    // honestly reports ~0 — which is the measurement, not an omission.
-    const encodeStart = spans ? process.hrtime.bigint() : 0n;
+    const encodeStart = clockIf(spans);
     this.diskLen = Buffer.byteLength(text, 'utf8');
     this.writtenTail = utf8Tail(text, TAIL_SAMPLE_BYTES);
     if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;

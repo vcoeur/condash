@@ -14,6 +14,8 @@ import { decodeRendererReport } from './perf-report-decode';
 const VALID = {
   windowMs: 2500,
   loop: { p50: 0.5, p99: 12, max: 80 },
+  samples: 248,
+  hiddenMs: 0,
   frames: 140,
   longFrames: 2,
   frameMaxMs: 90,
@@ -33,6 +35,21 @@ describe('decodeRendererReport', () => {
   it('rejects a missing loop block', () => {
     const { loop: _loop, ...rest } = VALID;
     expect(decodeRendererReport(rest)).toBeNull();
+  });
+
+  it('rejects a report missing the visibility fields', () => {
+    // `samples` and `hiddenMs` are what tell a reader a window was throttled
+    // rather than stalled, so a report without them is not decodable — it would
+    // be indistinguishable from a fully-measured one.
+    const { samples: _samples, ...noSamples } = VALID;
+    expect(decodeRendererReport(noSamples)).toBeNull();
+    const { hiddenMs: _hidden, ...noHidden } = VALID;
+    expect(decodeRendererReport(noHidden)).toBeNull();
+  });
+
+  it('keeps well-formed peaks', () => {
+    const decoded = decodeRendererReport({ ...VALID, maxima: { transitionBufferChars: 12 } });
+    expect(decoded?.maxima).toEqual({ transitionBufferChars: 12 });
   });
 
   it('rejects non-finite and negative numbers', () => {
