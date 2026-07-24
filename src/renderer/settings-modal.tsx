@@ -23,6 +23,7 @@ import {
   patchActionTemplate,
   pruneEmpty,
   type RawConfig,
+  mergeRawConfig,
   type Section,
   SECTIONS,
   SECTION_KEYS,
@@ -31,9 +32,10 @@ import {
   type SettingsScope,
   type SettingsTab,
   removeActionTemplate,
+  stableEqual,
   TERMINAL_STRING_FIELDS,
 } from './settings-modal-parts/data';
-import { stableEqual } from './settings-modal-parts/badges';
+import { WRITE_DRIFT_MARKER } from '@shared/ipc-channels';
 import { SearchProvider } from './settings-modal-parts/fields';
 import { parseErrorOf, parseRawConfig } from './settings-modal-parts/parse';
 import {
@@ -352,17 +354,67 @@ export function SettingsModal(props: {
     }
   };
 
-  /** Write a single tree draft to disk through its CAS write IPC. Returns true
-   *  if it actually wrote (false when the serialized draft matches disk). */
+  const serialiseDraft = (draft: RawConfig): string =>
+    JSON.stringify(buildSavePayload(draft), null, 2) + '\n';
+
+  /**
+   * Write a single tree draft to disk through its CAS write IPC. Returns true
+   * if it actually wrote (false when the serialized draft matches disk).
+   *
+   * **On drift, rebase and retry once rather than failing.** The modal holds
+   * its CAS baseline for as long as it is open, so *any* write to the same file
+   * meanwhile invalidates it — the status-bar theme cycle, a second condash
+   * window, `condash config set`, a hand edit. Surfacing that as a conflict
+   * rejected the user's whole staged batch with no way to act on it: the only
+   * exit was to close the modal and lose every edit. Instead the draft is
+   * three-way merged against the file's new content (`baseline` = what the
+   * draft was seeded from) and re-written against the fresh baseline, so the
+   * external change and the staged edits both survive.
+   *
+   * Exactly one retry. A second drift means something is writing continuously,
+   * and a loop would either spin or livelock the Save button; the conflict
+   * surfaces then, as it did before.
+   *
+   * **The rebase is refused unless the file's new content actually parses.**
+   * `parseRawConfig` falls back to `{}` for unparseable text — a deliberate
+   * choice elsewhere, so the editor still mounts on a broken file — and merging
+   * against `{}` reads every key the user did *not* touch as "deleted on disk".
+   * A Save would then quietly reduce `settings.json` to the handful of keys in
+   * the draft, taking `lastConceptionPath` and the whole terminal block with it.
+   * That is the data loss this retry exists to prevent, arriving through a
+   * different door and worse for being silent: the plain conflict at least
+   * failed loudly. Same for a file that vanished (`''` parses to `{}` too).
+   */
   const writeTreeDraft = async (
     draft: RawConfig,
+    baseline: string,
     expected: string,
+    reread: () => Promise<string>,
     write: (text: string, next: string) => Promise<string>,
     onWritten: (written: string) => void,
   ): Promise<boolean> => {
-    const next = JSON.stringify(buildSavePayload(draft), null, 2) + '\n';
+    const next = serialiseDraft(draft);
     if (next === expected) return false;
-    const written = await write(expected, next);
+    let written: string;
+    try {
+      written = await write(expected, next);
+    } catch (err) {
+      if (!(err as Error).message?.includes(WRITE_DRIFT_MARKER)) throw err;
+      const fresh = await reread();
+      // Nothing safe to rebase onto — surface the drift rather than merging
+      // against an empty object. See the note above.
+      if (!fresh || parseErrorOf(fresh) !== null) throw err;
+      const rebased = serialiseDraft(
+        mergeRawConfig(parseRawConfig(baseline), draft, parseRawConfig(fresh)),
+      );
+      // The external write already says everything the draft did — nothing left
+      // to persist, so adopt disk as the new baseline and report "no write".
+      if (rebased === fresh) {
+        onWritten(fresh);
+        return false;
+      }
+      written = await write(fresh, rebased);
+    }
     onWritten(written);
     return true;
   };
@@ -386,6 +438,8 @@ export function SettingsModal(props: {
           writeTreeDraft(
             gd,
             globalContent() ?? '',
+            globalContent() ?? '',
+            () => window.condash.getGlobalSettingsRaw(),
             (text, next) => window.condash.writeGlobalSettings(text, next),
             (written) => {
               mutateGlobalContent(written);
@@ -407,7 +461,13 @@ export function SettingsModal(props: {
         tasks.push(
           writeTreeDraft(
             cd,
+            // The draft was seeded from whatever `configurationPath()` resolved
+            // to, which on an unmigrated conception is a legacy file elsewhere —
+            // so the merge baseline is that text even when the CAS expectation
+            // for the (not-yet-existing) canonical path is the empty string.
+            content() ?? '',
             expectedConception,
+            () => window.condash.readNote(writePath),
             (text, next) => window.condash.writeNote(writePath, text, next),
             (written) => {
               mutateContent(written);
