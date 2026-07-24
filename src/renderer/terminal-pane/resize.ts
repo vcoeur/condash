@@ -1,5 +1,4 @@
 import type { Setter } from 'solid-js';
-import type { FitAddon } from '@xterm/addon-fit';
 import {
   MAX_PANE_HEIGHT_VH,
   MAX_SPLIT_RATIO,
@@ -13,9 +12,12 @@ export interface ResizeDeps {
   setPaneHeight: Setter<number>;
   splitRatio: () => number;
   setSplitRatio: Setter<number>;
-  /** Iterable of every live xterm `FitAddon` — re-fitted on every drag tick
-   *  so the canvas tracks the dragged divider in real time. */
-  fitAddons: () => Iterable<FitAddon>;
+  /** Re-fit every live terminal to its host — called on every drag tick so the
+   *  canvas tracks the dragged divider in real time. The controller owns the
+   *  guarded fit (`fitWhenReady`): a drag can take a host to zero height, where
+   *  `proposeDimensions()` clamps to a degenerate 2×1 grid that must never reach
+   *  the pty. */
+  refitAll: () => void;
 }
 
 /** Splitter + height drag handlers + window-resize listener for the
@@ -27,18 +29,10 @@ export function createResizeHandlers(deps: ResizeDeps): {
   startHeightDrag: (e: MouseEvent) => void;
   onWindowResize: () => void;
 } {
-  const refit = (): void => {
-    for (const fit of deps.fitAddons()) {
-      try {
-        // fit() only calls term.resize() when the computed cols/rows actually
-        // change, and term.onResize (→ termResize IPC) fires only on a real
-        // change — so an unchanged drag tick sends no pty resize.
-        fit.fit();
-      } catch {
-        /* not yet sized */
-      }
-    }
-  };
+  // fit() only calls term.resize() when the computed cols/rows actually change,
+  // and term.onResize (→ termResize IPC) fires only on a real change — so an
+  // unchanged drag tick sends no pty resize.
+  const refit = (): void => deps.refitAll();
 
   // Coalesce the per-mousemove refit to one call per animation frame: a splitter
   // drag fires mousemove far faster than 60 fps, and each fit() measures char

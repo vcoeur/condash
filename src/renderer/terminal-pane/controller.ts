@@ -13,13 +13,24 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import type { TabSummary, TermSession, TermSide, TermSpawnRequest } from '@shared/types';
 import { createDragDropController } from './drag-drop';
-import { decideRefreshAction, refreshOnSwitchTargets, REPAINT_NUDGE_MS } from './nudge-machine';
+import {
+  createNudgeRegistry,
+  decideRefreshAction,
+  refreshOnSwitchTargets,
+  REPAINT_NUDGE_MS,
+} from './nudge-machine';
 import { decideFit, MAX_FIT_ATTEMPTS } from './fit-when-ready';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
+import { createTransitionBuffers } from './transition-buffers';
 import { type Column, displayName, sameStringList, type Tab } from './types';
-import { desiredDomIds, domVisibility, planVisibility } from './visibility-plan';
+import {
+  activeIdsAfterDrop,
+  desiredDomIds,
+  domVisibility,
+  planVisibility,
+} from './visibility-plan';
 import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
@@ -93,7 +104,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   // Tabs that are mid-transition (serialize/mount) must not accept writes on
   // either side; they are buffered and flushed once the destination exists.
   const transitioning = new Set<string>();
-  const transitionBuffers = new Map<string, string[]>();
+  const transitionBuffers = createTransitionBuffers();
   // Per-column count of in-flight visibility transitions. The #397 focus-churn
   // guard (`promote`) gates on the tab's OWN column via this — not the global
   // `transitioning` set — so a stuck transition (e.g. a lost worker RPC before
@@ -113,8 +124,11 @@ export function createTerminalController(props: TerminalPaneProps) {
   // observes a real resize and repaints. A competing `fit()` (e.g. the one at the
   // tail of every `syncVisibility`) would restore the full size within a frame
   // and collapse that dip before a debounced TUI ever samples it — so fit skips
-  // any session listed here until the nudge restores the size itself.
-  const nudging = new Set<string>();
+  // any session held here until the nudge restores the size itself. Claims are
+  // keyed by the HANDLE, not just the id: a switch destroys and rebuilds a
+  // session's DOM Terminal, so an id-only claim let a stale timer block the new
+  // handle's fit and clear a live nudge's guard (see `createNudgeRegistry`).
+  const nudging = createNudgeRegistry<XtermHandle>();
 
   // Geometry each hidden tab's snapshot was produced at (the worker Terminal is
   // created at the demoting DOM Terminal's size and keeps parsing at it). Paired
@@ -127,22 +141,46 @@ export function createTerminalController(props: TerminalPaneProps) {
   // for these — see `decideRefreshAction`.
   const exactHydrates = new Map<string, { cols: number; rows: number }>();
 
-  const bufferTransitionWrite = (id: string, chunk: string): void => {
-    const arr = transitionBuffers.get(id);
-    if (arr) arr.push(chunk);
-    else transitionBuffers.set(id, [chunk]);
+  /** End an in-flight nudge before its terminal is torn down, restoring the row
+   *  it gave up. A demote that lands inside the 160 ms hold would otherwise
+   *  serialize a mid-repaint frame AND create the worker Terminal one row short
+   *  (`worker.create(..., h.term.rows, ...)`), leaving the pty short until the
+   *  next promote's fit — the garbled hydrate this whole path exists to remove.
+   *  The nudge is the only resize a held handle can receive (every fit path skips
+   *  it), so `rows + 1` is exactly the pre-nudge height. */
+  const settleNudge = (id: string, handle: XtermHandle): void => {
+    if (!nudging.isHeldBy(id, handle)) return;
+    nudging.release(id, handle);
+    try {
+      handle.term.resize(handle.term.cols, handle.term.rows + 1);
+    } catch {
+      /* term already disposed */
+    }
   };
 
+  /** In-flight fit retry chain per session, so per-frame callers share one chain
+   *  instead of each starting a 12-frame budget of their own. */
+  const fitRetries = new Map<string, number>();
+  onCleanup(() => {
+    for (const frame of fitRetries.values()) cancelAnimationFrame(frame);
+    fitRetries.clear();
+  });
+
   const flushTransitionBuffer = (id: string, target: 'dom' | 'worker'): void => {
-    const chunks = transitionBuffers.get(id);
-    if (!chunks || chunks.length === 0) return;
-    transitionBuffers.delete(id);
-    const data = chunks.join('');
-    if (target === 'dom') {
-      xterms.get(id)?.term.write(data);
-    } else {
-      worker.write(id, data);
-    }
+    transitionBuffers.flush(id, (data) => {
+      if (target === 'worker') {
+        worker.write(id, data);
+        return true;
+      }
+      // No DOM Terminal to write into (the mount bailed on its race guard or its
+      // dynamic import threw): report the miss so the chunks stay buffered for
+      // the next flush. Dropping them here loses the bytes for good — main keeps
+      // only a 64 KB pty tail, so no Refresh can bring them back.
+      const handle = xterms.get(id);
+      if (!handle) return false;
+      handle.term.write(data);
+      return true;
+    });
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -154,11 +192,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (!host) return;
     host.appendChild(handle.element);
     handle.column = newColumn;
-    try {
-      handle.fit.fit();
-    } catch {
-      /* not yet sized */
-    }
+    // Through fitWhenReady, not a bare fit(): the re-parented element is being
+    // laid out against a different host this frame, which is exactly when
+    // proposeDimensions returns its clamp floor.
+    fitWhenReady(id);
   };
 
   /** Fit a session's terminal, retrying across animation frames until its host
@@ -169,25 +206,61 @@ export function createTerminalController(props: TerminalPaneProps) {
    *  `fit()` is a no-op — the grid strands at the default 80×24 inside a larger
    *  pane (the "terminal renders into a small box" bug), and nothing re-fits once
    *  the host settles. Retrying on rAF closes that so the terminal fills its host.
-   *  A session mid-nudge is skipped: its pty is held one row short on purpose and
-   *  refitting now would collapse the dip before the TUI repaints (see the
-   *  Refresh nudge below). The live-handle re-read each frame drops the retry if
-   *  the tab was demoted, closed, or re-mounted meanwhile. */
+   *  The host's own box is measured alongside the proposal because
+   *  proposeDimensions clamps a zero-height host to a finite `{cols:2, rows:1}`
+   *  rather than failing; `decideFit` rejects both (see `fit-when-ready`), so a
+   *  degenerate grid is never committed to the pty. A session mid-nudge is
+   *  skipped: its pty is held one row short on purpose and refitting now would
+   *  collapse the dip before the TUI repaints (see the Refresh nudge below). The
+   *  live-handle re-read each frame drops the retry if the tab was demoted,
+   *  closed, or re-mounted meanwhile. */
   const fitWhenReady = (id: string, attemptsLeft = MAX_FIT_ATTEMPTS): void => {
     const handle = xterms.get(id);
-    if (!handle || nudging.has(id)) return;
+    if (!handle || nudging.isHeldBy(id, handle)) return;
     let dims: { cols: number; rows: number } | undefined;
     try {
       dims = handle.fit.proposeDimensions();
     } catch {
       dims = undefined;
     }
-    const action = decideFit(dims, attemptsLeft);
+    // `handle.element` is the element FitAddon measures (the `.xterm-host` div it
+    // was `open`ed into, i.e. `term.element.parentElement`) — read as the padding
+    // box, which is why `decideFit` keeps a grid floor as well (see there).
+    const action = decideFit(dims, attemptsLeft, {
+      width: handle.element.clientWidth,
+      height: handle.element.clientHeight,
+    });
     if (action === 'retry') {
-      requestAnimationFrame(() => fitWhenReady(id, attemptsLeft - 1));
+      // One retry chain per id. Callers that fire per frame (the splitter drag's
+      // refit, the ResizeObserver) would otherwise each start their own 12-frame
+      // chain against the same host, and `scheduleRefit`'s coalescing does not
+      // reach past this call. A chain already running re-reads the host every
+      // frame, so a caller that finds one pending has nothing to add.
+      if (fitRetries.has(id)) return;
+      fitRetries.set(
+        id,
+        requestAnimationFrame(() => {
+          fitRetries.delete(id);
+          fitWhenReady(id, attemptsLeft - 1);
+        }),
+      );
       return;
     }
-    if (action === 'giveup') return;
+    if (action === 'giveup') {
+      // The host never resolved a usable box within the budget. The grid stays at
+      // whatever it was (the 80×24 default for a fresh mount), which is a pty
+      // describing a screen the user cannot see — better than committing the 2×1
+      // clamp floor, but not a fitted terminal. Say so once: the field reports
+      // this class arrives as "sometimes", and a silent give-up is why five
+      // rounds of fixes had nothing to look at.
+      console.warn(
+        '[terminal] fit gave up: host never resolved a usable size',
+        id,
+        handle.element.clientWidth,
+        handle.element.clientHeight,
+      );
+      return;
+    }
     try {
       handle.fit.fit();
     } catch {
@@ -289,15 +362,13 @@ export function createTerminalController(props: TerminalPaneProps) {
             // active tab blank: mount with whatever buffered tail we have so the
             // user gets a live terminal (scrollback may be lost) rather than an
             // empty pane, and the transition still clears via the finally (R1).
-            replay = transitionBuffers.get(id)?.join('') ?? '';
-            transitionBuffers.delete(id);
+            replay = transitionBuffers.take(id);
           }
         } else {
           // Defensive: this tab never had a worker Terminal (shown before it was
           // ever demoted). Replay the buffered tail and drop it here so the
           // flush below does not write the same bytes a second time.
-          replay = transitionBuffers.get(id)?.join('') ?? '';
-          transitionBuffers.delete(id);
+          replay = transitionBuffers.take(id);
         }
         workerSessions.delete(id);
         // The snapshot captured everything; the worker Terminal is now stale.
@@ -313,24 +384,39 @@ export function createTerminalController(props: TerminalPaneProps) {
         // no later fit can repair it, only a repaint from the program itself.
         // That is the mechanism the repaint nudge exists to paper over.
         const geometry = (await geometryPromise) ?? undefined;
-        await mountForSession(mountCtx, id, col, replay, geometry);
-        // The frame is exact only when the snapshot's own geometry and the pty's
-        // agree — then the grid we just built IS the pty's screen. If the pty was
-        // resized while this tab was hidden the two differ, the snapshot carries
-        // the old wrapping, and the tab still needs a real repaint.
-        const snapshotGeometry = workerGeometry.get(id);
-        workerGeometry.delete(id);
-        if (
-          geometry &&
-          snapshotGeometry &&
-          geometry.cols === snapshotGeometry.cols &&
-          geometry.rows === snapshotGeometry.rows
-        ) {
-          exactHydrates.set(id, geometry);
-        } else {
-          exactHydrates.delete(id);
+        try {
+          await mountForSession(mountCtx, id, col, replay, geometry);
+        } finally {
+          const mounted = xterms.has(id);
+          // The replay was consumed out of the buffer above. If no Terminal came
+          // out of the mount — it threw, or it bailed on its race guard — those
+          // bytes are in a local variable about to go out of scope, and main
+          // keeps only a 64 KB tail. Put them back, at the front, so the next
+          // promote replays them; the flush below then finds no sink and keeps
+          // the lot parked (see `transition-buffers`).
+          if (!mounted) transitionBuffers.restore(id, replay);
+          flushTransitionBuffer(id, 'dom');
+          // The frame is exact only when the snapshot's own geometry and the
+          // pty's agree — then the grid we just built IS the pty's screen. If the
+          // pty was resized while this tab was hidden the two differ, the
+          // snapshot carries the old wrapping, and the tab still needs a real
+          // repaint. A mount that produced no Terminal is never exact, and the
+          // bookkeeping runs in the `finally` so a failed promote cannot strand a
+          // stale `workerGeometry` entry for the next one to trust.
+          const snapshotGeometry = workerGeometry.get(id);
+          workerGeometry.delete(id);
+          if (
+            mounted &&
+            geometry &&
+            snapshotGeometry &&
+            geometry.cols === snapshotGeometry.cols &&
+            geometry.rows === snapshotGeometry.rows
+          ) {
+            exactHydrates.set(id, geometry);
+          } else {
+            exactHydrates.delete(id);
+          }
         }
-        flushTransitionBuffer(id, 'dom');
       } finally {
         endTransition(id, col);
       }
@@ -343,6 +429,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       const demoteColumn = h.column;
       beginTransition(tid, demoteColumn);
       try {
+        settleNudge(tid, h);
         const snapshot = h.serialize.serialize();
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
         worker.write(tid, snapshot);
@@ -441,6 +528,9 @@ export function createTerminalController(props: TerminalPaneProps) {
   // ---- onTermSessions: single source of truth for adds/removes ----
   const reconcile = async (snap: readonly SessionSnapshot[]) => {
     const known = new Set(tabs().map((t) => t.id));
+    // Columns whose active tab this pass changed, so the insert loop can nudge
+    // ONCE at the end instead of once per inserted tab (see `bulkActivations`).
+    const activated = new Set<Column>();
     for (const s of snap) {
       if (s.side !== 'my' || known.has(s.id)) continue;
       // Await termAttach first so that any in-flight `spawn` invoke reply has
@@ -492,12 +582,40 @@ export function createTerminalController(props: TerminalPaneProps) {
       // this tab is first demoted to the worker. Chunks that land during the
       // async mount below are re-buffered and flushed once the DOM Terminal
       // exists.
-      transitionBuffers.delete(s.id);
+      transitionBuffers.drop(s.id);
       await mountForSession(mountCtx, s.id, column, attach?.output, geometry ?? undefined);
       flushTransitionBuffer(s.id, 'dom');
-      setActiveIn(column, s.id);
-      setActiveColumn(column);
+      // A restore hydrates the raw pty tail into a grid built at the pty's own
+      // winsize, with nothing resized since — the same claim the promote path
+      // makes, so record it as exact. It has to be recorded, not inferred:
+      // first activations now DO get an automatic repaint (that is this
+      // branch's fix), and nudging a frame that is already the pty's screen
+      // shears its bottom row on the alternate buffer (that is #466's). Without
+      // this the two fixes cancel out on exactly the path both were aimed at.
+      if (geometry) exactHydrates.set(s.id, geometry);
+      else exactHydrates.delete(s.id);
+      // Bulk activation: a restore inserts N tabs and activates each one in turn,
+      // so the switch detector would see N switches and queue N repaints — each
+      // holding a pty one row short for 160 ms, with the next insert's promote
+      // demoting the previous tab *inside* that hold (serializing a mid-repaint
+      // frame into a worker Terminal one row short: the exact garbled hydrate
+      // this path exists to remove). Suppress the per-insert nudge and repaint
+      // once per touched column at the end, on the tab the user actually lands on.
+      bulkActivations += 1;
+      try {
+        setActiveIn(column, s.id);
+        setActiveColumn(column);
+      } finally {
+        bulkActivations -= 1;
+      }
+      activated.add(column);
       queueMicrotask(focusActive);
+    }
+    for (const col of activated) {
+      // Resolved in the microtask, not here: a click that landed during the
+      // restore has already queued its own repaint, and re-asserting the id this
+      // loop saw would fight it.
+      queueMicrotask(() => refreshSession(activeIdIn(col), autoRefreshOpts()));
     }
     // Reconcile the exited/memory fields onto the existing tabs while preserving
     // object identity: the main process rebroadcasts the FULL snapshot every 2.5 s
@@ -554,7 +672,7 @@ export function createTerminalController(props: TerminalPaneProps) {
         // renderer (R1).
         void worker.dispose(id).catch(() => undefined);
       }
-      transitionBuffers.delete(id);
+      transitionBuffers.drop(id);
       workerGeometry.delete(id);
       exactHydrates.delete(id);
       // The tab is gone from the snapshot — its close has landed, so the
@@ -562,16 +680,17 @@ export function createTerminalController(props: TerminalPaneProps) {
       closingTabs.delete(id);
     }
     if (toDrop.length > 0) {
-      setTabs((prev) => prev.filter((t) => !toDrop.includes(t.id)));
-      setActiveIds((prev) => ({
-        left: toDrop.includes(prev.left ?? '') ? null : prev.left,
-        right: toDrop.includes(prev.right ?? '') ? null : prev.right,
-      }));
-      for (const col of ['left', 'right'] as Column[]) {
-        if (activeIdIn(col)) continue;
-        const fallback = tabsIn(col).at(-1)?.id ?? null;
-        setActiveIn(col, fallback);
-      }
+      const dropped = new Set(toDrop);
+      setTabs((prev) => prev.filter((t) => !dropped.has(t.id)));
+      const remaining = tabs().filter((t) => t.side === 'my');
+      // ONE signal write for the new active ids. Nulling the dropped ids and
+      // then writing each column's fallback separately published an
+      // intermediate `{left: null}`, and the auto-refresh effect reads every
+      // write: it saw `previous = null` on the second one and produced no
+      // repaint target, so the tab promoted in place of the closed one — the
+      // neighbour after a user close, or after an agent's clean exit
+      // auto-closed its tab — hydrated garbled until the user hit Refresh.
+      setActiveIds((prev) => activeIdsAfterDrop(prev, remaining, dropped));
       queueMicrotask(focusActive);
     }
   };
@@ -650,16 +769,30 @@ export function createTerminalController(props: TerminalPaneProps) {
 
   // ---- live data + exit notification ----
   const offTermData = window.condash.onTermData(({ id, data }) => {
+    // Anything already parked for this session must go first, or this chunk
+    // jumps the queue and the terminal shows output out of order. Parked bytes
+    // outlive their transition now (a flush with no destination keeps them), so
+    // the steady-state branches have to consult the buffer too, not just assume
+    // it is empty.
+    const parked = transitionBuffers.pending(id);
     if (transitioning.has(id)) {
-      bufferTransitionWrite(id, data);
+      transitionBuffers.buffer(id, data);
     } else if (xterms.has(id)) {
-      xterms.get(id)!.term.write(data);
+      if (!parked) xterms.get(id)!.term.write(data);
+      else {
+        transitionBuffers.buffer(id, data);
+        flushTransitionBuffer(id, 'dom');
+      }
     } else if (workerSessions.has(id)) {
-      worker.write(id, data);
+      if (!parked) worker.write(id, data);
+      else {
+        transitionBuffers.buffer(id, data);
+        flushTransitionBuffer(id, 'worker');
+      }
     } else {
       // Tab exists in the snapshot but has not been mounted or seeded yet
       // (race between termData and reconcile). Buffer for the first show.
-      bufferTransitionWrite(id, data);
+      transitionBuffers.buffer(id, data);
     }
   });
   const offTermExit = window.condash.onTermExit(({ id, code, death, abnormal }) => {
@@ -771,7 +904,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     setPaneHeight,
     splitRatio,
     setSplitRatio,
-    fitAddons: () => Array.from(xterms.values(), (h) => h.fit),
+    refitAll: () => {
+      for (const id of xterms.keys()) fitWhenReady(id);
+    },
   });
   onMount(() => window.addEventListener('resize', resize.onWindowResize));
   onCleanup(() => window.removeEventListener('resize', resize.onWindowResize));
@@ -822,45 +957,72 @@ export function createTerminalController(props: TerminalPaneProps) {
   // kind whose hydrated frame is inherently lossy — `SerializeAddon` can't
   // reproduce their cursor / scroll-region / colour state); plain shells then
   // hydrate faithfully and are left alone. Diffing each column's active id
-  // against its previous value fires only on a genuine switch to a *different*
-  // tab: it skips first-open (prev null) and ignores the no-op signal re-fire
+  // against its previous value fires on any change to a *different* tab —
+  // including a column's first activation, which hydrates from a snapshot like
+  // every other and used to be skipped — and ignores the no-op signal re-fire
   // `refreshSession` makes when it re-asserts the active id. Deferred to a
   // microtask so we don't write the active-id signal from inside an effect;
   // `refreshSession` itself decides, once the tab has hydrated, whether the
   // alt-buffer condition holds.
   let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
+  /** Depth of an in-progress bulk activation (`reconcile`'s insert loop). While
+   *  it is non-zero the switch detector still advances `prevActive` but schedules
+   *  nothing: the caller repaints once, at the end, for the tab each touched
+   *  column actually lands on. */
+  let bulkActivations = 0;
+  /** The opts every *automatic* repaint uses — the alt-buffer opt-out applies to
+   *  all of them, not just the switch path. */
+  const autoRefreshOpts = (): { onlyIfAltBuffer: boolean; auto: true } => ({
+    onlyIfAltBuffer: props.autoRefreshOnTabSwitch === false,
+    auto: true,
+  });
   createEffect(() => {
     const current = activeIds();
-    for (const target of refreshOnSwitchTargets(
-      prevActive,
-      current,
-      props.autoRefreshOnTabSwitch,
-    )) {
+    const targets = refreshOnSwitchTargets(prevActive, current, props.autoRefreshOnTabSwitch);
+    prevActive = { left: current.left, right: current.right };
+    if (bulkActivations > 0) return;
+    for (const target of targets) {
       queueMicrotask(() =>
-        refreshSession(target.id, {
-          onlyIfAltBuffer: target.onlyIfAltBuffer,
-          // Only the automatic nudge may stand down on an already-exact frame;
-          // manual Refresh is the user telling us the screen is wrong.
-          allowExactSkip: true,
-        }),
+        refreshSession(target.id, { onlyIfAltBuffer: target.onlyIfAltBuffer, auto: true }),
       );
     }
-    prevActive = { left: current.left, right: current.right };
   });
 
   // Switching back from the Dashboard body re-shows the xterm hosts (they are
   // CSS-hidden, not unmounted, so terminals survive). xterm must refit to the
   // restored dimensions, otherwise the grid is sized for the hidden (0×0) host.
+  // This also covers reopening a closed pane (`props.open` false → true), whose
+  // hosts are hidden by the same CSS.
+  let bandWasVisible = false;
   createEffect(() => {
-    if (props.open && props.bottomView === 'terminal') {
-      queueMicrotask(() => {
-        // The hosts were CSS-hidden while the Dashboard body showed, so the
-        // just-restored host may still read 0×0 this microtask — fitWhenReady
-        // retries until it is laid out rather than one-shot no-opping on it.
-        for (const id of xterms.keys()) fitWhenReady(id);
-        focusActive();
-      });
-    }
+    const visible = props.open && props.bottomView === 'terminal';
+    // The repaint below is gated on an actual hidden→visible transition, NOT on
+    // this effect running: `props.open` is `layout().terminal`, and `layout` is a
+    // memo over a persisted object that `updateLayout` reallocates on every
+    // patch, so the effect re-runs on every layout mutation — a sidebar toggle, a
+    // splitter commit, a modal open. Repainting there would put a full SIGWINCH
+    // round-trip through a live agent TUI on unrelated UI events.
+    const cameIntoView = visible && !bandWasVisible;
+    bandWasVisible = visible;
+    if (!visible) return;
+    queueMicrotask(() => {
+      // The hosts were CSS-hidden while the Dashboard body showed, so the
+      // just-restored host may still read 0×0 this microtask — fitWhenReady
+      // retries until it is laid out rather than one-shot no-opping on it. This
+      // part stays unconditional: a fit is a no-op when the grid already matches.
+      for (const id of xterms.keys()) fitWhenReady(id);
+      focusActive();
+      if (!cameIntoView) return;
+      // Neither showing the band nor reopening the pane changes an active id, so
+      // the switch detector produces no target for either — yet the terminals
+      // that come back into view are exactly as likely to need a repaint as one
+      // switched to. Ask for them explicitly: BOTH columns, since a split shows
+      // two. The reads happen here, inside the microtask, so this effect keeps
+      // tracking only open/view.
+      for (const col of ['left', 'right'] as Column[]) {
+        refreshSession(activeIdIn(col), autoRefreshOpts());
+      }
+    });
   });
 
   // ---- drag-to-reorder + drag-between-columns ----
@@ -946,9 +1108,19 @@ export function createTerminalController(props: TerminalPaneProps) {
   /** Ids with a restart in flight, so a double-click can't fire two spawns. */
   const restartingTabs = new Set<string>();
 
+  /**
+   * Repaint a session. `auto` marks a repaint condash asked for rather than the
+   * user, and it is the single flag behind both stand-down rules: an automatic
+   * request may skip a frame already proven exact (it would only shear the
+   * bottom row off a correct alternate-screen frame), and may skip a nudge
+   * already in flight for the same terminal. A *manual* Refresh does neither —
+   * the user pressing it IS the signal that the screen is wrong, whatever the
+   * geometry says, so it is unconditional and, if a hold is in flight, queued
+   * behind it rather than dropped.
+   */
   const refreshSession = (
     id: string | null,
-    opts?: { onlyIfAltBuffer?: boolean; allowExactSkip?: boolean },
+    opts?: { onlyIfAltBuffer?: boolean; auto?: boolean },
   ): void => {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
@@ -960,6 +1132,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     // extra fit is exactly what used to collapse the nudge dip.
     if (activeIdIn(tab.column) !== id) setActiveIn(tab.column, id);
     if (activeColumn() !== tab.column) setActiveColumn(tab.column);
+    // The handle this pass claimed the nudge for, so the error path releases its
+    // own claim and never a later handle's.
+    let claimed: XtermHandle | undefined;
     // Chain after any in-flight promote/demote so the DOM Terminal for this
     // session exists before we resize it, then wait one animation frame so the
     // host layout can settle before the nudge starts.
@@ -968,9 +1143,9 @@ export function createTerminalController(props: TerminalPaneProps) {
         await syncVisibility();
         // Give the host one animation frame to settle before the nudge begins.
         // The visibility transition just promoted the tab and started a
-        // fitWhenReady retry; if the nudge starts immediately it adds the id to
-        // `nudging`, which cancels that retry and leaves a terminal that has not
-        // yet reached its real size. A short beat lets the in-flight fit finish
+        // fitWhenReady retry; if the nudge starts immediately it claims the
+        // handle in `nudging`, which cancels that retry and leaves a terminal
+        // that has not reached its real size. A short beat lets the fit finish
         // before we deliberately resize the terminal one row shorter.
         await new Promise((resolve) => requestAnimationFrame(resolve));
         const handle = xterms.get(id);
@@ -991,40 +1166,73 @@ export function createTerminalController(props: TerminalPaneProps) {
           frameIsExact: Boolean(
             handle && exact && handle.term.cols === exact.cols && handle.term.rows === exact.rows,
           ),
-          allowExactSkip: opts?.allowExactSkip ?? false,
+          // Only an automatic repaint may stand down on an exact frame — see the
+          // `auto` note on `refreshSession`. Deriving it from the same flag is
+          // what keeps the two automatic callers this branch adds (the
+          // end-of-restore repaint and the band flip) from shearing a frame that
+          // is already the pty's screen.
+          allowExactSkip: opts?.auto ?? false,
         });
         if (action.kind === 'skip') return;
         // Past `skip`, `decideRefreshAction` guarantees a live handle; bind it
         // non-nullable so the deferred restore below narrows cleanly.
         const live = handle!;
-        if (action.kind === 'focus-only' && action.reason === 'altGate') {
+        if (action.kind === 'focus-only') {
+          // `altGate`: the opt-out excluded a faithfully-hydrated shell.
+          // `tooShort`: a ≤1-row terminal can't lose a row.
+          // `frameExact`: the grid already IS the pty's screen; nudging it would
+          // only shear its bottom row (automatic repaints only).
           live.term.focus();
           return;
         }
-        // Past the alt-buffer gate. Test seam (mirrors `__condashXterms`): record
-        // here so e2e can assert the nudge fired without racing the sub-frame
-        // resize. Inert unless the test opts into the registry.
+        // A nudge is already holding this exact terminal one row short — two
+        // refreshes raced for it (clicking a tab while the Dashboard shows asks
+        // via both the switch and the band flip; the context-menu Refresh
+        // re-asserts the active id and re-enters through the switch effect).
+        // Dipping again only takes another row and lets the first timer restore
+        // early; the hold already in flight is the one the TUI samples.
+        if (nudging.isHeldBy(id, live)) {
+          // An automatic request adds nothing to a repaint already in flight. A
+          // *user* one must never be swallowed — this whole bug class is "I had
+          // to press Refresh", so a press that lands mid-hold has to queue behind
+          // it rather than disappear.
+          if (!opts?.auto) setTimeout(() => refreshSession(id, opts), REPAINT_NUDGE_MS);
+          return;
+        }
+        // Committed to the nudge. Test seam (mirrors `__condashXterms`): recorded
+        // below the gates, so the log only ever names a repaint that really ran —
+        // above them it also named alt-gated, too-short and already-held passes
+        // that resized nothing. Inert unless the test opts into the registry.
         if (document.body.hasAttribute('data-test-xterm-registry')) {
           (window.__condashRefreshLog ??= []).push(id);
-        }
-        if (action.kind === 'focus-only') {
-          // reason === 'tooShort': a ≤1-row terminal can't lose a row.
-          live.term.focus();
-          return;
         }
         // Hold the pty one row short across REPAINT_NUDGE_MS so a debounced TUI
         // samples the smaller size and repaints; `nudging` keeps a competing fit
         // from restoring the size early (see `focusActiveDom`).
         const { cols, rows } = live.term;
-        nudging.add(id);
+        claimed = live;
+        nudging.claim(id, live);
         live.term.resize(cols, rows - 1);
         setTimeout(() => {
-          nudging.delete(id);
+          // Release only our own claim: by now the session may have been demoted
+          // and re-promoted onto a NEW handle that is mid-nudge itself, and
+          // clearing that one's guard would let a chained fit restore the size
+          // and collapse its dip.
+          nudging.release(id, live);
           // Bail if the tab was demoted, closed, or re-mounted while we waited.
           if (xterms.get(id) !== live) return;
-          // fitWhenReady (not a bare fit) so the restore still lands even if the
-          // host is not laid out at its real size by REPAINT_NUDGE_MS — it retries
-          // across frames instead of no-opping and stranding the grid.
+          // Give the row back explicitly first. The restore used to be the fit
+          // alone, which meant a host that never resolved a usable box (the fit
+          // gives up) left the terminal — and the pty — permanently one row
+          // shorter than before the repaint: the nudge became the damage.
+          try {
+            live.term.resize(cols, rows);
+          } catch {
+            /* term disposed */
+          }
+          // Then fitWhenReady (not a bare fit) so the true size still lands even
+          // if the host was not laid out at REPAINT_NUDGE_MS — it retries across
+          // frames instead of no-opping and stranding the grid.
           fitWhenReady(id);
           // One more delayed fit as a backstop: the host may settle a frame or
           // two after the nudge window, or a ResizeObserver callback may have
@@ -1043,7 +1251,7 @@ export function createTerminalController(props: TerminalPaneProps) {
         }, REPAINT_NUDGE_MS);
       })
       .catch(() => {
-        nudging.delete(id);
+        if (claimed) nudging.release(id, claimed);
       });
   };
 

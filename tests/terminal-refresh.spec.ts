@@ -136,6 +136,14 @@ async function refreshLog(window: Page): Promise<string[]> {
 // for a visual change we assert on `__condashRefreshLog` — the controller's
 // record that `refreshSession` actually nudged the newly-active tab. The
 // alt-screen tests prove the nudge produces a real repaint.
+//
+// The tab is hidden across a host resize first, which is what makes a repaint
+// genuinely necessary: its snapshot then carries the old wrapping, the promote's
+// fit changes the grid, and the hydrate is no longer provably exact. Without
+// that the correct outcome is NO nudge at all — a frame that is already the
+// pty's screen must not be nudged, because on the alternate buffer the one-row
+// dip shears its bottom line off (see terminal-hydrate-geometry.spec.ts). The
+// log records repaints that really ran, so it is empty in that case.
 test('auto-refresh on tab switch repaints the newly-active tab', async () => {
   const booted = await bootApp({
     globalConfig: {
@@ -167,6 +175,15 @@ test('auto-refresh on tab switch repaints the newly-active tab', async () => {
       timeout: 5000,
     });
     await waitForDomTerm(booted.window, b.id);
+
+    // Resize the host while 'a' is hidden. Nothing refits a hidden tab, so its
+    // snapshot keeps the old geometry and the promote's fit has to change the
+    // grid — the frame is not the pty's screen and does need a repaint.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.width = '420px';
+    });
+    await expect.poll(() => colsOf(booted.window, b.id), { timeout: 5000 }).toBeLessThan(80);
 
     // Switch to 'a' and wait for its DOM Terminal to hydrate. The switch (b → a)
     // must have appended 'a' to the refresh log — proof the auto-refresh fired
@@ -299,6 +316,10 @@ test('auto-refresh (default): every tab repaints on switch', async () => {
 
 // With `autoRefreshOnTabSwitch` explicitly false, only alternate-buffer tabs
 // are auto-refreshed — plain shells hydrate faithfully and are left alone.
+//
+// As above, the tabs are hidden across a host resize so that a repaint is
+// actually called for; an alt-screen frame that is still provably the pty's
+// screen is deliberately NOT nudged, because the dip would shear its bottom row.
 test('auto-refresh opt-out: alt-screen tab repaints on switch, plain shell does not', async () => {
   const booted = await bootApp({
     globalConfig: {
@@ -328,6 +349,15 @@ test('auto-refresh opt-out: alt-screen tab repaints on switch, plain shell does 
       timeout: 5000,
     });
     await waitForDomTerm(booted.window, sh.id);
+
+    // Resize the host while the TUI is hidden, so its snapshot geometry no
+    // longer matches what the promote fits it to and the frame genuinely needs
+    // repainting.
+    await booted.window.evaluate(() => {
+      const host = document.querySelector('.terminal-host') as HTMLElement | null;
+      if (host) host.style.width = '420px';
+    });
+    await expect.poll(() => colsOf(booted.window, sh.id), { timeout: 5000 }).toBeLessThan(80);
 
     // Switch to the plain shell: with the setting off it must NOT be refreshed.
     await booted.window.click(`[data-sid="${sh.id}"]`);
