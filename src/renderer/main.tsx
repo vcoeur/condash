@@ -24,6 +24,7 @@ import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
 import { usableActionTemplates } from './settings-modal-parts/data';
 import { getBootstrap } from './bootstrap';
+import { startRendererPerf } from './perf-renderer';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { createTreeExpansion } from './tree-expansion';
@@ -882,3 +883,8 @@ function App() {
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 render(() => <App />, root);
+
+// Follow main's performance-recording state. Inert unless recording is on, and
+// then one report per 2.5 s — the renderer half of the perf log, without which a
+// stall cannot be attributed to this process or to main.
+startRendererPerf();

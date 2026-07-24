@@ -19,6 +19,9 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
   clipboard: { readText: () => '' },
   app: { getPath: () => '/tmp/electron-app' },
+  // The toggle applies the pref through `syncPerfLogging`, which pushes the new
+  // recording state to every window so the renderer's own counters follow it.
+  BrowserWindow: { getAllWindows: () => [] },
 }));
 
 let tmp: string;

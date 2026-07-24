@@ -34,6 +34,7 @@ import type {
   StepMarker,
   SyncStatusSnapshot,
   PerfVitals,
+  RendererPerfReport,
   TabInfo,
   TaskConfigEntry,
   TaskRunGroup,
@@ -335,6 +336,14 @@ export interface CondashApi {
   /** Turn performance recording on or off, persisting `terminal.perf.enabled`
    *  and reopening the recorder. Returns the resulting vitals. */
   perfSetEnabled(enabled: boolean): Promise<PerfVitals>;
+  /** Ship one window of renderer counters into the main-process perf record.
+   *  Sent once per 2.5 s drain while recording — never per frame. The reply is
+   *  authoritative on whether to keep sampling, so the renderer stops on its own
+   *  if recording ended without a push arriving. */
+  perfRendererReport(report: RendererPerfReport): Promise<{ recording: boolean }>;
+  /** Subscribe to performance-recording state. Fires whenever main applies the
+   *  `terminal.perf.enabled` preference. Returns an unsubscribe function. */
+  onPerfState(callback: (state: { recording: boolean }) => void): () => void;
   termWrite(id: string, data: string): Promise<void>;
   /** Read the system clipboard via the main process. Used by the terminal's
    * Ctrl+V handler — the renderer's navigator.clipboard.readText() is

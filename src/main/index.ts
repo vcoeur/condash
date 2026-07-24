@@ -43,6 +43,7 @@ import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
 import { registerDashboardIpc } from './ipc/dashboard';
 import { registerAutoSyncIpc } from './ipc/auto-sync';
+import { instrumentIpcMain } from './ipc/instrument';
 
 // Unified-binary dispatch (v2.24.0). The Linux bash wrapper at
 // build/after-pack.cjs already routes CLI invocations to plain-Node mode
@@ -483,6 +484,9 @@ app.on('child-process-gone', (_event, details) => {
 });
 
 app.whenReady().then(async () => {
+  // Before the first registration: the wrapper only covers handlers registered
+  // after it is installed.
+  instrumentIpcMain();
   registerIpc();
   registerNoteAssetProtocol();
   // Warm the login-shell PATH cache so the first terminal / launcher spawn

@@ -136,4 +136,25 @@ describe('createTransitionBuffers', () => {
     expect(dom.written).toEqual(['A']);
     expect(buffers.take('b')).toBe('B');
   });
+
+  it('reports the parked char depth on each growth, for the perf counter', () => {
+    // The controller feeds this to the perf log as the peak buffer depth — the
+    // production evidence for the unbounded-growth hazard the cap addresses.
+    // Injected rather than imported so the module stays perf/DOM-free.
+    const depths: number[] = [];
+    const buffers = createTransitionBuffers((chars) => depths.push(chars));
+    buffers.buffer('a', 'one'); // 3
+    buffers.buffer('a', 'two'); // 6
+    buffers.restore('a', 'X'); // 7
+    // A flush/take/drop shrinks to zero and does not report — a peak observer
+    // only cares about growth.
+    buffers.flush('a', () => true);
+    expect(depths).toEqual([3, 6, 7]);
+  });
+
+  it('works without an observer (the default)', () => {
+    const buffers = createTransitionBuffers();
+    buffers.buffer('a', 'x');
+    expect(buffers.take('a')).toBe('x');
+  });
 });

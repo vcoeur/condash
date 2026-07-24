@@ -65,8 +65,17 @@ interface Parked {
   length: number;
 }
 
-/** Build an empty {@link TransitionBuffers}. */
-export function createTransitionBuffers(): TransitionBuffers {
+/**
+ * Build an empty {@link TransitionBuffers}.
+ *
+ * @param onDepth Optional observer called with a session's parked character
+ *   count after each growth (`buffer` / `restore`). The controller feeds it to
+ *   the perf log as the peak buffer depth — the production evidence for the
+ *   unbounded-growth hazard the {@link MAX_BUFFERED_CHARS} cap addresses.
+ *   Injected rather than imported so this module stays free of the renderer
+ *   perf singleton and unit-tests under the node env.
+ */
+export function createTransitionBuffers(onDepth?: (chars: number) => void): TransitionBuffers {
   const buffers = new Map<string, Parked>();
   /** Drop oldest-first until the session is back under the cap. Never evicts the
    *  only chunk: a single oversized chunk is one write, and losing it whole is
@@ -83,6 +92,7 @@ export function createTransitionBuffers(): TransitionBuffers {
       parked.length += chunk.length;
       evict(parked);
       buffers.set(id, parked);
+      onDepth?.(parked.length);
     },
     pending: (id) => (buffers.get(id)?.chunks.length ?? 0) > 0,
     restore: (id, data) => {
@@ -92,6 +102,7 @@ export function createTransitionBuffers(): TransitionBuffers {
       parked.length += data.length;
       evict(parked);
       buffers.set(id, parked);
+      onDepth?.(parked.length);
     },
     flush: (id, write) => {
       const parked = buffers.get(id);

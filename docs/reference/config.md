@@ -301,8 +301,63 @@ instrumentation is inert, so an ordinary run pays nothing.
 When enabled, condash appends one JSON record per sampling window (2.5 s — the same tick that drives
 the per-tab memory meter; recording adds no timer of its own). Each record carries event-loop delay
 percentiles for the main process and, per session, bytes and chunks read off the pty, time spent in
-the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, coalesced IPC
-batches, backpressure pauses, and the un-acked in-flight high-water mark.
+the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, the disk
+log's flush cost with its compose / encode breakdown, coalesced IPC batches, backpressure pauses, and
+the un-acked in-flight high-water mark.
+
+**Cost and elapsed are different fields, and only one of them is a cost.** `syncFlushMs` is the time
+a flush actually held the main thread — its synchronous stretches, summed — and is the field to weigh
+against `loop.max`. It contains `gridRenderMs` (which still covers `GridBodyRenderer.render()` and
+nothing else), `composeMs` (the file-text join) and `encodeMs` (the bookkeeping's second UTF-8
+encode of the same text). `flushMs` and `writeMs` are **elapsed** across the xterm drain and five
+libuv round trips, so they absorb whatever else the event loop is doing: the same 1 MB write measures
+2 ms on an idle loop and 209 ms behind an unrelated 26 ms-per-turn block, which is roughly the
+production median grid render. Use them for "how far behind the buffer did the log fall", never as
+main-thread cost, and never subtract them from `loop.max` — a session's flush elapsed can be
+dominated by a *different* session's work.
+
+Two blocks beyond the terminal byte path ride the same record:
+
+- **`main`** — spans for work outside the byte path (`dashRecentText`, `dashProvenance`,
+  `transcriptRead`, `repoRecompute`, `gitStatus`, `gitUpstream`, `gitDetails`), `ipcMain.handle`
+  dispatch time bucketed by channel, and GC pauses. **Only `transcriptRead` and `dashRecentText` are
+  synchronous end to end**; every other span is elapsed wall time, mostly subprocess or network wait
+  during which main is free, so read them as "this was in flight", not as delay to subtract. The
+  spans also **nest** — `repoRecompute` contains `gitStatus` and `gitUpstream`, `dashRecentText`
+  contains `transcriptRead` — and concurrent same-name spans overlap, so summing them double-counts.
+  `ipc.*.ms` is elapsed too, attributed to the window the handler *finished* in, and may exceed
+  `windowMs` (an LLM-backed handler is seconds long); the instrument's own `perfRendererReport`
+  channel is deliberately not timed. GC is reported as `{n, ms, maxMs}` **whenever the runtime can
+  observe it** — an absent `gc` block means unobservable, `n: 0` means no collection.
+- **`renderer`** — the renderer's own event-loop delay (computed by the same shared function main
+  uses, so the two are comparable), animation-frame counts including long frames, spans for the
+  visible tab's `term.write`, the tab-switch replay burst, the demote `serialize()`, the worker RPC
+  round trip and the mount, counters for demotes / promotes / RPC failures / writes into a collapsed
+  Code-pane row, and peaks (`maxima`) such as the transition buffer's depth. The write spans close on
+  xterm's completion callback, since `term.write` only queues the parse — they are elapsed until
+  processed, an upper bound on block time. The renderer drains on its own 2.5 s timer and sends **one
+  message per drain, and nothing at all for an empty window** — never per frame. `reports` says how
+  many drains merged into the window; counters sum, peaks take the max, and the loop percentiles are
+  the worst of them, never an average.
+
+**Renderer loop delay excludes hidden time.** Chromium throttles renderer timers to about 1 Hz while
+the window is occluded or minimised (`backgroundThrottling` is on), which would otherwise fill the
+file with ~990 ms "stalls" that never happened for as long as you look at another window. Samples
+taken while the page is hidden are discarded; `renderer.hiddenMs` says how much of the window was
+unmeasured for that reason, and `renderer.samples` says how many probe samples the percentiles rest
+on (~250 for a fully visible window). A window with a large `hiddenMs` is partly unmeasured, not
+quiet.
+
+**Which windows are recorded.** Every window with anything to report: a session that moved bytes, a
+timed span, an IPC dispatch, an observed GC, a renderer report carrying real activity, or an
+event-loop delay of 5 ms or more. Only a window idle on all of those is dropped, which is what keeps
+an idle app from writing a record every 2.5 s forever — the same 5 ms threshold governs the
+renderer's decision to send at all, because if it reported unconditionally the main-side gate could
+never fire. Until schema 3 the rule was "some session moved bytes", which discarded every stall that
+had no terminal work in it — 20 % of the ≥ 100 ms stalls in the 2026-07 baseline. **Records from
+before that change are not comparable**: a percentile taken over a schema-2 file is conditioned on a
+tab having been busy. The `schema` field discriminates, and `scripts/perf-load.mjs` refuses to
+aggregate across it.
 
 The event-loop delay is the most directly useful figure: main is a single thread shared by every
 terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
@@ -320,7 +375,10 @@ Record button. The pane also shows the live values; per-tab memory, growth rate,
 are shown there whether or not recording is on, since they come from the always-on sampler.
 
 Records are plain JSONL and are safe to delete. Recording accumulates roughly 10 MB/day with two
-active tabs and ~80 MB/day with twenty, so **condash prunes the directory for you**: a janitor runs
+active tabs and ~80 MB/day with twenty — plus, since schema 3, a ~300-byte record for each window
+that had non-terminal activity but no pty traffic (a git status, an IPC call, a stall). An app left
+open and genuinely untouched still writes nothing; one being used with no busy tab writes what its
+own watchers, IPC and stalls justify. So **condash prunes the directory for you**: a janitor runs
 at startup and every 24 h and deletes records older than **14 days**, then — while the directory is
 still over **200 MB** — the oldest remaining files until it is under. **The current day's file is
 never deleted**, since a live recorder is appending to it.

@@ -20,13 +20,38 @@
  *   the runtime maintains itself. It is the single highest-value counter here:
  *   it measures the reported symptom (UI lag) directly on the thread the audit
  *   identified as the bottleneck, rather than inferring it from a proxy.
+ *
+ * ## What schema 3 added, and why
+ *
+ * Re-reading 11.1 h of production records (2026-07-22 → 24) found the instrument
+ * blind in four directions, two of which changed what earlier records mean:
+ *
+ * 1. **The flush was measured in part** — `gridRenderMs` covers the grid render
+ *    and nothing after it, though the rest of a flush is O(retained size) too.
+ *    {@link PerfLog.recordFlush} adds the whole-flush span and its breakdown.
+ * 2. **Windows with no pty traffic were discarded**, which is exactly where the
+ *    unexplained stalls live — see {@link PerfLog.takeRecord}.
+ * 3. **Nothing outside the byte path was timed**: the dashboard summarizer, the
+ *    repo watchers, the git-status path, IPC dispatch, GC — see
+ *    {@link MainSpanName} and the `main` block.
+ * 4. **The renderer was invisible**, so no record could say whether a stall was
+ *    main's or the renderer's — see `src/renderer/perf-renderer.ts` and the
+ *    `renderer` block.
  */
 
 import { appendFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
-import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
+import {
+  monitorEventLoopDelay,
+  PerformanceObserver,
+  type IntervalHistogram,
+} from 'node:perf_hooks';
 import { dirname, join } from 'node:path';
 
-import type { PerfVitals } from '../shared/types';
+import {
+  delayAboveInterval,
+  IDLE_LOOP_MAX_MS as SHARED_IDLE_LOOP_MAX_MS,
+} from '../shared/loop-delay';
+import type { PerfVitals, RendererPerfReport } from '../shared/types';
 
 /** Per-session accumulators, reset on every flush. */
 interface SessionCounters {
@@ -42,6 +67,18 @@ interface SessionCounters {
   gridRenderNs: bigint;
   /** Grid-body renders performed (each walks the whole scrollback). */
   gridRenders: number;
+  /** Nanoseconds of ELAPSED time in the disk logger's flush, end to end. */
+  flushNs: bigint;
+  /** Nanoseconds the flush actually held the main thread. */
+  syncNs: bigint;
+  /** Disk-log flushes performed (a flush that did work, skip or write). */
+  flushes: number;
+  /** Nanoseconds spent joining the file text out of header + body + footer. */
+  composeNs: bigint;
+  /** Nanoseconds spent re-encoding the written text for the bookkeeping. */
+  encodeNs: bigint;
+  /** Nanoseconds spent in the write itself (open + write + rename). */
+  writeNs: bigint;
   /** Coalesced `termData` batches sent to the renderer. */
   batches: number;
   /** Times the pty was paused by backpressure. */
@@ -50,6 +87,125 @@ interface SessionCounters {
   watchdogs: number;
   /** Highest un-acked byte count seen this window. */
   inFlightPeak: number;
+}
+
+/**
+ * Sub-span breakdown of one disk-log flush, in nanoseconds.
+ *
+ * `gridRenderMs` measured only `GridBodyRenderer.render()`, but everything after
+ * it in the same flush is O(retained size) too — the compose join copies the
+ * whole body, `writeFile` encodes it to UTF-8, and the bookkeeping encodes it
+ * again. Reading the render span as "the cost of a flush" therefore understated
+ * it, and the parts an optimisation would remove sat entirely outside the
+ * measurement.
+ *
+ * **Two clocks, and only one of them is a cost.** `syncNs` is the thread-holding
+ * part — the answer to "how much of `loop.max` was this flush". `totalNs` is
+ * elapsed time across five libuv round trips, so it absorbs whatever *else* the
+ * loop is doing: measured in review on a 1.05 MB body, the same write took 2.0 ms
+ * on an idle loop and **209 ms** with an unrelated 26 ms block per turn — and 26
+ * ms is the production median grid render. Reading `totalNs` as cost would let
+ * session B's render inflate session A's flush and make "share of `loop.max`
+ * explained by measured work" approach 100 % by construction — the instrument
+ * confirming itself, which is the exact failure this instrument exists to
+ * prevent.
+ */
+export interface FlushSpans {
+  /** Elapsed wall time of the whole flush, entry to end of bookkeeping.
+   *  Includes queueing behind unrelated event-loop work. Never subtract it from
+   *  or compare it against `loop.max`. */
+  totalNs: bigint;
+  /** Main-thread block time of the flush: every synchronous stretch between its
+   *  awaits, summed. This is the flush's cost, and the superset of
+   *  `gridRenderNs + composeNs + encodeNs`. */
+  syncNs: bigint;
+  /** `composeFileContent`'s join. Synchronous. */
+  composeNs: bigint;
+  /** The bookkeeping's re-encode of the written text, plus the incremental
+   *  append's encode. Synchronous. */
+  encodeNs: bigint;
+  /** The write proper: mkdir + open + writeFile (+ fsync) + rename, or the
+   *  incremental append. **Elapsed**, not cost — mostly libuv round trips, and
+   *  inflated by unrelated loop work exactly as `totalNs` is. The calling
+   *  thread's own encode inside `writeFile` is real block time but is not
+   *  separable from the outside; `encodeNs` measures a same-sized encode. */
+  writeNs: bigint;
+}
+
+/**
+ * Main-thread work outside the terminal byte path, named for the record.
+ *
+ * 20 % of the ≥ 100 ms stalls in the 2026-07-22→24 dataset contain under 1 ms of
+ * measured terminal work, so the instrument could see that they happened but
+ * never what they were. A closed union rather than a free string: the field set
+ * of a record is then a documented list, and a typo at a call site is a compile
+ * error instead of a phantom series.
+ *
+ * **Every span is elapsed wall time**, not event-loop block time. `gitStatus`
+ * spends most of its span waiting on a subprocess, during which main is free.
+ * Two spans — `transcriptRead` and `dashRecentText` (which contains it) — are
+ * synchronous end to end and so *are* block time; every other one is "this work
+ * was in flight during this window", to be correlated with `loop.max`, never
+ * subtracted from it.
+ *
+ * **The spans nest and may overlap, so `sum(main.spans.*.ms)` double-counts.**
+ * `repoRecompute` contains `gitStatus` and `gitUpstream`; `dashRecentText`
+ * contains `transcriptRead`. Concurrent same-name spans (five repos recomputing
+ * at once) also sum past `windowMs`. Read them per name, not as a total.
+ */
+export type MainSpanName =
+  /** `tabRecentText` — the summarizer's per-tab text assembly (sidecar read,
+   *  transcript tail render, or ANSI clean of the raw buffer). **Synchronous end
+   *  to end**, and contains `transcriptRead`.
+   *
+   *  There is deliberately no span for the dashboard *tick* as a whole: its wall
+   *  time is dominated by the LLM round-trip, so it would report seconds of
+   *  network latency in a field read as main-thread cost. The tick's blocking
+   *  parts are this span and `dashProvenance`. */
+  | 'dashRecentText'
+  /** `deriveProvenance` — the config walk plus the serial README header reads. */
+  | 'dashProvenance'
+  /** `readFileTranscript` — the blocking `readSync` of a tab's sidecar.
+   *  Synchronous; nested inside `dashRecentText` on the dashboard path. */
+  | 'transcriptRead'
+  /** A repo watcher's debounced recompute. **Contains** `gitStatus` and
+   *  `gitUpstream` — the same wall time appears in all three buckets. */
+  | 'repoRecompute'
+  /** A `git status` cache miss. */
+  | 'gitStatus'
+  /** An upstream-tracking cache miss (two more git spawns). */
+  | 'gitUpstream'
+  /** The Code pane's per-file dirty details (`git status` + `diff --numstat`). */
+  | 'gitDetails';
+
+/** Accumulated wall time and call count for one span name or IPC channel. */
+interface SpanTotals {
+  ns: bigint;
+  n: number;
+}
+
+/** GC pauses observed over the window, via `PerformanceObserver`. */
+interface GcTotals {
+  n: number;
+  ms: number;
+  maxMs: number;
+}
+
+/** Renderer-side counters merged from `perfRendererReport` messages. */
+interface RendererTotals {
+  reports: number;
+  windowMs: number;
+  loopP50: number;
+  loopP99: number;
+  loopMax: number;
+  samples: number;
+  hiddenMs: number;
+  frames: number;
+  longFrames: number;
+  frameMaxMs: number;
+  spans: Map<string, SpanTotals>;
+  counts: Map<string, number>;
+  maxima: Map<string, number>;
 }
 
 /** One flushed record. Shape is the on-disk contract for `.condash/perf/`. */
@@ -72,8 +228,16 @@ export interface PerfRecord {
   loop: { p50: number; p99: number; max: number };
   /** Main-process heap use at flush time, in bytes. */
   heapUsed: number;
-  /** Live sessions with any activity this window, keyed by session id. */
+  /** Live sessions with any activity this window, keyed by session id. Empty
+   *  for a window in which no session moved bytes — those windows are recorded
+   *  too (see {@link PerfLog.takeRecord}). */
   sessions: Record<string, SessionRecord>;
+  /** Main-thread work outside the terminal byte path. Omitted when nothing was
+   *  timed and GC could not be observed. */
+  main?: MainRecord;
+  /** Renderer-side counters, present when the renderer reported at least once
+   *  in this window. */
+  renderer?: RendererRecord;
 }
 
 /** Per-session slice of a flushed record; zero-valued fields are omitted. */
@@ -84,10 +248,60 @@ export interface SessionRecord {
   logParseMs?: number;
   gridRenderMs?: number;
   gridRenders?: number;
+  /** **The flush's cost**: main-thread block time, summed over the flush's
+   *  synchronous stretches. Superset of `gridRenderMs + composeMs + encodeMs`.
+   *  This is the field to read against `loop.max`. */
+  syncFlushMs?: number;
+  /** **Elapsed** wall time of the flush, across five libuv round trips — so it
+   *  includes queueing behind unrelated event-loop work and can exceed the
+   *  flush's own cost by 100× under load. Useful for "how long did the log lag
+   *  the buffer", useless as main-thread cost. See {@link FlushSpans}. */
+  flushMs?: number;
+  flushes?: number;
+  composeMs?: number;
+  encodeMs?: number;
+  /** Elapsed, like `flushMs` — mostly libuv round trips. Not block time. */
+  writeMs?: number;
   batches?: number;
   pauses?: number;
   watchdogs?: number;
   inFlightPeak?: number;
+}
+
+/** Accumulated wall time (ms) and call count for one span. */
+export interface SpanRecord {
+  ms: number;
+  n: number;
+}
+
+/** Main-thread work outside the terminal byte path, for one window. */
+export interface MainRecord {
+  /** Named spans (see {@link MainSpanName}); only those that ran are present.
+   *  They nest and may overlap — do not sum them. */
+  spans?: Record<string, SpanRecord>;
+  /** `ipcMain.handle` dispatch **elapsed** time, bucketed by channel.
+   *
+   *  Wall clock across the whole handler, attributed to the window it *finished*
+   *  in — so `dashboardTestConnection` (an LLM round trip) or `autoSyncNow` (a
+   *  git sweep) can report several seconds inside a 2500 ms window. `ms` may
+   *  exceed `windowMs`; that is the handler waiting, not main blocking. The
+   *  instrument's own transport (`perfRendererReport`) is excluded, since a
+   *  measurement of itself is not a measurement of the app. */
+  ipc?: Record<string, SpanRecord>;
+  /** GC pauses observed this window. **Absent means unobservable**, not zero:
+   *  the block is emitted (with `n: 0`) whenever the observer is installed, so
+   *  a reader can tell "no GC" from "no GC observer". */
+  gc?: GcTotals;
+}
+
+/** Renderer-side counters for one window, merged from the renderer's reports. */
+export interface RendererRecord extends RendererPerfReport {
+  /** Renderer reports merged into this record. Normally 1 — the renderer drains
+   *  on the same 2.5 s cadence main flushes on, but the two clocks are
+   *  independent, so a window can hold 0 or 2. With more than one, the counters
+   *  are summed and the loop percentiles are the WORST of the merged reports,
+   *  never an average. */
+  reports: number;
 }
 
 const emptyCounters = (): SessionCounters => ({
@@ -97,10 +311,32 @@ const emptyCounters = (): SessionCounters => ({
   logParseNs: 0n,
   gridRenderNs: 0n,
   gridRenders: 0,
+  flushNs: 0n,
+  syncNs: 0n,
+  flushes: 0,
+  composeNs: 0n,
+  encodeNs: 0n,
+  writeNs: 0n,
   batches: 0,
   pauses: 0,
   watchdogs: 0,
   inFlightPeak: 0,
+});
+
+const emptyRendererTotals = (): RendererTotals => ({
+  reports: 0,
+  windowMs: 0,
+  loopP50: 0,
+  loopP99: 0,
+  loopMax: 0,
+  samples: 0,
+  hiddenMs: 0,
+  frames: 0,
+  longFrames: 0,
+  frameMaxMs: 0,
+  spans: new Map(),
+  counts: new Map(),
+  maxima: new Map(),
 });
 
 /** Nanoseconds → milliseconds, rounded to 3 decimals. Undefined for zero so a
@@ -113,6 +349,28 @@ function ms(ns: bigint): number | undefined {
 /** Drop zero-valued optional fields so a record stays readable and small. */
 function positive(value: number): number | undefined {
   return value > 0 ? value : undefined;
+}
+
+/** Add one observation to a span bucket, creating it on first use. */
+function addSpan(buckets: Map<string, SpanTotals>, key: string, ns: bigint): void {
+  const entry = buckets.get(key);
+  if (entry) {
+    entry.ns += ns;
+    entry.n += 1;
+    return;
+  }
+  buckets.set(key, { ns, n: 1 });
+}
+
+/** Render span buckets for the record, or undefined when nothing ran — an empty
+ *  object on every line would cost more than it says. */
+function spanRecords(buckets: Map<string, SpanTotals>): Record<string, SpanRecord> | undefined {
+  if (buckets.size === 0) return undefined;
+  const out: Record<string, SpanRecord> = {};
+  for (const [key, totals] of buckets) {
+    out[key] = { ms: Math.round(Number(totals.ns) / 1e3) / 1e3, n: totals.n };
+  }
+  return out;
 }
 
 /** Strip undefined-valued keys, so an absent counter is genuinely absent from
@@ -130,12 +388,39 @@ function omitUndefined<T extends Record<string, number | undefined>>(
 /** Current `PerfRecord.schema`. Bump whenever the MEANING of a recorded field
  *  changes, not merely when one is added — v2 exists because `loop` switched
  *  from a raw histogram reading to delay above the sampler's interval, which is
- *  invisible in the shape but makes the two incomparable. */
-export const PERF_SCHEMA_VERSION = 2;
+ *  invisible in the shape but makes the two incomparable.
+ *
+ *  v3 changes the meaning of the record SET rather than of any one field: v2
+ *  emitted a record only when some session moved bytes, so every per-window
+ *  distribution taken over a v2 file is conditioned on "a tab was talking".
+ *  v3 emits a record for any window worth reporting, including ones with no
+ *  terminal traffic at all — exactly the population the unexplained stalls live
+ *  in. Mixing the two silently changes what a percentile is over. */
+export const PERF_SCHEMA_VERSION = 3;
+
+/**
+ * Loop-delay floor below which a window with no counted activity is dropped.
+ *
+ * v2 discarded every window in which no session moved bytes, which censored the
+ * 20 % of ≥ 100 ms stalls that contain no terminal work — the ones C3's spans
+ * exist to name. So the rule inverts: a window is emitted whenever there is
+ * anything to report, and the ONLY suppression left is a window that is idle on
+ * every counter AND whose worst loop delay is under this bound. At 2.5 s per
+ * window a fully idle app would otherwise write ~35 k records/day (~11 MB); with
+ * it, an idle app writes nothing and a stalling one writes everything.
+ *
+ * The same bound governs the renderer's drain — see `shared/loop-delay.ts`. The
+ * two decisions compose, and the first version of this gate was unreachable
+ * precisely because they did not: the renderer sent a report every window, and a
+ * report was activity.
+ */
+const IDLE_LOOP_MAX_MS = SHARED_IDLE_LOOP_MAX_MS;
 
 /** Sampling resolution (ms) of the event-loop histogram — and, crucially, the
- *  floor it reports. See {@link loopDelayMs}. */
-const LOOP_RESOLUTION_MS = 10;
+ *  floor it reports. See {@link loopDelayMs}. Exported so a test asserts against
+ *  the real bound rather than a hardcoded twin that would silently stop
+ *  discriminating if the resolution ever changed. */
+export const LOOP_RESOLUTION_MS = 10;
 
 /**
  * Convert a raw histogram reading (ns) to milliseconds of delay **in excess of
@@ -167,9 +452,8 @@ const LOOP_RESOLUTION_MS = 10;
  * @returns Milliseconds of delay above the sampling interval, floored at 0 and
  *   rounded to microsecond precision.
  */
-function loopDelayMs(nanoseconds: number): number {
-  const rawMs = nanoseconds / 1e6;
-  return Math.max(0, Math.round((rawMs - LOOP_RESOLUTION_MS) * 1e3) / 1e3);
+export function loopDelayMs(nanoseconds: number): number {
+  return delayAboveInterval(nanoseconds / 1e6, LOOP_RESOLUTION_MS);
 }
 
 /**
@@ -187,6 +471,15 @@ export class PerfLog {
   private conceptionPath: string | undefined;
   /** Set once a write fails, so a broken path doesn't retry every flush. */
   private writeFailed = false;
+  /** Named main-thread spans for the window, keyed by {@link MainSpanName}. */
+  private mainSpans = new Map<string, SpanTotals>();
+  /** `ipcMain.handle` dispatch time for the window, keyed by channel. */
+  private ipcSpans = new Map<string, SpanTotals>();
+  /** GC pauses for the window; undefined while no observer is installed. */
+  private gc: GcTotals | undefined;
+  private gcObserver: PerformanceObserver | undefined;
+  /** Renderer reports merged since the last record. */
+  private renderer: RendererTotals | undefined;
 
   /**
    * @param now Injectable clock, for deterministic tests.
@@ -218,10 +511,49 @@ export class PerfLog {
       this.histogram = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
       this.histogram.enable();
       this.windowStart = this.now().getTime();
+      this.observeGc();
     } else {
       this.histogram?.disable();
       this.histogram = undefined;
       this.counters.clear();
+      this.mainSpans.clear();
+      this.ipcSpans.clear();
+      this.renderer = undefined;
+      this.gcObserver?.disconnect();
+      this.gcObserver = undefined;
+      this.gc = undefined;
+    }
+  }
+
+  /**
+   * Start observing GC pauses, if the runtime exposes them.
+   *
+   * GC was the one cost the 2026-07-21 audit named and never measured: a major
+   * collection blocks the same thread every terminal tab shares, and nothing in
+   * the instrument could see it. `PerformanceObserver` reports each pause after
+   * the fact, at no cost to the collection itself.
+   *
+   * Failure is silent but *visible in the data*: with no observer the record
+   * carries no `main.gc` block at all, which a reader must not confuse with a
+   * window that had no GC (that reads `n: 0`).
+   */
+  private observeGc(): void {
+    if (this.gcObserver) return;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        const gc = this.gc;
+        if (!gc) return;
+        for (const entry of list.getEntries()) {
+          gc.n += 1;
+          gc.ms += entry.duration;
+          if (entry.duration > gc.maxMs) gc.maxMs = entry.duration;
+        }
+      });
+      observer.observe({ entryTypes: ['gc'] });
+      this.gcObserver = observer;
+      this.gc = { n: 0, ms: 0, maxMs: 0 };
+    } catch {
+      // No 'gc' entry type on this runtime — records simply carry no gc block.
     }
   }
 
@@ -286,6 +618,106 @@ export class PerfLog {
     c.gridRenders += 1;
   }
 
+  /**
+   * Record one disk-log flush, whole-span plus the sub-spans inside it.
+   *
+   * Sibling of `recordGridRender` rather than a replacement for it: 11 h of
+   * baseline is keyed to `gridRenderMs` meaning exactly `GridBodyRenderer`, so
+   * widening that field in place would have made the series incomparable across
+   * the change. `syncFlushMs` is the cost superset — `syncFlushMs −
+   * gridRenderMs − composeMs − encodeMs` is the flush's unattributed block time
+   * (the guards, the header compose, the bookkeeping). `flushMs` is elapsed and
+   * is a different quantity entirely; see {@link FlushSpans}.
+   *
+   * @param id Session id.
+   * @param spans The flush's timing breakdown.
+   */
+  recordFlush(id: string, spans: FlushSpans): void {
+    if (!this.enabled) return;
+    const c = this.forSession(id);
+    c.flushNs += spans.totalNs;
+    c.syncNs += spans.syncNs;
+    c.flushes += 1;
+    c.composeNs += spans.composeNs;
+    c.encodeNs += spans.encodeNs;
+    c.writeNs += spans.writeNs;
+  }
+
+  /**
+   * Open a wall-clock span.
+   *
+   * @returns A start stamp to hand back to {@link endSpan} / {@link endIpc}, or
+   *   `0n` while disabled — which makes the matching end call a no-op, so a call
+   *   site needs no `isEnabled()` branch of its own.
+   */
+  startSpan(): bigint {
+    return this.enabled ? process.hrtime.bigint() : 0n;
+  }
+
+  /**
+   * Close a span opened by {@link startSpan} and add it to the window.
+   *
+   * @param name Which span (see {@link MainSpanName}).
+   * @param start The stamp {@link startSpan} returned; `0n` records nothing.
+   */
+  endSpan(name: MainSpanName, start: bigint): void {
+    if (start === 0n || !this.enabled) return;
+    addSpan(this.mainSpans, name, process.hrtime.bigint() - start);
+  }
+
+  /**
+   * Close an `ipcMain.handle` dispatch span, bucketed by channel.
+   *
+   * @param channel The IPC channel that was dispatched.
+   * @param start The stamp {@link startSpan} returned; `0n` records nothing.
+   */
+  endIpc(channel: string, start: bigint): void {
+    if (start === 0n || !this.enabled) return;
+    addSpan(this.ipcSpans, channel, process.hrtime.bigint() - start);
+  }
+
+  /**
+   * Merge one renderer report into the window.
+   *
+   * The renderer drains on its own 2.5 s timer, so a main window usually holds
+   * exactly one report but may hold none or two. Counters sum; the loop
+   * percentiles take the worst of the merged reports rather than an average,
+   * because averaging percentiles is meaningless and the number this exists to
+   * answer — "was the renderer stalled?" — must not be diluted by a quiet
+   * neighbour.
+   *
+   * @param report The renderer's counters since its previous drain.
+   */
+  recordRendererReport(report: RendererPerfReport): void {
+    if (!this.enabled) return;
+    const totals = (this.renderer ??= emptyRendererTotals());
+    totals.reports += 1;
+    totals.windowMs += report.windowMs;
+    totals.loopP50 = Math.max(totals.loopP50, report.loop.p50);
+    totals.loopP99 = Math.max(totals.loopP99, report.loop.p99);
+    totals.loopMax = Math.max(totals.loopMax, report.loop.max);
+    totals.samples += report.samples;
+    totals.hiddenMs += report.hiddenMs;
+    totals.frames += report.frames;
+    totals.longFrames += report.longFrames;
+    totals.frameMaxMs = Math.max(totals.frameMaxMs, report.frameMaxMs);
+    for (const [name, span] of Object.entries(report.spans ?? {})) {
+      const entry = totals.spans.get(name) ?? { ns: 0n, n: 0 };
+      entry.ns += BigInt(Math.round(span.ms * 1e6));
+      entry.n += span.n;
+      totals.spans.set(name, entry);
+    }
+    for (const [name, count] of Object.entries(report.counts ?? {})) {
+      totals.counts.set(name, (totals.counts.get(name) ?? 0) + count);
+    }
+    // Peaks merge by max — summing two windows' buffer depths would report a
+    // depth that never existed.
+    for (const [name, peak] of Object.entries(report.maxima ?? {})) {
+      const seen = totals.maxima.get(name);
+      if (seen === undefined || peak > seen) totals.maxima.set(name, peak);
+    }
+  }
+
   /** Record a coalesced `termData` batch leaving main. */
   recordBatch(id: string, inFlight: number): void {
     if (!this.enabled) return;
@@ -312,19 +744,38 @@ export class PerfLog {
    * Exposed separately from `flush` so tests can assert the shape without
    * touching disk.
    *
-   * @returns The record, or undefined when disabled or nothing happened.
+   * A window is recorded whenever there is **anything** to report — a session
+   * that moved bytes, a timed main-thread span, an IPC dispatch, an observed GC,
+   * a renderer report, or a loop delay at or above {@link IDLE_LOOP_MAX_MS}.
+   * Only a window that is idle on every one of those is dropped. Until v3 the
+   * gate was "some session moved bytes", which threw away every stall that had
+   * no terminal work in it — 20 % of the ≥ 100 ms stalls in the baseline, and
+   * precisely the ones nothing else could explain.
+   *
+   * @returns The record, or undefined when disabled or the window was idle.
    */
   takeRecord(): PerfRecord | undefined {
     if (!this.enabled || !this.histogram) return undefined;
     const at = this.now();
-    if (this.counters.size === 0) {
+    const loop = {
+      p50: loopDelayMs(this.histogram.percentile(50)),
+      p99: loopDelayMs(this.histogram.percentile(99)),
+      max: loopDelayMs(this.histogram.max),
+    };
+    const idle =
+      this.counters.size === 0 &&
+      this.mainSpans.size === 0 &&
+      this.ipcSpans.size === 0 &&
+      (this.gc?.n ?? 0) === 0 &&
+      this.rendererIsIdle() &&
+      loop.max < IDLE_LOOP_MAX_MS;
+    if (idle) {
       // Nothing to record, but the window must still close. Leaving the
       // histogram un-reset let one spike (a GC pause, a git-status stall) sit in
       // `max` indefinitely once tabs went quiet — so the pane's headline number
       // was least trustworthy exactly when the app was idle enough to read it —
       // and made the next record's `windowMs` span the whole idle stretch.
-      this.histogram.reset();
-      this.windowStart = at.getTime();
+      this.resetWindow(at);
       return undefined;
     }
     const sessions: Record<string, SessionRecord> = {};
@@ -341,6 +792,12 @@ export class PerfLog {
           logParseMs: ms(c.logParseNs),
           gridRenderMs: ms(c.gridRenderNs),
           gridRenders: positive(c.gridRenders),
+          syncFlushMs: ms(c.syncNs),
+          flushMs: ms(c.flushNs),
+          flushes: positive(c.flushes),
+          composeMs: ms(c.composeNs),
+          encodeMs: ms(c.encodeNs),
+          writeMs: ms(c.writeNs),
           batches: positive(c.batches),
           pauses: positive(c.pauses),
           watchdogs: positive(c.watchdogs),
@@ -348,22 +805,101 @@ export class PerfLog {
         }),
       };
     }
+    const main = this.takeMainRecord();
+    const renderer = this.takeRendererRecord();
     const record: PerfRecord = {
       schema: PERF_SCHEMA_VERSION,
       t: at.toISOString(),
       windowMs: at.getTime() - this.windowStart,
-      loop: {
-        p50: loopDelayMs(this.histogram.percentile(50)),
-        p99: loopDelayMs(this.histogram.percentile(99)),
-        max: loopDelayMs(this.histogram.max),
-      },
+      loop,
       heapUsed: process.memoryUsage().heapUsed,
       sessions,
+      ...(main ? { main } : {}),
+      ...(renderer ? { renderer } : {}),
     };
-    this.counters.clear();
-    this.histogram.reset();
-    this.windowStart = at.getTime();
+    this.resetWindow(at);
     return record;
+  }
+
+  /**
+   * Whether the renderer's merged block says nothing happened.
+   *
+   * The renderer already withholds an empty drain, but the idle gate must not
+   * depend on that: the first version of this code treated *any* report as
+   * activity, and since the renderer reported unconditionally the gate could
+   * never fire — an idle app wrote ~11 MB/day of records saying nothing had
+   * happened, while three separate docs claimed it wrote nothing. Applying the
+   * same threshold on both sides makes the property hold whichever side is
+   * older.
+   */
+  private rendererIsIdle(): boolean {
+    const totals = this.renderer;
+    if (!totals) return true;
+    return (
+      totals.loopMax < IDLE_LOOP_MAX_MS &&
+      totals.longFrames === 0 &&
+      totals.spans.size === 0 &&
+      totals.counts.size === 0 &&
+      totals.maxima.size === 0
+    );
+  }
+
+  /** Close the window: drop the accumulators, reset the histogram, restamp the
+   *  start. Shared by the recorded and the suppressed-idle paths so the two can
+   *  never diverge on what "the window ended" means. */
+  private resetWindow(at: Date): void {
+    this.counters.clear();
+    this.mainSpans.clear();
+    this.ipcSpans.clear();
+    this.renderer = undefined;
+    if (this.gc) this.gc = { n: 0, ms: 0, maxMs: 0 };
+    this.histogram?.reset();
+    this.windowStart = at.getTime();
+  }
+
+  /** The window's `main` block, or undefined when nothing was timed and GC is
+   *  unobservable. */
+  private takeMainRecord(): MainRecord | undefined {
+    const spans = spanRecords(this.mainSpans);
+    const ipc = spanRecords(this.ipcSpans);
+    if (!spans && !ipc && !this.gc) return undefined;
+    return {
+      ...(spans ? { spans } : {}),
+      ...(ipc ? { ipc } : {}),
+      // Emitted even at n: 0 — see MainRecord.gc. Rounded so a record does not
+      // carry sixteen digits of float noise per window.
+      ...(this.gc
+        ? {
+            gc: {
+              n: this.gc.n,
+              ms: Math.round(this.gc.ms * 1e3) / 1e3,
+              maxMs: Math.round(this.gc.maxMs * 1e3) / 1e3,
+            },
+          }
+        : {}),
+    };
+  }
+
+  /** The window's `renderer` block, or undefined when the renderer did not
+   *  report (recording off on that side, or no window yet). */
+  private takeRendererRecord(): RendererRecord | undefined {
+    const totals = this.renderer;
+    if (!totals) return undefined;
+    const spans = spanRecords(totals.spans);
+    const counts = Object.fromEntries(totals.counts);
+    return {
+      reports: totals.reports,
+      windowMs: totals.windowMs,
+      loop: { p50: totals.loopP50, p99: totals.loopP99, max: totals.loopMax },
+      samples: totals.samples,
+      hiddenMs: totals.hiddenMs,
+      frames: totals.frames,
+      longFrames: totals.longFrames,
+      frameMaxMs: totals.frameMaxMs,
+      ...(spans ? { spans } : {}),
+      ...(Object.keys(counts).length > 0 ? { counts } : {}),
+      ...(totals.maxima.size > 0 ? { maxima: Object.fromEntries(totals.maxima) } : {}),
+    };
   }
 
   /**

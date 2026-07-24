@@ -109,6 +109,14 @@ const api: CondashApi = {
   termRestart: (id) => ipcRenderer.invoke('termRestart', id),
   perfVitals: () => ipcRenderer.invoke('perfVitals'),
   perfSetEnabled: (enabled) => ipcRenderer.invoke('perfSetEnabled', enabled),
+  perfRendererReport: (report) => ipcRenderer.invoke('perfRendererReport', report),
+  onPerfState: (callback) => {
+    const handler = (_: unknown, state: { recording: boolean }): void => callback(state);
+    ipcRenderer.on(EVENT_CHANNELS.perfState, handler);
+    return () => {
+      ipcRenderer.removeListener(EVENT_CHANNELS.perfState, handler);
+    };
+  },
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
   clipboardReadText: () => ipcRenderer.invoke('clipboardReadText'),
   termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),

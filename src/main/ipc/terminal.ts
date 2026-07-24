@@ -27,6 +27,7 @@ import {
   requireNonEmptyString,
   requireRecord,
 } from './utils';
+import { decodeRendererReport } from './perf-report-decode';
 
 /** The two terminal sides a session can live on — the allow-set for the
  *  `termSetSide` enum decoder. */
@@ -56,6 +57,17 @@ export function registerTerminalIpc(): void {
     const { lastConceptionPath } = await readSettings();
     await syncPerfLogging(lastConceptionPath);
     return readVitals(perfLog);
+  });
+
+  // One message per renderer drain window (2.5 s), never per frame — see
+  // `perf-renderer.ts`. The reply is the renderer's authority on whether to keep
+  // sampling, so a recording that stopped without its push landing (a window
+  // created after the broadcast, a dropped event) still winds the renderer down.
+  ipcMain.handle('perfRendererReport', (event, report: unknown) => {
+    requireMainWindowSender(event);
+    const decoded = decodeRendererReport(report);
+    if (decoded) perfLog.recordRendererReport(decoded);
+    return { recording: perfLog.isEnabled() };
   });
 
   ipcMain.handle('termRestart', async (event, id: unknown) => {

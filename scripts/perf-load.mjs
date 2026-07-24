@@ -1291,8 +1291,15 @@ async function readPerfRecords(conceptionPath) {
   }
 }
 
-/** Records this harness knows how to compare. See `PERF_SCHEMA_VERSION`. */
-const EXPECTED_SCHEMA = 2;
+/** Records this harness knows how to compare. See `PERF_SCHEMA_VERSION`.
+ *
+ *  v3 also emits windows in which no session moved bytes (v2 discarded them), so
+ *  a v3 file can contain records whose `sessions` map is empty. Every total
+ *  below sums per-session fields, so those windows contribute zero and change no
+ *  ms/render figure — but they DO enter `records.length` and the loop-p99
+ *  distribution. Under a load profile every window carries traffic, so this is
+ *  inert here; it is not inert for an idle capture. */
+const EXPECTED_SCHEMA = 3;
 
 /** Fewest post-saturation renders that may back a steady-state ms/render.
  *  One render per 5 s flush per tab, so a 60 s single-tab realistic run
@@ -1381,7 +1388,8 @@ function summarise(records, { profile, rate, tabs, durationMs }) {
   if (skipped > 0) {
     console.warn(
       `[perf-load] skipped ${skipped} record(s) not at schema ${EXPECTED_SCHEMA} ` +
-        `— pre-v4.97 loop values are offset by the sampler resolution and are not comparable.`,
+        `— pre-v4.97 loop values are offset by the sampler resolution, and schema-2 files ` +
+        `hold only windows in which a session moved bytes. Neither is comparable with v3.`,
     );
   }
   records = usable;

@@ -57,6 +57,7 @@ import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
 import { reportWatcherError } from './watcher-status';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
+import { perfLog } from './perf-log';
 import { buildGitignoreMatcher, readRuleText, type GitignoreMatcher } from './gitignore-matcher';
 
 const execFileAsync = promisify(execFile);
@@ -186,18 +187,27 @@ function broadcast(events: RepoEvent[]): void {
 }
 
 async function recomputeAndEmit(target: WatchedPath): Promise<void> {
-  invalidateForPath(target.path);
-  // Run dirty + upstream in parallel — they hit different git plumbing
-  // commands and don't share state. Both broadcasts go out together so
-  // the renderer patches once, not twice.
-  const [dirty, upstream] = await Promise.all([
-    getDirtyCount(target.path, target.scopeToSubtree ? { scopeToSubtree: true } : {}),
-    getUpstreamStatus(target.path),
-  ]);
-  broadcast([
-    { kind: 'repo-dirty', path: target.path, dirty },
-    { kind: 'repo-upstream', path: target.path, upstream },
-  ]);
+  const span = perfLog.startSpan();
+  try {
+    invalidateForPath(target.path);
+    // Run dirty + upstream in parallel — they hit different git plumbing
+    // commands and don't share state. Both broadcasts go out together so
+    // the renderer patches once, not twice.
+    const [dirty, upstream] = await Promise.all([
+      getDirtyCount(target.path, target.scopeToSubtree ? { scopeToSubtree: true } : {}),
+      getUpstreamStatus(target.path),
+    ]);
+    broadcast([
+      { kind: 'repo-dirty', path: target.path, dirty },
+      { kind: 'repo-upstream', path: target.path, upstream },
+    ]);
+  } finally {
+    // In a `finally` like every other span site: the caller fires this as
+    // `void recomputeAndEmit(...)` with no catch, so a rejection would
+    // otherwise drop the span silently — losing exactly the slow recomputes
+    // that failed.
+    perfLog.endSpan('repoRecompute', span);
+  }
 }
 
 function scheduleRecompute(target: WatchedPath): void {

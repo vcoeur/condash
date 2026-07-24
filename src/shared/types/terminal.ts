@@ -222,6 +222,61 @@ export interface PerfVitals {
   heapUsed: number;
 }
 
+/**
+ * Renderer-side counters for one drain window, shipped to main and merged into
+ * the same JSONL record as the main-process ones.
+ *
+ * Until this existed the perf log could not see the renderer at all, so a user's
+ * report of "lag" could not be attributed to the main process or to the renderer
+ * — the single biggest blind spot the 2026-07-24 review found. The renderer
+ * drains on the same 2.5 s cadence main flushes on and sends **one** message per
+ * drain; nothing here is reported per frame.
+ */
+export interface RendererPerfReport {
+  /** Milliseconds covered by this report. */
+  windowMs: number;
+  /** Renderer event-loop delay (ms) in excess of the probe's own interval — the
+   *  renderer mirror of the main process's `monitorEventLoopDelay` reading,
+   *  computed by the same shared function so the two are directly comparable.
+   *
+   *  **Samples taken while the page was hidden are excluded.** Chromium throttles
+   *  renderer timers to ~1 Hz for an occluded window (`backgroundThrottling`
+   *  defaults on), which would otherwise report ~990 ms of delay that never
+   *  happened for as long as the user looks at another window. Check `hiddenMs`
+   *  and `samples` before reading a window as representative. */
+  loop: { p50: number; p99: number; max: number };
+  /** Loop samples behind `loop`. At a 10 ms probe a full 2.5 s window holds
+   *  ~250; materially fewer means the window was partly hidden or the probe
+   *  itself was starved, and the percentiles are over that much less. */
+  samples: number;
+  /** Milliseconds of this window the page spent hidden. Non-zero means part of
+   *  the window is unmeasured on this side (no probe samples, no frames) — not
+   *  that the renderer was idle. */
+  hiddenMs: number;
+  /** Animation frames observed. Zero while the window is occluded — the browser
+   *  stops firing `requestAnimationFrame` — which is a real state, not a stall.
+   *
+   *  This counts the **instrument's own** frame chain, which runs continuously
+   *  while recording: it is a measure of whether frames were being served and
+   *  how long the gaps were, not of how often condash chose to paint. */
+  frames: number;
+  /** Frames whose gap reached the long-task threshold (50 ms). */
+  longFrames: number;
+  /** Longest frame gap (ms) in the window. */
+  frameMaxMs: number;
+  /** Named renderer spans (xterm write, demote serialize, worker RPC, mount),
+   *  as accumulated wall time and call count. Elapsed, not block time: the xterm
+   *  write span closes on the parser's completion callback and so includes the
+   *  parser's own 12 ms yields. */
+  spans?: Record<string, { ms: number; n: number }>;
+  /** Named renderer events (demotes, promotes, worker RPC timeouts, writes into
+   *  a collapsed Code-pane row). Summed when two reports merge. */
+  counts?: Record<string, number>;
+  /** Named peaks — levels whose maximum is the interesting value, not their sum
+   *  (the transition buffer's depth). Merged with `max`, never added. */
+  maxima?: Record<string, number>;
+}
+
 /** Main-process performance recording. Off by default, like disk logging: while
  * disabled every instrumentation entry point is an immediate return, so an
  * ordinary user pays nothing. Records land in `<conception>/.condash/perf/` as

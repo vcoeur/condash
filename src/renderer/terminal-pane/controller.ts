@@ -33,6 +33,7 @@ import {
 } from './visibility-plan';
 import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
+import { rendererPerf } from '../perf-renderer';
 import type {
   AgentChoice,
   SpawnOptions,
@@ -104,7 +105,13 @@ export function createTerminalController(props: TerminalPaneProps) {
   // Tabs that are mid-transition (serialize/mount) must not accept writes on
   // either side; they are buffered and flushed once the destination exists.
   const transitioning = new Set<string>();
-  const transitionBuffers = createTransitionBuffers();
+  // Observe the parked char depth on every growth: it is the production evidence
+  // for (or against) the unbounded-growth hazard the buffer's cap addresses, and
+  // a peak (not a sum) because a depth is a level, not a rate. Costs nothing
+  // while perf recording is off.
+  const transitionBuffers = createTransitionBuffers((chars) =>
+    rendererPerf.observeMax('transitionBufferChars', chars),
+  );
   // Per-column count of in-flight visibility transitions. The #397 focus-churn
   // guard (`promote`) gates on the tab's OWN column via this — not the global
   // `transitioning` set — so a stuck transition (e.g. a lost worker RPC before
@@ -178,7 +185,9 @@ export function createTerminalController(props: TerminalPaneProps) {
       // only a 64 KB pty tail, so no Refresh can bring them back.
       const handle = xterms.get(id);
       if (!handle) return false;
-      handle.term.write(data);
+      // The switch-replay burst — the largest single write on the switch path,
+      // and the span the renderer instrument added `timeWrite` for.
+      rendererPerf.timeWrite(handle.term, data, 'transitionReplay');
       return true;
     });
   };
@@ -354,10 +363,18 @@ export function createTerminalController(props: TerminalPaneProps) {
         );
         const fromWorker = workerSessions.has(id);
         let replay: string;
+        rendererPerf.count('promotes');
         if (fromWorker) {
+          const rpcSpan = rendererPerf.startSpan();
           try {
             replay = await worker.serialize(id);
+            rendererPerf.endSpan('workerSerialize', rpcSpan);
           } catch {
+            // The round trip is timed on the failure path too: a watchdog
+            // rejection at the 2 s bound is the switch-latency tail this counter
+            // exists to find, and dropping it would report only the fast cases.
+            rendererPerf.endSpan('workerSerialize', rpcSpan);
+            rendererPerf.count('workerSerializeFailed');
             // The worker RPC failed / timed out (watchdog). Don't leave the
             // active tab blank: mount with whatever buffered tail we have so the
             // user gets a live terminal (scrollback may be lost) rather than an
@@ -384,9 +401,14 @@ export function createTerminalController(props: TerminalPaneProps) {
         // no later fit can repair it, only a repaint from the program itself.
         // That is the mechanism the repaint nudge exists to paper over.
         const geometry = (await geometryPromise) ?? undefined;
+        // Span the mount only (geometry already resolved). Ended in the `finally`
+        // so a mount that threw is still timed — a failed promote is exactly the
+        // switch-latency tail this span exists to catch.
+        const mountSpan = rendererPerf.startSpan();
         try {
           await mountForSession(mountCtx, id, col, replay, geometry);
         } finally {
+          rendererPerf.endSpan('mount', mountSpan);
           const mounted = xterms.has(id);
           // The replay was consumed out of the buffer above. If no Terminal came
           // out of the mount — it threw, or it bailed on its race guard — those
@@ -429,8 +451,16 @@ export function createTerminalController(props: TerminalPaneProps) {
       const demoteColumn = h.column;
       beginTransition(tid, demoteColumn);
       try {
+        // Settle any in-flight nudge before serializing, or the snapshot captures
+        // a mid-repaint frame and the worker Terminal is built one row short.
         settleNudge(tid, h);
+        // The demote serialize is synchronous main-thread work over the whole
+        // scrollback — the single largest renderer frame in the 2026-07-23 CDP
+        // trace (1469 ms at 8 tabs), and until now measured only in that trace.
+        rendererPerf.count('demotes');
+        const serializeSpan = rendererPerf.startSpan();
         const snapshot = h.serialize.serialize();
+        rendererPerf.endSpan('demoteSerialize', serializeSpan);
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
         worker.write(tid, snapshot);
         workerSessions.add(tid);
@@ -778,7 +808,13 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (transitioning.has(id)) {
       transitionBuffers.buffer(id, data);
     } else if (xterms.has(id)) {
-      if (!parked) xterms.get(id)!.term.write(data);
+      // The visible tab's ANSI parse — the renderer's counterpart of main's
+      // `logParseMs`, and the largest named cost in the renderer CDP trace.
+      // Timed through the write callback: `term.write` only *queues* the parse,
+      // so bracketing the call measured the enqueue and reported ~0. When bytes
+      // are already parked they must go through the buffer first to keep order;
+      // that path's write is timed inside `flushTransitionBuffer`.
+      if (!parked) rendererPerf.timeWrite(xterms.get(id)!.term, data, 'termWrite');
       else {
         transitionBuffers.buffer(id, data);
         flushTransitionBuffer(id, 'dom');

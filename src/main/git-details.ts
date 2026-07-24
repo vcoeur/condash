@@ -17,6 +17,7 @@ import {
   statusPathPrefix,
   stripStatusPrefix,
 } from './git-status-cache';
+import { perfLog } from './perf-log';
 
 const FILE_LIMIT = 20;
 const UNPUSHED_LIMIT = 20;
@@ -111,9 +112,30 @@ export function parseNumstat(out: string): Map<string, NumstatRow> {
   return map;
 }
 
+/**
+ * Full dirty breakdown for one working tree: every porcelain file with its
+ * numstat row, plus the unpushed-commit list.
+ *
+ * @param path Working tree to inspect.
+ * @param opts `scopeToSubtree` restricts the report to `path`'s subtree.
+ * @returns The breakdown, or null when git could not run.
+ */
 export async function getDirtyDetails(
   path: string,
   opts: DirtyDetailsOptions = {},
+): Promise<DirtyDetails | null> {
+  const span = perfLog.startSpan();
+  try {
+    return await computeDirtyDetails(path, opts);
+  } finally {
+    perfLog.endSpan('gitDetails', span);
+  }
+}
+
+/** The body of {@link getDirtyDetails}, split out so the span brackets it. */
+async function computeDirtyDetails(
+  path: string,
+  opts: DirtyDetailsOptions,
 ): Promise<DirtyDetails | null> {
   try {
     // Lazy so importing this module (reachable on the pre-window boot path via
