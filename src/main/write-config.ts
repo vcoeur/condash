@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname } from 'node:path';
+import { WRITE_DRIFT_MARKER } from '../shared/ipc-channels';
 import { atomicWrite } from './atomic-write';
 import { isConceptionSettingsPath } from './condash-dir';
 import { withFileQueue } from './mutate-shared';
@@ -45,7 +46,7 @@ export async function writeNote(
       // File doesn't exist yet — expected baseline must also be empty.
     }
     if (onDisk !== expectedContent) {
-      throw new Error('File on disk has drifted; reload before saving');
+      throw new Error(`${WRITE_DRIFT_MARKER}; reload before saving`);
     }
 
     let finalContent: string;
