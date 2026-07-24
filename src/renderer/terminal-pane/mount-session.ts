@@ -42,6 +42,11 @@ export interface MountSessionContext {
  *  dynamic-imported on first call so they stay out of the boot chunk; the
  *  module is cached after the first load.
  *
+ *  `geometry` is the pty's current winsize (from main). Pass it whenever the
+ *  mount replays anything: the replay is parsed at construction size, and for an
+ *  alternate-screen frame that size is unrecoverable afterwards. Omitted, xterm
+ *  falls back to its 80×24 default.
+ *
  *  On any failure path — including a thrown dynamic import or the post-import
  *  race bail-out — the re-entrancy guard is cleared and the created element is
  *  removed from the DOM. */
@@ -50,6 +55,7 @@ export async function mountForSession(
   id: string,
   column: Column,
   replay?: string,
+  geometry?: { cols: number; rows: number },
 ): Promise<void> {
   if (ctx.xterms.has(id) || ctx.pendingMounts.has(id)) return;
   ctx.pendingMounts.add(id);
@@ -67,6 +73,7 @@ export async function mountForSession(
     }
     const mounted = mountXterm(element, id, {
       replay,
+      geometry,
       prefs: ctx.xtermPrefs,
       onCustomKey: (ev) => ctx.handleXtermKey(ev, id),
     });

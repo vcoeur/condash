@@ -279,15 +279,15 @@ describe('PerfLog', () => {
   it('merges renderer peaks by max and counters by sum', () => {
     const { log } = recording();
     log.recordRendererReport(
-      rendererReport({ counts: { demotes: 1 }, maxima: { transitionBufferChunks: 12 } }),
+      rendererReport({ counts: { demotes: 1 }, maxima: { transitionBufferChars: 12 } }),
     );
     log.recordRendererReport(
-      rendererReport({ counts: { demotes: 2 }, maxima: { transitionBufferChunks: 5 } }),
+      rendererReport({ counts: { demotes: 2 }, maxima: { transitionBufferChars: 5 } }),
     );
     const renderer = log.takeRecord()?.renderer;
     expect(renderer?.counts).toEqual({ demotes: 3 });
     // A summed peak would report a depth that never existed.
-    expect(renderer?.maxima).toEqual({ transitionBufferChunks: 12 });
+    expect(renderer?.maxima).toEqual({ transitionBufferChars: 12 });
   });
 
   it('carries the renderer visibility fields so a throttled window is legible', () => {

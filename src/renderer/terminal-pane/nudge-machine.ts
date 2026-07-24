@@ -37,11 +37,15 @@ export interface NudgeTarget {
 }
 
 /**
- * Decide which tabs to nudge when the active-id signal changes. A genuine switch
- * to a *different* tab in a column produces one target; first-open (previous
- * null) and a no-op re-assert of the same id (previous === next — e.g. a
- * visibility flip re-firing the signal) produce none, which is what keeps a
- * nudge from racing a visibility flip that didn't actually change the active tab.
+ * Decide which tabs to nudge when the active-id signal changes. Any column whose
+ * active id becomes a *different* tab produces one target — including the first
+ * activation of a column (previous null): that tab hydrates from a snapshot like
+ * any other, and skipping it is what left a restored-on-boot tab, a
+ * freshly-spawned one, and the tab promoted after a close showing a garbled
+ * frame until the user hit Refresh. A no-op re-assert of the same id (previous
+ * === next — e.g. a visibility flip re-firing the signal) still produces none,
+ * which is what keeps a nudge from racing a visibility flip that didn't actually
+ * change the active tab.
  *
  * `autoRefreshOnTabSwitch === false` restricts every target to alt-buffer tabs
  * (`onlyIfAltBuffer: true`); `true` or `undefined` (the default) nudges every
@@ -62,32 +66,78 @@ export function refreshOnSwitchTargets(
   for (const col of ['left', 'right'] as Column[]) {
     const next = current[col];
     const was = previous[col];
-    if (next && was && next !== was) targets.push({ id: next, onlyIfAltBuffer });
+    if (next && next !== was) targets.push({ id: next, onlyIfAltBuffer });
   }
   return targets;
+}
+
+/** Claim-check over the sessions whose pty is being held one row short by a
+ *  repaint nudge. Keyed by session id *and* the handle that owns the nudge: the
+ *  live DOM Terminal for a session is destroyed and rebuilt on every switch, so
+ *  an id-only claim let a stale timer both block a brand-new handle's fit (the
+ *  new terminal was then never fitted by its promote) and clear a live nudge's
+ *  guard (a chained fit restored the full size and collapsed the dip). Ownership
+ *  makes both impossible: a claim only ever affects the handle that made it. */
+export interface NudgeRegistry<Handle> {
+  /** Record that `handle` is holding `id`'s pty one row short. */
+  claim(id: string, handle: Handle): void;
+  /** Whether `handle` — this exact terminal, not merely this session — is
+   *  mid-nudge, and so must not be fitted. */
+  isHeldBy(id: string, handle: Handle): boolean;
+  /** Release `id`, but only if `handle` still owns it. A timer belonging to a
+   *  handle that has since been replaced releases nothing. */
+  release(id: string, handle: Handle): void;
+}
+
+/** Build an empty {@link NudgeRegistry}. Generic over the handle type so the
+ *  module stays free of any xterm/DOM import. */
+export function createNudgeRegistry<Handle>(): NudgeRegistry<Handle> {
+  const held = new Map<string, Handle>();
+  return {
+    claim: (id, handle) => {
+      held.set(id, handle);
+    },
+    isHeldBy: (id, handle) => held.get(id) === handle,
+    release: (id, handle) => {
+      if (held.get(id) === handle) held.delete(id);
+    },
+  };
 }
 
 /** What a scheduled refresh should do once its tab has hydrated:
  *  - `skip` — no live DOM Terminal (the tab was demoted, closed, or re-mounted
  *    mid-hydration): nothing to do.
- *  - `focus-only` — a live terminal that must not be nudged, either because the
- *    alt-buffer gate excluded it (`reason: 'altGate'`) or it is too short to
- *    give up a row (`reason: 'tooShort'`): the controller just refocuses it.
+ *  - `focus-only` — a live terminal that must not be nudged: the alt-buffer gate
+ *    excluded it (`reason: 'altGate'`), it is too short to give up a row
+ *    (`reason: 'tooShort'`), or its frame is already exactly the pty's screen
+ *    (`reason: 'frameExact'`): the controller just refocuses it.
  *  - `nudge` — resize one row shorter and back to force a full repaint. */
 export type RefreshAction =
   | { kind: 'skip' }
-  | { kind: 'focus-only'; reason: 'altGate' | 'tooShort' }
+  | { kind: 'focus-only'; reason: 'altGate' | 'tooShort' | 'frameExact' }
   | { kind: 'nudge' };
 
 /**
  * Decide what a scheduled refresh should do, given the hydrated terminal's
  * state. Mirrors the `refreshSession` gate: no handle → skip; the alt-buffer
- * opt-out excludes a normal-buffer tab; a ≤1-row terminal can't lose a row; all
- * else nudges. Checked *post-hydrate* so `bufferType` reflects the snapshot just
- * replayed.
+ * opt-out excludes a normal-buffer tab; an already-exact frame needs no repaint
+ * (automatic refresh only); a ≤1-row terminal can't lose a row; all else nudges.
+ * Checked *post-hydrate* so `bufferType` reflects the snapshot just replayed.
+ *
+ * The `frameIsExact` gate exists because the nudge is not free: it resizes the
+ * grid a row shorter and back, and on the alternate buffer — which never reflows
+ * — xterm services that by popping the bottom line and pushing a fresh blank one
+ * (`Buffer.resize`). For a program that does not repaint on SIGWINCH, that
+ * *shears the bottom row off a frame that was correct*. Before terminals were
+ * hydrated at the pty's geometry the trade was still worth it, because the
+ * hydrated frame was wrong anyway; now that the frame can be provably right,
+ * nudging it can only do damage. Manual Refresh never sets `allowExactSkip` —
+ * the user pressing it IS the signal that something is wrong on screen, whatever
+ * the geometry says.
  *
  * @param state Whether a live terminal exists, its `buffer.active.type`, its row
- *   count, and whether the nudge is alt-buffer-gated.
+ *   count, whether the nudge is alt-buffer-gated, and whether its frame is known
+ *   to be exact (with permission to act on that).
  * @returns The action for the controller to run.
  */
 export function decideRefreshAction(state: {
@@ -99,10 +149,20 @@ export function decideRefreshAction(state: {
   rows?: number;
   /** Restrict the nudge to alt-buffer tabs (live full-screen TUIs). */
   onlyIfAltBuffer: boolean;
+  /** The visible grid is provably the pty's own screen: the snapshot's geometry,
+   *  the pty's geometry and the grid it was built at all agreed, and nothing has
+   *  resized it since. */
+  frameIsExact?: boolean;
+  /** Whether this caller may act on `frameIsExact`. Only the automatic
+   *  on-switch refresh does; manual Refresh stays unconditional. */
+  allowExactSkip?: boolean;
 }): RefreshAction {
   if (!state.mounted) return { kind: 'skip' };
   if (state.onlyIfAltBuffer && state.bufferType !== 'alternate') {
     return { kind: 'focus-only', reason: 'altGate' };
+  }
+  if (state.allowExactSkip && state.frameIsExact) {
+    return { kind: 'focus-only', reason: 'frameExact' };
   }
   if ((state.rows ?? 0) <= 1) return { kind: 'focus-only', reason: 'tooShort' };
   return { kind: 'nudge' };

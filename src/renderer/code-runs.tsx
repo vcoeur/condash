@@ -7,6 +7,7 @@ import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'so
 import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
 import type { MountedTerm } from './xterm-mount';
 import { rendererPerf } from './perf-renderer';
+import { decideFit, MAX_FIT_ATTEMPTS } from './terminal-pane/fit-when-ready';
 import { Caret } from './icons';
 import { StopIcon } from './icons';
 
@@ -127,19 +128,56 @@ function CodeRunRow(props: {
     mountPromise = (async () => {
       // xterm + its addons are dynamic-imported on first terminal open so they
       // stay out of the boot chunk (the module is cached after the first load).
-      const [{ mountXterm }, attach] = await Promise.all([
+      // The pty's geometry rides along on the same Promise.all: the replay below
+      // is a raw pty tail, and parsing it at xterm's 80×24 default wraps every
+      // row a wider pty emitted. An alternate-screen `run:` command (bacon,
+      // cargo-watch, an agent) is affected exactly as a "my terms" tab is —
+      // and this pane has no Refresh affordance to repair it afterwards.
+      const [{ mountXterm }, attach, geometry] = await Promise.all([
         import('./xterm-mount'),
         window.condash.termAttach(props.session.id),
+        Promise.resolve(window.condash.termGeometry?.(props.session.id) ?? null).catch(() => null),
       ]);
       // The row may have unmounted while the chunk / attach were in flight —
       // bail before creating the Terminal (mountXterm itself is synchronous).
       if (disposed) return;
       mounted = mountXterm(xtermElement, props.session.id, {
         replay: attach?.output,
+        geometry: geometry ?? undefined,
         prefs: props.xtermPrefs,
       });
     })();
     return mountPromise;
+  };
+
+  /** Fit the run row's terminal to its host, retrying while the just-expanded row
+   *  is still resolving its box. Guarded by the same `decideFit` the terminal
+   *  pane uses: `FitAddon.proposeDimensions()` clamps a zero-height host to a
+   *  finite 2×1 instead of failing, and committing that resizes the run's pty to
+   *  a screen no program can draw into. */
+  const fitRunTerm = (attemptsLeft = MAX_FIT_ATTEMPTS): void => {
+    const term = mounted;
+    if (!term || disposed) return;
+    let dims: { cols: number; rows: number } | undefined;
+    try {
+      dims = term.fit.proposeDimensions();
+    } catch {
+      dims = undefined;
+    }
+    const action = decideFit(dims, attemptsLeft, {
+      width: xtermElement.clientWidth,
+      height: xtermElement.clientHeight,
+    });
+    if (action === 'retry') {
+      requestAnimationFrame(() => fitRunTerm(attemptsLeft - 1));
+      return;
+    }
+    if (action === 'giveup') return;
+    try {
+      term.fit.fit();
+    } catch {
+      /* host not laid out yet */
+    }
   };
 
   // Re-attach the xterm element to whichever host node is currently mounted.
@@ -155,13 +193,7 @@ function CodeRunRow(props: {
         host.appendChild(xtermElement);
       }
       mounted?.setVisible(true);
-      requestAnimationFrame(() => {
-        try {
-          mounted?.fit.fit();
-        } catch {
-          /* host not laid out yet */
-        }
-      });
+      requestAnimationFrame(() => fitRunTerm());
     });
   });
 

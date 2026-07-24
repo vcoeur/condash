@@ -120,6 +120,7 @@ const api: CondashApi = {
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
   clipboardReadText: () => ipcRenderer.invoke('clipboardReadText'),
   termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),
+  termGeometry: (id) => ipcRenderer.invoke('termGeometry', id),
   termClose: (id) => ipcRenderer.invoke('termClose', id),
   termGetPrefs: () => ipcRenderer.invoke('termGetPrefs'),
   termSetPrefs: (prefs) => ipcRenderer.invoke('termSetPrefs', prefs),

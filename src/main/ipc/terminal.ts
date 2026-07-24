@@ -12,6 +12,7 @@ import {
   spawnTerminal,
   syncPerfLogging,
   tabsContext,
+  terminalGeometry,
   writeTerminal,
 } from '../terminals';
 import { perfLog, readVitals } from '../perf-log';
@@ -105,6 +106,11 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('termResize', (event, id: unknown, cols: number, rows: number) => {
     requireMainWindowSender(event);
     resizeTerminal(requireNonEmptyString('termResize', id), cols, rows);
+  });
+
+  ipcMain.handle('termGeometry', (event, id: unknown) => {
+    requireMainWindowSender(event);
+    return terminalGeometry(requireNonEmptyString('termGeometry', id));
   });
 
   ipcMain.handle('termClose', (event, id: unknown) => {

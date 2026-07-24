@@ -48,8 +48,8 @@ describe('decodeRendererReport', () => {
   });
 
   it('keeps well-formed peaks', () => {
-    const decoded = decodeRendererReport({ ...VALID, maxima: { transitionBufferChunks: 12 } });
-    expect(decoded?.maxima).toEqual({ transitionBufferChunks: 12 });
+    const decoded = decodeRendererReport({ ...VALID, maxima: { transitionBufferChars: 12 } });
+    expect(decoded?.maxima).toEqual({ transitionBufferChars: 12 });
   });
 
   it('rejects non-finite and negative numbers', () => {

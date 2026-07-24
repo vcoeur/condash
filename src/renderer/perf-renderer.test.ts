@@ -136,19 +136,17 @@ describe('RendererPerf', () => {
     const base = perf.takeReport()!;
     expect(RendererPerf.isReportable({ ...base, loop: { p50: 0, p99: 0, max: 40 } })).toBe(true);
     expect(RendererPerf.isReportable({ ...base, longFrames: 1 })).toBe(true);
-    expect(RendererPerf.isReportable({ ...base, maxima: { transitionBufferChunks: 3 } })).toBe(
-      true,
-    );
+    expect(RendererPerf.isReportable({ ...base, maxima: { transitionBufferChars: 3 } })).toBe(true);
     // …and a sub-threshold wobble is not.
     expect(RendererPerf.isReportable({ ...base, loop: { p50: 0.2, p99: 1, max: 3 } })).toBe(false);
   });
 
   it('reports peaks by their maximum, not their sum', () => {
     const perf = recording();
-    perf.observeMax('transitionBufferChunks', 4);
-    perf.observeMax('transitionBufferChunks', 11);
-    perf.observeMax('transitionBufferChunks', 7);
-    expect(perf.takeReport()?.maxima).toEqual({ transitionBufferChunks: 11 });
+    perf.observeMax('transitionBufferChars', 4);
+    perf.observeMax('transitionBufferChars', 11);
+    perf.observeMax('transitionBufferChars', 7);
+    expect(perf.takeReport()?.maxima).toEqual({ transitionBufferChars: 11 });
   });
 
   it('carries the sample count and hidden time', () => {
