@@ -57,6 +57,7 @@ import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
 import { reportWatcherError } from './watcher-status';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
+import { perfLog } from './perf-log';
 import { buildGitignoreMatcher, readRuleText, type GitignoreMatcher } from './gitignore-matcher';
 
 const execFileAsync = promisify(execFile);
@@ -186,6 +187,7 @@ function broadcast(events: RepoEvent[]): void {
 }
 
 async function recomputeAndEmit(target: WatchedPath): Promise<void> {
+  const span = perfLog.startSpan();
   invalidateForPath(target.path);
   // Run dirty + upstream in parallel — they hit different git plumbing
   // commands and don't share state. Both broadcasts go out together so
@@ -198,6 +200,7 @@ async function recomputeAndEmit(target: WatchedPath): Promise<void> {
     { kind: 'repo-dirty', path: target.path, dirty },
     { kind: 'repo-upstream', path: target.path, upstream },
   ]);
+  perfLog.endSpan('repoRecompute', span);
 }
 
 function scheduleRecompute(target: WatchedPath): void {

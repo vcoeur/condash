@@ -179,6 +179,12 @@ function loadHeadlessTerminal(): typeof import('@xterm/headless').Terminal {
  * old whole-file compare — a mismatch falls back to a full rewrite. */
 const TAIL_SAMPLE_BYTES = 64;
 
+/** Sub-span accumulator for one flush, filled in as the flush proceeds and
+ *  handed to `perfLog.recordFlush` at the end. Null while perf recording is
+ *  off — every `spans ?` guard below is what keeps an un-instrumented flush from
+ *  reading a single clock. */
+type MutableFlushSpans = { composeNs: bigint; encodeNs: bigint; writeNs: bigint };
+
 /** Sentinel prefix for the metadata header / footer lines inside a
  * `.txt`. The `# ` mimics shell-comment syntax — readable in `cat`,
  * grep-friendly. Defined in `./logs-format` so the search / CLI graph can
@@ -615,14 +621,43 @@ export class SessionLogger {
       });
   }
 
+  /**
+   * Time the whole flush, then run it.
+   *
+   * `gridRenderMs` brackets `GridBodyRenderer.render()` and nothing else, but
+   * every remaining step of a flush is O(retained size) too: the compose join
+   * copies the body, `writeFile` encodes it to UTF-8, and the bookkeeping
+   * encodes the same text a second time. Measuring only the render therefore
+   * understated the flush and — worse — put the parts an optimisation would
+   * remove *outside* the instrument, so the optimisation could not be scored.
+   * The sub-spans ride the same accumulator so a reading can attribute within
+   * the flush rather than just bound it.
+   */
+  private async flushNow(sync = false): Promise<void> {
+    if (!this.dirty || this.closed) return;
+    const started = perfLog.startSpan();
+    if (started === 0n) return this.flushBody(sync, null);
+    const spans: MutableFlushSpans = { composeNs: 0n, encodeNs: 0n, writeNs: 0n };
+    try {
+      await this.flushBody(sync, spans);
+    } finally {
+      perfLog.recordFlush(this.ctx.sid, {
+        totalNs: process.hrtime.bigint() - started,
+        ...spans,
+      });
+    }
+  }
+
   /** Render the buffer and write it to the `.txt`. `sync` forces an fsync before
    *  the rename for durability — set only on the terminal flushes (exit / close),
    *  not the periodic ones (see the class doc). Periodic flushes take a cheap
    *  incremental path when they can (append the new transcript suffix, or skip a
    *  redundant grid render); anything else, and every `sync` flush, does the full
-   *  atomic tmp → (fsync) → rename rewrite. */
-  private async flushNow(sync = false): Promise<void> {
-    if (!this.dirty || this.closed) return;
+   *  atomic tmp → (fsync) → rename rewrite.
+   *
+   *  `spans` accumulates the flush's sub-span timings, or is null while perf
+   *  recording is off — in which case not one clock is read. */
+  private async flushBody(sync: boolean, spans: MutableFlushSpans | null): Promise<void> {
     this.dirty = false;
     // Snapshot the grid byte watermark BEFORE the drain below: it counts bytes
     // handed to the term, and only those written ahead of the drain marker are
@@ -680,7 +715,7 @@ export class SessionLogger {
       this.bodyCursor.appended > this.bodyCursor.trimmed // prior body non-empty
     ) {
       const delta = this.oscTranscript.appendedSince(this.bodyCursor);
-      if (delta !== null && (await this.appendTranscriptDelta(delta))) return;
+      if (delta !== null && (await this.appendTranscriptDelta(delta, spans))) return;
       // delta === null (a cap trim dropped written lines) or the tail/length
       // guard failed → fall through to the full rewrite, which re-establishes
       // the file and the bookkeeping exactly.
@@ -711,7 +746,10 @@ export class SessionLogger {
     // snapshotted earlier, ahead of the xterm drain — see the top of flushNow.)
     const renderCursor = isTranscript ? this.oscTranscript.cursor() : null;
     const renderGridMarkerCount = this.gridMarkers.length;
+    const composeStart = spans ? process.hrtime.bigint() : 0n;
     const text = this.composeFileContent(body, kind);
+    if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
+    const writeStart = spans ? process.hrtime.bigint() : 0n;
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
       // The atomic rename keeps the file from ever being torn / zero-length;
@@ -728,6 +766,7 @@ export class SessionLogger {
         await fh.close();
       }
       await rename(tmp, this.txtPath);
+      if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
       this.recordWrite(
         text,
         kind,
@@ -735,6 +774,7 @@ export class SessionLogger {
         renderCursor,
         renderGridBytes,
         renderGridMarkerCount,
+        spans,
       );
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
@@ -751,12 +791,18 @@ export class SessionLogger {
    *  (which starts with `\n\n` — guaranteed by the caller's non-empty-body gate)
    *  appends exactly `delta.appended.slice(1) + '\n'`: the file's existing
    *  trailing `\n` doubles as the first `\n` of the new separator. */
-  private async appendTranscriptDelta(delta: TranscriptDelta): Promise<boolean> {
+  private async appendTranscriptDelta(
+    delta: TranscriptDelta,
+    spans: MutableFlushSpans | null,
+  ): Promise<boolean> {
     if (delta.appended.length === 0) {
       this.bodyCursor = delta.cursor; // nothing new to write; watermark still advances
       return true;
     }
+    const encodeStart = spans ? process.hrtime.bigint() : 0n;
     const deltaBytes = Buffer.from(`${delta.appended.slice(1)}\n`, 'utf8');
+    if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
+    const writeStart = spans ? process.hrtime.bigint() : 0n;
     try {
       if (!(await this.diskTailMatches())) return false;
       const fh = await open(this.txtPath, 'a');
@@ -765,6 +811,7 @@ export class SessionLogger {
       } finally {
         await fh.close();
       }
+      if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
       this.diskLen = (this.diskLen ?? 0) + deltaBytes.length;
       this.writtenTail = tailBytes(
         Buffer.concat([this.writtenTail, deltaBytes]),
@@ -801,7 +848,10 @@ export class SessionLogger {
   /** Record the compact on-disk bookkeeping after a successful full rewrite. The
    *  watermarks are the ones captured at render time (before the write's async
    *  window) — NOT the extractor's current state, which output() may have
-   *  advanced during the awaits (L1). */
+   *  advanced during the awaits (L1).
+   *
+   *  The `Buffer.from` here is the file's SECOND full UTF-8 encode — `writeFile`
+   *  already encoded the same string — which is why it gets its own span. */
   private recordWrite(
     text: string,
     kind: LogKind,
@@ -809,10 +859,13 @@ export class SessionLogger {
     renderCursor: TranscriptCursor | null,
     renderGridBytes: number,
     renderGridMarkerCount: number,
+    spans: MutableFlushSpans | null,
   ): void {
+    const encodeStart = spans ? process.hrtime.bigint() : 0n;
     const bytes = Buffer.from(text, 'utf8');
     this.diskLen = bytes.length;
     this.writtenTail = tailBytes(bytes, TAIL_SAMPLE_BYTES);
+    if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
     this.writtenKind = kind;
     this.writtenHeaderLine = headerLine;
     // The transcript cursor matches the body just rendered. Grid bodies aren't

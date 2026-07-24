@@ -19,6 +19,10 @@ const testGlobals = globalThis as TestGlobals;
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
+  // `syncPerfLogging` (reached through the conception switch) broadcasts the
+  // recording state to every window, so the mock has to answer for the window
+  // list even though this suite opens none.
+  BrowserWindow: { getAllWindows: () => [] },
   app: {
     getPath: () => '/tmp/electron-app',
     getAppPath: () => '/tmp/electron-app',

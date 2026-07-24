@@ -222,6 +222,37 @@ export interface PerfVitals {
   heapUsed: number;
 }
 
+/**
+ * Renderer-side counters for one drain window, shipped to main and merged into
+ * the same JSONL record as the main-process ones.
+ *
+ * Until this existed the perf log could not see the renderer at all, so a user's
+ * report of "lag" could not be attributed to the main process or to the renderer
+ * — the single biggest blind spot the 2026-07-24 review found. The renderer
+ * drains on the same 2.5 s cadence main flushes on and sends **one** message per
+ * drain; nothing here is reported per frame.
+ */
+export interface RendererPerfReport {
+  /** Milliseconds covered by this report. */
+  windowMs: number;
+  /** Renderer event-loop delay (ms) in excess of the probe's own interval — the
+   *  renderer mirror of the main process's `monitorEventLoopDelay` reading, and
+   *  measured the same way so the two are directly comparable. */
+  loop: { p50: number; p99: number; max: number };
+  /** Animation frames observed. Zero while the window is occluded — the browser
+   *  stops firing `requestAnimationFrame` — which is a real state, not a stall. */
+  frames: number;
+  /** Frames whose gap reached the long-task threshold (50 ms). */
+  longFrames: number;
+  /** Longest frame gap (ms) in the window. */
+  frameMaxMs: number;
+  /** Named renderer spans (xterm write, demote serialize, worker RPC, mount),
+   *  as accumulated wall time and call count. */
+  spans?: Record<string, { ms: number; n: number }>;
+  /** Named renderer events (demotes, promotes, worker RPC timeouts). */
+  counts?: Record<string, number>;
+}
+
 /** Main-process performance recording. Off by default, like disk logging: while
  * disabled every instrumentation entry point is an immediate return, so an
  * ordinary user pays nothing. Records land in `<conception>/.condash/perf/` as

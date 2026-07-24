@@ -301,8 +301,39 @@ instrumentation is inert, so an ordinary run pays nothing.
 When enabled, condash appends one JSON record per sampling window (2.5 s — the same tick that drives
 the per-tab memory meter; recording adds no timer of its own). Each record carries event-loop delay
 percentiles for the main process and, per session, bytes and chunks read off the pty, time spent in
-the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, coalesced IPC
-batches, backpressure pauses, and the un-acked in-flight high-water mark.
+the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, the disk
+log's **whole-flush** time with its compose / encode / write breakdown, coalesced IPC batches,
+backpressure pauses, and the un-acked in-flight high-water mark.
+
+`gridRenderMs` covers `GridBodyRenderer.render()` **only**. A flush also joins the file text, encodes
+it to UTF-8 to write it, and encodes it a second time for the on-disk bookkeeping — all O(retained
+size). `flushMs` is the whole flush and the superset; `composeMs`, `encodeMs` and `writeMs` attribute
+inside it (`writeMs` is wall clock, so it includes the libuv round trip as well as the encode on the
+calling thread). Read `flushMs`, not `gridRenderMs`, for the cost of keeping a disk log.
+
+Two blocks beyond the terminal byte path ride the same record:
+
+- **`main`** — wall-clock spans for work outside the byte path (`dashRecentText`, `dashProvenance`,
+  `transcriptRead`, `repoRecompute`, `gitStatus`, `gitUpstream`, `gitDetails`), `ipcMain.handle`
+  dispatch time bucketed by channel, and GC pauses. Only `transcriptRead` is fully synchronous; the
+  git spans are mostly subprocess time during which main is free, so read them as "this was in
+  flight", not as delay to subtract. GC is reported as `{n, ms, maxMs}` **whenever the runtime can
+  observe it** — an absent `gc` block means unobservable, `n: 0` means no collection.
+- **`renderer`** — the renderer's own event-loop delay (measured the same way as main's, so the two
+  are comparable), animation-frame counts including long frames, and spans for the visible tab's
+  `term.write`, the demote `serialize()`, the worker RPC round trip, and the mount. The renderer
+  drains on its own 2.5 s timer and sends one message per drain — never per frame. `reports` says how
+  many drains were merged into the window; with more than one, counters sum and the loop percentiles
+  are the worst of them, never an average.
+
+**Which windows are recorded.** Every window with anything to report: a session that moved bytes, a
+timed span, an IPC dispatch, an observed GC, a renderer report, or an event-loop delay of 5 ms or
+more. Only a window idle on all of those is dropped, which is what keeps an idle app from writing a
+record every 2.5 s forever. Until schema 3 the rule was "some session moved bytes", which discarded
+every stall that had no terminal work in it — 20 % of the ≥ 100 ms stalls in the 2026-07 baseline.
+**Records from before that change are not comparable**: a percentile taken over a schema-2 file is
+conditioned on a tab having been busy. The `schema` field discriminates, and
+`scripts/perf-load.mjs` refuses to aggregate across it.
 
 The event-loop delay is the most directly useful figure: main is a single thread shared by every
 terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
@@ -320,7 +351,9 @@ Record button. The pane also shows the live values; per-tab memory, growth rate,
 are shown there whether or not recording is on, since they come from the always-on sampler.
 
 Records are plain JSONL and are safe to delete. Recording accumulates roughly 10 MB/day with two
-active tabs and ~80 MB/day with twenty, so **condash prunes the directory for you**: a janitor runs
+active tabs and ~80 MB/day with twenty — plus, since schema 3, a small record for each window that
+had non-terminal activity but no pty traffic (a git status, an IPC call, a stall), which is what an
+app with no busy tab now writes instead of nothing. So **condash prunes the directory for you**: a janitor runs
 at startup and every 24 h and deletes records older than **14 days**, then — while the directory is
 still over **200 MB** — the oldest remaining files until it is under. **The current day's file is
 never deleted**, since a live recorder is appending to it.
