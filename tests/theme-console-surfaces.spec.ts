@@ -56,6 +56,29 @@ test('Console paints the four mockup-F surface rules', async () => {
   const booted = await bootApp({ globalConfig: { theme: 'console' } });
   try {
     await expect(booted.window.locator('.rail-item.active').first()).toBeVisible();
+
+    // Console's shape overrides (theme-console.css) settle a frame or two after
+    // the rail first paints active: data-theme and the stylesheet apply
+    // asynchronously off the bootstrap round-trip, so reading on the first active
+    // frame can catch the base accent-soft wash before the reverse-video fill
+    // lands. Poll the fill until it settles instead of racing it — a genuinely
+    // broken override never settles, so the poll still fails and the guard holds.
+    // (Load-sensitive: raced only under a busy tag-time CI run, v4.99.1.)
+    const accent = await resolvedColor(booted, '--accent');
+    await expect
+      .poll(
+        () =>
+          booted.window.evaluate(() => {
+            const el = document.querySelector('.rail-item.active');
+            return el ? getComputedStyle(el).backgroundColor : 'MISSING';
+          }),
+        // Generous window: under a heavily loaded tag-time runner the bootstrap
+        // round-trip and stylesheet apply are slow, and the default 5 s poll can
+        // expire before the override lands. Still far under the 60 s test budget.
+        { timeout: 15_000 },
+      )
+      .toBe(accent);
+
     const seen = await surfaces(booted);
 
     // Every selector must have matched something — a renamed base class would
@@ -64,7 +87,7 @@ test('Console paints the four mockup-F surface rules', async () => {
 
     // 1. Reverse video: the active rail item is filled with the accent itself,
     //    not the accent-soft wash the other presets tint it with.
-    expect(seen.railActiveBg).toBe(await resolvedColor(booted, '--accent'));
+    expect(seen.railActiveBg).toBe(accent);
     // 2. `› TITLE ────` — the accent caret in front of the pane title.
     expect(seen.paneTitleCaret).toBe('"›"');
     // 3. Square status blocks.
