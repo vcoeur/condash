@@ -1,4 +1,5 @@
 import { Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { RepoEntry } from '@shared/types';
 import { createDropdownMenu } from '../../dropdown-menu';
 import { ChevronDownIcon, KillIcon } from '../../icons';
@@ -28,37 +29,43 @@ export function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoE
         <ChevronDownIcon />
       </button>
       <Show when={menu.isOpen() && menu.anchor()}>
-        <div
-          ref={menu.setMenu}
-          class="branch-action-menu portal repo-card-menu"
-          role="menu"
-          style={{
-            top: `${menu.anchor()!.top}px`,
-            left: `${menu.anchor()!.left}px`,
-          }}
-        >
-          <button
-            class="branch-action-menu-item warn"
-            classList={{ disabled: !props.repo.hasForceStop }}
-            role="menuitem"
-            disabled={!props.repo.hasForceStop}
-            title={
-              props.repo.hasForceStop
-                ? undefined
-                : 'No force_stop: configured for this repo in condash.json'
-            }
-            onClick={() => {
-              if (!props.repo.hasForceStop) return;
-              menu.close();
-              props.onForceStop(props.repo);
+        {/* Portal to document.body so the menu escapes `.repo-row.card`'s
+         *  `contain: layout paint` — that containment makes the card a
+         *  containing block for `position: fixed` and clips descendants to
+         *  its padding box, so the menu was mispositioned and unpaintable. */}
+        <Portal>
+          <div
+            ref={menu.setMenu}
+            class="branch-action-menu portal repo-card-menu"
+            role="menu"
+            style={{
+              top: `${menu.anchor()!.top}px`,
+              left: `${menu.anchor()!.left}px`,
             }}
           >
-            <span class="glyph">
-              <KillIcon />
-            </span>
-            <span>Force-stop {props.repo.name}</span>
-          </button>
-        </div>
+            <button
+              class="branch-action-menu-item warn"
+              classList={{ disabled: !props.repo.hasForceStop }}
+              role="menuitem"
+              disabled={!props.repo.hasForceStop}
+              title={
+                props.repo.hasForceStop
+                  ? undefined
+                  : 'No force_stop: configured for this repo in condash.json'
+              }
+              onClick={() => {
+                if (!props.repo.hasForceStop) return;
+                menu.close();
+                props.onForceStop(props.repo);
+              }}
+            >
+              <span class="glyph">
+                <KillIcon />
+              </span>
+              <span>Force-stop {props.repo.name}</span>
+            </button>
+          </div>
+        </Portal>
       </Show>
     </>
   );

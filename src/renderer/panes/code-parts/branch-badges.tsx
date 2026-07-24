@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { DirtyDetails, Worktree } from '@shared/types';
 import { createPositionedPopover } from '../../popover';
 import { DirtyFileRow, UnpushedCommitRow } from './dirty-rows';
@@ -123,87 +124,94 @@ export function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boo
         </Show>
       </Show>
       <Show when={popover.open() && popover.anchor()}>
-        <div
-          ref={(el) => {
-            popoverRef = el;
-            if (el) requestAnimationFrame(popover.reposition);
-          }}
-          class="branch-dirty-popover"
-          role="dialog"
-          aria-label={`Branch info for ${props.worktree.branch ?? '(no branch)'}`}
-          style={{
-            top: `${popover.anchor()!.top}px`,
-            left: `${popover.anchor()!.left}px`,
-          }}
-        >
-          <header class="branch-dirty-popover-head">
-            <span class="branch-dirty-popover-branch">
-              {props.worktree.branch ?? '(no branch)'}
-            </span>
-            <span class="branch-dirty-popover-path" title={props.worktree.path}>
-              {props.worktree.path}
-            </span>
-          </header>
-          <Show when={error()}>
-            <p class="branch-dirty-popover-error">{error()}</p>
-          </Show>
-          <Show when={details()}>
-            {(d) => (
-              <>
-                <Show when={d().files.length > 0}>
-                  <ul class="branch-dirty-popover-files">
-                    <For each={d().files}>{(f) => <DirtyFileRow file={f} />}</For>
-                    <Show when={d().truncated}>
-                      <li class="branch-dirty-popover-truncated">
-                        … +{d().totalCount - d().files.length} more
-                      </li>
-                    </Show>
-                  </ul>
-                  <Show when={d().totalAdded > 0 || d().totalDeleted > 0}>
-                    <footer class="branch-dirty-popover-totals">
-                      {`${d().totalCount} file${d().totalCount === 1 ? '' : 's'} changed`}
-                      <Show when={d().totalAdded > 0}>
-                        <span class="branch-dirty-popover-added">{`, +${d().totalAdded}`}</span>
-                      </Show>
-                      <Show when={d().totalDeleted > 0}>
-                        <span class="branch-dirty-popover-deleted">{`, −${d().totalDeleted}`}</span>
-                      </Show>
-                    </footer>
-                  </Show>
-                </Show>
-                <Show when={d().unpushedCommits.length > 0}>
-                  <section class="branch-popover-section">
-                    <h3 class="branch-popover-section-head">
-                      Unpushed commits
-                      <Show when={d().upstream}>
-                        <span class="branch-popover-section-sub">
-                          {' '}
-                          → {d().upstream!.upstreamRef}
-                        </span>
-                      </Show>
-                    </h3>
-                    <ul class="branch-popover-commits">
-                      <For each={d().unpushedCommits}>
-                        {(c) => <UnpushedCommitRow commit={c} />}
-                      </For>
-                      <Show when={d().unpushedTruncated}>
+        {/* Portal to document.body so the popover escapes
+         *  `.repo-row.card`'s `contain: layout paint` — that containment
+         *  makes the card a containing block for `position: fixed` and
+         *  clips descendants to its padding box, which would leave the
+         *  popover mispositioned and unpaintable. */}
+        <Portal>
+          <div
+            ref={(el) => {
+              popoverRef = el;
+              if (el) requestAnimationFrame(popover.reposition);
+            }}
+            class="branch-dirty-popover"
+            role="dialog"
+            aria-label={`Branch info for ${props.worktree.branch ?? '(no branch)'}`}
+            style={{
+              top: `${popover.anchor()!.top}px`,
+              left: `${popover.anchor()!.left}px`,
+            }}
+          >
+            <header class="branch-dirty-popover-head">
+              <span class="branch-dirty-popover-branch">
+                {props.worktree.branch ?? '(no branch)'}
+              </span>
+              <span class="branch-dirty-popover-path" title={props.worktree.path}>
+                {props.worktree.path}
+              </span>
+            </header>
+            <Show when={error()}>
+              <p class="branch-dirty-popover-error">{error()}</p>
+            </Show>
+            <Show when={details()}>
+              {(d) => (
+                <>
+                  <Show when={d().files.length > 0}>
+                    <ul class="branch-dirty-popover-files">
+                      <For each={d().files}>{(f) => <DirtyFileRow file={f} />}</For>
+                      <Show when={d().truncated}>
                         <li class="branch-dirty-popover-truncated">
-                          … +{(d().upstream?.ahead ?? 0) - d().unpushedCommits.length} more
+                          … +{d().totalCount - d().files.length} more
                         </li>
                       </Show>
                     </ul>
-                  </section>
-                </Show>
-                <Show when={d().files.length === 0 && d().unpushedCommits.length === 0}>
-                  <p class="branch-dirty-popover-empty">
-                    No dirty files{' '}
-                    <Show when={d().upstream}>and in sync with {d().upstream!.upstreamRef}</Show>.
-                  </p>
-                </Show>
-              </>
-            )}
-          </Show>
-        </div>
+                    <Show when={d().totalAdded > 0 || d().totalDeleted > 0}>
+                      <footer class="branch-dirty-popover-totals">
+                        {`${d().totalCount} file${d().totalCount === 1 ? '' : 's'} changed`}
+                        <Show when={d().totalAdded > 0}>
+                          <span class="branch-dirty-popover-added">{`, +${d().totalAdded}`}</span>
+                        </Show>
+                        <Show when={d().totalDeleted > 0}>
+                          <span class="branch-dirty-popover-deleted">{`, −${d().totalDeleted}`}</span>
+                        </Show>
+                      </footer>
+                    </Show>
+                  </Show>
+                  <Show when={d().unpushedCommits.length > 0}>
+                    <section class="branch-popover-section">
+                      <h3 class="branch-popover-section-head">
+                        Unpushed commits
+                        <Show when={d().upstream}>
+                          <span class="branch-popover-section-sub">
+                            {' '}
+                            → {d().upstream!.upstreamRef}
+                          </span>
+                        </Show>
+                      </h3>
+                      <ul class="branch-popover-commits">
+                        <For each={d().unpushedCommits}>
+                          {(c) => <UnpushedCommitRow commit={c} />}
+                        </For>
+                        <Show when={d().unpushedTruncated}>
+                          <li class="branch-dirty-popover-truncated">
+                            … +{(d().upstream?.ahead ?? 0) - d().unpushedCommits.length} more
+                          </li>
+                        </Show>
+                      </ul>
+                    </section>
+                  </Show>
+                  <Show when={d().files.length === 0 && d().unpushedCommits.length === 0}>
+                    <p class="branch-dirty-popover-empty">
+                      No dirty files{' '}
+                      <Show when={d().upstream}>and in sync with {d().upstream!.upstreamRef}</Show>.
+                    </p>
+                  </Show>
+                </>
+              )}
+            </Show>
+          </div>
+        </Portal>
       </Show>
     </>
   );

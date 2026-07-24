@@ -1,4 +1,5 @@
 import { createResource, For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
 import { createDropdownMenu } from '../../dropdown-menu';
 import {
@@ -113,80 +114,86 @@ export function BranchActions(props: {
         <ChevronDownIcon />
       </button>
       <Show when={menu.isOpen() && menu.anchor()}>
-        <div
-          ref={menu.setMenu}
-          class="branch-action-menu portal"
-          role="menu"
-          style={{
-            top: `${menu.anchor()!.top}px`,
-            left: `${menu.anchor()!.left}px`,
-          }}
-        >
-          <For each={launcherEntries()}>
-            {(slot) => (
-              <button
-                class="branch-action-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  menu.close();
-                  props.onLaunch(slot, props.worktree.path);
-                }}
-              >
-                <span class="glyph">{LAUNCHER_GLYPH[slot]}</span>
-                <span>{props.slots[slot]!.label}</span>
-              </button>
-            )}
-          </For>
-          <button
-            class="branch-action-menu-item"
-            role="menuitem"
-            disabled={props.repo.missing}
-            onClick={() => {
-              menu.close();
-              props.onOpen(props.worktree.path);
+        {/* Portal to document.body so the menu escapes `.repo-row.card`'s
+         *  `contain: layout paint` — that containment makes the card a
+         *  containing block for `position: fixed` and clips descendants to
+         *  its padding box, so the menu was mispositioned and unpaintable. */}
+        <Portal>
+          <div
+            ref={menu.setMenu}
+            class="branch-action-menu portal"
+            role="menu"
+            style={{
+              top: `${menu.anchor()!.top}px`,
+              left: `${menu.anchor()!.left}px`,
             }}
           >
-            <span class="glyph">
-              <FolderIcon />
-            </span>
-            <span>Open in file manager</span>
-          </button>
-          <Show when={canPull()}>
+            <For each={launcherEntries()}>
+              {(slot) => (
+                <button
+                  class="branch-action-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    menu.close();
+                    props.onLaunch(slot, props.worktree.path);
+                  }}
+                >
+                  <span class="glyph">{LAUNCHER_GLYPH[slot]}</span>
+                  <span>{props.slots[slot]!.label}</span>
+                </button>
+              )}
+            </For>
             <button
               class="branch-action-menu-item"
               role="menuitem"
-              title="Fast-forward this branch to its upstream (git pull --ff-only)"
+              disabled={props.repo.missing}
               onClick={() => {
                 menu.close();
-                props.onPull(props.worktree.path);
+                props.onOpen(props.worktree.path);
               }}
             >
-              <span class="glyph">↓</span>
-              <span>Pull branch</span>
+              <span class="glyph">
+                <FolderIcon />
+              </span>
+              <span>Open in file manager</span>
             </button>
-          </Show>
-          <Show when={pullRequest()}>
-            {(pr) => (
+            <Show when={canPull()}>
               <button
                 class="branch-action-menu-item"
                 role="menuitem"
-                title={`${pr().isDraft ? 'Draft PR' : 'Open PR'} #${pr().number}: ${pr().title}`}
+                title="Fast-forward this branch to its upstream (git pull --ff-only)"
                 onClick={() => {
                   menu.close();
-                  void window.condash.openExternal(pr().url);
+                  props.onPull(props.worktree.path);
                 }}
               >
-                <span class="glyph">
-                  <IconExternal />
-                </span>
-                <span>
-                  Open PR #{pr().number}
-                  {pr().isDraft ? ' (draft)' : ''}
-                </span>
+                <span class="glyph">↓</span>
+                <span>Pull branch</span>
               </button>
-            )}
-          </Show>
-        </div>
+            </Show>
+            <Show when={pullRequest()}>
+              {(pr) => (
+                <button
+                  class="branch-action-menu-item"
+                  role="menuitem"
+                  title={`${pr().isDraft ? 'Draft PR' : 'Open PR'} #${pr().number}: ${pr().title}`}
+                  onClick={() => {
+                    menu.close();
+                    void window.condash.openExternal(pr().url);
+                  }}
+                >
+                  <span class="glyph">
+                    <IconExternal />
+                  </span>
+                  <span>
+                    Open PR #{pr().number}
+                    {pr().isDraft ? ' (draft)' : ''}
+                  </span>
+                </button>
+              )}
+            </Show>
+          </div>
+        </Portal>
       </Show>
     </div>
   );
