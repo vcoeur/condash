@@ -63,6 +63,10 @@ import './modal-base.css';
 import './project-preview.css';
 import './action-dropdown-button.css';
 import './welcome-screen.css';
+// Last: the Console preset's surface rules override pane stylesheets. Each
+// selector already carries a `[data-theme='console']` prefix, so the order is
+// belt-and-braces rather than load-bearing.
+import './theme-console.css';
 
 function App() {
   // --- Toast first so every downstream hydration call can surface a

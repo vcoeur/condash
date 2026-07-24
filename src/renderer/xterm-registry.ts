@@ -17,10 +17,11 @@ export interface RefreshableXterm {
 // site wiring its own subscription.
 export const liveTerms = new Set<RefreshableXterm>();
 
-/** Re-apply the current theme tokens to every live xterm. Called by use-theme
- *  when the user toggles light/dark; without this, terminals mounted before the
- *  flip stay on the old palette until next attach. No-op (and cheap) before any
- *  terminal is opened, so it never forces the xterm chunk to load. */
+/** Re-apply the current theme tokens to every live xterm, right now. Without
+ *  this, terminals mounted before a theme change stay on the old palette until
+ *  next attach. No-op (and cheap) before any terminal is opened, so it never
+ *  forces the xterm chunk to load. Callers reacting to a *user-driven* theme
+ *  change want {@link scheduleXtermThemeRefresh} instead. */
 export function refreshAllXtermThemes(): void {
   for (const t of liveTerms) {
     try {
@@ -29,4 +30,36 @@ export function refreshAllXtermThemes(): void {
       /* per-term failure shouldn't take down the rest */
     }
   }
+}
+
+/** Coalescing window for {@link scheduleXtermThemeRefresh}. Longer than a
+ *  keyboard repeat interval, so holding an arrow key across the Settings theme
+ *  cards collapses to one refresh; short enough that a single click reads as
+ *  instant. */
+const REFRESH_COALESCE_MS = 100;
+
+let pendingRefresh: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Re-theme every live xterm once the caller stops asking. Trailing edge:
+ * repeated calls inside the window collapse into one refresh, run
+ * `REFRESH_COALESCE_MS` after the last of them.
+ *
+ * The Settings theme picker selects on arrow-key *move*, so a held arrow drove
+ * one full `refreshAllXtermThemes()` per key repeat — and that pass costs a
+ * `getComputedStyle(document.documentElement)` per live terminal (landing
+ * immediately after `use-theme`'s sibling effect wrote `data-theme`, so it also
+ * forces a synchronous style recalc) plus a theme reapply and repaint each.
+ * With the handful of terminals a normal condash session has open, that blew
+ * the repo's ≤ 16 ms interaction budget on every keystroke.
+ *
+ * Only the JS-side consumers wait. The CSS half of a theme change is untouched
+ * and stays immediate — it is what makes the preview feel live.
+ */
+export function scheduleXtermThemeRefresh(): void {
+  if (pendingRefresh !== null) clearTimeout(pendingRefresh);
+  pendingRefresh = setTimeout(() => {
+    pendingRefresh = null;
+    refreshAllXtermThemes();
+  }, REFRESH_COALESCE_MS);
 }

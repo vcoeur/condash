@@ -60,3 +60,17 @@ export const EVENT_CHANNELS = {
  * `src/preload/index.ts` (invoke) and `src/main/ipc/terminal.ts` (handle).
  */
 export const TERM_ACK_CHANNEL = 'termAck' as const;
+
+/**
+ * Marker inside the error every drift-checked CAS write throws when the file
+ * moved under the caller (`writeNote`, `src/main/write-config.ts`).
+ *
+ * A caller that wants to react to *this* failure — rather than to a schema
+ * rejection or an ENOSPC — has only the message to go on: an `ipcRenderer.invoke`
+ * rejection reaches the renderer decorated as
+ * `Error invoking remote method '<channel>': Error: <message>`, so the class is
+ * recoverable by substring and nothing else. Named here so the thrower and the
+ * matcher share one literal instead of two copies drifting apart. Match with
+ * `includes`, never equality.
+ */
+export const WRITE_DRIFT_MARKER = 'File on disk has drifted' as const;

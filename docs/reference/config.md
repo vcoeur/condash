@@ -804,6 +804,17 @@ There is no separate dark/light switch — a preset's `kind` is the only place t
 distinction lives, and it is what every binary subsystem (xterm, CodeMirror,
 highlight.js, mermaid) reads.
 
+`console` goes one step further than a palette: it also restyles four *shapes*
+the token set cannot reach, in `renderer/theme-console.css`. The active rail item
+and the active terminal tab are **reverse-video** (filled with their own accent,
+ink printed on top) instead of tinted; pane titles become a tracked-out uppercase
+label behind an accent `›` with a hairline running out to the actions, in place
+of the editorial serif title and its slide-rule; status dots are **squares** and
+the chips lose their capsule ends; and step-progress bars are **segmented**
+rather than solid. App pills stay filled — that fill is the per-app hash-hue
+channel, not decoration. No other preset is affected: every rule in that sheet is
+scoped to `[data-theme='console']`.
+
 Pick a theme in **Settings → Appearance**, where each preset renders as a card
 with a swatch of its own colours. **Selecting a card previews it immediately**
 across the whole app — that is how you see a theme before committing to it — but
