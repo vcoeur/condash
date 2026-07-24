@@ -3,6 +3,7 @@ import {
   addActionTemplate,
   buildSavePayload,
   compactRepos,
+  mergeRawConfig,
   moveActionTemplate,
   patchActionTemplate,
   removeActionTemplate,
@@ -369,5 +370,67 @@ describe('usableActionTemplates', () => {
         { label: '', template: 'half' },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe('mergeRawConfig — rebasing a staged draft onto a file that moved', () => {
+  it('takes the external value for a key the user never touched', () => {
+    const base = { theme: 'dark' as const, workspace_path: '/src' };
+    const ours = { theme: 'dark' as const, workspace_path: '/elsewhere' };
+    const theirs = { theme: 'console' as const, workspace_path: '/src' };
+    expect(mergeRawConfig(base, ours, theirs)).toEqual({
+      theme: 'console',
+      workspace_path: '/elsewhere',
+    });
+  });
+
+  it('keeps the staged value when only the user moved a key', () => {
+    const base = { theme: 'dark' as const };
+    expect(mergeRawConfig(base, { theme: 'mist' as const }, base)).toEqual({ theme: 'mist' });
+  });
+
+  it('recurses so sibling sub-keys of one top-level block both survive', () => {
+    // The reachable in-modal case: the Perf checkbox writes terminal.perf
+    // straight to disk while a staged edit sits in terminal.logging. A
+    // top-level-key merge would drop one of them.
+    const base = { terminal: { logging: { enabled: false }, perf: { enabled: false } } };
+    const ours = { terminal: { logging: { enabled: true }, perf: { enabled: false } } };
+    const theirs = { terminal: { logging: { enabled: false }, perf: { enabled: true } } };
+    expect(mergeRawConfig(base, ours, theirs)).toEqual({
+      terminal: { logging: { enabled: true }, perf: { enabled: true } },
+    });
+  });
+
+  it('prefers the staged value when both sides moved the same leaf', () => {
+    expect(
+      mergeRawConfig(
+        { theme: 'dark' as const },
+        { theme: 'mist' as const },
+        {
+          theme: 'console' as const,
+        },
+      ),
+    ).toEqual({ theme: 'mist' });
+  });
+
+  it('treats an array as a leaf rather than merging it element-wise', () => {
+    const base = { pdf_viewer: ['zathura'] };
+    const ours = { pdf_viewer: ['evince'] };
+    const theirs = { pdf_viewer: ['zathura', 'okular'] };
+    expect(mergeRawConfig(base, ours, theirs)).toEqual({ pdf_viewer: ['evince'] });
+  });
+
+  it('keeps a key the user deleted deleted, even though disk still carries it', () => {
+    const base = { theme: 'dark' as const, workspace_path: '/src' };
+    const ours = { theme: 'dark' as const };
+    const theirs = { theme: 'dark' as const, workspace_path: '/src' };
+    expect(mergeRawConfig(base, ours, theirs)).toEqual({ theme: 'dark' });
+  });
+
+  it('adopts a key added on disk that the draft never knew about', () => {
+    const base = { theme: 'dark' as const };
+    const ours = { theme: 'mist' as const };
+    const theirs = { theme: 'dark' as const, worktrees_path: '/wt' };
+    expect(mergeRawConfig(base, ours, theirs)).toEqual({ theme: 'mist', worktrees_path: '/wt' });
   });
 });
