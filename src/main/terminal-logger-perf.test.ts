@@ -82,6 +82,76 @@ describe('flush instrumentation', () => {
     await logger.close();
   });
 
+  it('fills every sub-span on the steady-state append path', async () => {
+    // The steady-state grid path composes only a suffix, encodes only that, and
+    // writes it in place — no whole-file compose, no rename. The spans have to
+    // follow it there: were they to go ABSENT (not zero) on the path a real
+    // session spends all its time on, #467's attribution formula would dump the
+    // entire append write into its unattributed remainder and the instrument
+    // would report the optimisation as a blind spot.
+    perfLog.setEnabled(true, tmp);
+    const logger = makeLogger();
+    logger.spawn();
+    await logger.flushForTests(); // the full rewrite that establishes the file
+    perfLog.takeRecord(); // drop that window; measure only the append below
+    logger.output('hello world\r\n'.repeat(200));
+    await logger.flushForTests();
+
+    const session = sessionRecord();
+    expect(session?.flushes).toBe(1);
+    // Every sub-span present on the append path, not only on the full rewrite.
+    expect(session?.gridRenderMs).toBeGreaterThan(0);
+    expect(session?.composeMs).toBeGreaterThan(0);
+    expect(session?.encodeMs).toBeGreaterThan(0);
+    expect(session?.writeMs).toBeGreaterThan(0);
+    // The synchronous sub-spans sit inside the flush's block-time cost; the
+    // write's round trips (writeMs) are deliberately outside it.
+    const syncParts =
+      (session?.gridRenderMs ?? 0) + (session?.composeMs ?? 0) + (session?.encodeMs ?? 0);
+    expect(session?.syncFlushMs).toBeGreaterThanOrEqual(syncParts - 0.001);
+    expect(session?.syncFlushMs).toBeLessThanOrEqual((session?.flushMs ?? 0) + 0.001);
+
+    await logger.close();
+  });
+
+  it('keeps the grid APPEND flush cost out of an unrelated stall', async () => {
+    // The merge-resolution guard: the append path (flushGridBody /
+    // appendGridDelta) manages its own syncNs slices around its awaits. If the
+    // resolution had left a slice open across the r+ write, this session's
+    // syncFlushMs would balloon with an unrelated blocker exactly as flushMs
+    // does — the regression #467 exists to prevent, on the path a real session
+    // spends all its time on. The steady-state append is reached by flushing
+    // once (full rewrite) then flushing new output (append).
+    perfLog.setEnabled(true, tmp);
+    const logger = makeLogger();
+    logger.spawn();
+    await logger.flushForTests();
+    perfLog.takeRecord();
+    logger.output('appended line\r\n'.repeat(200));
+    const blocker = setInterval(() => {
+      const until = Date.now() + 25;
+      while (Date.now() < until) {
+        /* an unrelated 25 ms block per turn */
+      }
+    }, 1);
+    try {
+      await logger.flushForTests();
+    } finally {
+      clearInterval(blocker);
+    }
+
+    const session = sessionRecord();
+    expect(session?.writeMs).toBeGreaterThan(0); // it really took the append write
+    expect(session?.flushMs).toBeGreaterThan(25);
+    // The strong form: the unrelated stall must be EXCLUDED from cost, not merely
+    // leave cost fractionally under elapsed. A resolution that left a slice open
+    // across the r+ write folds the blocker into syncFlushMs, collapsing this
+    // gap toward the drain-only difference (~0).
+    expect(session!.flushMs! - session!.syncFlushMs!).toBeGreaterThan(20);
+
+    await logger.close();
+  });
+
   it('reports the flush cost separately from the flush elapsed', async () => {
     // `syncFlushMs` sums only the stretches that held the thread, so it contains
     // every synchronous sub-span and excludes the write's round trips — which is

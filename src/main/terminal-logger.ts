@@ -39,29 +39,37 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  *
  * Bytes flow: pty `output(data)` → `term.write(clean)`. A debounced timer
  * (default 5 s) writes the `.txt`, and its cost is kept proportional to NEW
- * output, not the retained size:
+ * output, not the retained size. **Both bodies are append-only:**
  *   - Transcript sessions **append only the lines added since the last write**
  *     — a per-flush watermark ({@link bodyCursor}) into the extractor, plus a
  *     byte-length + short tail sample of what's on disk — instead of re-joining
  *     the whole (multi-MB) transcript and prefix-comparing the whole file.
- *   - Grid sessions **re-translate only the rows that can still change**
- *     ({@link GridBodyRenderer}) — rows already above the viewport are frozen,
- *     so their rendered text is reused instead of being walked again. The
- *     *file* write is still a full rewrite (a grid repaint isn't append-shaped),
- *     and is skipped outright when no new bytes reached the term since the last
- *     write.
+ *   - Grid sessions **append the rows that froze since the last write** and
+ *     rewrite only the ≤ `ROWS`-row live tail ({@link GridBodyRenderer}). Rows
+ *     above the viewport can never change again, so the file grows past them
+ *     once and the flush never touches the retained buffer at all. A flush is
+ *     skipped outright when no new bytes reached the term since the last write.
  * Any inconsistency (a byte-cap trim dropped written lines, the header `kind`
- * flipped, the on-disk length/tail no longer matches, a prior write error) and
- * the durable `exit()` / `close()` flushes take the atomic tmp → (fsync) →
- * rename full rewrite instead, which re-establishes the file and the
- * bookkeeping exactly. The transcript path retains only a compact watermark,
- * never the whole file text; a grid session additionally holds its frozen-row
- * cache (~1.5 MB UTF-16 at the 5000-line default, against the term's own ~12 MB
- * buffer). The periodic flushes do NOT `fsync` — only the terminal
- * flushes (exit / close) do; the atomic rename already keeps the file from ever
- * being torn, appends never truncate existing content, and fsync-ing every
- * few-second flush stalls the main process for durability a log viewer doesn't
- * need.
+ * flipped, the on-disk length/tail no longer matches, a prior write error) falls
+ * back to the atomic tmp → (fsync) → rename full rewrite, which re-establishes
+ * the file and the bookkeeping exactly. **That rewrite reads the appended
+ * history back off disk first**, because it is the only copy: a repaint could
+ * always rebuild its whole body from the live buffer, and an appended one cannot
+ * — so composing from the buffer alone would silently discard up to
+ * {@link MAX_GRID_BODY_BYTES} that exists nowhere else. A read that FAILS is not
+ * an empty history: the flush is abandoned and retried, leaving the file
+ * untouched. A torn tail heals on the next flush; a wiped history never does.
+ * Neither body retains the file text in memory: the transcript path keeps a
+ * compact watermark, the grid path two byte offsets and one xterm marker.
+ *
+ * The periodic flushes do NOT `fsync` — only the terminal flushes (exit /
+ * close) do; fsync-ing every few-second flush stalls the main process for
+ * durability a log viewer doesn't need. What keeps a reader from ever seeing a
+ * torn file differs by path: the full rewrite renames a complete temp file into
+ * place, a transcript append only ever extends, and a grid append orders its
+ * `pwrite` and its truncate so that the intermediate state is either impossible
+ * (the file grew) or a valid PREFIX of the file (the file shrank) — never new
+ * content with the old tail stranded behind it. See {@link appendGridDelta}.
  *
  * `input(data)` is intentionally a no-op — the pty echoes typed bytes
  * back through stdout, so feeding `in` into the headless xterm would
@@ -73,9 +81,11 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  * text viewer; if you want full ANSI fidelity, use the live terminal's
  * Save-buffer button instead.
  *
- * Buffer is bounded by xterm scrollback (default 5000 lines × 200 cols
- * ≈ 1 MB max plain text). No rotation — the file size is self-capped by
- * the same mechanism that bounds the live terminal pane.
+ * The headless buffer is bounded by xterm scrollback (default 5000 lines ×
+ * 200 cols ≈ 1 MB), but the FILE is not — an appended grid body keeps output
+ * the buffer has since evicted. {@link MAX_GRID_BODY_BYTES} caps it, mirroring
+ * the transcript's `MAX_TRANSCRIPT_BYTES`; past the cap the oldest half of the
+ * appended history is dropped in one atomic rewrite. No rotation.
  *
  * All filesystem errors are swallowed locally and logged to stderr — the
  * pty pipeline must never block on a misbehaving log writer. Pause /
@@ -138,7 +148,14 @@ const DEFAULT_FLUSH_MS = 5000;
 
 /** Headless xterm geometry. 200×50 is generous for any TUI we care about
  * (Claude Code, agent runs, top, vim); wider terminals re-wrap, which is
- * cosmetic. Settable later if anyone asks. */
+ * cosmetic.
+ *
+ * **Not a knob.** An appended grid body is only correct at a fixed geometry: a
+ * reflow rewrites and renumbers rows that are already on disk, so a resize would
+ * repeat them in their new wrapping. `GridBodyRenderer` drops its watermark on
+ * `onResize` so the file can never go subtly wrong, but making this settable
+ * means designing what a mid-session reflow should do to the history — it is
+ * not a constant change. See {@link GridBodyRenderer}'s transition list. */
 const COLS = 200;
 const ROWS = 50;
 
@@ -174,10 +191,45 @@ function loadHeadlessTerminal(): typeof import('@xterm/headless').Terminal {
   return headlessTerminalCtor;
 }
 
+/** Cap on the grid timeline block. Grid markers cannot live inline in a
+ * repainted region, so they accumulate in logger state and are re-emitted in the
+ * file's rewritable trailer on EVERY flush — an unbounded structure inside the
+ * one region the append path rewrites, which is exactly the shape this change
+ * exists to remove. At the 60 s default that is ~1440 markers and ~35 KB a day
+ * of continuously-busy session, growing without bound. 1000 keeps ~16 h of
+ * timeline and holds the block near 24 KB; past it the oldest marker is dropped,
+ * which costs nothing a reader needs — the header's `started` is the session's
+ * real anchor and the markers are a coarse timeline, not content. */
+const MAX_GRID_MARKERS = 1000;
+
 /** Bytes of the file's tail kept in memory as a cheap integrity sample. Checked
  * before an incremental append (with the byte-length watermark) in place of the
  * old whole-file compare — a mismatch falls back to a full rewrite. */
 const TAIL_SAMPLE_BYTES = 64;
+
+/** Byte cap on a grid log's appended body.
+ *
+ * A repainted grid body was self-capped by the headless buffer it mirrored:
+ * `scrollback × cols` is ~1 MB worst case, and ~400 KB for the 60–80 column
+ * lines a real tab emits. An APPENDED one keeps everything the session printed,
+ * so it needs a cap of its own — and the cap is what decides whether the
+ * janitor's `retentionDays` or its `maxDirMb` is the binding constraint.
+ *
+ * Derived, not borrowed. At the defaults (`maxDirMb` 500, `retentionDays` 14)
+ * age stays binding only while a day's logs stay under ~35 MB. This user's
+ * telemetry recorded 17 logged sessions in 11.1 h of use — call it ~25/day — so
+ * the per-file budget for age to keep binding is ~1.4 MB, which is about what a
+ * saturated pre-append-only file already was. 2 MB therefore roughly DOUBLES the
+ * history a grid log keeps while staying in the size class the retention
+ * defaults were chosen against; the honest trade is that a day of 25 sessions
+ * that all saturate reaches `maxDirMb` at ~10 days rather than 14. Raise
+ * `maxDirMb` if you want the full 14 back. 8 MB — the transcript's cap, which an
+ * earlier revision of this file borrowed verbatim — would have made size binding
+ * after ~2.5 days.
+ *
+ * Past the cap the oldest half of the appended history is dropped at a row
+ * boundary, in one atomic rewrite, at the next flush. */
+export const MAX_GRID_BODY_BYTES = 2 * 1024 * 1024;
 
 /** Sub-span accumulator for one flush, filled in as the flush proceeds and
  *  handed to `perfLog.recordFlush` at the end. Null while perf recording is
@@ -246,128 +298,214 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
   };
 }
 
+/** One flush's worth of grid body, split at the line the file can be appended
+ *  past. Produced by {@link GridBodyRenderer.renderDelta}. */
+export interface GridBodyDelta {
+  /** Rows that froze since the last committed delta. They are appended to the
+   *  file once and never rewritten. Never ends with a blank row — see
+   *  {@link GridBodyRenderer.renderDelta}. */
+  frozen: string[];
+  /** Rows the cursor can still reach (plus any blank rows held back from
+   *  `frozen`), with the trailing run of blanks dropped. This is the region the
+   *  writer truncates and rewrites on every flush. */
+  tail: string[];
+}
+
 /**
- * Incremental grid-body renderer — one per {@link SessionLogger}.
+ * Append-only grid-body renderer — one per {@link SessionLogger}.
  *
- * A grid flush used to walk EVERY buffer row through `translateToString`,
- * scrollback included: ~5000 rows × 200 cols (roughly a 1 MB string, plus one
- * `IBufferLine` wrapper allocated per row) on the main thread every 5 s, for a
- * flush that may have added a handful of lines. That is O(retained size), not
- * O(new output), and the render-skip guard in {@link SessionLogger.flushNow}
- * cannot cover it — the guard only fires when NO byte reached the term since
- * the last write, yet the same `output()` call that bumps that watermark is the
- * only thing that ever schedules a flush.
+ * Buffer rows `[0, baseY)` have scrolled out of the cursor's reach and can
+ * never change again. That invariant is what lets the grid body be *appended*
+ * rather than repainted: each flush hands the writer the rows that froze since
+ * the last one — written once, at the end of the file — plus the ≤ `ROWS`-row
+ * live tail, which is the only region the writer rewrites.
  *
- * This removes the row walk, NOT the whole cost. Measured at production
- * geometry (200 cols, 5000 scrollback, saturated): the full walk was ~21 ms per
- * render, this is ~12.5 ms, and ~12.8 ms of that is `rows.join('\n')` alone —
- * which is O(retained size), as are the `Buffer.from` and full-file rewrite
- * that follow. So a flush is still O(retained size); the ~1.7× win is the
- * translate walk going away, and the next profiler along should look at the
- * join and the write, not here.
+ * The history before that goes on the previous flush's version. Two prior
+ * reviews (v4.40.1, v4.65.3) rejected an append-only grid body, and both were
+ * right about what they judged: appending the *whole* body is unsafe because a
+ * repaint is not append-shaped. The **partial** append is a different claim,
+ * and it rests on the frozen-prefix invariant that only arrived with the
+ * incremental renderer in v4.97.1.
  *
- * So the grid body renders the way the transcript body already writes: only the
- * new part. Rows above the viewport (`[0, baseY)`) have scrolled out of the
- * cursor's reach and can never change again, so their rendered text is kept and
- * reused; only the viewport and whatever was appended below it is re-translated.
- * The output is byte-identical to translating every row from scratch.
+ * What this removes from a flush: the `rows.join('\n')` over the retained
+ * buffer, the second full copy in `composeFileContent`, the duplicate
+ * `Buffer.from` encode, and the O(retained) file rewrite — all of which the
+ * v4.97.1 incremental *row walk* left in place and which measured as the whole
+ * remaining cost. The frozen-row text cache goes with them (~1.5 MB per logged
+ * session), because a row that is on disk never needs to be held in memory.
  *
- * Scrollback eviction shifts every row index down, so the cache is anchored to
- * an xterm **marker** rather than to an absolute index: xterm moves a marker
- * down by each evicted line and disposes it once its own line is evicted —
- * exactly the mapping the cache needs, with a disposed marker degrading to a
- * full render.
+ * Two consequences, both documented in `docs/guides/terminal.md`:
  *
- * The marker is pinned at the LAST frozen row (`baseY - 1`), never at `baseY`.
- * `CSI L` (insert lines) with the cursor on the viewport's top row inserts at
- * index `baseY`, and xterm shifts any marker at or below an insert's index — so
- * a marker pinned at `baseY` slides one row INTO the viewport, and a later
- * eviction cancels the sign of that slide so the arithmetic guard below no
- * longer rejects it, yielding a body off by one row. Pinned one row higher,
- * every insert / delete lands strictly below the marker (they are all bounded
- * by the scroll region, which starts at `baseY` at the earliest) and only an
- * eviction can move it.
+ *   - The body is no longer capped by xterm scrollback. It is a *superset* of
+ *     what the repaint wrote — every flush's file still ENDS with exactly the
+ *     buffer snapshot the old renderer would have produced — but it also keeps
+ *     the output that has since scrolled away, which the old writer silently
+ *     dropped. Growth is bounded by {@link MAX_GRID_BODY_BYTES} instead.
+ *   - Output that scrolls past the whole scrollback *between two flushes*
+ *     (> `scrollback` rows in one 5 s window) is still lost, exactly as before,
+ *     and the file carries no marker where it happened.
+ *
+ * The append watermark is anchored to an xterm **marker** pinned at the last
+ * appended row, not to an absolute index: eviction renumbers every row, and
+ * xterm moves a marker down by each evicted line and disposes it once its own
+ * line is evicted.
+ *
+ * The marker is pinned inside the frozen region, never at `baseY`. `CSI L`
+ * (insert lines) with the cursor on the viewport's top row inserts at index
+ * `baseY`, and xterm shifts any marker at or below an insert's index — so a
+ * marker pinned at `baseY` slides one row INTO the viewport, and a later
+ * eviction cancels the sign of that slide so the guard below no longer rejects
+ * it, yielding a body off by one row. Pinned above, every insert / delete lands
+ * strictly below the marker (they are all bounded by the scroll region, which
+ * starts at `baseY` at the earliest) and only an eviction can move it.
+ *
+ * Buffer swaps are all handled by one rule — a marker at or past `baseY` is not
+ * in the frozen region, so nothing of the buffer being rendered is on disk yet:
+ *
+ *   - **alternate screen**: `baseY` is 0 there, so the whole alt screen lands
+ *     in the rewritable tail and the normal buffer's watermark is left alone,
+ *     ready for the switch back. Verified: a marker registered on the normal
+ *     buffer survives an alt-screen round trip with its `line` unchanged.
+ *   - **`RIS`**: installs brand new buffer objects, so the marker points into a
+ *     buffer nobody renders — and xterm does NOT dispose it. Caught in
+ *     `onBufferChange`, where the fresh buffer still has `baseY === 0`; a
+ *     render-time check alone would be too late, because output arriving before
+ *     the next flush pushes `baseY` past the stale line and makes it look
+ *     plausible again.
+ *   - **`CSI 3J`** (erase scrollback) disposes the marker outright.
+ *   - **`Terminal.clear()`** is a host API, not a control sequence — no pty byte
+ *     reaches it, and the logger never calls it. It is listed because if it ever
+ *     were called it would be UNSAFE: measured, it leaves the marker undisposed
+ *     with `baseY → 0` and fires no `onBufferChange`, so it is the `RIS` hazard
+ *     without the `RIS` rescue — the render-time check rejects the watermark only
+ *     until new output pushes `baseY` back past the stale line. Do not call it;
+ *     write `\x1bc` if a reset is wanted, which does fire the swap.
+ *   - **a resize / reflow BREAKS the invariant outright** and is the one
+ *     transition the `baseY` rule cannot catch. Probed against
+ *     `@xterm/headless` 6.0.0: `resize()` rewraps rows *below* `baseY`, changing
+ *     both their content and their index, and the marker follows the reflow — so
+ *     the guard waves a watermark through that now points at different text.
+ *     Frozen rows are only immutable at a FIXED geometry. It is unreachable
+ *     today (this term is constructed once at {@link COLS}×{@link ROWS} and
+ *     never resized — only the pty is), and `onResize` drops the watermark below
+ *     so it can never be silently wrong. Note what that costs, because it is why
+ *     the geometry is not a knob: the rows already appended are still on disk in
+ *     their pre-reflow wrapping, so a resize would repeat them, reflowed, in the
+ *     new region. Making the geometry configurable means designing that, not
+ *     changing a constant.
  */
 export class GridBodyRenderer {
-  /** Rendered text of buffer rows `[0, baseY)` as of the last render — the rows
-   *  that were already frozen then, so their text can be reused verbatim. */
-  private frozenRows: string[] = [];
-  /** Marker pinned at the last frozen row of that render. Null when the last
-   *  render had no scrollback to reuse, or the cache has been dropped. */
-  private marker: IMarker | null = null;
+  /** Marker pinned at the last buffer row already appended to the file. Null
+   *  when nothing of the buffer being rendered is on disk yet. */
+  private appended: IMarker | null = null;
+  /** Marker pinned at the last row of the delta the caller has not committed
+   *  yet — adopted by {@link commit}, dropped by {@link abandon}. Held apart
+   *  from {@link appended} so a failed write leaves the watermark describing
+   *  what is actually on disk. */
+  private pending: IMarker | null = null;
 
   /** Takes the term at construction rather than per render so the buffer-swap
-   *  subscription below cannot be forgotten by a caller — dropping the cache on
-   *  a swap is a correctness requirement, not a tuning knob. */
+   *  subscription below cannot be forgotten by a caller — noticing a `RIS` is a
+   *  correctness requirement, not a tuning knob. */
   constructor(private readonly term: Terminal) {
-    // An alternate-screen switch, or a full reset (`RIS`) — which installs
-    // brand new buffer objects — leaves the marker anchored in a buffer that is
-    // no longer the one being rendered, and its row indices mean nothing here.
-    this.term.buffer.onBufferChange(() => this.invalidate());
+    this.term.buffer.onBufferChange(() => this.onBufferSwap());
+    // A reflow renumbers and rewrites rows below `baseY`, and the marker follows
+    // it — so the watermark survives the guard while pointing at different text.
+    // Nothing resizes this term today; this is the tripwire for the day someone
+    // makes the geometry configurable. See the class doc.
+    this.term.onResize(() => this.reset());
   }
 
-  /** Drop the cache so the next render translates every row again. */
-  invalidate(): void {
-    this.marker?.dispose();
-    this.marker = null;
-    this.frozenRows = [];
+  /** Forget the append watermark: the next delta re-renders every row of the
+   *  buffer into `frozen` + `tail`, which is what a full file rewrite needs. */
+  reset(): void {
+    this.abandon();
+    this.appended?.dispose();
+    this.appended = null;
   }
 
-  /** Read every populated row of the headless xterm buffer (scrollback +
-   *  viewport) as plain UTF-8 text, reusing the frozen prefix of the previous
-   *  render. `translateToString(true)` trims trailing blanks per row, which
-   *  keeps the file from carrying the wide xterm grid's empty cells. Rows are
-   *  joined with `\n`. */
-  render(): string {
+  /**
+   * Translate the rows that are not on disk yet and split them at the frozen
+   * boundary. `translateToString(true)` trims trailing blanks per row, which
+   * keeps the file from carrying the wide xterm grid's empty cells.
+   *
+   * The trailing run of blank rows inside the newly-frozen part is held back
+   * into `tail`: the writer drops the body's trailing blanks, and a run that is
+   * blank now (a cleared screen leaves the tail of scrollback empty) may sit
+   * above real output two flushes later. Keeping it rewritable is what lets the
+   * appended region stay byte-stable — it always ends on a non-blank row.
+   */
+  renderDelta(): GridBodyDelta {
+    this.abandon();
     const buffer = this.term.buffer.active;
-    const rows = this.reusableRows(buffer.length);
-    for (let y = rows.length; y < buffer.length; y++) {
+    const start = this.appendedRows(buffer);
+    const rows: string[] = [];
+    for (let y = start; y < buffer.length; y++) {
       const line = buffer.getLine(y);
       rows.push(line ? line.translateToString(true) : '');
     }
-    // Snapshot the cache BEFORE the trailing-blank pop below: the pop can reach
-    // back into the frozen prefix (a cleared screen leaves the tail of
-    // scrollback empty), and the cache is indexed by absolute row.
-    this.rememberFrozenRows(rows);
-    // Drop the trailing run of empty rows — terminal buffers are usually
-    // padded with blanks all the way to the viewport bottom.
-    while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
-    return rows.join('\n');
+    let frozenCount = Math.max(0, Math.min(buffer.baseY, buffer.length) - start);
+    while (frozenCount > 0 && rows[frozenCount - 1] === '') frozenCount--;
+    let frozen: string[] = [];
+    let tail = rows;
+    if (frozenCount > 0) {
+      // `registerMarker` takes an offset from the cursor, which sits at
+      // `baseY + cursorY`. Returns undefined on the alternate buffer — which
+      // has `baseY === 0` and so never gets here — and a delta whose rows could
+      // not be anchored must stay rewritable, or the next flush appends them a
+      // second time.
+      const lastFrozen = start + frozenCount - 1;
+      const marker = this.term.registerMarker(lastFrozen - buffer.baseY - buffer.cursorY);
+      if (marker) {
+        this.pending = marker;
+        frozen = rows.slice(0, frozenCount);
+        tail = rows.slice(frozenCount);
+      }
+    }
+    // Drop the trailing run of empty rows — terminal buffers are usually padded
+    // with blanks all the way to the viewport bottom.
+    while (tail.length > 0 && tail[tail.length - 1] === '') tail.pop();
+    return { frozen, tail };
   }
 
-  /** The prefix of the previous render that is still valid, as a fresh array the
-   *  caller appends the re-translated remainder onto. Empty when there is no
-   *  usable cache. */
-  private reusableRows(bufferLength: number): string[] {
-    const marker = this.marker;
-    if (!marker || marker.isDisposed) return [];
-    // `marker.line` is the last frozen row's CURRENT index — xterm decremented
-    // it once per evicted line — so it doubles as the reusable row count and as
-    // the measure of how far the cache has slid.
-    const reusable = marker.line + 1;
-    const evicted = this.frozenRows.length - reusable;
-    // A negative `evicted` means the marker moved the wrong way; anything past
-    // the buffer's end means rows vanished from under it. Neither maps onto the
-    // cache, so re-translate everything.
-    if (evicted < 0 || reusable > bufferLength) return [];
-    return this.frozenRows.slice(evicted);
+  /** Move the append watermark onto the delta just written. The previous marker
+   *  is disposed: xterm walks every live marker on every evicted line, so
+   *  leaking one per flush would make eviction cost grow without bound. */
+  commit(): void {
+    if (!this.pending) return;
+    this.appended?.dispose();
+    this.appended = this.pending;
+    this.pending = null;
   }
 
-  /** Cache the rows frozen as of this render and re-pin the marker. The previous
-   *  marker is disposed first: xterm walks every live marker on every evicted
-   *  line, so leaking one per flush would make eviction cost grow without
-   *  bound. */
-  private rememberFrozenRows(rows: string[]): void {
-    this.marker?.dispose();
-    this.marker = null;
+  /** Drop the uncommitted delta's marker — the write did not land, so the
+   *  watermark must keep describing the file as it stands. */
+  abandon(): void {
+    this.pending?.dispose();
+    this.pending = null;
+  }
+
+  /** How many rows of the buffer being rendered are already on disk. */
+  private appendedRows(buffer: Terminal['buffer']['active']): number {
+    const marker = this.appended;
+    if (!marker || marker.isDisposed) return 0;
+    // `marker.line` is the appended row's CURRENT index — xterm decremented it
+    // once per evicted line. At or past `baseY` it is not in the frozen region
+    // any more (alternate buffer, `RIS`, a cleared scrollback), so nothing of
+    // this buffer has been appended.
+    if (marker.line < 0 || marker.line >= buffer.baseY) return 0;
+    return marker.line + 1;
+  }
+
+  /** `RIS` swapped in a buffer this marker never belonged to. Entering the
+   *  alternate screen is not that: the normal buffer and its marker are
+   *  untouched, and the alt screen has nothing frozen to append anyway. */
+  private onBufferSwap(): void {
     const buffer = this.term.buffer.active;
-    const frozen = buffer.baseY;
-    this.frozenRows = frozen > 0 ? rows.slice(0, frozen) : [];
-    if (frozen === 0) return;
-    // `registerMarker` takes an offset from the cursor, which sits at
-    // `baseY + cursorY`; the last frozen row is `baseY - 1`. Returns undefined
-    // on the alternate buffer, which has no scrollback to reuse anyway.
-    this.marker = this.term.registerMarker(-1 - buffer.cursorY) ?? null;
+    if (buffer.type !== 'normal') return;
+    const marker = this.appended;
+    if (!marker || marker.isDisposed) return;
+    if (marker.line >= buffer.baseY) this.reset();
   }
 }
 
@@ -410,6 +548,18 @@ export class SessionLogger {
   /** Transcript watermark matching the on-disk body, for the incremental
    * append. Null when the on-disk body is a grid snapshot / nothing. */
   private bodyCursor: TranscriptCursor | null = null;
+  /** Byte offset where the grid body's **appended** (immutable) region ends —
+   * everything before it is frozen rows the writer never touches again, and a
+   * grid flush truncates and rewrites from exactly here. Null when the on-disk
+   * body is not an appended grid snapshot, which forces a full rewrite. */
+  private gridFrozenEnd: number | null = null;
+  /** The same offset, but kept across a bookkeeping reset: it answers "how much
+   * of this file is frozen grid history", which stays true even when "can the
+   * next flush append to it" has stopped being true. The appended region is the
+   * only copy of that output — nothing in memory can rebuild it — so a rewrite
+   * reads it back through this offset instead of composing a wipe from the live
+   * buffer. Cleared only when the file is known to be gone or replaced. */
+  private gridHistoryEnd: number | null = null;
   /** Last few bytes on disk — a cheap tail sample checked before an incremental
    * append (the short-form replacement for the old whole-file `startsWith`). A
    * mismatch (or a length mismatch vs {@link diskLen}) falls back to a rewrite. */
@@ -429,10 +579,10 @@ export class SessionLogger {
    * When a session speaks it, the log body becomes the clean transcript
    * instead of the grid snapshot. */
   private readonly oscTranscript = new OscTranscriptExtractor();
-  /** Renders the grid body, reusing the frozen scrollback prefix between
-   *  flushes so the *row walk* costs O(new rows) instead of O(scrollback). The
-   *  flush as a whole stays O(retained size) — see {@link GridBodyRenderer}.
-   *  Built with the term in {@link ensureTerm}, so null for as long as it is. */
+  /** Splits the grid body into the rows that just froze (appended once) and the
+   *  live tail (rewritten each flush), so a flush costs O(new rows) rather than
+   *  O(retained size) — see {@link GridBodyRenderer}. Built with the term in
+   *  {@link ensureTerm}, so null for as long as it is. */
   private gridBody: GridBodyRenderer | null = null;
   /** Injectable clock — stamps `started`/`finished` and the timestamp markers
    * so tests can drive cadence deterministically. */
@@ -459,6 +609,9 @@ export class SessionLogger {
     flushMs: number = DEFAULT_FLUSH_MS,
     /** Test hook — injectable clock for deterministic timestamp markers. */
     now: () => Date = () => new Date(),
+    /** Test hook — shrink {@link MAX_GRID_BODY_BYTES} so the trim path is
+     *  reachable without pushing megabytes through a headless xterm. */
+    private readonly maxGridBodyBytes: number = MAX_GRID_BODY_BYTES,
   ) {
     this.prefs = resolveLoggingPrefs(prefs);
     this.flushMs = flushMs;
@@ -598,7 +751,7 @@ export class SessionLogger {
     }
     this.cancelFlush();
     this.closed = true;
-    this.gridBody?.invalidate();
+    this.gridBody?.reset();
     if (this.term) this.term.dispose();
   }
 
@@ -715,11 +868,10 @@ export class SessionLogger {
     const kind: LogKind = isTranscript ? 'transcript' : 'grid';
     const headerLine = this.composeHeaderLine(kind);
 
-    // Grid render-skip: a grid body is a full repaint, not append-shaped, so it
-    // never takes the incremental path — but when no new bytes reached the term
-    // and no new marker is pending since the last grid write, the snapshot is
-    // byte-identical to what's on disk. Skip the (multi-MB `translateToString`)
-    // render and the write. `sync` flushes fall through so the footer lands.
+    // Grid render-skip: when no new bytes reached the term and no new marker is
+    // pending since the last grid write, the body is byte-identical to what's on
+    // disk. Skip the render and the write. `sync` flushes fall through so the
+    // footer lands.
     if (
       !sync &&
       !isTranscript &&
@@ -730,6 +882,14 @@ export class SessionLogger {
       this.gridMarkers.length === this.lastGridMarkerCount
     ) {
       addSync(spans, syncSlice);
+      return;
+    }
+
+    if (!isTranscript) {
+      // Close this method's open slice; flushGridBody opens and manages its own,
+      // so the grid path's I/O waits never land in syncNs.
+      addSync(spans, syncSlice);
+      await this.flushGridBody(sync, headerLine, renderGridBytes, spans);
       return;
     }
 
@@ -759,45 +919,63 @@ export class SessionLogger {
       // the file and the bookkeeping exactly.
     }
 
-    // Full atomic rewrite: grid repaint, first write, header/kind flip, a trim,
-    // a guard mismatch, or any terminal (sync) flush.
-    // The grid path re-translates only the rows that can still have changed
-    // (see GridBodyRenderer) — the rest of the snapshot is reused — so it is
-    // timed separately from the per-chunk parse.
-    const gridStart = !isTranscript && perfLog.isEnabled() ? process.hrtime.bigint() : 0n;
-    const body = isTranscript
-      ? this.oscTranscript.render()
-      : this.gridBody
-        ? this.gridBody.render()
-        : '';
-    if (gridStart !== 0n) {
-      perfLog.recordGridRender(this.ctx.sid, process.hrtime.bigint() - gridStart);
-    }
-    // Snapshot the transcript/marker watermarks that describe *this* body at
-    // render time, BEFORE the async write window below. Pty output() runs
-    // synchronously during the awaits (mkdir/open/writeFile/rename); reading
-    // these in recordWrite() afterwards would fold those raced lines into the
-    // on-disk bookkeeping though the just-written file lacks them — a permanent
-    // silent hole the next incremental append starts past (L1). Both are exact
-    // here: the extractor and the marker timeline are updated synchronously, so
-    // they match render()'s output byte-for-byte. (The grid byte watermark was
-    // snapshotted earlier, ahead of the xterm drain — see the top of flushNow.)
-    const renderCursor = isTranscript ? this.oscTranscript.cursor() : null;
-    const renderGridMarkerCount = this.gridMarkers.length;
+    // Full atomic rewrite. Only a TRANSCRIPT body reaches here — the grid path
+    // returned through `flushGridBody` above — so this is the transcript's first
+    // write, a header/kind flip, a cap trim, a guard mismatch, or a terminal
+    // (sync) flush.
+    const body = this.oscTranscript.render();
+    // Snapshot the transcript watermark that describes *this* body at render
+    // time, BEFORE the async write window below. Pty output() runs synchronously
+    // during the awaits (mkdir/open/writeFile/rename); reading it in
+    // recordWrite() afterwards would fold those raced lines into the on-disk
+    // bookkeeping though the just-written file lacks them — a permanent silent
+    // hole the next incremental append starts past (L1). It is exact here: the
+    // extractor is updated synchronously, so it matches render()'s output
+    // byte-for-byte.
+    const renderCursor = this.oscTranscript.cursor();
     const composeStart = clockIf(spans);
     const text = this.composeFileContent(body, kind);
     if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
     // Everything above this point ran without yielding — close the slice before
-    // the write's five round trips, which are not this flush's cost.
+    // the write's round trips, which are not this flush's block time.
     addSync(spans, syncSlice);
+    if (await this.writeFileAtomically(text, sync, spans)) {
+      syncSlice = clockIf(spans);
+      this.recordWrite(
+        text,
+        kind,
+        headerLine,
+        renderCursor,
+        renderGridBytes,
+        this.gridMarkers.length,
+        spans,
+      );
+      addSync(spans, syncSlice);
+    }
+  }
+
+  /**
+   * Write the whole file through the atomic tmp → (fsync) → rename dance.
+   * Returns false on any error, with the bookkeeping already reset so the next
+   * flush re-establishes the file exactly.
+   *
+   * Its write region is five libuv round trips, not main-thread block time, so
+   * the caller closes its `syncNs` slice before calling and reopens after; this
+   * helper adds only `writeNs` (the elapsed write). The rename keeps the file
+   * from ever being torn / zero-length; fsync makes the content durable across
+   * power loss. Periodic flushes skip the fsync (a live session re-snapshots
+   * every few seconds — fsync-ing each stalls the main process's libuv
+   * threadpool for durability the log viewer doesn't need); the exit / close
+   * flushes pass `sync`.
+   */
+  private async writeFileAtomically(
+    text: string,
+    sync: boolean,
+    spans: MutableFlushSpans | null,
+  ): Promise<boolean> {
     const writeStart = clockIf(spans);
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
-      // The atomic rename keeps the file from ever being torn / zero-length;
-      // fsync makes the content itself durable across power loss. Periodic
-      // flushes skip the fsync (a live session re-snapshots every few seconds —
-      // fsync-ing each stalls the main process's libuv threadpool for durability
-      // the log viewer doesn't need); the exit / close flushes pass `sync`.
       const tmp = `${this.txtPath}.tmp`;
       const fh = await open(tmp, 'w');
       try {
@@ -808,22 +986,332 @@ export class SessionLogger {
       }
       await rename(tmp, this.txtPath);
       if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
-      syncSlice = clockIf(spans);
-      this.recordWrite(
-        text,
-        kind,
-        headerLine,
-        renderCursor,
-        renderGridBytes,
-        renderGridMarkerCount,
-        spans,
-      );
-      addSync(spans, syncSlice);
+      return true;
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
       // Bookkeeping may now be stale (a partial write, a failed rename): force a
       // full rewrite on the next flush to re-establish the file exactly.
       this.resetBookkeeping();
+      return false;
+    }
+  }
+
+  /**
+   * Write a grid body: append the rows that just froze, then rewrite the live
+   * tail in place.
+   *
+   * Every flush's file still ENDS with exactly the buffer snapshot a full
+   * repaint would have written; what the append adds is the output that has
+   * since scrolled out of the buffer, which the repaint silently dropped.
+   *
+   * **A fallback must never cost the caller its history.** The appended region
+   * exists ONLY on disk — nothing in memory can rebuild it — so a rewrite that
+   * composed from the live buffer alone would turn a transient `EIO` into a
+   * permanent wipe of up to {@link MAX_GRID_BODY_BYTES}, reported to stderr and
+   * leaving a well-formed-looking log behind. A torn tail heals on the next
+   * flush; a wiped history never does. So every fallback here either reads the
+   * history back off disk and rewrites it in front of the new rows, or gives up
+   * on this flush and retries, leaving the file exactly as it stands. The only
+   * path that legitimately drops history is the one where there is none to keep:
+   * the first write of a session, or a file that has gone away.
+   */
+  private async flushGridBody(
+    sync: boolean,
+    headerLine: string,
+    renderGridBytes: number,
+    spans: MutableFlushSpans | null,
+  ): Promise<void> {
+    // This method owns its own `syncNs` slice: the caller closed its slice
+    // before awaiting here, so every synchronous stretch below is opened with
+    // `clockIf` and closed with `addSync` around each await — the grid path's
+    // I/O waits stay out of the flush's block-time total, exactly as the
+    // transcript path's do.
+    let syncSlice = clockIf(spans);
+    const headerBytes = Buffer.byteLength(headerLine, 'utf8') + 2;
+    const appendable =
+      this.diskLen !== null &&
+      this.writtenKind === 'grid' &&
+      this.writtenHeaderLine === headerLine &&
+      this.gridFrozenEnd !== null &&
+      this.gridFrozenEnd >= headerBytes;
+    // Past the cap the history is trimmed, which is a rewrite either way.
+    const overCap = appendable && this.gridFrozenEnd! - headerBytes > this.maxGridBodyBytes;
+    if (!appendable) this.gridBody?.reset();
+
+    // `gridRenderMs` brackets the body-building work of one grid flush, and
+    // nothing else — the same position it has always held. What it MEASURES has
+    // narrowed with the append (see PERF_SCHEMA_VERSION 4), which is why the
+    // schema moved rather than the span. The render is synchronous, so it is in
+    // the open `syncNs` slice as well as its own `gridRenderMs`.
+    const gridStart = perfLog.isEnabled() ? process.hrtime.bigint() : 0n;
+    let delta = this.gridBody ? this.gridBody.renderDelta() : EMPTY_GRID_DELTA;
+    if (gridStart !== 0n) {
+      perfLog.recordGridRender(this.ctx.sid, process.hrtime.bigint() - gridStart);
+    }
+    // Snapshot the marker timeline that describes *this* body before the async
+    // write window, for the same L1 reason as the transcript cursor above.
+    const renderGridMarkerCount = this.gridMarkers.length;
+
+    if (appendable && !overCap) {
+      // appendGridDelta closes its own sync slices (its compose/encode and its
+      // post-write bookkeeping); close ours before it and reopen after.
+      addSync(spans, syncSlice);
+      const outcome = await this.appendGridDelta(delta, sync, headerBytes, spans);
+      syncSlice = clockIf(spans);
+      if (outcome === 'written') {
+        this.gridBody?.commit();
+        this.recordGridWrite(headerLine, renderGridBytes, renderGridMarkerCount);
+        addSync(spans, syncSlice);
+        return;
+      }
+      if (outcome === 'retry') {
+        // A transient filesystem fault. The file on disk is untouched and still
+        // correct-as-of-the-last-flush; the watermark still describes it. Do
+        // nothing, and come back.
+        this.gridBody?.abandon();
+        this.retryFlush();
+        addSync(spans, syncSlice);
+        return;
+      }
+      // 'rewrite' — the file no longer matches our watermark, or the body's
+      // shape needs a full compose. Either way the rows we just rendered are not
+      // on disk, so re-render from row 0 and rebuild the file around whatever
+      // history survives.
+      this.gridBody?.abandon();
+      this.gridBody?.reset();
+      delta = this.gridBody ? this.gridBody.renderDelta() : EMPTY_GRID_DELTA;
+    }
+
+    // Recover the history that exists only on disk. `null` = the read itself
+    // failed, which is NOT the same as "there is no history": rewriting on a
+    // failed read is exactly the wipe this method exists to prevent.
+    addSync(spans, syncSlice);
+    const kept = await this.readGridHistory(headerBytes, overCap);
+    syncSlice = clockIf(spans);
+    if (kept === null) {
+      this.gridBody?.abandon();
+      this.gridBody?.reset();
+      this.retryFlush();
+      addSync(spans, syncSlice);
+      return;
+    }
+    const composeStart = clockIf(spans);
+    const frozenText = joinBodyParts([kept, delta.frozen.join('\n')]);
+    const text = this.composeFileContent(
+      joinBodyParts([frozenText, delta.tail.join('\n')]),
+      'grid',
+    );
+    if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
+    const historyBefore = this.gridHistoryEnd;
+    // Close before the write's round trips; writeFileAtomically adds only writeNs.
+    addSync(spans, syncSlice);
+    if (await this.writeFileAtomically(text, sync, spans)) {
+      syncSlice = clockIf(spans);
+      this.recordWrite(
+        text,
+        'grid',
+        headerLine,
+        null,
+        renderGridBytes,
+        renderGridMarkerCount,
+        spans,
+      );
+      this.gridFrozenEnd = headerBytes + Buffer.byteLength(frozenText, 'utf8');
+      this.gridHistoryEnd = this.gridFrozenEnd;
+      this.gridBody?.commit();
+      addSync(spans, syncSlice);
+    } else {
+      syncSlice = clockIf(spans);
+      // `writeFileAtomically` writes to a tmp and renames, so a failure leaves
+      // the previous file — and its history — untouched on disk. Restore the
+      // offset its own `resetBookkeeping` just cleared so the retry can still
+      // read that history back instead of composing over it.
+      this.gridBody?.abandon();
+      this.gridBody?.reset();
+      this.gridHistoryEnd = historyBefore;
+      this.retryFlush();
+      addSync(spans, syncSlice);
+    }
+  }
+
+  /** Re-dirty and re-arm after a flush that deliberately wrote nothing, so a
+   *  transient fault is retried on the debounce rather than waiting for the next
+   *  pty byte — a session that has fallen silent would otherwise never heal. */
+  private retryFlush(): void {
+    if (this.closed) return;
+    this.dirty = true;
+    this.scheduleFlush();
+  }
+
+  /**
+   * Read the grid history that is on disk and return the part to keep in front
+   * of the new rows: all of it, or — when `trim` — the newest half cut at a row
+   * boundary.
+   *
+   * Returns `''` when there is genuinely nothing to keep (no prior write, or the
+   * file is gone) and **`null` when the read failed**, which the caller must
+   * treat as "do not write", never as "there was no history". That distinction
+   * is the whole point: collapsing it turns one `EIO` at the trim boundary into
+   * a 100 % wipe of an intended 50 % trim.
+   *
+   * Bounded by {@link maxGridBodyBytes}, and on the trim path reached once per
+   * that many bytes of output — rare, but it is the one grid operation that is
+   * O(file), which is why the cap exists rather than a per-flush trim.
+   *
+   * Not passed `spans`: this runs only on the rare rewrite / trim fallback, and
+   * its synchronous decode is left OUT of `syncNs` (it lands in the flush's
+   * elapsed `totalNs`, never in the block-time cost). Under-counting a rare
+   * fallback is the safe direction — #467's whole correction was to stop cost
+   * fields absorbing elapsed time; the steady-state append path is fully
+   * accounted.
+   */
+  private async readGridHistory(headerBytes: number, trim: boolean): Promise<string | null> {
+    const frozenEnd = this.gridHistoryEnd;
+    if (frozenEnd === null || frozenEnd <= headerBytes) return '';
+    try {
+      const fh = await open(this.txtPath, 'r');
+      try {
+        const size = (await fh.stat()).size;
+        // The file may have been truncated under us; never read past its end.
+        const length = Math.min(frozenEnd, size) - headerBytes;
+        if (length <= 0) return '';
+        const buf = Buffer.alloc(length);
+        // A short read is a real possibility on a multi-megabyte pread; taking
+        // `buf` at face value would splice NUL padding into the body.
+        let filled = 0;
+        while (filled < length) {
+          const { bytesRead } = await fh.read(buf, filled, length - filled, headerBytes + filled);
+          if (bytesRead <= 0) break;
+          filled += bytesRead;
+        }
+        const history = buf.subarray(0, filled);
+        if (!trim) return history.toString('utf8');
+        const from = Math.max(0, filled - Math.floor(this.maxGridBodyBytes / 2));
+        const cut = history.indexOf(0x0a, from);
+        // No row boundary in the newest half means one row is longer than the
+        // budget; keeping nothing is the only bounded answer.
+        return cut < 0 ? '' : history.subarray(cut + 1).toString('utf8');
+      } finally {
+        await fh.close();
+      }
+    } catch (err) {
+      // A vanished file has no history to lose — that is a '' , not a fault.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      process.stderr.write(
+        `condash terminal-logger: grid history read failed: ${(err as Error).message}\n`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Append `delta.frozen` past the immutable watermark and rewrite the live tail
+   * in place.
+   *
+   * Returns `'written'`, `'retry'` (a transient fault — the file is untouched
+   * and must be left alone) or `'rewrite'` (the file no longer matches our
+   * watermark, or the body's shape is `header\n\n` exactly, which only
+   * {@link composeFileContent} knows how to spell).
+   *
+   * **Order matters, and it depends on which way the file moves.** The suffix is
+   * one `pwrite`, which Linux serialises against a concurrent whole-file read,
+   * and the truncate is a second syscall with an event-loop turn in between:
+   *
+   *   - **growing or same size** — write first. The new suffix covers every byte
+   *     of the old one, so the truncate is a no-op and no reader can ever see a
+   *     mixed file.
+   *   - **shrinking** (a `clear`-shaped tail, an alt-screen frame getting
+   *     smaller) — truncate first. Writing first would leave the old tail's
+   *     surplus bytes stranded past the new one: a screenful duplicated after
+   *     the new one, visible to every unsynchronised whole-file reader, and on a
+   *     SIGKILL in that window PERMANENT — with the footer no longer the last
+   *     line, so `splitContent` reports an exited session as still running and
+   *     the orphan sweep appends a second footer. Truncating first leaves a
+   *     valid PREFIX of the file instead, which every reader already tolerates
+   *     and which the next flush restores; a crash there is the case
+   *     `seal-orphan-logs.ts` exists to seal.
+   */
+  private async appendGridDelta(
+    delta: GridBodyDelta,
+    sync: boolean,
+    headerBytes: number,
+    spans: MutableFlushSpans | null,
+  ): Promise<'written' | 'retry' | 'rewrite'> {
+    const frozenEnd = this.gridFrozenEnd!;
+    const hasPriorRows = frozenEnd > headerBytes;
+    const frozenChunk = delta.frozen.join('\n');
+    const tailChunk = delta.tail.join('\n');
+    const bodyHasRows = hasPriorRows || frozenChunk.length > 0;
+    if (!bodyHasRows && tailChunk.length === 0 && this.composeTrailer('grid', true).length === 0) {
+      return 'rewrite';
+    }
+    // `composeStart` doubles as this method's sync-slice start (the caller closed
+    // its own slice before awaiting here). Compose + encode are the only
+    // synchronous work before the write's round trips.
+    const composeStart = clockIf(spans);
+    const frozenSuffix = (hasPriorRows && frozenChunk.length > 0 ? '\n' : '') + frozenChunk;
+    const tailSuffix = (bodyHasRows && tailChunk.length > 0 ? '\n' : '') + tailChunk;
+    const bodyEmpty = !bodyHasRows && tailChunk.length === 0;
+    const text = `${frozenSuffix}${tailSuffix}${this.composeTrailer('grid', bodyEmpty)}\n`;
+    if (spans) spans.composeNs += process.hrtime.bigint() - composeStart;
+    const encodeStart = clockIf(spans);
+    const suffix = Buffer.from(text, 'utf8');
+    if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
+    addSync(spans, composeStart);
+    const writeStart = clockIf(spans);
+    try {
+      if (!(await this.diskTailMatches())) return 'rewrite';
+      const size = frozenEnd + suffix.length;
+      const shrinking = this.diskLen !== null && size < this.diskLen;
+      const fh = await open(this.txtPath, 'r+');
+      try {
+        if (shrinking) await fh.truncate(frozenEnd);
+        let written = 0;
+        while (written < suffix.length) {
+          const { bytesWritten } = await fh.write(
+            suffix,
+            written,
+            suffix.length - written,
+            frozenEnd + written,
+          );
+          if (bytesWritten <= 0) throw new Error('short write to the grid log tail');
+          written += bytesWritten;
+        }
+        if (!shrinking) await fh.truncate(size);
+        if (sync) await fh.sync();
+        // Read the watermark back off the file just written rather than deriving
+        // it — the derivation is where an off-by-one silently disables every
+        // later append, and a 64-byte pread costs nothing.
+        const sample = Buffer.alloc(Math.min(TAIL_SAMPLE_BYTES, size));
+        if (sample.length > 0) await fh.read(sample, 0, sample.length, size - sample.length);
+        this.diskLen = size;
+        this.writtenTail = sample;
+      } finally {
+        await fh.close();
+      }
+      if (spans) spans.writeNs += process.hrtime.bigint() - writeStart;
+      const bookkeepStart = clockIf(spans);
+      this.gridFrozenEnd = frozenEnd + Buffer.byteLength(frozenSuffix, 'utf8');
+      this.gridHistoryEnd = this.gridFrozenEnd;
+      addSync(spans, bookkeepStart);
+      return 'written';
+    } catch (err) {
+      // A vanished file (the Logs pane's delete button, an external sweep) has
+      // no history left to protect, so the caller may rebuild it from scratch.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.resetBookkeeping();
+        return 'rewrite';
+      }
+      // Anything else is a fault of unknown extent. The bookkeeping can no
+      // longer be trusted, but the history offset survives so the retry can
+      // still read it back rather than composing a wipe from the live buffer.
+      process.stderr.write(
+        `condash terminal-logger: grid append failed: ${(err as Error).message}\n`,
+      );
+      const history = this.gridHistoryEnd;
+      this.resetBookkeeping();
+      this.gridHistoryEnd = history;
+      return 'retry';
     }
   }
 
@@ -897,8 +1385,12 @@ export class SessionLogger {
    *  window) — NOT the extractor's current state, which output() may have
    *  advanced during the awaits (L1).
    *
-   *  The `Buffer.from` here is the file's SECOND full UTF-8 encode — `writeFile`
-   *  already encoded the same string — which is why it gets its own span. */
+   *  #467 spanned a full second `Buffer.from(text)` here — the file's SECOND
+   *  UTF-8 encode, since `writeFile` already encoded the same string. The A6
+   *  half of the append work removed it: `Buffer.byteLength` + a 64-byte tail
+   *  slice read the length and the sample without the megabyte-scale copy. The
+   *  `encodeNs` span stays and now honestly reports ~0 on this path — the
+   *  measurement of a cost that is gone, not an omission. */
   private recordWrite(
     text: string,
     kind: LogKind,
@@ -909,19 +1401,38 @@ export class SessionLogger {
     spans: MutableFlushSpans | null,
   ): void {
     const encodeStart = clockIf(spans);
-    const bytes = Buffer.from(text, 'utf8');
-    this.diskLen = bytes.length;
-    this.writtenTail = tailBytes(bytes, TAIL_SAMPLE_BYTES);
+    this.diskLen = Buffer.byteLength(text, 'utf8');
+    this.writtenTail = utf8Tail(text, TAIL_SAMPLE_BYTES);
     if (spans) spans.encodeNs += process.hrtime.bigint() - encodeStart;
     this.writtenKind = kind;
     this.writtenHeaderLine = headerLine;
-    // The transcript cursor matches the body just rendered. Grid bodies aren't
-    // append-tracked → null.
+    // The transcript cursor matches the body just rendered. A grid body tracks
+    // its own append watermark instead (see recordGridWrite / gridFrozenEnd).
     this.bodyCursor = kind === 'transcript' ? renderCursor : null;
+    // The caller re-establishes both offsets when the body it just wrote is a
+    // grid one; anything else has replaced the grid history outright.
+    this.gridFrozenEnd = null;
+    this.gridHistoryEnd = null;
     if (kind === 'grid') {
       this.lastGridBytes = renderGridBytes;
       this.lastGridMarkerCount = renderGridMarkerCount;
     }
+  }
+
+  /** Record the bookkeeping an incremental grid append leaves behind. The
+   *  length + tail watermark were read back off the file inside the write; only
+   *  the render-skip watermarks are set here, and from the render-time snapshots
+   *  rather than the live counters (L1). */
+  private recordGridWrite(
+    headerLine: string,
+    renderGridBytes: number,
+    renderGridMarkerCount: number,
+  ): void {
+    this.writtenKind = 'grid';
+    this.writtenHeaderLine = headerLine;
+    this.bodyCursor = null;
+    this.lastGridBytes = renderGridBytes;
+    this.lastGridMarkerCount = renderGridMarkerCount;
   }
 
   /** Drop all on-disk bookkeeping so the next flush does a full rewrite. */
@@ -931,6 +1442,8 @@ export class SessionLogger {
     this.writtenKind = null;
     this.writtenHeaderLine = null;
     this.bodyCursor = null;
+    this.gridFrozenEnd = null;
+    this.gridHistoryEnd = null;
     this.lastGridBytes = -1;
     this.lastGridMarkerCount = -1;
   }
@@ -947,8 +1460,12 @@ export class SessionLogger {
     const now = this.now();
     if (now.getTime() - this.lastMarkerAt.getTime() < this.markerIntervalMs) return;
     const marker = timestampMarker(now);
-    if (isTranscript) this.oscTranscript.pushTimestampMarker(marker);
-    else this.gridMarkers.push(marker);
+    if (isTranscript) {
+      this.oscTranscript.pushTimestampMarker(marker);
+    } else {
+      this.gridMarkers.push(marker);
+      if (this.gridMarkers.length > MAX_GRID_MARKERS) this.gridMarkers.shift();
+    }
     this.contentSinceMarker = false;
     this.lastMarkerAt = now;
   }
@@ -970,15 +1487,15 @@ export class SessionLogger {
     return `${META_LINE_PREFIX}${JSON.stringify(header)}`;
   }
 
-  /** Assemble the on-disk text: header line, blank, body, then (for a grid log
-   * with markers) a trailing `<!-- timeline -->` block, then (if the session
-   * has exited) blank + footer line. `kind` records whether `body` is the OSC
-   * transcript or the grid snapshot, so readers needn't guess. */
-  private composeFileContent(body: string, kind: LogKind): string {
-    const lines: string[] = [this.composeHeaderLine(kind), ''];
-    if (body.length > 0) lines.push(body);
-    // Grid bodies are repaints, so the interval markers live here in a trailing
-    // block instead of inline (transcripts carry theirs in the body already).
+  /** Everything the file carries after the body: for a grid log with markers a
+   * `<!-- timeline -->` block, then (once the session has exited) the footer
+   * line — each preceded by a blank line. Split out of
+   * {@link composeFileContent} because the grid append path writes the same
+   * bytes without ever holding the body. */
+  private composeTrailer(kind: LogKind, bodyEmpty: boolean): string {
+    const lines: string[] = [];
+    // Grid bodies repaint their live tail, so the interval markers live here in
+    // a trailing block instead of inline (transcripts carry theirs in the body).
     if (kind === 'grid' && this.gridMarkers.length > 0) {
       lines.push('', '<!-- timeline -->', ...this.gridMarkers);
     }
@@ -990,7 +1507,21 @@ export class SessionLogger {
       };
       lines.push('', `${META_LINE_PREFIX}${JSON.stringify(footer)}`);
     }
-    return lines.join('\n') + '\n';
+    if (lines.length === 0) return '';
+    // With a body present the trailer starts a new line; with none, the blank
+    // line the header already wrote doubles as the separator.
+    return (bodyEmpty ? '' : '\n') + lines.join('\n');
+  }
+
+  /** Assemble the on-disk text: header line, blank, body, trailer. `kind`
+   * records whether `body` is the OSC transcript or the grid snapshot, so
+   * readers needn't guess. */
+  private composeFileContent(body: string, kind: LogKind): string {
+    const trailer = this.composeTrailer(kind, body.length === 0);
+    const head = `${this.composeHeaderLine(kind)}\n\n`;
+    // A session with nothing to say is the header line and its blank, full stop.
+    if (body.length === 0 && trailer.length === 0) return head;
+    return `${head}${body}${trailer}\n`;
   }
 }
 
@@ -998,3 +1529,25 @@ export class SessionLogger {
 function tailBytes(buf: Buffer, n: number): Buffer {
   return buf.length <= n ? buf : buf.subarray(buf.length - n);
 }
+
+/** The last `n` UTF-8 bytes of `text`, without encoding the whole string — the
+ *  A6 half of the append-only work. Every JS char encodes to at least one byte,
+ *  so the last `n` chars always cover at least `n` bytes; the start is nudged
+ *  off a low surrogate so the slice can't manufacture a U+FFFD the file does not
+ *  contain. */
+function utf8Tail(text: string, n: number): Buffer {
+  let start = Math.max(0, text.length - n);
+  const code = text.charCodeAt(start);
+  if (start > 0 && code >= 0xdc00 && code <= 0xdfff) start--;
+  return tailBytes(Buffer.from(text.slice(start), 'utf8'), n);
+}
+
+/** Join the non-empty pieces of a grid body with `\n`. A rendered row list joins
+ *  to '' only when it is empty — a trailing blank row is never kept — so this is
+ *  exactly `rows.join('\n')` over the concatenated lists. */
+function joinBodyParts(parts: string[]): string {
+  return parts.filter((part) => part.length > 0).join('\n');
+}
+
+/** Stand-in for a session whose headless term was never constructed. */
+const EMPTY_GRID_DELTA: GridBodyDelta = { frozen: [], tail: [] };

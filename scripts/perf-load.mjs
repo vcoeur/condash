@@ -1298,8 +1298,13 @@ async function readPerfRecords(conceptionPath) {
  *  below sums per-session fields, so those windows contribute zero and change no
  *  ms/render figure — but they DO enter `records.length` and the loop-p99
  *  distribution. Under a load profile every window carries traffic, so this is
- *  inert here; it is not inert for an idle capture. */
-const EXPECTED_SCHEMA = 3;
+ *  inert here; it is not inert for an idle capture.
+ *
+ *  v4 narrows `gridRenderMs` from "build the whole grid body" to "build the rows
+ *  that are new", because the body became append-only. Every ms/render figure
+ *  this harness prints is therefore NOT comparable across the v3/v4 boundary —
+ *  `flushTotalMsPerFlush` is, and is what a before/after should quote. */
+const EXPECTED_SCHEMA = 4;
 
 /** Fewest post-saturation renders that may back a steady-state ms/render.
  *  One render per 5 s flush per tab, so a 60 s single-tab realistic run

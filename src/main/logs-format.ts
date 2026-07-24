@@ -20,9 +20,11 @@
 export const META_LINE_PREFIX = '# condash: ';
 
 /** Which kind of body the `.txt` carries. `transcript` = the in-band OSC agent
- * transcript (append-only message log — a byte cursor is reliable); `grid` = a
- * rendered xterm-buffer snapshot (repainted each flush). Absent on logs written
- * before the field existed; readers fall back to a first-line heuristic. */
+ * transcript (append-only message log — a byte cursor is reliable); `grid` = the
+ * rendered xterm buffer, appended as rows freeze with the trailing live-tail
+ * region rewritten on every flush (so a byte cursor is reliable only below that
+ * region's start). Absent on logs written before the field existed; readers fall
+ * back to a first-line heuristic. */
 export type LogKind = 'transcript' | 'grid';
 
 export interface HeaderJson {

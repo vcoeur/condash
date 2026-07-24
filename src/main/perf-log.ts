@@ -395,8 +395,22 @@ function omitUndefined<T extends Record<string, number | undefined>>(
  *  distribution taken over a v2 file is conditioned on "a tab was talking".
  *  v3 emits a record for any window worth reporting, including ones with no
  *  terminal traffic at all — exactly the population the unexplained stalls live
- *  in. Mixing the two silently changes what a percentile is over. */
-export const PERF_SCHEMA_VERSION = 3;
+ *  in. Mixing the two silently changes what a percentile is over.
+ *
+ *  v4 narrows `gridRenderMs`. Through v3 it bracketed a grid flush building its
+ *  whole body — a row walk plus `rows.join('\n')` over the entire retained
+ *  buffer, i.e. O(retained size). From v4 the grid body is appended, so the same
+ *  span brackets a row walk over the NEW rows plus a join of those and the live
+ *  tail: O(new output). The field name, the units and `gridRenders` are all
+ *  unchanged, which is precisely why this needs a schema bump — a v3 and a v4
+ *  file look identical and mean different things, and averaging them would read
+ *  as an improvement that is partly a redefinition. `syncFlushMs` (added in v3's
+ *  #467 work) is the field to compare across the boundary: its meaning — the
+ *  flush's main-thread block time summed over its synchronous stretches — is the
+ *  same on both sides, and the append path (v4) fills it exactly as the repaint
+ *  path did. `gridRenderMs` shrank because the body it builds shrank; the
+ *  flush's total cost `syncFlushMs` measures the same thing throughout. */
+export const PERF_SCHEMA_VERSION = 4;
 
 /**
  * Loop-delay floor below which a window with no counted activity is dropped.
