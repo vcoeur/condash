@@ -22,6 +22,7 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { transcriptLine, type TranscriptFrame } from './osc-transcript';
+import { perfLog } from './perf-log';
 
 /** Tail bound: only the last this-many bytes of the sidecar are read per call.
  *  The summarizer wants recent text and caps its own input, so reading the
@@ -83,25 +84,35 @@ function readTail(filePath: string): string {
  * {@link OscTranscriptExtractor.render} (`[role] text` blocks joined by blank
  * lines). Malformed lines are skipped, never fatal.
  *
+ * Fully synchronous — the read, the split and the JSON parse all block the main
+ * thread — and it runs once per live tab on every dashboard tick, which is why
+ * it carries a perf span of its own. Unlike the git spans, this one IS
+ * event-loop block time.
+ *
  * @param filePath - The sidecar path (see {@link sidecarTranscriptPath}).
  * @returns The rendered transcript, or '' when the file is absent/empty/has no
  *   usable frames.
  */
 export function readFileTranscript(filePath: string): string {
-  const raw = readTail(filePath);
-  if (!raw) return '';
-  const lines: string[] = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    let frame: TranscriptFrame;
-    try {
-      frame = JSON.parse(line) as TranscriptFrame;
-    } catch {
-      continue; // partial / non-JSON line — skip, never break capture
+  const span = perfLog.startSpan();
+  try {
+    const raw = readTail(filePath);
+    if (!raw) return '';
+    const lines: string[] = [];
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      let frame: TranscriptFrame;
+      try {
+        frame = JSON.parse(line) as TranscriptFrame;
+      } catch {
+        continue; // partial / non-JSON line — skip, never break capture
+      }
+      if (frame.t === 'msg' && typeof frame.text === 'string') {
+        lines.push(transcriptLine(frame.role, frame.text));
+      }
     }
-    if (frame.t === 'msg' && typeof frame.text === 'string') {
-      lines.push(transcriptLine(frame.role, frame.text));
-    }
+    return lines.join('\n\n');
+  } finally {
+    perfLog.endSpan('transcriptRead', span);
   }
-  return lines.join('\n\n');
 }

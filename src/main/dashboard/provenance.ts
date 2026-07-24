@@ -13,6 +13,7 @@ import { findRepoEntry } from '../config-walk';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { findProjectReadmes } from '../walk';
 import { readHeader } from '../header-io';
+import { perfLog } from '../perf-log';
 import { branchToDir, defaultWorktreesPath } from '../worktree/shared';
 
 /** A tab's derived provenance. Every field is optional — each resolves
@@ -54,6 +55,20 @@ function isUnder(worktreesPath: string, cwd: string): string | null {
  * @returns The derived provenance; an empty object when nothing resolves.
  */
 export async function deriveProvenance(
+  conceptionPath: string,
+  tab: TabInfo,
+): Promise<TabProvenance> {
+  const span = perfLog.startSpan();
+  try {
+    return await deriveProvenanceUntimed(conceptionPath, tab);
+  } finally {
+    perfLog.endSpan('dashProvenance', span);
+  }
+}
+
+/** The body of {@link deriveProvenance}; split out only so the span brackets
+ *  every exit path without a `try` around the whole function. */
+async function deriveProvenanceUntimed(
   conceptionPath: string,
   tab: TabInfo,
 ): Promise<TabProvenance> {

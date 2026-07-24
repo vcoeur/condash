@@ -341,6 +341,14 @@ export async function syncPerfLogging(conceptionPath: string | null): Promise<vo
   const prefs = await getTerminalPrefs();
   const wanted = prefs.perf?.enabled === true && conceptionPath !== null;
   perfLog.setEnabled(wanted, wanted ? conceptionPath : undefined);
+  // Tell the renderer, whose own counters are half of the instrument: without
+  // this the renderer would only learn about recording it turned on itself, and
+  // a conception switch (which can stop recording) would leave it sampling into
+  // a recorder that is no longer listening.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    safeSend(win.webContents, EVENT_CHANNELS.perfState, { recording: wanted });
+  }
 }
 
 /** Begin periodic per-tab memory sampling (idempotent). Called once at app
@@ -425,6 +433,18 @@ export function tabsBytes(): Map<string, number> {
  *  Both sources are in-memory, so this works whether or not on-disk terminal
  *  logging is enabled. */
 export function tabRecentText(sid: string, maxChars = 8000): string {
+  const span = perfLog.startSpan();
+  try {
+    return recentTextFor(sid, maxChars);
+  } finally {
+    perfLog.endSpan('dashRecentText', span);
+  }
+}
+
+/** The body of {@link tabRecentText}; split out so the perf span brackets every
+ *  exit path. Fully synchronous main-thread work, once per live tab per
+ *  dashboard tick. */
+function recentTextFor(sid: string, maxChars: number): string {
   const s = sessions.get(sid);
   if (!s || s.exited !== undefined) return '';
   // Precedence: the cooperating program's neutral sidecar file (reliable,

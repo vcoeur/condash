@@ -389,6 +389,118 @@ describe('GridBodyRenderer body ends with the repaint it replaces', () => {
     // 400 runs across several seeds while developing the change.
   }, 30_000);
 
+  it('never duplicates or reorders a row over the full control-sequence stream', async () => {
+    // The `endsWith` oracle above cannot see a duplicated append: re-appending
+    // rows that are already on disk still leaves the repaint as the body's
+    // suffix. The unique-line fuzz below can, but it emits no control sequence
+    // at all — so between them the interesting case, duplication UNDER a buffer
+    // swap, was uncovered. This is that case: every emitted row carries a unique
+    // token, and the whole control-sequence vocabulary runs over it.
+    //
+    // The oracle is "no token appears twice", and only that. Loss is legitimate
+    // here (2J, 3J, RIS and eviction all destroy rows) and so, it turns out, is
+    // reordering: leaving the alternate screen RESTORES the pre-excursion
+    // cursor, so the next line can land above rows that are older than it —
+    // measured, with the headless buffer itself reading `46,44,45`, which is a
+    // terminal doing its job and not a writer losing track. Duplication is the
+    // half that can only come from the writer: nothing in the vocabulary copies
+    // content — inserts add blanks, deletes and scrolls move rows — and it is
+    // exactly the failure the `endsWith` oracle is blind to, because re-writing
+    // rows that are already on disk still leaves the repaint as the suffix.
+    const random = makeRandom(0x7ab1e5);
+    const pick = (n: number): number => Math.floor(random() * n);
+    let next = 0;
+    const token = (): string => `T${next++}|`;
+    const pieces: (() => string)[] = [
+      () => `${token()}line\r\n`,
+      () => token() + 'x'.repeat(pick(120) + 1) + '\r\n', // wraps into several rows
+      // Deliberately NOT token-bearing: a cursor-addressed write puts new text
+      // ABOVE older text by design, so a token there would break monotonicity
+      // for a reason that has nothing to do with the writer. Tokens ride only
+      // the paths that append in order.
+      () => `\x1b[${pick(ROWS) + 1};1Hoverwrite-${pick(100)}`,
+      () => '\x1b[2J',
+      () => '\x1b[3J',
+      () => '\x1b[?1049h',
+      () => '\x1b[?1049l',
+      () => `\x1b[${pick(ROWS) + 1};${ROWS}r`,
+      () => '\x1b[r',
+      () => `\x1b[${pick(4) + 1}L`,
+      () => `\x1b[${pick(4) + 1}M`,
+      () => `\x1b[${pick(4) + 1}S`,
+      () => `\x1b[${pick(4) + 1}T`,
+      () => '\x1bc',
+      () => Array.from({ length: pick(20) + 1 }, () => `${token()}bulk\r\n`).join(''),
+    ];
+
+    for (let run = 0; run < 20; run++) {
+      const term = newTerm();
+      const renderer = new GridBodyRenderer(term);
+      const model = new GridBodyModel();
+      for (let step = 0; step < 60; step++) {
+        await write(term, pieces[pick(pieces.length)]());
+        flush(renderer, model);
+        const countTokens = (text: string): Map<number, number> => {
+          const counts = new Map<number, number>();
+          for (const match of text.match(/T(\d+)\|/g) ?? []) {
+            const id = Number(match.slice(1, -1));
+            counts.set(id, (counts.get(id) ?? 0) + 1);
+          }
+          return counts;
+        };
+        for (const [id, count] of countTokens(model.body())) {
+          expect(count, `run ${run} step ${step}: token ${id} appears ${count}x in the body`).toBe(
+            1,
+          );
+        }
+        // Tighter still on the half that is written once and never revisited.
+        for (const [id, count] of countTokens(model.frozenRows().join('\n'))) {
+          expect(
+            count,
+            `run ${run} step ${step}: token ${id} appears ${count}x in the appended history`,
+          ).toBe(1);
+        }
+      }
+      term.dispose();
+    }
+  }, 30_000);
+
+  it('loses nothing to an alternate-screen excursion, and repeats nothing after it', async () => {
+    // A TUI opening and closing over a shell session. The normal buffer's rows
+    // are untouched by the alt screen, so nothing may go missing across the
+    // round trip — and the watermark that survives it must not re-append what it
+    // already wrote. Alt frames have no scrollback, so they may never reach the
+    // appended history at all.
+    const random = makeRandom(0xa17e54);
+    const pick = (n: number): number => Math.floor(random() * n);
+    for (let run = 0; run < 8; run++) {
+      const term = newTerm();
+      const renderer = new GridBodyRenderer(term);
+      const model = new GridBodyModel();
+      let next = 0;
+      for (let step = 0; step < 30; step++) {
+        if (pick(3) === 0) {
+          await write(term, '\x1b[?1049h');
+          for (let i = 0; i < pick(ROWS) + 1; i++) await write(term, `ALTFRAME-${i}\r\n`);
+          flush(renderer, model);
+          // While the alt screen is up it IS the body's tail, and none of it is
+          // frozen — the normal buffer's history sits underneath, untouched.
+          expect(model.frozenRows().join('\n')).not.toContain('ALTFRAME');
+          await write(term, '\x1b[?1049l');
+        }
+        let chunk = '';
+        for (let i = 0; i < pick(SCROLLBACK) + 1; i++) chunk += `line-${next++}\r\n`;
+        await write(term, chunk);
+        flush(renderer, model);
+        const body = model.body();
+        const seen = (body.match(/line-(\d+)/g) ?? []).map((m) => Number(m.slice('line-'.length)));
+        expect(seen, `run ${run} step ${step}`).toEqual(Array.from({ length: next }, (_, i) => i));
+        expect(body, `run ${run} step ${step}`).not.toContain('ALTFRAME');
+      }
+      term.dispose();
+    }
+  }, 30_000);
+
   it('never duplicates or reorders a line over a randomised burst stream', async () => {
     // The suffix invariant above cannot see a duplicated append: re-appending
     // rows that are already on disk still leaves the repaint as the body's

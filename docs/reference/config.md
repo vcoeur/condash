@@ -121,10 +121,10 @@ Typed keystrokes are _not_ captured separately — the pty echoes them back thro
 | `enabled`       | boolean       | `false` | Toggle capture entirely. Default flipped to opt-in for privacy (2.25.0). Disabling stops new writes on the next session spawn; existing files stay on disk for the janitor. The Logs pane stays usable for browsing past transcripts even when disabled. |
 | `retentionDays` | integer ≥ 0   | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                                                           |
 | `maxDirMb`      | integer ≥ 0   | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                                                           |
-| `scrollback`    | integer ≥ 100 | `5000`  | Scrollback lines retained by the per-session headless xterm. It bounds how much output one flush can carry, not the file: an appended body keeps rows the buffer has since evicted, up to an 8 MB per-file cap. Output that scrolls past the whole buffer **between** two flushes is still lost.                                              |
+| `scrollback`    | integer ≥ 100 | `5000`  | Scrollback lines retained by the per-session headless xterm. It bounds how much output one flush can carry, not the file: an appended body keeps rows the buffer has since evicted, up to a 2 MB per-file cap. Output that scrolls past the whole buffer **between** two flushes is still lost.                                              |
 | `markerIntervalSec` | integer ≥ 0 | `60`  | Wall-clock seconds between in-body `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers. A marker is emitted only when new output arrived since the previous one, so an idle session is never stamped. Applies to both transcript and grid logs. `0` disables periodic markers.                                            |
 
-A grid body is capped at **8 MB** per file (matching the in-band transcript's cap). Past it the oldest half of the appended history is dropped at a row boundary on the next flush. The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, then (2) evicts the oldest surviving day-dir while total size is over `maxDirMb`. No compression pass since v2.27.0 — plain `.txt` files are small enough at those caps that gzip is not worth the round-trip cost. Errors are logged to stderr and never propagate into the IPC layer.
+A grid body is capped at **2 MB** per file. The number is derived from these very defaults rather than borrowed: age stays the binding constraint only while a day's logs stay under ~35 MB (`maxDirMb` ÷ `retentionDays`), and at ~25 logged sessions a day that is ~1.4 MB per file — about what a saturated log already was before the body became append-only. 2 MB therefore roughly doubles the history a grid log keeps while staying in the size class these defaults were chosen against. **The trade:** a day in which 25 sessions all saturate reaches `maxDirMb` at ~10 days rather than 14; raise `maxDirMb` to keep the full 14. Typical sessions are far below the cap, so age normally still binds first. Past the cap the oldest half of the appended history is dropped at a row boundary on the next flush. The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, then (2) evicts the oldest surviving day-dir while total size is over `maxDirMb`. No compression pass since v2.27.0 — plain `.txt` files are small enough at those caps that gzip is not worth the round-trip cost. Errors are logged to stderr and never propagate into the IPC layer.
 
 **Migration from `maxFileMb` / `ansiPolicy`:** both fields were dropped from the schema in v2.23.0 when per-file rotation and ANSI stripping were retired. Settings files that still carry them (typically conceptions upgraded straight from ≤ 2.22) are scrubbed in-flight on every read and the legacy keys vanish from disk on the next settings write — no manual action.
 
@@ -301,8 +301,39 @@ instrumentation is inert, so an ordinary run pays nothing.
 When enabled, condash appends one JSON record per sampling window (2.5 s — the same tick that drives
 the per-tab memory meter; recording adds no timer of its own). Each record carries event-loop delay
 percentiles for the main process and, per session, bytes and chunks read off the pty, time spent in
-the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, coalesced IPC
-batches, backpressure pauses, and the un-acked in-flight high-water mark.
+the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, the disk
+log's **whole-flush** time with its compose / encode / write breakdown, coalesced IPC batches,
+backpressure pauses, and the un-acked in-flight high-water mark.
+
+`gridRenderMs` covers `GridBodyRenderer.render()` **only**. A flush also joins the file text, encodes
+it to UTF-8 to write it, and encodes it a second time for the on-disk bookkeeping — all O(retained
+size). `flushMs` is the whole flush and the superset; `composeMs`, `encodeMs` and `writeMs` attribute
+inside it (`writeMs` is wall clock, so it includes the libuv round trip as well as the encode on the
+calling thread). Read `flushMs`, not `gridRenderMs`, for the cost of keeping a disk log.
+
+Two blocks beyond the terminal byte path ride the same record:
+
+- **`main`** — wall-clock spans for work outside the byte path (`dashRecentText`, `dashProvenance`,
+  `transcriptRead`, `repoRecompute`, `gitStatus`, `gitUpstream`, `gitDetails`), `ipcMain.handle`
+  dispatch time bucketed by channel, and GC pauses. Only `transcriptRead` is fully synchronous; the
+  git spans are mostly subprocess time during which main is free, so read them as "this was in
+  flight", not as delay to subtract. GC is reported as `{n, ms, maxMs}` **whenever the runtime can
+  observe it** — an absent `gc` block means unobservable, `n: 0` means no collection.
+- **`renderer`** — the renderer's own event-loop delay (measured the same way as main's, so the two
+  are comparable), animation-frame counts including long frames, and spans for the visible tab's
+  `term.write`, the demote `serialize()`, the worker RPC round trip, and the mount. The renderer
+  drains on its own 2.5 s timer and sends one message per drain — never per frame. `reports` says how
+  many drains were merged into the window; with more than one, counters sum and the loop percentiles
+  are the worst of them, never an average.
+
+**Which windows are recorded.** Every window with anything to report: a session that moved bytes, a
+timed span, an IPC dispatch, an observed GC, a renderer report, or an event-loop delay of 5 ms or
+more. Only a window idle on all of those is dropped, which is what keeps an idle app from writing a
+record every 2.5 s forever. Until schema 3 the rule was "some session moved bytes", which discarded
+every stall that had no terminal work in it — 20 % of the ≥ 100 ms stalls in the 2026-07 baseline.
+**Records from before that change are not comparable**: a percentile taken over a schema-2 file is
+conditioned on a tab having been busy. The `schema` field discriminates, and
+`scripts/perf-load.mjs` refuses to aggregate across it.
 
 The event-loop delay is the most directly useful figure: main is a single thread shared by every
 terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
@@ -320,7 +351,9 @@ Record button. The pane also shows the live values; per-tab memory, growth rate,
 are shown there whether or not recording is on, since they come from the always-on sampler.
 
 Records are plain JSONL and are safe to delete. Recording accumulates roughly 10 MB/day with two
-active tabs and ~80 MB/day with twenty, so **condash prunes the directory for you**: a janitor runs
+active tabs and ~80 MB/day with twenty — plus, since schema 3, a small record for each window that
+had non-terminal activity but no pty traffic (a git status, an IPC call, a stall), which is what an
+app with no busy tab now writes instead of nothing. So **condash prunes the directory for you**: a janitor runs
 at startup and every 24 h and deletes records older than **14 days**, then — while the directory is
 still over **200 MB** — the oldest remaining files until it is under. **The current day's file is
 never deleted**, since a live recorder is appending to it.

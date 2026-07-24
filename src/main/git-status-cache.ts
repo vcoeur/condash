@@ -17,6 +17,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { SimpleGit } from 'simple-git';
 import type { UpstreamStatus } from '../shared/types';
+import { perfLog } from './perf-log';
 
 // `simple-git` is dynamic-imported at its two call sites (below) rather than
 // statically, so importing this module — which happens on the pre-window boot
@@ -147,8 +148,21 @@ export async function getDirtyCount(
   return pending.promise;
 }
 
-/** The uncached `git status` computation behind {@link getDirtyCount}. */
+/** The uncached `git status` computation behind {@link getDirtyCount}. Carries
+ *  the `gitStatus` perf span: wall clock, so most of it is the git subprocess
+ *  rather than main-thread block time — read it as "a status was in flight",
+ *  not as delay attributable to this window. */
 async function computeDirtyCount(path: string, opts: DirtyCountOptions): Promise<number | null> {
+  const span = perfLog.startSpan();
+  try {
+    return await runDirtyCount(path, opts);
+  } finally {
+    perfLog.endSpan('gitStatus', span);
+  }
+}
+
+/** The body of {@link computeDirtyCount}, split out so the span brackets it. */
+async function runDirtyCount(path: string, opts: DirtyCountOptions): Promise<number | null> {
   try {
     const simpleGit = await loadSimpleGit();
     const git = simpleGit({ baseDir: path });
@@ -209,6 +223,17 @@ export async function getUpstreamStatus(path: string): Promise<UpstreamStatus | 
   const now = Date.now();
   const cached = upstreamCache.get(path);
   if (cached && now - cached.capturedAt < TTL_MS) return cached.upstream;
+  const span = perfLog.startSpan();
+  try {
+    return await computeUpstreamStatus(path, now);
+  } finally {
+    // Misses only — a cache hit returns above and must not inflate the count.
+    perfLog.endSpan('gitUpstream', span);
+  }
+}
+
+/** The uncached body of {@link getUpstreamStatus} (two git spawns). */
+async function computeUpstreamStatus(path: string, now: number): Promise<UpstreamStatus | null> {
   try {
     const simpleGit = await loadSimpleGit();
     const git = simpleGit({ baseDir: path });

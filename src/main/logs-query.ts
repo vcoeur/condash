@@ -62,8 +62,9 @@ export interface SessionRow extends SessionRef {
   exitSealed?: boolean;
   /** A session with no footer on disk — still running or never sealed. */
   active: boolean;
-  /** `transcript` (append-only OSC log) vs `grid` (repainted snapshot). Tells a
-   *  consumer when a byte cursor is reliable. Derived for legacy logs. */
+  /** `transcript` (append-only OSC log) vs `grid` (appended rows plus a live
+   *  tail rewritten each flush). Tells a consumer how far a byte cursor can be
+   *  trusted. Derived for legacy logs. */
   kind: LogKind;
 }
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, open, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,6 +7,7 @@ import type { IMarker, Terminal as HeadlessTerminal } from '@xterm/headless';
 import { Terminal } from '@xterm/headless';
 
 import { LOGGER_GRID_GEOMETRY, SessionLogger, type SessionContext } from './terminal-logger';
+import { splitContent } from './logs-format';
 
 /**
  * Microbenchmark for the append-only grid body (A3).
@@ -248,9 +249,15 @@ async function runOne(tmpRoot: string, rowsPerFlush: number): Promise<string> {
   void legacyTerm.write(saturate);
   await appendLogger.flushForTests();
   await legacyFlush(legacyRenderer, legacyTerm, legacyPath, legacyHeader);
-  // The pinned copy must reproduce a from-scratch render, or a "faster" number
-  // below would only mean it is doing less.
+  // BOTH arms must be doing the job, or a "faster" number below only means one
+  // of them is doing less. Guarding the baseline alone is not enough: a mutated
+  // append path that wrote nothing at all reported perfectly normal figures.
   expect(legacyRenderer.render()).toBe(fullRender(legacyTerm));
+  const appendOutputIsRight = (): boolean =>
+    splitContent(readFileSync(appendLogger.filePath()!, 'utf8')).text.endsWith(
+      fullRender(legacyTerm),
+    );
+  expect(appendOutputIsRight(), 'append arm did not write the buffer it was fed').toBe(true);
 
   // What both arms pay for the queued ANSI parse, measured on a third saturated
   // term so it can be subtracted out of both. Reported, never assumed.
@@ -309,6 +316,9 @@ async function runOne(tmpRoot: string, rowsPerFlush: number): Promise<string> {
     }
   }
 
+  // Re-checked after the measured phase, so a fault that only appears under load
+  // cannot hide behind a fast number.
+  expect(appendOutputIsRight(), 'append arm drifted from the buffer during the run').toBe(true);
   await appendLogger.close();
   legacyTerm.dispose();
 
@@ -316,13 +326,19 @@ async function runOne(tmpRoot: string, rowsPerFlush: number): Promise<string> {
   const legacy = summarise(legacyMs);
   const legacyBody = legacy.medianMs - parseMedian;
   const appendBody = append.medianMs - parseMedian;
+  // A body-only figure at or below zero means the parse subtraction swamped the
+  // measurement, not that the flush is infinitely fast. Say so — clamping the
+  // denominator turns a reachable negative into a seven-digit speedup.
+  const ratio =
+    legacyBody > 0 && appendBody > 0
+      ? `${(legacyBody / appendBody).toFixed(2)}x`
+      : 'n/a (below the parse floor)';
   return (
     `  ${String(rowsPerFlush).padStart(5)} rows/flush | ` +
     `repaint ${legacy.medianMs.toFixed(2)} ms (p90 ${legacy.p90Ms.toFixed(2)}) | ` +
     `append ${append.medianMs.toFixed(2)} ms (p90 ${append.p90Ms.toFixed(2)}) | ` +
     `saved ${(legacy.medianMs - append.medianMs).toFixed(2)} ms/flush | ` +
     `shared ANSI parse ${parseMedian.toFixed(2)} ms | ` +
-    `body-only ${legacyBody.toFixed(2)} → ${appendBody.toFixed(2)} ms ` +
-    `(${(legacyBody / Math.max(appendBody, 1e-6)).toFixed(2)}x)`
+    `body-only ${legacyBody.toFixed(2)} → ${appendBody.toFixed(2)} ms (${ratio})`
   );
 }

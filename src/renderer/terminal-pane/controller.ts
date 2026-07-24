@@ -22,6 +22,7 @@ import { type Column, displayName, sameStringList, type Tab } from './types';
 import { desiredDomIds, domVisibility, planVisibility } from './visibility-plan';
 import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
+import { rendererPerf } from '../perf-renderer';
 import type {
   AgentChoice,
   SpawnOptions,
@@ -256,10 +257,18 @@ export function createTerminalController(props: TerminalPaneProps) {
       try {
         const fromWorker = workerSessions.has(id);
         let replay: string;
+        rendererPerf.count('promotes');
         if (fromWorker) {
+          const rpcSpan = rendererPerf.startSpan();
           try {
             replay = await worker.serialize(id);
+            rendererPerf.endSpan('workerSerialize', rpcSpan);
           } catch {
+            // The round trip is timed on the failure path too: a watchdog
+            // rejection at the 2 s bound is the switch-latency tail this counter
+            // exists to find, and dropping it would report only the fast cases.
+            rendererPerf.endSpan('workerSerialize', rpcSpan);
+            rendererPerf.count('workerSerializeFailed');
             // The worker RPC failed / timed out (watchdog). Don't leave the
             // active tab blank: mount with whatever buffered tail we have so the
             // user gets a live terminal (scrollback may be lost) rather than an
@@ -281,7 +290,9 @@ export function createTerminalController(props: TerminalPaneProps) {
         // Fire-and-forget, but `.catch` it: the dispose RPC can now reject via the
         // watchdog, and an unhandled rejection would spam the renderer (R1).
         if (fromWorker) void worker.dispose(id).catch(() => undefined);
+        const mountSpan = rendererPerf.startSpan();
         await mountForSession(mountCtx, id, col, replay);
+        rendererPerf.endSpan('mount', mountSpan);
         flushTransitionBuffer(id, 'dom');
       } finally {
         endTransition(id, col);
@@ -295,7 +306,13 @@ export function createTerminalController(props: TerminalPaneProps) {
       const demoteColumn = h.column;
       beginTransition(tid, demoteColumn);
       try {
+        // The demote serialize is synchronous main-thread work over the whole
+        // scrollback — the single largest renderer frame in the 2026-07-23 CDP
+        // trace (1469 ms at 8 tabs), and until now measured only in that trace.
+        rendererPerf.count('demotes');
+        const serializeSpan = rendererPerf.startSpan();
         const snapshot = h.serialize.serialize();
+        rendererPerf.endSpan('demoteSerialize', serializeSpan);
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
         worker.write(tid, snapshot);
         workerSessions.add(tid);
@@ -588,7 +605,13 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (transitioning.has(id)) {
       bufferTransitionWrite(id, data);
     } else if (xterms.has(id)) {
+      // The visible tab's ANSI parse — the renderer's counterpart of main's
+      // `logParseMs`, and the largest named cost in the renderer CDP trace.
+      // `term.write` queues the parse rather than running all of it inline, so
+      // this span is a lower bound on it, not the whole cost.
+      const writeSpan = rendererPerf.startSpan();
       xterms.get(id)!.term.write(data);
+      rendererPerf.endSpan('termWrite', writeSpan);
     } else if (workerSessions.has(id)) {
       worker.write(id, data);
     } else {

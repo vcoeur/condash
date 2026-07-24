@@ -41,6 +41,11 @@ export const EVENT_CHANNELS = {
   menuClearRecents: 'menu-clear-recents',
   /** File-watcher status notice (e.g. inotify exhaustion) → renderer toast. */
   watcherStatus: 'watcher-status',
+  /** Performance-recording state, pushed whenever it is applied. The renderer's
+   *  own counters start and stop off this, so recording flipped from anywhere —
+   *  the pane, the Settings modal, a hand-edited settings.json — reaches both
+   *  sides of the instrument. */
+  perfState: 'perf-state',
 } as const;
 
 /**

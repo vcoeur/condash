@@ -420,7 +420,7 @@ function printHelp(verb: string | null): void {
         '  --redact          mask obvious secret shapes (keys, tokens, JWTs) in the body',
         '',
         'The JSON payload carries `kind`: transcript (append-only — byte cursor reliable)',
-        'or grid (repainted snapshot).',
+        'or grid (appended rows + a live tail rewritten each flush).',
         '',
         'Examples:',
         '  condash logs read t-a1b2c3d4',
