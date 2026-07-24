@@ -127,6 +127,62 @@ describe('decideRefreshAction', () => {
       decideRefreshAction({ mounted: true, bufferType: 'normal', rows: 1, onlyIfAltBuffer: true }),
     ).toEqual({ kind: 'focus-only', reason: 'altGate' });
   });
+
+  it('stands down on an exact frame, because the nudge would shear its bottom row', () => {
+    // The nudge shrinks a row and grows it back; on the alternate buffer xterm
+    // pops the bottom line and pushes a blank one, so nudging a frame that is
+    // already the pty's screen can only damage it.
+    expect(
+      decideRefreshAction({
+        mounted: true,
+        bufferType: 'alternate',
+        rows: 24,
+        onlyIfAltBuffer: false,
+        frameIsExact: true,
+        allowExactSkip: true,
+      }),
+    ).toEqual({ kind: 'focus-only', reason: 'frameExact' });
+  });
+
+  it('still nudges an exact frame for a caller that may not skip (manual Refresh)', () => {
+    // The user pressing Refresh is the signal that the screen is wrong, whatever
+    // the geometry bookkeeping says.
+    expect(
+      decideRefreshAction({
+        mounted: true,
+        bufferType: 'alternate',
+        rows: 24,
+        onlyIfAltBuffer: false,
+        frameIsExact: true,
+      }),
+    ).toEqual({ kind: 'nudge' });
+  });
+
+  it('nudges when the frame is not known to be exact', () => {
+    expect(
+      decideRefreshAction({
+        mounted: true,
+        bufferType: 'alternate',
+        rows: 24,
+        onlyIfAltBuffer: false,
+        frameIsExact: false,
+        allowExactSkip: true,
+      }),
+    ).toEqual({ kind: 'nudge' });
+  });
+
+  it('the alt-buffer gate is still checked before the exact-frame gate', () => {
+    expect(
+      decideRefreshAction({
+        mounted: true,
+        bufferType: 'normal',
+        rows: 24,
+        onlyIfAltBuffer: true,
+        frameIsExact: true,
+        allowExactSkip: true,
+      }),
+    ).toEqual({ kind: 'focus-only', reason: 'altGate' });
+  });
 });
 
 describe('REPAINT_NUDGE_MS', () => {

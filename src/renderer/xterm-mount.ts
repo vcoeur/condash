@@ -70,6 +70,16 @@ interface MountOptions {
   /** Buffered tail to write before live data starts arriving. Comes from
    * `termAttach` when re-attaching to an existing pty. */
   replay?: string;
+  /** The pty's current winsize, from main. Without it the Terminal is built at
+   * xterm's 80×24 constructor default and `replay` is parsed into that grid —
+   * which is only ever the right size by accident. It matters most for a
+   * full-screen TUI: `replay` then holds an alternate-screen frame drawn for the
+   * pty's width, the alternate buffer never reflows on resize
+   * (`Buffer._isReflowEnabled` returns `_hasScrollback`, false there), so the
+   * frame is wrapped on write and frozen wrong — no later fit can repair it and
+   * only a fresh repaint from the program can. Constructing at the pty's own
+   * geometry makes the replay land intact instead. */
+  geometry?: { cols: number; rows: number };
   /** Theme override; defaults to reading CSS custom properties. */
   theme?: { background: string; foreground: string };
   /** User-configured xterm preferences from settings.json. Overrides
@@ -150,6 +160,9 @@ export function mountXterm(
   const fallbackTheme = options.theme ?? themeFromCss();
 
   const term = new Terminal({
+    // Omitted (not passed as undefined) when the caller has no geometry, so
+    // xterm keeps its own defaults rather than seeing an explicit undefined.
+    ...(options.geometry ?? {}),
     fontFamily: prefs.font_family ?? 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
     fontSize: prefs.font_size ?? options.fontSize ?? 12,
     lineHeight: prefs.line_height ?? 1.0,

@@ -48,7 +48,10 @@ const geometry = {
 };
 
 let bufferType: 'normal' | 'alternate' = 'normal';
-let mountedTerms: { id: string; term: FakeTerm }[] = [];
+let mountedTerms: { id: string; term: FakeTerm; geometry?: { cols: number; rows: number } }[] = [];
+/** The pty's winsize as main reports it over `termGeometry`, or null when the
+ *  verb is unavailable (an older preload). */
+let ptyGeometry: { cols: number; rows: number } | null = null;
 /** Session whose next mount must fail (a thrown dynamic import / mount). */
 let failMountFor: string | null = null;
 /** Every (id, cols, rows) the renderer pushed to the pty over IPC. */
@@ -183,6 +186,7 @@ function installGlobals(): void {
       dashboardGetState: () => Promise.resolve(null),
       termList: () => Promise.resolve([]),
       termAttach: (id: string) => Promise.resolve({ output: `<attach ${id}>` }),
+      termGeometry: () => Promise.resolve(ptyGeometry),
       termResize: (id: string, cols: number, rows: number) => {
         ptyResizes.push([id, cols, rows]);
         return Promise.resolve();
@@ -306,41 +310,54 @@ beforeEach(() => {
   workerTerms.clear();
   heldSerialize = null;
   failMountFor = null;
+  ptyGeometry = null;
   bufferType = 'normal';
   geometry.clientWidth = 1200;
   geometry.clientHeight = 400;
   geometry.propose = { cols: 200, rows: 50 };
   h.mountXterm.mockReset();
-  h.mountXterm.mockImplementation((_el: unknown, id: string, options: { replay?: string }) => {
-    if (failMountFor === id) {
-      failMountFor = null;
-      throw new Error('mount failed');
-    }
-    const term = makeTerm(id);
-    if (options.replay) term.write(options.replay);
-    mountedTerms.push({ id, term });
-    return {
-      term,
-      fit: {
-        proposeDimensions: () => geometry.propose,
-        // Mirrors FitAddon.fit(): it re-reads proposeDimensions and commits it.
-        fit: () => {
-          const dims = geometry.propose;
-          if (dims) term.resize(dims.cols, dims.rows);
+  h.mountXterm.mockImplementation(
+    (
+      _el: unknown,
+      id: string,
+      options: { replay?: string; geometry?: { cols: number; rows: number } },
+    ) => {
+      if (failMountFor === id) {
+        failMountFor = null;
+        throw new Error('mount failed');
+      }
+      const term = makeTerm(id);
+      // Mirrors xterm: the constructor takes the grid, so the replay below is
+      // parsed at it. Not a resize — nothing is committed to the pty.
+      if (options.geometry) {
+        term.cols = options.geometry.cols;
+        term.rows = options.geometry.rows;
+      }
+      if (options.replay) term.write(options.replay);
+      mountedTerms.push({ id, term, geometry: options.geometry });
+      return {
+        term,
+        fit: {
+          proposeDimensions: () => geometry.propose,
+          // Mirrors FitAddon.fit(): it re-reads proposeDimensions and commits it.
+          fit: () => {
+            const dims = geometry.propose;
+            if (dims) term.resize(dims.cols, dims.rows);
+          },
         },
-      },
-      search: {},
-      serialize: { serialize: () => `<serialized ${id}>` },
-      onCwdChange: () => () => undefined,
-      onTitleChange: () => () => undefined,
-      onProgressChange: () => () => undefined,
-      setVisible: () => {},
-      dispose: () => {
-        term.disposed = true;
-      },
-      jumpToPrompt: () => {},
-    };
-  });
+        search: {},
+        serialize: { serialize: () => `<serialized ${id}>` },
+        onCwdChange: () => () => undefined,
+        onTitleChange: () => () => undefined,
+        onProgressChange: () => () => undefined,
+        setVisible: () => {},
+        dispose: () => {
+          term.disposed = true;
+        },
+        jumpToPrompt: () => {},
+      };
+    },
+  );
 });
 
 afterEach(() => {
@@ -521,5 +538,75 @@ describe('controller: mid-transition output is never dropped (O4)', () => {
     expect(written).toContain('<snapshot a>');
     expect(written).toContain('PRECIOUS');
     expect(written.indexOf('<snapshot a>')).toBeLessThan(written.indexOf('PRECIOUS'));
+  });
+});
+
+describe('controller: hydrate geometry composes with the widened repaint (#466 + #465)', () => {
+  /** The steady state the two fixes have to agree about: the host fits to
+   *  exactly the size the pty already has, so the hydrate is provably exact and
+   *  the fit that follows is a no-op. */
+  const atPtyGeometry = () => {
+    ptyGeometry = { cols: 120, rows: 30 };
+    geometry.propose = { cols: 120, rows: 30 };
+  };
+
+  it('builds a restored tab at the pty geometry, not at 80×24', async () => {
+    // The merge hazard: `geometry` is an optional trailing argument, so losing it
+    // at this call site compiles clean and silently puts the restore path back at
+    // the 80×24 default — where an alternate-screen frame is mangled by
+    // construction and no later fit can repair it.
+    atPtyGeometry();
+    const harness = await createHarness();
+    harness.sessions(['a']);
+    await settle();
+
+    const mount = mountedTerms.find((m) => m.id === 'a')!;
+    expect(mount.geometry).toEqual({ cols: 120, rows: 30 });
+    expect(harness.term('a')!.cols).toBe(120);
+  });
+
+  it('does not nudge a restored frame that is already the pty screen', async () => {
+    // Both fixes aimed at this path from opposite sides: this branch gives a
+    // first activation its repaint, #466 proves the frame needs none. Nudging an
+    // exact alternate-screen frame shears its bottom row, so the automatic
+    // repaint must stand down.
+    atPtyGeometry();
+    bufferType = 'alternate';
+    const harness = await createHarness();
+    harness.sessions(['a']);
+    await settle();
+
+    expect(harness.term('a')!.resizes).toEqual([]);
+    expect(ptyResizes).toEqual([]);
+  });
+
+  it('still nudges a restored frame whose geometry could not be proven', async () => {
+    // No `termGeometry` (an older preload, or main not knowing): nothing is
+    // provably exact, so the first-activation repaint this branch adds must
+    // still run.
+    ptyGeometry = null;
+    bufferType = 'alternate';
+    const harness = await createHarness();
+    harness.sessions(['a']);
+    await settle();
+
+    expect(harness.term('a')!.resizes.some(([, rows]) => rows === 49)).toBe(true);
+  });
+
+  it('a manual Refresh nudges an exact frame anyway', async () => {
+    // `allowExactSkip` is derived from `auto`, so the stand-down is for automatic
+    // repaints only: the user pressing Refresh IS the signal that the screen is
+    // wrong, whatever the geometry bookkeeping says.
+    atPtyGeometry();
+    bufferType = 'alternate';
+    const harness = await createHarness();
+    harness.sessions(['a']);
+    await settle();
+    expect(harness.term('a')!.resizes).toEqual([]);
+
+    harness.controller.refreshSession('a');
+    await settle();
+
+    expect(harness.term('a')!.resizes.some(([, rows]) => rows === 29)).toBe(true);
   });
 });

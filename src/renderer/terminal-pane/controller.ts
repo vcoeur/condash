@@ -129,6 +129,18 @@ export function createTerminalController(props: TerminalPaneProps) {
   // session's DOM Terminal, so an id-only claim let a stale timer block the new
   // handle's fit and clear a live nudge's guard (see `createNudgeRegistry`).
   const nudging = createNudgeRegistry<XtermHandle>();
+
+  // Geometry each hidden tab's snapshot was produced at (the worker Terminal is
+  // created at the demoting DOM Terminal's size and keeps parsing at it). Paired
+  // with the pty's own geometry at promote, this is what lets the controller know
+  // a hydrate reproduced the pty's screen *exactly* rather than merely plausibly.
+  const workerGeometry = new Map<string, { cols: number; rows: number }>();
+  // Sessions whose live DOM Terminal still holds a provably exact frame: the
+  // snapshot's geometry, the pty's geometry and the grid it was built at all
+  // agreed, and nothing has resized it since. The auto-refresh nudge is skipped
+  // for these — see `decideRefreshAction`.
+  const exactHydrates = new Map<string, { cols: number; rows: number }>();
+
   /** End an in-flight nudge before its terminal is torn down, restoring the row
    *  it gave up. A demote that lands inside the 160 ms hold would otherwise
    *  serialize a mid-repaint frame AND create the worker Terminal one row short
@@ -326,6 +338,20 @@ export function createTerminalController(props: TerminalPaneProps) {
       const col = tab?.column ?? 'left';
       beginTransition(id, col);
       try {
+        // Ask main for the pty's winsize now, concurrently with the worker
+        // round-trip below, so resolving it costs no extra latency on the switch
+        // path. Main owns the pty and is the only place this is known: the
+        // renderer writes geometry and is never told it, the worker protocol has
+        // no resize message, and nothing refits a hidden tab — so neither the
+        // demoted DOM Terminal's last size nor the worker Terminal's is
+        // trustworthy after the pane or window has changed size.
+        // Optional-called (like `openExternal` in xterm-mount): against a preload
+        // that predates the verb, a bare call throws a *synchronous* TypeError
+        // that `.catch()` never sees — which would reject the whole promote and
+        // leave the tab unmounted.
+        const geometryPromise = Promise.resolve(window.condash.termGeometry?.(id) ?? null).catch(
+          () => null,
+        );
         const fromWorker = workerSessions.has(id);
         let replay: string;
         if (fromWorker) {
@@ -351,17 +377,45 @@ export function createTerminalController(props: TerminalPaneProps) {
         // Fire-and-forget, but `.catch` it: the dispose RPC can now reject via the
         // watchdog, and an unhandled rejection would spam the renderer (R1).
         if (fromWorker) void worker.dispose(id).catch(() => undefined);
+        // Build the replacement Terminal at the pty's own geometry BEFORE the
+        // replay is written into it. At xterm's 80×24 default the snapshot is
+        // parsed at the wrong width, and the alternate buffer never reflows on
+        // resize — so a full-screen TUI's frame is mangled by construction and
+        // no later fit can repair it, only a repaint from the program itself.
+        // That is the mechanism the repaint nudge exists to paper over.
+        const geometry = (await geometryPromise) ?? undefined;
         try {
-          await mountForSession(mountCtx, id, col, replay);
+          await mountForSession(mountCtx, id, col, replay, geometry);
         } finally {
+          const mounted = xterms.has(id);
           // The replay was consumed out of the buffer above. If no Terminal came
           // out of the mount — it threw, or it bailed on its race guard — those
           // bytes are in a local variable about to go out of scope, and main
           // keeps only a 64 KB tail. Put them back, at the front, so the next
           // promote replays them; the flush below then finds no sink and keeps
           // the lot parked (see `transition-buffers`).
-          if (!xterms.has(id)) transitionBuffers.restore(id, replay);
+          if (!mounted) transitionBuffers.restore(id, replay);
           flushTransitionBuffer(id, 'dom');
+          // The frame is exact only when the snapshot's own geometry and the
+          // pty's agree — then the grid we just built IS the pty's screen. If the
+          // pty was resized while this tab was hidden the two differ, the
+          // snapshot carries the old wrapping, and the tab still needs a real
+          // repaint. A mount that produced no Terminal is never exact, and the
+          // bookkeeping runs in the `finally` so a failed promote cannot strand a
+          // stale `workerGeometry` entry for the next one to trust.
+          const snapshotGeometry = workerGeometry.get(id);
+          workerGeometry.delete(id);
+          if (
+            mounted &&
+            geometry &&
+            snapshotGeometry &&
+            geometry.cols === snapshotGeometry.cols &&
+            geometry.rows === snapshotGeometry.rows
+          ) {
+            exactHydrates.set(id, geometry);
+          } else {
+            exactHydrates.delete(id);
+          }
         }
       } finally {
         endTransition(id, col);
@@ -380,6 +434,10 @@ export function createTerminalController(props: TerminalPaneProps) {
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
         worker.write(tid, snapshot);
         workerSessions.add(tid);
+        // Record the geometry this snapshot was taken at, so the promote can tell
+        // an exact hydrate from a plausible one.
+        workerGeometry.set(tid, { cols: h.term.cols, rows: h.term.rows });
+        exactHydrates.delete(tid);
         h.detachListeners?.();
         h.mounted.dispose();
         h.element.remove();
@@ -478,7 +536,18 @@ export function createTerminalController(props: TerminalPaneProps) {
       // Await termAttach first so that any in-flight `spawn` invoke reply has
       // resolved by the time we build the tab — `pendingSpawnIntent` is set
       // synchronously after `termSpawn` returns, and we want to read it here.
-      const attach = await window.condash.termAttach(s.id);
+      // The geometry rides along on the same await so the raw pty tail below is
+      // replayed at the size the program emitted it for, not at 80×24: after a
+      // renderer reload the pty keeps whatever winsize it had, and a restored
+      // full-screen tab is exactly the case that never gets a repaint nudge
+      // (there is no previous active id to switch away from).
+      // `termGeometry?.()` — a preload without the verb would otherwise throw
+      // synchronously past `.catch()`, rejecting reconcile and leaving NO tabs
+      // rendered at all.
+      const [attach, geometry] = await Promise.all([
+        window.condash.termAttach(s.id),
+        Promise.resolve(window.condash.termGeometry?.(s.id) ?? null).catch(() => null),
+      ]);
       // Re-check membership after the await: `known` was snapshotted at
       // entry, so without this a session inserted by another path while the
       // attach was in flight would be inserted twice (duplicate tab rows).
@@ -514,8 +583,17 @@ export function createTerminalController(props: TerminalPaneProps) {
       // async mount below are re-buffered and flushed once the DOM Terminal
       // exists.
       transitionBuffers.drop(s.id);
-      await mountForSession(mountCtx, s.id, column, attach?.output);
+      await mountForSession(mountCtx, s.id, column, attach?.output, geometry ?? undefined);
       flushTransitionBuffer(s.id, 'dom');
+      // A restore hydrates the raw pty tail into a grid built at the pty's own
+      // winsize, with nothing resized since — the same claim the promote path
+      // makes, so record it as exact. It has to be recorded, not inferred:
+      // first activations now DO get an automatic repaint (that is this
+      // branch's fix), and nudging a frame that is already the pty's screen
+      // shears its bottom row on the alternate buffer (that is #466's). Without
+      // this the two fixes cancel out on exactly the path both were aimed at.
+      if (geometry) exactHydrates.set(s.id, geometry);
+      else exactHydrates.delete(s.id);
       // Bulk activation: a restore inserts N tabs and activates each one in turn,
       // so the switch detector would see N switches and queue N repaints — each
       // holding a pty one row short for 160 ms, with the next insert's promote
@@ -595,6 +673,8 @@ export function createTerminalController(props: TerminalPaneProps) {
         void worker.dispose(id).catch(() => undefined);
       }
       transitionBuffers.drop(id);
+      workerGeometry.delete(id);
+      exactHydrates.delete(id);
       // The tab is gone from the snapshot — its close has landed, so the
       // closing guard can be released (otherwise the set grows forever).
       closingTabs.delete(id);
@@ -1028,6 +1108,16 @@ export function createTerminalController(props: TerminalPaneProps) {
   /** Ids with a restart in flight, so a double-click can't fire two spawns. */
   const restartingTabs = new Set<string>();
 
+  /**
+   * Repaint a session. `auto` marks a repaint condash asked for rather than the
+   * user, and it is the single flag behind both stand-down rules: an automatic
+   * request may skip a frame already proven exact (it would only shear the
+   * bottom row off a correct alternate-screen frame), and may skip a nudge
+   * already in flight for the same terminal. A *manual* Refresh does neither —
+   * the user pressing it IS the signal that the screen is wrong, whatever the
+   * geometry says, so it is unconditional and, if a hold is in flight, queued
+   * behind it rather than dropped.
+   */
   const refreshSession = (
     id: string | null,
     opts?: { onlyIfAltBuffer?: boolean; auto?: boolean },
@@ -1064,11 +1154,24 @@ export function createTerminalController(props: TerminalPaneProps) {
         // faithfully-hydrated shell, or the terminal is too short to give up a
         // row), or nudge. `bufferType` is read post-hydrate so it reflects the
         // snapshot just replayed.
+        // The frame is still exact only if nothing has resized the grid since the
+        // hydrate — a fit to a differently-sized host means the pty geometry
+        // changed under it and the frame does need a repaint.
+        const exact = exactHydrates.get(id);
         const action = decideRefreshAction({
           mounted: Boolean(handle),
           bufferType: handle?.term.buffer.active.type,
           rows: handle?.term.rows,
           onlyIfAltBuffer: opts?.onlyIfAltBuffer ?? false,
+          frameIsExact: Boolean(
+            handle && exact && handle.term.cols === exact.cols && handle.term.rows === exact.rows,
+          ),
+          // Only an automatic repaint may stand down on an exact frame — see the
+          // `auto` note on `refreshSession`. Deriving it from the same flag is
+          // what keeps the two automatic callers this branch adds (the
+          // end-of-restore repaint and the band flip) from shearing a frame that
+          // is already the pty's screen.
+          allowExactSkip: opts?.auto ?? false,
         });
         if (action.kind === 'skip') return;
         // Past `skip`, `decideRefreshAction` guarantees a live handle; bind it
@@ -1077,6 +1180,8 @@ export function createTerminalController(props: TerminalPaneProps) {
         if (action.kind === 'focus-only') {
           // `altGate`: the opt-out excluded a faithfully-hydrated shell.
           // `tooShort`: a ≤1-row terminal can't lose a row.
+          // `frameExact`: the grid already IS the pty's screen; nudging it would
+          // only shear its bottom row (automatic repaints only).
           live.term.focus();
           return;
         }
