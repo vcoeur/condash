@@ -5,7 +5,7 @@ import { PerformanceObserver } from 'node:perf_hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { RendererPerfReport } from '../shared/types';
-import { PerfLog, perfLogPath, perfLogRoot, runPerfJanitor } from './perf-log';
+import { PerfLog, loopDelayMs, perfLogPath, perfLogRoot, runPerfJanitor } from './perf-log';
 
 /** Every recorder this suite enables, switched off after each test: enabling
  *  installs an event-loop histogram AND a GC PerformanceObserver, and leaving
@@ -89,11 +89,30 @@ describe('PerfLog', () => {
 
     const loop = log.takeRecord()?.loop;
     expect(loop).toBeDefined();
-    // Without the resolution subtraction these read ~10.1 / ~10.3.
-    expect(loop!.p50).toBeLessThan(5);
-    expect(loop!.p99).toBeLessThan(5);
+    // Anchored on the sampler's resolution, not on an arbitrary threshold. A raw
+    // (un-subtracted) reading has a hard floor at the resolution — measured min
+    // 10.027 ms — so anything below it proves the subtraction ran. p50 is the
+    // statistic to assert: this test shares a machine with whatever else is
+    // running, and real delay lands on the tail, so a p99 bound fails under load
+    // while testing nothing extra. The exact arithmetic is pinned deterministically
+    // by the `loopDelayMs` cases below.
+    expect(loop!.p50).toBeLessThan(10);
     // Never negative, however quiet the loop was.
     expect(loop!.p50).toBeGreaterThanOrEqual(0);
+    expect(loop!.p99).toBeGreaterThanOrEqual(0);
+  });
+
+  it('subtracts the sampler resolution from a raw histogram reading', () => {
+    // The measured idle readings this exists to neutralise: resolution 10 gives
+    // p50 10.109 / p99 10.297 / min 10.027 on a genuinely idle process.
+    expect(loopDelayMs(10.109e6)).toBeCloseTo(0.109, 3);
+    expect(loopDelayMs(10.297e6)).toBeCloseTo(0.297, 3);
+    expect(loopDelayMs(10.027e6)).toBeCloseTo(0.027, 3);
+    // A real block stays legible: a 100 ms hard block reads ~106.5 raw.
+    expect(loopDelayMs(106.5e6)).toBeCloseTo(96.5, 3);
+    // Floored at zero — a reading below the resolution is not negative delay.
+    expect(loopDelayMs(9.4e6)).toBe(0);
+    expect(loopDelayMs(0)).toBe(0);
   });
 
   it('accumulates per-session byte and chunk counts', () => {

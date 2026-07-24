@@ -390,7 +390,7 @@ const LOOP_RESOLUTION_MS = 10;
  * @returns Milliseconds of delay above the sampling interval, floored at 0 and
  *   rounded to microsecond precision.
  */
-function loopDelayMs(nanoseconds: number): number {
+export function loopDelayMs(nanoseconds: number): number {
   const rawMs = nanoseconds / 1e6;
   return Math.max(0, Math.round((rawMs - LOOP_RESOLUTION_MS) * 1e3) / 1e3);
 }
