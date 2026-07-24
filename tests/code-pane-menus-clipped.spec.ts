@@ -56,10 +56,20 @@ async function expectEscapedAndPainted(menu: Locator) {
     return {
       hit: el === probe || el.contains(probe as Node),
       position: getComputedStyle(el).position,
+      background: getComputedStyle(el).backgroundColor,
     };
   });
   expect(paint.position).toBe('fixed');
   expect(paint.hit).toBe(true);
+
+  // Issue #170: portaling a menu out of its pane made it render with a
+  // transparent background, because its surface token was not resolvable
+  // from `document.body`. These menus use `:root`-scoped tokens, so the
+  // move is safe — assert it rather than assume it.
+  expect(paint.background).not.toBe('transparent');
+  expect(paint.background).not.toBe('rgba(0, 0, 0, 0)');
+  const rgba = paint.background.match(/^rgba\([^)]*,\s*([\d.]+)\)$/);
+  if (rgba) expect(parseFloat(rgba[1])).toBe(1);
 }
 
 test('Code pane: "Open with…" and repo ⋯ menus escape the contained card and paint', async () => {
