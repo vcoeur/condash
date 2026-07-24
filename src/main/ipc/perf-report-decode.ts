@@ -30,7 +30,8 @@ function decodeSpans(value: unknown): Record<string, { ms: number; n: number }> 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** Decode the `{name: count}` counter map, dropping malformed entries. */
+/** Decode a `{name: number}` map (counters, peaks), dropping malformed
+ *  entries. */
 function decodeCounts(value: unknown): Record<string, number> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const out: Record<string, number> = {};
@@ -53,6 +54,8 @@ export function decodeRendererReport(value: unknown): RendererPerfReport | null 
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   const windowMs = finiteNonNegative(raw.windowMs);
+  const samples = finiteNonNegative(raw.samples);
+  const hiddenMs = finiteNonNegative(raw.hiddenMs);
   const frames = finiteNonNegative(raw.frames);
   const longFrames = finiteNonNegative(raw.longFrames);
   const frameMaxMs = finiteNonNegative(raw.frameMaxMs);
@@ -64,6 +67,8 @@ export function decodeRendererReport(value: unknown): RendererPerfReport | null 
   const max = finiteNonNegative(loop.max);
   if (
     windowMs === undefined ||
+    samples === undefined ||
+    hiddenMs === undefined ||
     frames === undefined ||
     longFrames === undefined ||
     frameMaxMs === undefined ||
@@ -75,13 +80,17 @@ export function decodeRendererReport(value: unknown): RendererPerfReport | null 
   }
   const spans = decodeSpans(raw.spans);
   const counts = decodeCounts(raw.counts);
+  const maxima = decodeCounts(raw.maxima);
   return {
     windowMs,
     loop: { p50, p99, max },
+    samples,
+    hiddenMs,
     frames,
     longFrames,
     frameMaxMs,
     ...(spans ? { spans } : {}),
     ...(counts ? { counts } : {}),
+    ...(maxima ? { maxima } : {}),
   };
 }

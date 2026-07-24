@@ -121,6 +121,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     const arr = transitionBuffers.get(id);
     if (arr) arr.push(chunk);
     else transitionBuffers.set(id, [chunk]);
+    // G5's production counter: this buffer has no cap, so its peak depth during
+    // a switch is the evidence for (or against) the unbounded-growth hazard.
+    rendererPerf.observeMax('transitionBufferChunks', transitionBuffers.get(id)!.length);
   };
 
   const flushTransitionBuffer = (id: string, target: 'dom' | 'worker'): void => {
@@ -129,7 +132,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     transitionBuffers.delete(id);
     const data = chunks.join('');
     if (target === 'dom') {
-      xterms.get(id)?.term.write(data);
+      // The burst replayed on a tab switch — the largest single write on the
+      // switch path, and the one a switch-latency reading needs.
+      const term = xterms.get(id)?.term;
+      if (term) rendererPerf.timeWrite(term, data, 'transitionReplay');
     } else {
       worker.write(id, data);
     }
@@ -607,11 +613,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     } else if (xterms.has(id)) {
       // The visible tab's ANSI parse — the renderer's counterpart of main's
       // `logParseMs`, and the largest named cost in the renderer CDP trace.
-      // `term.write` queues the parse rather than running all of it inline, so
-      // this span is a lower bound on it, not the whole cost.
-      const writeSpan = rendererPerf.startSpan();
-      xterms.get(id)!.term.write(data);
-      rendererPerf.endSpan('termWrite', writeSpan);
+      // Timed through the write callback: `term.write` only *queues* the parse,
+      // so bracketing the call measured the enqueue and reported ~0.
+      rendererPerf.timeWrite(xterms.get(id)!.term, data, 'termWrite');
     } else if (workerSessions.has(id)) {
       worker.write(id, data);
     } else {

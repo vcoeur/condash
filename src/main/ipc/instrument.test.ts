@@ -85,6 +85,20 @@ describe('installIpcDispatchTiming', () => {
     expect(perfLog.takeRecord()?.main?.ipc?.termList.n).toBe(1);
   });
 
+  it('leaves the instrument’s own transport untimed', () => {
+    // Timing `perfRendererReport` would put the instrument's cost in a field
+    // read as the app's — and, because the renderer reports every window, it
+    // would put an IPC dispatch in every window and make main's idle gate
+    // unreachable.
+    perfLog.setEnabled(true, '/tmp/does-not-matter');
+    const host = fakeHost();
+    installIpcDispatchTiming(host);
+    host.handle('perfRendererReport', () => ({ recording: true }));
+    host.handlers.get('perfRendererReport')!();
+
+    expect(perfLog.takeRecord()?.main?.ipc).toBeUndefined();
+  });
+
   it('is idempotent, so a channel is never double-counted', () => {
     perfLog.setEnabled(true, '/tmp/does-not-matter');
     const host = fakeHost();

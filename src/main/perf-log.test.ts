@@ -5,7 +5,14 @@ import { PerformanceObserver } from 'node:perf_hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { RendererPerfReport } from '../shared/types';
-import { PerfLog, loopDelayMs, perfLogPath, perfLogRoot, runPerfJanitor } from './perf-log';
+import {
+  LOOP_RESOLUTION_MS,
+  PerfLog,
+  loopDelayMs,
+  perfLogPath,
+  perfLogRoot,
+  runPerfJanitor,
+} from './perf-log';
 
 /** Every recorder this suite enables, switched off after each test: enabling
  *  installs an event-loop histogram AND a GC PerformanceObserver, and leaving
@@ -29,6 +36,8 @@ function rendererReport(patch: Partial<RendererPerfReport> = {}): RendererPerfRe
   return {
     windowMs: 2500,
     loop: { p50: 0, p99: 0, max: 0 },
+    samples: 250,
+    hiddenMs: 0,
     frames: 0,
     longFrames: 0,
     frameMaxMs: 0,
@@ -61,7 +70,13 @@ describe('PerfLog', () => {
     log.recordChunk('a', 1000, 5000n);
     log.recordLogParse('a', 5000n);
     log.recordGridRender('a', 5000n);
-    log.recordFlush('a', { totalNs: 5000n, composeNs: 1n, encodeNs: 1n, writeNs: 1n });
+    log.recordFlush('a', {
+      totalNs: 5000n,
+      syncNs: 4000n,
+      composeNs: 1n,
+      encodeNs: 1n,
+      writeNs: 1n,
+    });
     log.recordBatch('a', 10);
     log.recordPause('a');
     log.recordWatchdog('a');
@@ -96,10 +111,9 @@ describe('PerfLog', () => {
     // running, and real delay lands on the tail, so a p99 bound fails under load
     // while testing nothing extra. The exact arithmetic is pinned deterministically
     // by the `loopDelayMs` cases below.
-    expect(loop!.p50).toBeLessThan(10);
-    // Never negative, however quiet the loop was.
-    expect(loop!.p50).toBeGreaterThanOrEqual(0);
-    expect(loop!.p99).toBeGreaterThanOrEqual(0);
+    expect(loop!.p50).toBeLessThan(LOOP_RESOLUTION_MS);
+    // `loopDelayMs` floors at 0, so asserting >= 0 would be a tautology dressed
+    // as coverage. The arithmetic is pinned deterministically below instead.
   });
 
   it('subtracts the sampler resolution from a raw histogram reading', () => {
@@ -183,6 +197,7 @@ describe('PerfLog', () => {
     log.recordGridRender('sid-1', 8_000_000n);
     log.recordFlush('sid-1', {
       totalNs: 30_000_000n,
+      syncNs: 19_000_000n,
       composeNs: 6_000_000n,
       encodeNs: 4_000_000n,
       writeNs: 9_000_000n,
@@ -190,6 +205,7 @@ describe('PerfLog', () => {
     const session = log.takeRecord()?.sessions['sid-1'];
     expect(session).toMatchObject({
       gridRenderMs: 8,
+      syncFlushMs: 19,
       flushMs: 30,
       flushes: 1,
       composeMs: 6,
@@ -205,6 +221,7 @@ describe('PerfLog', () => {
     for (let i = 0; i < 3; i++) {
       log.recordFlush('sid-1', {
         totalNs: 10_000_000n,
+        syncNs: 4_000_000n,
         composeNs: 1_000_000n,
         encodeNs: 2_000_000n,
         writeNs: 3_000_000n,
@@ -213,10 +230,77 @@ describe('PerfLog', () => {
     expect(log.takeRecord()?.sessions['sid-1']).toMatchObject({
       flushes: 3,
       flushMs: 30,
+      syncFlushMs: 12,
       composeMs: 3,
       encodeMs: 6,
       writeMs: 9,
     });
+  });
+
+  it('separates the flush cost from the flush elapsed', () => {
+    // Elapsed spans five libuv round trips, so it absorbs whatever else the loop
+    // is doing — measured at 100× the cost under an unrelated 26 ms per-turn
+    // block. Reading it as cost would let one session's render inflate another's
+    // flush, and make "share of the stall explained by measured work" ≈ 100 % by
+    // construction. `syncFlushMs` is the number that answers that question.
+    const { log } = recording();
+    log.recordFlush('sid-1', {
+      totalNs: 200_000_000n,
+      syncNs: 3_000_000n,
+      composeNs: 1_000_000n,
+      encodeNs: 500_000n,
+      writeNs: 195_000_000n,
+    });
+    const session = log.takeRecord()?.sessions['sid-1'];
+    expect(session?.syncFlushMs).toBe(3);
+    expect(session?.flushMs).toBe(200);
+    // The cost is a small fraction of the elapsed — the whole point of keeping
+    // both.
+    expect(session!.syncFlushMs!).toBeLessThan(session!.flushMs! / 10);
+  });
+
+  it('does not treat an idle renderer report as activity', () => {
+    // The renderer withholds an empty drain, but the gate must not depend on
+    // that: when any report counted as activity, the gate could never fire and
+    // an idle app wrote ~11 MB/day of records saying nothing happened.
+    const { log } = recording();
+    log.recordRendererReport(rendererReport({ frames: 150, loop: { p50: 0.1, p99: 1, max: 3 } }));
+    expect(log.takeRecord()).toBeUndefined();
+  });
+
+  it('records a renderer report that carries a real stall', () => {
+    const { log } = recording();
+    log.recordRendererReport(rendererReport({ loop: { p50: 0.2, p99: 40, max: 120 } }));
+    const record = log.takeRecord();
+    expect(record?.renderer?.loop.max).toBe(120);
+    expect(record?.sessions).toEqual({});
+  });
+
+  it('merges renderer peaks by max and counters by sum', () => {
+    const { log } = recording();
+    log.recordRendererReport(
+      rendererReport({ counts: { demotes: 1 }, maxima: { transitionBufferChunks: 12 } }),
+    );
+    log.recordRendererReport(
+      rendererReport({ counts: { demotes: 2 }, maxima: { transitionBufferChunks: 5 } }),
+    );
+    const renderer = log.takeRecord()?.renderer;
+    expect(renderer?.counts).toEqual({ demotes: 3 });
+    // A summed peak would report a depth that never existed.
+    expect(renderer?.maxima).toEqual({ transitionBufferChunks: 12 });
+  });
+
+  it('carries the renderer visibility fields so a throttled window is legible', () => {
+    // Chromium throttles renderer timers to ~1 Hz while the window is occluded.
+    // The renderer drops those samples; `hiddenMs` and `samples` are how a
+    // reader sees that the window is only partly measured.
+    const { log } = recording();
+    log.recordRendererReport(
+      rendererReport({ hiddenMs: 1800, samples: 40, loop: { p50: 0, p99: 2, max: 9 } }),
+    );
+    const renderer = log.takeRecord()?.renderer;
+    expect(renderer?.hiddenMs).toBe(1800);
+    expect(renderer?.samples).toBe(40);
   });
 
   it('records a window whose only activity is a main-thread span', async () => {
@@ -324,7 +408,7 @@ describe('PerfLog', () => {
 
   it('does not carry a renderer block into the next window', () => {
     const { log } = recording();
-    log.recordRendererReport(rendererReport({ frames: 10 }));
+    log.recordRendererReport(rendererReport({ frames: 10, longFrames: 1, frameMaxMs: 80 }));
     expect(log.takeRecord()?.renderer?.frames).toBe(10);
 
     log.recordChunk('sid-1', 1, 0n);

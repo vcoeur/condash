@@ -25,6 +25,16 @@ export interface IpcHandleHost {
 }
 
 /**
+ * Channels the instrument refuses to time: its own transport.
+ *
+ * `perfRendererReport` exists only because recording is on, so timing it would
+ * put the instrument's own cost in a field read as the app's — and, worse, make
+ * every window contain an IPC dispatch, which is what defeated the idle gate in
+ * the first cut of schema 3.
+ */
+const UNTIMED_CHANNELS: ReadonlySet<string> = new Set(['perfRendererReport']);
+
+/**
  * Wrap one handler so its dispatch wall time lands in the perf log.
  *
  * Three properties matter more than the timing itself:
@@ -45,6 +55,7 @@ export function withDispatchTiming<A extends never[], R>(
   channel: string,
   listener: (...args: A) => R,
 ): (...args: A) => R {
+  if (UNTIMED_CHANNELS.has(channel)) return listener;
   return (...args: A): R => {
     const span = perfLog.startSpan();
     if (span === 0n) return listener(...args);

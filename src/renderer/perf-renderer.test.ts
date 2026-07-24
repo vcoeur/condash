@@ -25,7 +25,36 @@ function recording(): RendererPerf {
 
 afterEach(() => {
   for (const perf of instances.splice(0)) perf.setEnabled(false);
+  delete (globalThis as { document?: unknown }).document;
 });
+
+/** A minimal `document` stand-in with a settable visibility state, so the
+ *  hidden-page rule is testable without a browser. Installed on `globalThis`
+ *  and removed by the suite's `afterEach`. */
+function fakeDocument(): { setHidden: (hidden: boolean) => void } {
+  const listeners: (() => void)[] = [];
+  const page = {
+    visibilityState: 'visible',
+    addEventListener: (_event: string, listener: () => void) => listeners.push(listener),
+    removeEventListener: (_event: string, listener: () => void) => {
+      const at = listeners.indexOf(listener);
+      if (at >= 0) listeners.splice(at, 1);
+    },
+  };
+  (globalThis as { document?: unknown }).document = page;
+  return {
+    setHidden: (hidden: boolean) => {
+      page.visibilityState = hidden ? 'hidden' : 'visible';
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+/** The loop-sample count a recorder has accumulated so far, read without
+ *  draining it — `takeReport` resets, which these tests must not do mid-run. */
+function countSamples(perf: RendererPerf): number {
+  return (perf as unknown as { loopSamples: number[] }).loopSamples.length;
+}
 
 describe('RendererPerf', () => {
   it('records nothing while disabled', () => {
@@ -87,6 +116,108 @@ describe('RendererPerf', () => {
     const report = perf.takeReport();
     expect(report?.loop).toEqual({ p50: 0, p99: 0, max: 0 });
     expect(report?.windowMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('withholds a window with nothing in it', () => {
+    // With recording on the probe fires 100×/s and the frame chain runs
+    // continuously, so "a sample exists" is true every window. If that counted
+    // as reportable, main's idle gate could never fire and an idle app would
+    // write ~11 MB/day of records saying nothing happened.
+    const perf = recording();
+    const idle = perf.takeReport()!;
+    expect(RendererPerf.isReportable(idle)).toBe(false);
+
+    perf.count('demotes');
+    expect(RendererPerf.isReportable(perf.takeReport()!)).toBe(true);
+  });
+
+  it('treats a real stall, a dropped frame, or a peak as reportable', () => {
+    const perf = recording();
+    const base = perf.takeReport()!;
+    expect(RendererPerf.isReportable({ ...base, loop: { p50: 0, p99: 0, max: 40 } })).toBe(true);
+    expect(RendererPerf.isReportable({ ...base, longFrames: 1 })).toBe(true);
+    expect(RendererPerf.isReportable({ ...base, maxima: { transitionBufferChunks: 3 } })).toBe(
+      true,
+    );
+    // …and a sub-threshold wobble is not.
+    expect(RendererPerf.isReportable({ ...base, loop: { p50: 0.2, p99: 1, max: 3 } })).toBe(false);
+  });
+
+  it('reports peaks by their maximum, not their sum', () => {
+    const perf = recording();
+    perf.observeMax('transitionBufferChunks', 4);
+    perf.observeMax('transitionBufferChunks', 11);
+    perf.observeMax('transitionBufferChunks', 7);
+    expect(perf.takeReport()?.maxima).toEqual({ transitionBufferChunks: 11 });
+  });
+
+  it('carries the sample count and hidden time', () => {
+    const perf = recording();
+    const report = perf.takeReport()!;
+    // No `document` in this environment, so the page is never hidden — the
+    // fields must still be present and finite, or the main-side decoder rejects
+    // the whole report.
+    expect(report.hiddenMs).toBe(0);
+    expect(Number.isFinite(report.samples)).toBe(true);
+  });
+
+  it('times a write through its completion callback, not its enqueue', async () => {
+    // `term.write` queues the parse and returns, so bracketing the call measured
+    // the enqueue (~0 ms) — C1's defect, reproduced on the renderer side.
+    const perf = recording();
+    let deliver: (() => void) | undefined;
+    const term = {
+      write(_data: string, callback?: () => void) {
+        deliver = callback;
+      },
+    };
+    perf.timeWrite(term, 'some bytes', 'termWrite');
+    // Nothing recorded yet: the parse has not happened.
+    expect(deliver).toBeTypeOf('function');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    deliver!();
+
+    const span = perf.takeReport()?.spans?.termWrite;
+    expect(span?.n).toBe(1);
+    expect(span!.ms).toBeGreaterThan(10);
+  });
+
+  it('writes straight through while disabled', () => {
+    const perf = new RendererPerf();
+    let written = '';
+    perf.timeWrite({ write: (data) => (written = data) }, 'bytes', 'termWrite');
+    expect(written).toBe('bytes');
+    expect(perf.takeReport()).toBeUndefined();
+  });
+
+  it('records no loop samples while the page is hidden, and says how long it was', async () => {
+    // Electron's `backgroundThrottling` defaults on, so Chromium drops renderer
+    // timers to ~1 Hz for an occluded window. Sampling through that reports
+    // ~990 ms "stalls" that never happened — which would invert the one
+    // question this module exists to answer. Hidden samples are discarded and
+    // the hidden time is reported instead.
+    const page = fakeDocument();
+    const perf = recording();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const visibleSamples = countSamples(perf);
+
+    page.setHidden(true);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    page.setHidden(false);
+
+    const report = perf.takeReport()!;
+    expect(report.hiddenMs).toBeGreaterThan(30);
+    // ~6 probe firings happened while hidden and contributed nothing; the only
+    // slack allowed is one sample racing the visibility flip itself.
+    expect(report.samples).toBeLessThanOrEqual(visibleSamples + 1);
+  });
+
+  it('does not charge an occlusion gap to the first frame after it', () => {
+    // `resetWindow` must clear `lastFrameAt`; otherwise the first frame after a
+    // ten-minute occlusion is recorded as a ten-minute frame.
+    const perf = recording();
+    perf.takeReport();
+    expect(perf.takeReport()?.frameMaxMs).toBe(0);
   });
 
   it('drops the window when recording stops', () => {

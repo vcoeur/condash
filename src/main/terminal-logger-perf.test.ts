@@ -82,6 +82,58 @@ describe('flush instrumentation', () => {
     await logger.close();
   });
 
+  it('reports the flush cost separately from the flush elapsed', async () => {
+    // `syncFlushMs` sums only the stretches that held the thread, so it contains
+    // every synchronous sub-span and excludes the write's round trips — which is
+    // what stops one session's stall from being counted as another's flush cost.
+    perfLog.setEnabled(true, tmp);
+    const logger = makeLogger();
+    logger.output('hello world\r\n'.repeat(200));
+    await logger.flushForTests();
+
+    const session = sessionRecord();
+    const syncParts =
+      (session?.gridRenderMs ?? 0) + (session?.composeMs ?? 0) + (session?.encodeMs ?? 0);
+    expect(session?.syncFlushMs).toBeGreaterThanOrEqual(syncParts - 0.001);
+    // Elapsed is the superset of cost …
+    expect(session?.syncFlushMs).toBeLessThanOrEqual((session?.flushMs ?? 0) + 0.001);
+    // … and the write's round trips are outside the cost.
+    expect(session!.syncFlushMs!).toBeLessThan(
+      (session?.flushMs ?? 0) - (session?.writeMs ?? 0) + 0.001,
+    );
+
+    await logger.close();
+  });
+
+  it('keeps the flush cost out of an unrelated stall', async () => {
+    // The regression this whole split exists for: block the loop between the
+    // flush's awaits and the elapsed time balloons, while the cost — what the
+    // flush itself held the thread for — must not move. A `flushMs`-based
+    // "share of the stall explained by measured work" would read ~100 % here.
+    perfLog.setEnabled(true, tmp);
+    const logger = makeLogger();
+    logger.output('hello world\r\n'.repeat(200));
+    const blocker = setInterval(() => {
+      const until = Date.now() + 25;
+      while (Date.now() < until) {
+        /* an unrelated 25 ms block per turn — a peer session's grid render */
+      }
+    }, 1);
+    try {
+      await logger.flushForTests();
+    } finally {
+      clearInterval(blocker);
+    }
+
+    const session = sessionRecord();
+    // Cost stays small; elapsed does not. The exact figures are machine-
+    // dependent, so the assertion is the RELATIONSHIP, which is structural.
+    expect(session!.syncFlushMs!).toBeLessThan(session!.flushMs!);
+    expect(session?.flushMs).toBeGreaterThan(25);
+
+    await logger.close();
+  });
+
   it('times a transcript flush too, where there is no grid render at all', async () => {
     // A cooperating agent tab never reaches GridBodyRenderer, so `gridRenderMs`
     // reports nothing for it — and before this change its flush cost was

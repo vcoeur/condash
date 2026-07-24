@@ -6,6 +6,7 @@
 import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
 import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
 import type { MountedTerm } from './xterm-mount';
+import { rendererPerf } from './perf-renderer';
 import { Caret } from './icons';
 import { StopIcon } from './icons';
 
@@ -170,7 +171,18 @@ function CodeRunRow(props: {
   // id so there is one main↔renderer bridge listener total, not one per
   // row.
   props.dataHandlers.set(props.session.id, (data) => {
-    mounted?.term.write(data);
+    if (!mounted) return;
+    // F6's production counter. Every chunk is parsed into this row's terminal
+    // whether or not the row is expanded — the mount is deliberately kept alive
+    // across a collapse — so a collapsed row costs a full ANSI parse per chunk
+    // for output nobody is looking at. Whether that matters has never been
+    // measured outside a synthetic profile; these two counters are the
+    // measurement, and they cost nothing while recording is off.
+    if (!expanded()) {
+      rendererPerf.count('codeRunCollapsedWrites');
+      rendererPerf.count('codeRunCollapsedBytes', data.length);
+    }
+    rendererPerf.timeWrite(mounted.term, data, expanded() ? 'codeRunWrite' : 'codeRunHiddenWrite');
   });
   props.exitHandlers.set(props.session.id, (code) => {
     mounted?.term.write(`\r\n\x1b[33m[process exited ${code}]\x1b[0m\r\n`);
