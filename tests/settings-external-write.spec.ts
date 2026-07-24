@@ -70,6 +70,34 @@ test('a staged edit survives an external write to settings.json', async () => {
   }
 });
 
+test('a corrupted settings.json fails the save loudly instead of rebasing onto nothing', async () => {
+  test.setTimeout(60_000);
+  // The rebase reads the file's new content through `parseRawConfig`, which
+  // falls back to `{}` on a parse failure. Merging against `{}` would read every
+  // key the user did NOT touch as deleted on disk, so a Save would silently
+  // reduce the file to the staged keys alone — worse than the conflict it
+  // replaced, which at least failed visibly.
+  const booted = await bootApp({ globalConfig: { theme: 'light', pdf_viewer: ['zathura'] } });
+  const globalPath = join(booted.userDataDir, 'condash', 'settings.json');
+  try {
+    const modal = await openSettings(booted);
+    await modal.locator('.theme-card[data-theme-id="console"]').click();
+
+    await writeFile(globalPath, '{ "theme": "light", oops', 'utf8');
+    await modal.locator('button.settings-save').click();
+
+    // The drift surfaces, and the staged batch is still staged — nothing was
+    // written, so the user can repair the file and save again.
+    await expect(modal.locator('.modal-error')).toBeVisible();
+    await expect(modal.locator('button.settings-save')).toBeEnabled();
+
+    // Critically: the broken file was not overwritten with a two-key stub.
+    expect(await readFile(globalPath, 'utf8')).toBe('{ "theme": "light", oops');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('an external write to the very key being staged does not win over the user', async () => {
   test.setTimeout(60_000);
   const booted = await bootApp({ globalConfig: { theme: 'light' } });

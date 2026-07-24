@@ -374,6 +374,16 @@ export function SettingsModal(props: {
    * Exactly one retry. A second drift means something is writing continuously,
    * and a loop would either spin or livelock the Save button; the conflict
    * surfaces then, as it did before.
+   *
+   * **The rebase is refused unless the file's new content actually parses.**
+   * `parseRawConfig` falls back to `{}` for unparseable text — a deliberate
+   * choice elsewhere, so the editor still mounts on a broken file — and merging
+   * against `{}` reads every key the user did *not* touch as "deleted on disk".
+   * A Save would then quietly reduce `settings.json` to the handful of keys in
+   * the draft, taking `lastConceptionPath` and the whole terminal block with it.
+   * That is the data loss this retry exists to prevent, arriving through a
+   * different door and worse for being silent: the plain conflict at least
+   * failed loudly. Same for a file that vanished (`''` parses to `{}` too).
    */
   const writeTreeDraft = async (
     draft: RawConfig,
@@ -391,6 +401,9 @@ export function SettingsModal(props: {
     } catch (err) {
       if (!(err as Error).message?.includes(WRITE_DRIFT_MARKER)) throw err;
       const fresh = await reread();
+      // Nothing safe to rebase onto — surface the drift rather than merging
+      // against an empty object. See the note above.
+      if (!fresh || parseErrorOf(fresh) !== null) throw err;
       const rebased = serialiseDraft(
         mergeRawConfig(parseRawConfig(baseline), draft, parseRawConfig(fresh)),
       );
