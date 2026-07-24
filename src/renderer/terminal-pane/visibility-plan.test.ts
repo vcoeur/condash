@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeIdsAfterDrop,
   desiredDomIds,
   domVisibility,
   planVisibility,
@@ -7,6 +8,7 @@ import {
   type MountedTab,
   type VisibilityPlan,
 } from './visibility-plan';
+import type { Column } from './types';
 
 describe('desiredDomIds', () => {
   it('collects each column active id, left before right', () => {
@@ -90,6 +92,64 @@ describe('planVisibility', () => {
         transitioning: empty,
       }),
     ).toEqual({ toPromote: ['l2'], toDemote: ['l1'] });
+  });
+});
+
+describe('activeIdsAfterDrop', () => {
+  const tab = (id: string, column: Column) => ({ id, column });
+
+  it('promotes the last remaining tab of a column whose active tab closed', () => {
+    expect(
+      activeIdsAfterDrop({ left: 'b', right: null }, [tab('a', 'left')], new Set(['b'])),
+    ).toEqual({ left: 'a', right: null });
+  });
+
+  it('leaves a column whose active tab survived untouched', () => {
+    const previous = { left: 'a', right: 'x' };
+    // 'b' (a background tab in the left column) closed: nothing moves, and the
+    // identical object comes back so the signal does not even notify.
+    expect(
+      activeIdsAfterDrop(previous, [tab('a', 'left'), tab('x', 'right')], new Set(['b'])),
+    ).toBe(previous);
+  });
+
+  it('nulls a column whose last tab closed', () => {
+    expect(activeIdsAfterDrop({ left: 'a', right: null }, [], new Set(['a']))).toEqual({
+      left: null,
+      right: null,
+    });
+  });
+
+  it('resolves both columns in the same value', () => {
+    // The whole point: one value, so the controller can make one signal write
+    // instead of publishing an intermediate state per column.
+    expect(
+      activeIdsAfterDrop(
+        { left: 'a', right: 'x' },
+        [tab('b', 'left'), tab('y', 'right')],
+        new Set(['a', 'x']),
+      ),
+    ).toEqual({ left: 'b', right: 'y' });
+  });
+
+  it('adopts a fallback for a column that had no active tab', () => {
+    // Preserves the controller's pre-existing behaviour: a column left with a
+    // null active but live tabs adopts one.
+    expect(
+      activeIdsAfterDrop({ left: null, right: null }, [tab('a', 'left')], new Set(['b'])),
+    ).toEqual({ left: 'a', right: null });
+  });
+
+  it('ignores dropped ids still present in the remaining list', () => {
+    // The caller may pass the pre-filter tab list; a dropped tab must never be
+    // chosen as the fallback.
+    expect(
+      activeIdsAfterDrop(
+        { left: 'b', right: null },
+        [tab('a', 'left'), tab('b', 'left')],
+        new Set(['b']),
+      ),
+    ).toEqual({ left: 'a', right: null });
   });
 });
 

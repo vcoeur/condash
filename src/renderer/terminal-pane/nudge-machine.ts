@@ -37,11 +37,15 @@ export interface NudgeTarget {
 }
 
 /**
- * Decide which tabs to nudge when the active-id signal changes. A genuine switch
- * to a *different* tab in a column produces one target; first-open (previous
- * null) and a no-op re-assert of the same id (previous === next — e.g. a
- * visibility flip re-firing the signal) produce none, which is what keeps a
- * nudge from racing a visibility flip that didn't actually change the active tab.
+ * Decide which tabs to nudge when the active-id signal changes. Any column whose
+ * active id becomes a *different* tab produces one target — including the first
+ * activation of a column (previous null): that tab hydrates from a snapshot like
+ * any other, and skipping it is what left a restored-on-boot tab, a
+ * freshly-spawned one, and the tab promoted after a close showing a garbled
+ * frame until the user hit Refresh. A no-op re-assert of the same id (previous
+ * === next — e.g. a visibility flip re-firing the signal) still produces none,
+ * which is what keeps a nudge from racing a visibility flip that didn't actually
+ * change the active tab.
  *
  * `autoRefreshOnTabSwitch === false` restricts every target to alt-buffer tabs
  * (`onlyIfAltBuffer: true`); `true` or `undefined` (the default) nudges every
@@ -62,9 +66,42 @@ export function refreshOnSwitchTargets(
   for (const col of ['left', 'right'] as Column[]) {
     const next = current[col];
     const was = previous[col];
-    if (next && was && next !== was) targets.push({ id: next, onlyIfAltBuffer });
+    if (next && next !== was) targets.push({ id: next, onlyIfAltBuffer });
   }
   return targets;
+}
+
+/** Claim-check over the sessions whose pty is being held one row short by a
+ *  repaint nudge. Keyed by session id *and* the handle that owns the nudge: the
+ *  live DOM Terminal for a session is destroyed and rebuilt on every switch, so
+ *  an id-only claim let a stale timer both block a brand-new handle's fit (the
+ *  new terminal was then never fitted by its promote) and clear a live nudge's
+ *  guard (a chained fit restored the full size and collapsed the dip). Ownership
+ *  makes both impossible: a claim only ever affects the handle that made it. */
+export interface NudgeRegistry<Handle> {
+  /** Record that `handle` is holding `id`'s pty one row short. */
+  claim(id: string, handle: Handle): void;
+  /** Whether `handle` — this exact terminal, not merely this session — is
+   *  mid-nudge, and so must not be fitted. */
+  isHeldBy(id: string, handle: Handle): boolean;
+  /** Release `id`, but only if `handle` still owns it. A timer belonging to a
+   *  handle that has since been replaced releases nothing. */
+  release(id: string, handle: Handle): void;
+}
+
+/** Build an empty {@link NudgeRegistry}. Generic over the handle type so the
+ *  module stays free of any xterm/DOM import. */
+export function createNudgeRegistry<Handle>(): NudgeRegistry<Handle> {
+  const held = new Map<string, Handle>();
+  return {
+    claim: (id, handle) => {
+      held.set(id, handle);
+    },
+    isHeldBy: (id, handle) => held.get(id) === handle,
+    release: (id, handle) => {
+      if (held.get(id) === handle) held.delete(id);
+    },
+  };
 }
 
 /** What a scheduled refresh should do once its tab has hydrated:
