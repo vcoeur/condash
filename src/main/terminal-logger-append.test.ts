@@ -129,6 +129,34 @@ describe('SessionLogger append-only flush (G9)', () => {
     expect(preBody).toBe(scannedBody);
   });
 
+  it('appends a grid body past the frozen watermark instead of rewriting the file', async () => {
+    // A3: rows above the viewport can never change again, so a grid flush opens
+    // the file `r+`, writes past the watermark and truncates — it never composes
+    // or rewrites the retained buffer. Only the spawn write is a full rewrite.
+    const logger = new SessionLogger(
+      tmp,
+      ctx,
+      { enabled: true, scrollback: 20, markerIntervalSec: 0 },
+      50,
+    );
+    logger.spawn();
+    await logger.flushForTests();
+    const count = 6;
+    for (let k = 0; k < count; k++) {
+      let chunk = '';
+      for (let i = 0; i < 10; i++) chunk += `grid-${k * 10 + i}\r\n`;
+      logger.output(chunk);
+      await logger.flushForTests();
+    }
+    expect(openFlags.filter((f) => f === 'r+').length).toBeGreaterThanOrEqual(count);
+    // Just the spawn write — a grid flush never rewrites the whole file again.
+    expect(openFlags.filter((f) => f === 'w').length).toBe(1);
+
+    await logger.close();
+    const raw = readFileSync(logger.filePath()!, 'utf8');
+    for (let i = 0; i < count * 10; i++) expect(raw).toContain(`grid-${i}\n`);
+  });
+
   it('falls back to a full rewrite when the byte cap trims (content stays correct)', async () => {
     // A trim shrinks render(), so the new text is not a prefix-extension of the
     // last-written text → full rewrite. Verify content correctness across that.

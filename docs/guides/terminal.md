@@ -206,7 +206,14 @@ The file carries the rendered terminal buffer with two `# condash: {...}` JSON m
 # condash: {"finished":"2026-05-14T10:01:45Z","exitCode":0}
 ```
 
-The writer pipes pty bytes into a headless xterm (`@xterm/headless`) and every 5 seconds reads the rows of the active buffer via `IBufferLine.translateToString(true)`, joins with `\n`, prepends the header (and appends the footer if the session has exited), and atomically replaces the `.txt`. Only the rows that can still have changed are re-read: everything that has scrolled above the viewport is frozen, so its text is reused from the previous flush instead of being translated again. That removes the row walk, not the whole cost — joining the rows and rewriting the file both still scale with how much scrollback is retained, and at the 5000-line default they dominate what is left. Colour / bold / underline are deliberately not preserved — for full ANSI fidelity, use the live terminal pane's **Save buffer** button instead.
+The writer pipes pty bytes into a headless xterm (`@xterm/headless`) and every 5 seconds reads the rows of the active buffer via `IBufferLine.translateToString(true)`. Rows that have scrolled above the viewport are out of the cursor's reach forever, so the body is **append-only**: those rows are written once, past the end of the file, and only the ≤ 50-row live tail is truncated and rewritten. A flush costs what the session just printed rather than what the buffer still holds — no whole-buffer join, no second copy to compose the file, no full rewrite. Colour / bold / underline are deliberately not preserved — for full ANSI fidelity, use the live terminal pane's **Save buffer** button instead.
+
+Two consequences follow from the append:
+
+- **The file is no longer capped by the scrollback.** It keeps output the buffer has since evicted, which the old repaint-every-flush writer silently dropped. Every flush still leaves the file ending with exactly the buffer snapshot that writer would have produced; the appended history sits in front of it. Growth is bounded at **8 MB** per file instead, matching the in-band transcript's cap — past it the oldest half of the history is dropped at a row boundary.
+- **A burst larger than the whole scrollback inside one 5 s window is still lost**, exactly as before, and the file carries no marker where it happened. At the byte rates a terminal tab actually produces that needs more than 5000 rows in five seconds.
+
+A full-screen TUI on the alternate screen has no scrollback, so its frames land in the rewritable tail and never in the appended history — the normal buffer's history survives underneath and reappears when the TUI exits. A full reset (`RIS`) starts a fresh appended region below whatever the file already holds.
 
 The body also carries periodic `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers at the `markerIntervalSec` cadence (default 60 s), emitted **only when new output has arrived** since the previous marker — so an idle tab is never stamped. A transcript marker sits inline at a message boundary; a grid snapshot collects its markers in a trailing `<!-- timeline -->` block (a repaint can't host them inline). The HTML-comment form stays invisible in rendered markdown and is skippable by a parser. Set `markerIntervalSec` to `0` to disable them.
 
@@ -232,7 +239,7 @@ Logs are a source of the global search modal (`Cmd+K`) — but, being large and 
 
 The writer treats the pty `output` stream as the source of truth. Typed keystrokes are **not captured separately** — the kernel pty echoes them back through `output`, so the rendered buffer already shows what was typed. Capturing keystrokes again would either double-echo (if fed into the same xterm) or build a parallel keystroke log (richer than `~/.bash_history`); we do neither.
 
-Long-running streams (`tail -f`, full-screen TUIs like `vim` / `htop` / Claude Code) are bounded by the xterm scrollback: bytes that scroll past the scrollback window are dropped, exactly as they would be in the live terminal pane. The on-disk `.txt` therefore self-bounds to roughly *scrollback × line width* and never grows beyond that.
+Long-running streams (`tail -f`, full-screen TUIs like `vim` / `htop` / Claude Code) are bounded by the xterm scrollback **per flush**: whatever is still in the buffer when the 5 s timer fires is captured, and the appended body keeps it after the buffer has moved on. Only a burst that overruns the whole scrollback inside one flush window is dropped, as it would be in the live terminal pane. The on-disk `.txt` is bounded by the 8 MB per-file cap, not by *scrollback × line width*.
 
 ##### In-band transcript capture (alternate-screen TUIs) { #in-band-transcript }
 

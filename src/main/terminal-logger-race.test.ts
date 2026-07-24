@@ -3,15 +3,25 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// Hook invoked synchronously inside the mocked rename() — the exact window
-// between a full-rewrite flush's body render/write and recordWrite()'s
-// bookkeeping snapshot. Lets a test simulate a pty output() chunk racing an
-// in-flight flush (L1). Module-level mock, isolated to this file.
+// Hooks invoked synchronously inside the mocked fs calls — the exact window
+// between a flush's body render and its bookkeeping snapshot. Lets a test
+// simulate a pty output() chunk racing an in-flight flush (L1). A full rewrite
+// ends in rename(); an incremental grid flush never renames, so it is caught at
+// the `r+` open instead. Module-level mock, isolated to this file.
 let renameHook: (() => void) | null = null;
+let appendOpenHook: (() => void) | null = null;
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
+    open: vi.fn(async (path: string, flags: string) => {
+      if (flags === 'r+' && appendOpenHook) {
+        const hook = appendOpenHook;
+        appendOpenHook = null;
+        hook();
+      }
+      return actual.open(path, flags);
+    }),
     rename: vi.fn(async (from: string, to: string) => {
       if (renameHook) {
         const hook = renameHook;
@@ -39,6 +49,7 @@ function msgPacket(id: string, text: string): string {
 let tmp: string;
 beforeEach(() => {
   renameHook = null;
+  appendOpenHook = null;
   tmp = mkdtempSync(join(tmpdir(), 'condash-logger-race-'));
 });
 afterEach(() => {
@@ -88,7 +99,7 @@ describe('SessionLogger — output racing an in-flight full-rewrite flush (L1)',
     await logger.flushForTests();
 
     logger.output('line one\r\n');
-    renameHook = () => logger.output('raced line\r\n');
+    appendOpenHook = () => logger.output('raced line\r\n');
     await logger.flushForTests();
 
     await logger.flushForTests();
@@ -97,5 +108,39 @@ describe('SessionLogger — output racing an in-flight full-rewrite flush (L1)',
     expect(raw).toContain('raced line');
 
     await logger.close();
+  });
+
+  it('does not append a raced grid row twice', async () => {
+    // The append watermark advances only on commit, after the write lands — but
+    // the delta it describes was rendered BEFORE the write window. A row that
+    // arrived during the window belongs to the next delta, once, never to both.
+    const logger = new SessionLogger(
+      tmp,
+      ctx,
+      { enabled: true, scrollback: 10, markerIntervalSec: 0 },
+      100_000,
+    );
+    logger.spawn();
+    await logger.flushForTests();
+
+    for (let burst = 0; burst < 6; burst++) {
+      let chunk = '';
+      for (let i = 0; i < 8; i++) chunk += `row-${burst * 8 + i}\r\n`;
+      logger.output(chunk);
+      appendOpenHook = () => logger.output(`raced-${burst}\r\n`);
+      await logger.flushForTests();
+      await logger.flushForTests();
+    }
+    await logger.close();
+
+    const raw = readFileSync(logger.filePath()!, 'utf8');
+    for (let burst = 0; burst < 6; burst++) {
+      expect(raw.match(new RegExp(`raced-${burst}\\b`, 'g')) ?? [], `burst ${burst}`).toHaveLength(
+        1,
+      );
+    }
+    for (let i = 0; i < 48; i++) {
+      expect(raw.match(new RegExp(`row-${i}\\b`, 'g')) ?? [], `row ${i}`).toHaveLength(1);
+    }
   });
 });
