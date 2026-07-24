@@ -81,6 +81,52 @@ describe('createTransitionBuffers', () => {
     expect(buffers.take('c')).toBe('');
   });
 
+  it('caps a session that never regains a destination, evicting oldest-first', () => {
+    // Retaining on a failed flush trades a bounded loss for an unbounded one
+    // unless the buffer is capped: a session whose mount never lands has nothing
+    // scheduled to flush it again, and a chatty pty would grow it forever.
+    const buffers = createTransitionBuffers();
+    const chunk = 'x'.repeat(64 * 1024);
+    for (let i = 0; i < 8; i++) buffers.buffer('a', `${i}${chunk}`);
+    const kept = buffers.take('a');
+    expect(kept.length).toBeLessThanOrEqual(256 * 1024 + chunk.length + 1);
+    // The newest output survives — that is what a terminal shows.
+    expect(kept.endsWith(`7${chunk}`)).toBe(true);
+    expect(kept.startsWith('0')).toBe(false);
+  });
+
+  it('never evicts a lone oversized chunk (one write is better than none)', () => {
+    const buffers = createTransitionBuffers();
+    const huge = 'y'.repeat(512 * 1024);
+    buffers.buffer('a', huge);
+    expect(buffers.take('a')).toBe(huge);
+  });
+
+  it('restore puts a consumed replay back in front of what arrived since', () => {
+    // The promote takes the replay out of the buffer before mounting; if no
+    // Terminal comes out of that mount, the bytes must go back — ahead of any
+    // chunk that landed while it was in flight, since they predate it.
+    const buffers = createTransitionBuffers();
+    buffers.buffer('a', 'LIVE');
+    buffers.restore('a', 'SNAPSHOT');
+    expect(buffers.take('a')).toBe('SNAPSHOTLIVE');
+  });
+
+  it('restore of nothing parks nothing', () => {
+    const buffers = createTransitionBuffers();
+    buffers.restore('a', '');
+    expect(buffers.pending('a')).toBe(false);
+  });
+
+  it('pending reports whether bytes are waiting', () => {
+    const buffers = createTransitionBuffers();
+    expect(buffers.pending('a')).toBe(false);
+    buffers.buffer('a', 'x');
+    expect(buffers.pending('a')).toBe(true);
+    buffers.flush('a', () => true);
+    expect(buffers.pending('a')).toBe(false);
+  });
+
   it('keeps sessions independent', () => {
     const buffers = createTransitionBuffers();
     buffers.buffer('a', 'A');

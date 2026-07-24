@@ -41,10 +41,16 @@ export const MAX_FIT_ATTEMPTS = 12;
  *  when it cannot compute yet (no laid-out parent element). */
 export type ProposedDimensions = { cols: number; rows: number } | undefined;
 
-/** The terminal host's measured box — `clientWidth`/`clientHeight` of the very
+/** The terminal host's measured box — `clientWidth`/`clientHeight` of the
  *  element `FitAddon` sizes the grid from (the `.xterm-host` div, i.e.
  *  `term.element.parentElement`). `undefined` when there is no element to
- *  measure. */
+ *  measure.
+ *
+ *  Note this is the *padding* box, while `proposeDimensions()` measures the
+ *  computed *content* height — `.xterm-host` carries `padding: 4px 8px`, so the
+ *  two readings differ by 8 px vertically. The check below is therefore not a
+ *  superset of the grid-floor check: a 1–8 px tall host measures non-zero here
+ *  and still clamps to `rows: 1`, and the grid floor is what rejects it. */
 export type HostBox = { width: number; height: number } | undefined;
 
 /** The grid `proposeDimensions()` clamps to when the host measures zero
@@ -53,8 +59,12 @@ export type HostBox = { width: number; height: number } | undefined;
 const CLAMP_FLOOR_COLS = 2;
 const CLAMP_FLOOR_ROWS = 1;
 
-/** Whether the host is rendered at a real size. A zero axis means "rendered but
- *  not laid out yet" — the case proposeDimensions papers over with its clamp. */
+/** Whether the host has a box at all. A zero axis means "rendered but not laid
+ *  out yet" — the case proposeDimensions papers over with its clamp. This is the
+ *  cheaper, more direct signal, and it catches hosts whose *proposal* would look
+ *  plausible (a stale render-service cell size against a collapsed box, or a
+ *  `display:none` host with explicit dimensions); the grid floor below is what
+ *  covers the sub-cell hosts this check lets through (see {@link HostBox}). */
 function isHostMeasured(host: HostBox): boolean {
   return host !== undefined && host.width > 0 && host.height > 0;
 }
@@ -80,9 +90,10 @@ export type FitAction = 'fit' | 'retry' | 'giveup';
  * dimensions, the host box they were measured from, and how many retries remain.
  * The host must measure non-zero on both axes AND the proposal must be a
  * plausible grid; either check failing means "not ready yet" — retry while
- * attempts remain, else give up. The two are complementary: the host box catches
- * a zero-height host before its clamped proposal is trusted, and the grid floor
- * catches a host whose padding leaves a non-zero box but no room for a cell.
+ * attempts remain, else give up. The grid floor is the load-bearing one for a
+ * collapsed pane (a host a few px tall passes the box check and still clamps);
+ * the box check covers the cases where the proposal itself cannot be trusted.
+ * Neither subsumes the other — see {@link HostBox}.
  *
  * @param dims The result of `FitAddon.proposeDimensions()` for this frame.
  * @param attemptsLeft Retries remaining (this attempt included); 0 means last.
