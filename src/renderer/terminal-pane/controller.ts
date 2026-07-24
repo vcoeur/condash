@@ -143,11 +143,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (!host) return;
     host.appendChild(handle.element);
     handle.column = newColumn;
-    try {
-      handle.fit.fit();
-    } catch {
-      /* not yet sized */
-    }
+    // Through fitWhenReady, not a bare fit(): the re-parented element is being
+    // laid out against a different host this frame, which is exactly when
+    // proposeDimensions returns its clamp floor.
+    fitWhenReady(id);
   };
 
   /** Fit a session's terminal, retrying across animation frames until its host
@@ -158,10 +157,14 @@ export function createTerminalController(props: TerminalPaneProps) {
    *  `fit()` is a no-op — the grid strands at the default 80×24 inside a larger
    *  pane (the "terminal renders into a small box" bug), and nothing re-fits once
    *  the host settles. Retrying on rAF closes that so the terminal fills its host.
-   *  A session mid-nudge is skipped: its pty is held one row short on purpose and
-   *  refitting now would collapse the dip before the TUI repaints (see the
-   *  Refresh nudge below). The live-handle re-read each frame drops the retry if
-   *  the tab was demoted, closed, or re-mounted meanwhile. */
+   *  The host's own box is measured alongside the proposal because
+   *  proposeDimensions clamps a zero-height host to a finite `{cols:2, rows:1}`
+   *  rather than failing; `decideFit` rejects both (see `fit-when-ready`), so a
+   *  degenerate grid is never committed to the pty. A session mid-nudge is
+   *  skipped: its pty is held one row short on purpose and refitting now would
+   *  collapse the dip before the TUI repaints (see the Refresh nudge below). The
+   *  live-handle re-read each frame drops the retry if the tab was demoted,
+   *  closed, or re-mounted meanwhile. */
   const fitWhenReady = (id: string, attemptsLeft = MAX_FIT_ATTEMPTS): void => {
     const handle = xterms.get(id);
     if (!handle || nudging.has(id)) return;
@@ -171,7 +174,12 @@ export function createTerminalController(props: TerminalPaneProps) {
     } catch {
       dims = undefined;
     }
-    const action = decideFit(dims, attemptsLeft);
+    // `handle.element` is the very element FitAddon measures (the `.xterm-host`
+    // div it was `open`ed into, i.e. `term.element.parentElement`).
+    const action = decideFit(dims, attemptsLeft, {
+      width: handle.element.clientWidth,
+      height: handle.element.clientHeight,
+    });
     if (action === 'retry') {
       requestAnimationFrame(() => fitWhenReady(id, attemptsLeft - 1));
       return;
@@ -704,7 +712,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     setPaneHeight,
     splitRatio,
     setSplitRatio,
-    fitAddons: () => Array.from(xterms.values(), (h) => h.fit),
+    refitAll: () => {
+      for (const id of xterms.keys()) fitWhenReady(id);
+    },
   });
   onMount(() => window.addEventListener('resize', resize.onWindowResize));
   onCleanup(() => window.removeEventListener('resize', resize.onWindowResize));

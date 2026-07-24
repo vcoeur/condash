@@ -16,6 +16,19 @@
 // run refits too — see `controller.ts`.) The controller keeps the effects: the
 // proposeDimensions read, the rAF, and the nudging / live-handle guards.
 //
+// Readiness is NOT inferred from proposeDimensions alone, because it CLAMPS
+// rather than failing: `Math.max(MINIMUM_COLS = 2, …)` / `Math.max(MINIMUM_ROWS
+// = 1, …)`. A `display:none` host yields NaN (correctly rejected), but a host
+// that is *rendered and zero-height* — a tab strip wrapped onto three rows above
+// a short pane, a pane mid-collapse, an absolutely-positioned host not yet laid
+// out against its containing block — yields the perfectly finite pair
+// `{cols: 2, rows: 1}`. Committing that resizes the pty to 2×1 (a real
+// SIGWINCH: the program genuinely reformats for a two-column screen), spends the
+// retry budget, and then trips `decideRefreshAction`'s `rows <= 1` skip — so the
+// degenerate geometry passes the guard AND suppresses the repaint that would
+// have repaired it. This module therefore checks the host box directly and
+// treats the clamp floor as "not measured yet".
+//
 // Free of any Solid / xterm / DOM import so it unit-tests under the node vitest
 // env, mirroring the nudge-machine / visibility-plan split.
 
@@ -28,6 +41,33 @@ export const MAX_FIT_ATTEMPTS = 12;
  *  when it cannot compute yet (no laid-out parent element). */
 export type ProposedDimensions = { cols: number; rows: number } | undefined;
 
+/** The terminal host's measured box — `clientWidth`/`clientHeight` of the very
+ *  element `FitAddon` sizes the grid from (the `.xterm-host` div, i.e.
+ *  `term.element.parentElement`). `undefined` when there is no element to
+ *  measure. */
+export type HostBox = { width: number; height: number } | undefined;
+
+/** The grid `proposeDimensions()` clamps to when the host measures zero
+ *  (`MINIMUM_COLS` / `MINIMUM_ROWS` in `@xterm/addon-fit`). A proposal at or
+ *  below this pair is the clamp floor, not a measurement — see the header. */
+const CLAMP_FLOOR_COLS = 2;
+const CLAMP_FLOOR_ROWS = 1;
+
+/** Whether the host is rendered at a real size. A zero axis means "rendered but
+ *  not laid out yet" — the case proposeDimensions papers over with its clamp. */
+function isHostMeasured(host: HostBox): boolean {
+  return host !== undefined && host.width > 0 && host.height > 0;
+}
+
+/** Whether a proposal is a plausible terminal grid rather than a clamp floor or
+ *  an unmeasurable axis. A 2×1 grid was never a usable terminal, so rejecting it
+ *  costs nothing and keeps the pty off a size no program can draw into. */
+function isPlausibleGrid(dims: ProposedDimensions): boolean {
+  if (!dims) return false;
+  if (!Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return false;
+  return dims.cols > CLAMP_FLOOR_COLS && dims.rows > CLAMP_FLOOR_ROWS;
+}
+
 /** What a fit-on-show attempt should do this frame:
  *  - `fit` — proposeDimensions produced a real grid; run `fit()` now.
  *  - `retry` — it could not compute yet (unmeasured / not laid out) and attempts
@@ -37,16 +77,23 @@ export type FitAction = 'fit' | 'retry' | 'giveup';
 
 /**
  * Decide what a fit-on-show attempt should do, given this frame's proposed
- * dimensions and how many retries remain. A finite cols/rows pair means the host
- * is laid out at a real size, so it is safe to fit; anything else (`undefined`,
- * or a NaN/Infinity axis) means "not ready yet" — retry while attempts remain,
- * else give up.
+ * dimensions, the host box they were measured from, and how many retries remain.
+ * The host must measure non-zero on both axes AND the proposal must be a
+ * plausible grid; either check failing means "not ready yet" — retry while
+ * attempts remain, else give up. The two are complementary: the host box catches
+ * a zero-height host before its clamped proposal is trusted, and the grid floor
+ * catches a host whose padding leaves a non-zero box but no room for a cell.
  *
  * @param dims The result of `FitAddon.proposeDimensions()` for this frame.
  * @param attemptsLeft Retries remaining (this attempt included); 0 means last.
+ * @param host The host element's measured box for this frame.
  * @returns The action for the controller to run.
  */
-export function decideFit(dims: ProposedDimensions, attemptsLeft: number): FitAction {
-  if (dims && Number.isFinite(dims.cols) && Number.isFinite(dims.rows)) return 'fit';
+export function decideFit(
+  dims: ProposedDimensions,
+  attemptsLeft: number,
+  host: HostBox,
+): FitAction {
+  if (isHostMeasured(host) && isPlausibleGrid(dims)) return 'fit';
   return attemptsLeft > 0 ? 'retry' : 'giveup';
 }
