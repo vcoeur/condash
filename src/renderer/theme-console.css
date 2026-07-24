@@ -1,0 +1,160 @@
+/* Console — surface rules.
+ *
+ * The Console preset's colour, radius and type live where every preset's do: one
+ * `[data-theme='console']` token block in `styles.css`. This file is the rest of
+ * it — the mockup-F signatures that are *shapes*, not values, and so cannot be
+ * expressed by re-pointing a token: reverse-video actives, `› TITLE ────`
+ * hairline section heads, square status blocks, and segmented progress bars.
+ *
+ * Two rules keep this from becoming a second stylesheet for the whole app:
+ *
+ * 1. **Every selector is prefixed `[data-theme='console']`**, so it outranks the
+ *    pane rule it overrides by one class regardless of import order, and cannot
+ *    reach another preset.
+ * 2. **Only the four adopted signatures live here.** Mockup F also rendered app
+ *    pills as outline chips; the real app keeps them filled on purpose — that
+ *    fill is the per-app hash-hue channel, and flattening it to an outline
+ *    would throw away information the mockup's fake data never had. The status
+ *    lane washes stay for the same reason.
+ *
+ * A future structural preset (Broadsheet) gets its own sibling sheet; nothing
+ * here is meant to be shared.
+ */
+
+/* ── 1. Reverse-video actives ────────────────────────────────────────────────
+ * A TUI marks the active item by inverting it, not by tinting it. The rail's
+ * accent-soft wash + inset bar and the tab's underline both become a solid
+ * accent fill with the surface colour printed on top.
+ *
+ * Tabs invert within their OWN colour channel rather than all going green: an
+ * app-pill-coloured tab swaps its hue pair, so which app a session belongs to
+ * survives the treatment. */
+
+[data-theme='console'] .rail-item.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  /* The inset accent bar is invisible against an accent fill. */
+  box-shadow: none;
+}
+
+[data-theme='console'] .terminal-tab.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+[data-theme='console'] .terminal-tab[class*='app-pill-'].active {
+  background: var(--app-pill-fg);
+  color: var(--app-pill-bg);
+  border-color: var(--app-pill-fg);
+  box-shadow: none;
+}
+
+/* The 2px underline existed to mark selection without disturbing the tab's
+ * app-pill fill. Inverting the whole tab says it louder, so the bar is noise. */
+[data-theme='console'] .terminal-tab.active::after,
+[data-theme='console'] .terminal-tab[class*='app-pill-'].active::after {
+  display: none;
+}
+
+/* The busy dot has to flip too, or it disappears into the fill it sits on. */
+[data-theme='console'] .terminal-tab.active .terminal-tab-busy {
+  background: var(--accent-ink);
+}
+
+[data-theme='console'] .terminal-tab[class*='app-pill-'].active .terminal-tab-busy {
+  background: var(--app-pill-bg);
+}
+
+/* ── 2. `› TITLE ────` hairline section heads ────────────────────────────────
+ * The editorial pane header — a large Cormorant title over a 40px accent
+ * slide-rule — is the one piece of app chrome that reads as a magazine rather
+ * than a terminal. Console replaces it with a TUI section head: an accent caret,
+ * a small tracked-out uppercase label, and a hairline running out to the
+ * actions. The title is already mono here (Console aliases `--font-serif-base`
+ * to the mono stack, and `--font-display` resolves through it). */
+
+[data-theme='console'] .pane-header {
+  /* The slide-rule is gone, so nothing pushes the actions off the title's
+   * baseline any more. */
+  align-items: center;
+}
+
+[data-theme='console'] .pane-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+[data-theme='console'] .pane-header-title::before {
+  content: '›';
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+[data-theme='console'] .pane-header-title::after {
+  display: none;
+}
+
+/* The flex filler between title and actions becomes the rule. */
+[data-theme='console'] .pane-header .spacer {
+  align-self: center;
+  height: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Code-pane repo sections: two 3px rules brightened toward white is a print
+ * device, not a terminal one. One hairline underneath, like every other head. */
+[data-theme='console'] .repos-section-header {
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  letter-spacing: 0.16em;
+}
+
+/* ── 3. Square status blocks ─────────────────────────────────────────────────
+ * A terminal draws cells. Every status indicator that is a circle elsewhere
+ * becomes a block here, and the pills lose their capsule ends. */
+
+[data-theme='console'] .group-header .dot,
+[data-theme='console'] .code-run-head .dot,
+[data-theme='console'] .terminal-tab-busy {
+  border-radius: 0;
+}
+
+[data-theme='console'] .status-pill,
+[data-theme='console'] .pill,
+[data-theme='console'] .app-pill,
+[data-theme='console'] .repo-status-badge,
+[data-theme='console'] .tree-special-badge,
+[data-theme='console'] .search-source-pill {
+  border-radius: var(--radius-sm);
+}
+
+/* ── 4. Segmented progress bars ──────────────────────────────────────────────
+ * A solid bar with rounded caps reads as a web progress meter; a TUI shows
+ * discrete cells filling up. Same geometry, same colours — the fill is struck
+ * through with the track colour on a 3px-on/2px-off repeat.
+ *
+ * The gradient has to be restated per fill colour rather than factored into a
+ * `--progress-color`: introducing that variable would mean editing the base
+ * rules in `projects-pane.css`, and this sheet is meant to be removable without
+ * touching a pane stylesheet. */
+
+[data-theme='console'] .row .step-progress-inner .progress-track {
+  border-radius: 0;
+}
+
+[data-theme='console'] .row .step-progress-inner .progress-fill {
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, var(--col-soon) 0 3px, transparent 3px 5px);
+}
+
+[data-theme='console'] .row .step-progress-inner[data-complete='true'] .progress-fill {
+  background: repeating-linear-gradient(90deg, var(--text-faint) 0 3px, transparent 3px 5px);
+}

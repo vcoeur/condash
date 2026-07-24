@@ -45,7 +45,9 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 
 ## Mutations
 
-Every mutation carries the **expected** state of the region it's about to change. The main process refuses to write if disk has drifted from the expectation. The renderer surfaces a "reload before saving" toast on conflict.
+Every mutation carries the **expected** state of the region it's about to change. The main process refuses to write if disk has drifted from the expectation, and the error carries the `WRITE_DRIFT_MARKER` substring (`src/shared/ipc-channels.ts`) so a caller can tell that failure apart from a schema rejection. Most callers surface it as a "reload before saving" toast.
+
+The Settings modal does not: it holds its baseline for as long as it is open, so any other write to the same file — its own Performance-recording toggle, a `condash config set`, a second window, a hand edit — would otherwise reject the user's whole staged batch. On drift it re-reads the file, three-way merges the staged draft onto the new content (a subtree only one side moved takes that side; a genuine leaf conflict keeps the staged value, since that is what the modal is showing), and retries once against the fresh baseline.
 
 | Verb | Drift check |
 |---|---|
