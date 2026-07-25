@@ -287,6 +287,15 @@ export function Card(props: {
     // Pure visual feedback — keep the clone (and its cloned buttons) out of
     // the accessibility tree.
     ghost.setAttribute('aria-hidden', 'true');
+    // The clone inherits `.row`'s entrance animation (`fade-up … both`) and its
+    // `transform` transition, and both outrank the style attribute in the
+    // cascade: the animation's filled final keyframe pins `transform:
+    // translateY(0)` (and `opacity: 1`) forever, so every positionGhost write
+    // is ignored and the ghost sits opaque at the viewport origin for the whole
+    // gesture. Cancel both — the transition too, so the ghost tracks the
+    // pointer exactly instead of easing after it.
+    ghost.style.animation = 'none';
+    ghost.style.transition = 'none';
     ghost.style.position = 'fixed';
     ghost.style.top = '0';
     ghost.style.left = '0';
