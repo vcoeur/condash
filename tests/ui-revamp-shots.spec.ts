@@ -32,6 +32,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { THEME_PRESETS } from '../src/shared/themes';
 
 const repoRoot = resolve(__dirname, '..');
 const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
@@ -47,19 +48,13 @@ const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
  */
 const REAL_CONCEPTION = process.env.CONDASH_SHOTS_CONCEPTION ?? '';
 
-/** Registry ids from src/shared/themes.ts. */
-const THEMES = ['light', 'mist', 'dark', 'nocturne', 'console'] as const;
-
-/** Expected `data-theme-kind` per preset, straight from the same registry.
- *  Hardcoding "light is light, everything else is dark" went stale the moment
- *  Mist shipped as a second light preset. */
-const THEME_KIND: Record<(typeof THEMES)[number], 'light' | 'dark'> = {
-  light: 'light',
-  mist: 'light',
-  dark: 'dark',
-  nocturne: 'dark',
-  console: 'dark',
-};
+/** Every preset id paired with the `data-theme-kind` it must resolve to, read
+ *  straight out of the registry. Derived rather than re-typed so neither a NEW
+ *  preset nor a `kind` change on an existing one can leave this spec asserting
+ *  something the app no longer does — hardcoding "light is light, everything
+ *  else is dark" went stale the moment Mist shipped as a second light preset,
+ *  and a hand-maintained map would go stale the same way on a re-classification. */
+const THEME_KINDS = THEME_PRESETS.map((preset) => [preset.id, preset.kind] as const);
 
 test.skip(
   !REAL_CONCEPTION || !existsSync(REAL_CONCEPTION),
@@ -177,7 +172,7 @@ async function sendMenu(app: ElectronApplication, command: string): Promise<void
   }, command);
 }
 
-for (const theme of THEMES) {
+for (const [theme, expectedKind] of THEME_KINDS) {
   test(`capture the ${theme} theme against the real conception`, async () => {
     test.setTimeout(180_000);
     const b = await boot(theme);
@@ -192,7 +187,7 @@ for (const theme of THEMES) {
       // Every preset must resolve to its registry `kind` — that is what every
       // hljs / app-pill / dashboard dark rule keys on.
       const kind = await page.evaluate(() => document.documentElement.dataset.themeKind);
-      expect(kind).toBe(THEME_KIND[theme]);
+      expect(kind).toBe(expectedKind);
     } finally {
       await shutdown(b);
     }

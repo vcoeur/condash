@@ -2,7 +2,7 @@
  * Screenshot harness.
  *
  * Drives the packaged Electron build against the bundled `tests/fixtures/conception-demo`
- * and captures the 16 PNG slugs (× 2 themes = 32 files) that the public docs site references.
+ * and captures the 17 PNG slugs (× 2 themes = 34 files) that the public docs site references.
  *
  * Run as `npm run test -- --reporter=list screenshots.spec.ts`. Output lands in
  * `tests/screenshots-out/{light,dark}/<name>.png` — with NO theme suffix, one
@@ -14,14 +14,17 @@
  *
  *   for theme in light dark; do
  *     for f in tests/screenshots-out/$theme/*.png; do
- *       convert "$f" -resize 50% \
+ *       convert "$f" -resize 50% -strip \
  *         "docs/assets/screenshots/$(basename "$f" .png)-$theme.png"
  *     done
  *   done
+ *   pngquant --force --skip-if-larger --quality=70-95 --ext .png \
+ *     docs/assets/screenshots/*.png
  *
- * (ImageMagick is a local docs-authoring tool only — the harness itself has no
- * such dependency, so the tag-time CI run stays clean. Without it, `cp` the 2×
- * files instead and accept ~14 MB of assets.)
+ * (ImageMagick and pngquant are local docs-authoring tools only — the harness
+ * itself has no such dependency, so the tag-time CI run stays clean. Without
+ * them, `cp` the 2× files instead and accept ~14 MB of assets. The palette pass
+ * is what keeps the whole directory at ~2.7 MB.)
  *
  * The window is composed at 1600×1100 logical px and captured at
  * `deviceScaleFactor: 2`, so the raw PNGs are 3200×2200. BOTH halves of that are
@@ -56,6 +59,25 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+declare global {
+  interface Window {
+    /** Test-only xterm registry, populated by `src/renderer/xterm-mount.ts` when
+     *  `<body data-test-xterm-registry>` is set. Typed structurally to the two
+     *  members this spec reads so no xterm types leak into the test project. */
+    __condashXterms?: Map<
+      string,
+      {
+        buffer: {
+          active: {
+            length: number;
+            getLine(index: number): { translateToString(): string } | undefined;
+          };
+        };
+      }
+    >;
+  }
+}
+
 const repoRoot = resolve(__dirname, '..');
 const fixtureSrc = resolve(__dirname, 'fixtures', 'conception-demo');
 const outRoot = resolve(__dirname, 'screenshots-out');
@@ -66,6 +88,16 @@ const demoRoot = join(tmpdir(), 'condash-demo');
 const conceptionDir = join(demoRoot, 'conception');
 const userDataDir = join(demoRoot, 'userdata');
 const demoBinDir = join(demoRoot, 'bin');
+/** Where the seeded git repos live. Derived from `demoRoot`, and written INTO
+ *  the copied fixture config at boot rather than read out of it: the fixture
+ *  ships POSIX literals under `/tmp`, so on a host with `TMPDIR ≠ /tmp` the
+ *  seeded repos would sit outside the tree `rm(demoRoot)` wipes. The light run
+ *  would then strand them, and the dark run's `seedWorkspace()` would restore
+ *  README.md to its clean content, stage nothing, and reject out of `boot()` on
+ *  a `git commit` with an empty index. Deriving both paths here keeps the seed
+ *  target and the cleanup target the same by construction. */
+const workspacePath = join(demoRoot, 'workspace');
+const worktreesPath = join(demoRoot, 'worktrees');
 
 /** Logical (CSS-pixel) window the shots are composed against, and the scale the
  *  capture runs at. Every PNG lands at `width*scale × height*scale`. */
@@ -128,6 +160,7 @@ const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'activity-rail', minBytes: 5_000 },
   { slug: 'projects-done', minBytes: 25_000 },
   { slug: 'code-pane', minBytes: 80_000 },
+  { slug: 'code-pane-dirty', minBytes: 80_000 },
   { slug: 'knowledge-pane', minBytes: 150_000 },
   { slug: 'terminal', minBytes: 150_000 },
   { slug: 'spawn-dropdown', minBytes: 150_000 },
@@ -241,12 +274,19 @@ async function boot(theme: Theme): Promise<Booted> {
   await rm(demoRoot, { recursive: true, force: true });
   await cp(fixtureSrc, conceptionDir, { recursive: true });
 
-  // The fixture's own config is the authority on where its repos live, so the
-  // seeded workspace can never drift from what the Code pane reads.
-  const conceptionConfig = JSON.parse(
-    await readFile(join(conceptionDir, '.condash', 'settings.json'), 'utf8'),
-  ) as { workspace_path: string };
-  await seedWorkspace(conceptionConfig.workspace_path);
+  // Rewrite the two path keys in the copied config from `demoRoot`, so what the
+  // Code pane reads, what `seedWorkspace()` writes, and what `shutdown()` wipes
+  // are the same directory on every host. The fixture's own literals are only a
+  // readable default for someone opening the tree by hand.
+  const conceptionConfigPath = join(conceptionDir, '.condash', 'settings.json');
+  const conceptionConfig = JSON.parse(await readFile(conceptionConfigPath, 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  conceptionConfig.workspace_path = workspacePath;
+  conceptionConfig.worktrees_path = worktreesPath;
+  await writeFile(conceptionConfigPath, JSON.stringify(conceptionConfig, null, 2) + '\n', 'utf8');
+  await seedWorkspace(workspacePath);
   await seedDemoShell();
 
   await mkdir(join(userDataDir, 'condash'), { recursive: true });
@@ -317,6 +357,11 @@ async function boot(theme: Theme): Promise<Booted> {
   // is always rendered (it hosts the Projects item), so it's a stable
   // mount landmark independent of whether a conception path is loaded.
   await page.locator('.rail').first().waitFor({ state: 'visible', timeout: 15_000 });
+  // Opt into the test-only xterm registry (`xterm-mount.ts`) before any terminal
+  // mounts, so `readTerminalText()` can read the shell's output for the terminal
+  // shot's pre-capture probe. Sets a bare data attribute on <body>; nothing about
+  // the rendered pixels changes.
+  await page.evaluate(() => document.body.setAttribute('data-test-xterm-registry', ''));
   // Wait for the persisted theme to hydrate rather than forcing the attribute —
   // that way the shot also proves the real boot path applied it.
   await page.waitForFunction(
@@ -342,6 +387,76 @@ async function settle(page: Page, ms = 250): Promise<void> {
 async function parkPointer(page: Page): Promise<void> {
   await page.mouse.move(VIEWPORT.width - 10, VIEWPORT.height - 10);
   await settle(page, 200);
+}
+
+/**
+ * Assert, immediately before a capture, that the surface the shot exists to
+ * show is mounted and carries real content.
+ *
+ * The file checks at the end of this test cannot see any of this. A full-window
+ * PNG whose target pane is absent, blank, or showing an empty state still
+ * clears its byte floor *and* its dimension check, because the surrounding
+ * chrome (rail, header, project list, tab strip) is identical either way and
+ * dominates the byte count. Every regression this harness was rebuilt to fix —
+ * the hidden Code pane, the empty terminal body, the "No skills available"
+ * Skills pane — passed those file checks and would pass them again. These
+ * per-shot probes are the part that actually catches that class, so keep one at
+ * every `shoot()` site.
+ *
+ * `root` must be visible with a non-degenerate box; `items` (when given) must
+ * have at least `minItems` matches inside it; `text` (when given) must appear
+ * in it.
+ */
+async function requireContent(
+  page: Page,
+  slug: string,
+  spec: { root: string; items?: string; minItems?: number; text?: string | RegExp },
+): Promise<void> {
+  const root = page.locator(spec.root).first();
+  await expect(root, `${slug}: ${spec.root} never became visible`).toBeVisible({ timeout: 10_000 });
+  const box = await root.boundingBox();
+  expect(box, `${slug}: ${spec.root} has no layout box`).not.toBeNull();
+  expect(
+    Math.min(box?.width ?? 0, box?.height ?? 0),
+    `${slug}: ${spec.root} rendered ${box?.width}×${box?.height}`,
+  ).toBeGreaterThan(40);
+  if (spec.items) {
+    const minItems = spec.minItems ?? 1;
+    const found = await root.locator(spec.items).count();
+    expect(
+      found,
+      `${slug}: ${spec.root} holds ${found} × ${spec.items}, expected at least ${minItems}`,
+    ).toBeGreaterThanOrEqual(minItems);
+  }
+  if (spec.text) {
+    await expect(root, `${slug}: ${spec.root} does not carry ${spec.text}`).toContainText(
+      spec.text,
+      { timeout: 10_000 },
+    );
+  }
+}
+
+/**
+ * Plain text of every live xterm buffer, scrollback included.
+ *
+ * The terminal paints through the WebGL renderer, so its content is not in the
+ * DOM at all and no selector can see it — `data-test-xterm-registry` (armed in
+ * `boot()`, read here) is the only handle on it, and without it the "empty
+ * terminal body" regression is invisible to every DOM assertion.
+ */
+async function readTerminalText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const registry = window.__condashXterms;
+    if (!registry) return '';
+    const lines: string[] = [];
+    for (const term of registry.values()) {
+      const buffer = term.buffer.active;
+      for (let i = 0; i < buffer.length; i++) {
+        lines.push(buffer.getLine(i)?.translateToString() ?? '');
+      }
+    }
+    return lines.join('\n');
+  });
 }
 
 async function shoot(page: Page, theme: Theme, name: string): Promise<void> {
@@ -469,6 +584,16 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await showWorking(b, 'Code');
     await settle(page, 600);
     await parkPointer(page);
+    await requireContent(page, 'dashboard-overview', {
+      root: '.projects-pane',
+      items: '.row',
+      minItems: 5,
+    });
+    await requireContent(page, 'dashboard-overview', {
+      root: '.repos-pane',
+      items: '.repo-row',
+      minItems: 5,
+    });
     await shoot(page, theme, 'dashboard-overview');
 
     // 2. activity-rail — a narrow clip of the rail itself. It is the app's
@@ -477,6 +602,11 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    to the icon block, not the rail's full 1100px height — the rest is
     //    empty and would render the strip unreadably thin in a docs column.
     {
+      await requireContent(page, 'activity-rail', {
+        root: '.rail',
+        items: '.rail-item',
+        minItems: 9,
+      });
       const rail = await page.locator('.rail').first().boundingBox();
       const lastItem = await page.locator('.rail-item').last().boundingBox();
       if (rail && lastItem) {
@@ -511,6 +641,13 @@ async function captureForTheme(theme: Theme): Promise<void> {
         await section.scrollIntoViewIfNeeded();
         await settle(page, 400);
         await parkPointer(page);
+        // The sliver failure was a collapsed block clipped to its header row:
+        // 763×78 of chrome and no cards at all. Assert the cards are there.
+        await requireContent(page, 'projects-done', {
+          root: '.group-block[data-status="done"]',
+          items: '.row',
+          minItems: 2,
+        });
         const box = await section.boundingBox();
         if (box) await shootClip(page, theme, 'projects-done', box);
         // Collapse it again: an expanded Done group pushes the unknown-status
@@ -528,10 +665,23 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    50/50 view is already `dashboard-overview`; this shot exists so the
     //    repo cards (branch pill, dirty count, the open-with buttons) are
     //    legible, which they are not at 798px next to the Projects list.
+    //    Captured with NO popover open: the page it serves
+    //    (`repositories-and-open-with.md`) is about the card list, and the
+    //    popover covers one of the five cards.
     await setProjectsBand(b, false);
     await settle(page, 600);
-    // Open helio's dirty-file popover: the docs promise "a dirty-file
-    // indicator", and the popover is what that badge is for.
+    await parkPointer(page);
+    await requireContent(page, 'code-pane', {
+      root: '.repos-pane',
+      items: '.repo-row',
+      minItems: 5,
+    });
+    await shoot(page, theme, 'code-pane');
+
+    // 5. code-pane-dirty — the same pane with helio's dirty-file popover open.
+    //    `daily-loop.md` §2 promises "a dirty-file indicator", and the popover
+    //    is what that badge is for; it gets its own slug so the card-list shot
+    //    above stays unobstructed.
     {
       const dirty = page.locator('.branch-dirty').first();
       if (await dirty.count()) {
@@ -540,36 +690,59 @@ async function captureForTheme(theme: Theme): Promise<void> {
         await settle(page, 600);
       }
     }
-    await shoot(page, theme, 'code-pane');
+    await requireContent(page, 'code-pane-dirty', {
+      root: '.branch-dirty-popover',
+      text: 'README.md',
+    });
+    await shoot(page, theme, 'code-pane-dirty');
     await page.keyboard.press('Escape');
     await setProjectsBand(b, true);
     await showLeftView(page, 'Projects');
 
-    // 5. knowledge-pane — the tree's directory sections are pre-expanded via
+    // 6. knowledge-pane — the tree's directory sections are pre-expanded via
     //    the seeded `treeExpansion`, so the shot shows the tree, not three
     //    collapsed headers.
     await showWorking(b, 'Knowledge');
     await parkPointer(page);
+    // Collapsed directory sections render zero cards — the failure this probe
+    // exists for.
+    await requireContent(page, 'knowledge-pane', {
+      root: '.knowledge-pane',
+      items: '.knowledge-card',
+      minItems: 4,
+    });
     await shoot(page, theme, 'knowledge-pane');
 
-    // 6. resources-pane — the fixture's resources/ has 2 root files and one
+    // 7. resources-pane — the fixture's resources/ has 2 root files and one
     //    subdir (notes/) so the pane renders a ROOT and a NOTES section.
     await showWorking(b, 'Resources');
     await settle(page, 400);
     await parkPointer(page);
+    await requireContent(page, 'resources-pane', {
+      root: '.resources-pane',
+      items: '.resources-card',
+      minItems: 3,
+    });
     await shoot(page, theme, 'resources-pane');
 
-    // 7. skills-pane — the fixture ships `AGENTS.md` (pinned as the read-only
+    // 8. skills-pane — the fixture ships `AGENTS.md` (pinned as the read-only
     //    callout) plus two `.agents/skills/<slug>/SKILL.md` directories, so the
     //    pane renders the callout, both index badges, and a companion file.
     await showWorking(b, 'Skills');
     await settle(page, 400);
     await parkPointer(page);
+    // The "No skills available" empty state renders `.empty.pane-empty` and no
+    // cards — it shipped once because a full-window shot of it looks normal.
+    await requireContent(page, 'skills-pane', {
+      root: '.skills-pane',
+      items: '.skills-card',
+      minItems: 2,
+    });
     await shoot(page, theme, 'skills-pane');
 
     await showWorking(b, 'Code');
 
-    // 8. terminal — open the band, spawn a shell from the tab-strip dropdown,
+    // 9. terminal — open the band, spawn a shell from the tab-strip dropdown,
     //    and run a command so the body actually carries output. The demo shell
     //    puts a stub `helio` on PATH and pins PS1, so the prompt shows neither
     //    the host's username nor its hostname.
@@ -591,12 +764,23 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await settle(page, 1200);
     }
     await parkPointer(page);
+    await requireContent(page, 'terminal', { root: '.terminal-host' });
+    {
+      // The band being mounted is not the same claim as the body carrying
+      // output: the committed `terminal-*.png` pair had a full, correctly-sized
+      // band around a completely empty xterm. Read the buffer itself.
+      const terminalText = await readTerminalText(page);
+      expect(terminalText, 'terminal: the xterm buffer has no command line').toContain(
+        'helio search',
+      );
+      expect(terminalText, 'terminal: the xterm buffer has no command output').toContain('3 hits');
+    }
     await shoot(page, theme, 'terminal');
 
-    // 9. spawn-dropdown — the same tab strip with the launcher menu open, which
-    //    is where a configured agent is picked. The seeded agents mark two as
-    //    `favorite`, so the menu shows the favourites inline and the rest
-    //    behind `More ▸` — open the fly-out so both levels are visible.
+    // 10. spawn-dropdown — the same tab strip with the launcher menu open, which
+    //     is where a configured agent is picked. The seeded agents mark two as
+    //     `favorite`, so the menu shows the favourites inline and the rest
+    //     behind `More ▸` — open the fly-out so both levels are visible.
     {
       const dropdown = page.locator('.terminal-tab-dropdown').first();
       await dropdown.click();
@@ -607,6 +791,11 @@ async function captureForTheme(theme: Theme): Promise<void> {
         await page.locator('.terminal-tab-dropdown-submenu').first().waitFor({ state: 'visible' });
       }
       await settle(page, 400);
+      await requireContent(page, 'spawn-dropdown', {
+        root: '.terminal-tab-dropdown-menu',
+        items: 'li',
+        minItems: 3,
+      });
       await shoot(page, theme, 'spawn-dropdown');
       await page.keyboard.press('Escape');
       await settle(page);
@@ -614,7 +803,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await sendMenu(b.app, 'toggle-terminal');
     await settle(page, 400);
 
-    // 10. item-fuzzy-search — the global search modal over the dashboard.
+    // 11. item-fuzzy-search — the global search modal over the dashboard.
     await sendMenu(b.app, 'search');
     await settle(page);
     const searchInput = page
@@ -625,11 +814,16 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await settle(page, 600);
     }
     await parkPointer(page);
+    await requireContent(page, 'item-fuzzy-search', {
+      root: '.search-modal',
+      items: '.search-result',
+      minItems: 3,
+    });
     await shoot(page, theme, 'item-fuzzy-search');
     await page.keyboard.press('Escape');
     await settle(page);
 
-    // 11. item-document-with-pdf — open a document item that has a PDF
+    // 12. item-document-with-pdf — open a document item that has a PDF
     //     deliverable. The demo fixture's `2026-04-10-plugin-api-proposal/
     //     deliverables/` ships a PDF; click that card to open the note modal.
     await showLeftView(page, 'Projects');
@@ -639,11 +833,15 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await settle(page, 500);
     }
     await parkPointer(page);
+    await requireContent(page, 'item-document-with-pdf', {
+      root: '.project-preview',
+      text: 'Deliverables',
+    });
     await shoot(page, theme, 'item-document-with-pdf');
     await page.keyboard.press('Escape');
     await settle(page);
 
-    // 12. status-unknown-badge — the demo fixture's `2026-04-18-typo-status-demo`
+    // 13. status-unknown-badge — the demo fixture's `2026-04-18-typo-status-demo`
     //     intentionally carries a non-canonical status so the warn badge renders.
     //     Match on the card's rendered title: the slug is not in the DOM, so the
     //     old `/typo|status-demo/` filter never matched and never scrolled.
@@ -653,26 +851,42 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await settle(page, 400);
     }
     await parkPointer(page);
+    // Presence is not enough here — the whole point of this shot is that the
+    // card is IN FRAME, which is exactly what the old filter silently lost.
+    await expect(
+      unknownRow,
+      'status-unknown-badge: the `?` card is not in the captured frame',
+    ).toBeInViewport({ ratio: 0.9 });
     await shoot(page, theme, 'status-unknown-badge');
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    // 13. tasks-pane — the left band's Tasks view. The fixture ships two
+    // 14. tasks-pane — the left band's Tasks view. The fixture ships two
     //     `tasks/<slug>/{task.json,prompt.md}` directories whose `agent` ids
     //     resolve against the seeded agents list, so Run… is enabled.
     await showLeftView(page, 'Tasks');
     await settle(page, 500);
     await parkPointer(page);
+    await requireContent(page, 'tasks-pane', {
+      root: '.tasks-pane',
+      items: '.tasks-row',
+      minItems: 2,
+    });
     await shoot(page, theme, 'tasks-pane');
 
-    // 14. deliverables-pane — the left band's Deliverables view, aggregating
+    // 15. deliverables-pane — the left band's Deliverables view, aggregating
     //     every `## Deliverables` section. The fixture exercises the wiki /
     //     url / pdf / md / image / file type tags.
     await showLeftView(page, 'Deliverables');
     await settle(page, 500);
     await parkPointer(page);
+    await requireContent(page, 'deliverables-pane', {
+      root: '.deliverables-stack',
+      items: '.deliverable-button',
+      minItems: 6,
+    });
     await shoot(page, theme, 'deliverables-pane');
 
-    // 15. plan-document — the MDX viewer, opened from the plan deliverable of
+    // 16. plan-document — the MDX viewer, opened from the plan deliverable of
     //     `2026-04-02-fuzzy-search-v2`.
     {
       const planRow = page
@@ -683,6 +897,11 @@ async function captureForTheme(theme: Theme): Promise<void> {
         await page.locator('.mdx-modal').waitFor({ state: 'visible', timeout: 10_000 });
         await settle(page, 800);
         await parkPointer(page);
+        await requireContent(page, 'plan-document', {
+          root: '.mdx-modal',
+          items: '.plan-block',
+          minItems: 4,
+        });
         await shoot(page, theme, 'plan-document');
         await page.keyboard.press('Escape');
         await settle(page);
@@ -692,11 +911,16 @@ async function captureForTheme(theme: Theme): Promise<void> {
     }
     await showLeftView(page, 'Projects');
 
-    // 16. settings-modal — opened, never saved.
+    // 17. settings-modal — opened, never saved.
     await sendMenu(b.app, 'open-settings');
     await page.locator('.settings-modal').waitFor({ state: 'visible', timeout: 10_000 });
     await settle(page, 800);
     await parkPointer(page);
+    await requireContent(page, 'settings-modal', {
+      root: '.settings-modal',
+      items: '.settings-rail-item',
+      minItems: 6,
+    });
     await shoot(page, theme, 'settings-modal');
     await page.keyboard.press('Escape');
     await settle(page);
@@ -711,12 +935,19 @@ test('capture every documentation screenshot in light + dark', async () => {
   await captureForTheme('light');
   await captureForTheme('dark');
 
-  // A blank sweep used to pass green — `shoot()` swallows its errors and the
-  // test ended on `expect(true).toBe(true)`, which is how three broken shots
-  // reached docs/. Every slug must exist in both themes, clear a size floor
-  // (the sliver failure signature was 1.7 kB), and — for the full-window shots
-  // — actually be 3200×2200, which is the guard for the capture-scale
-  // regression that silently halved every xterm glyph.
+  // File-level checks, deliberately coarse: every slug exists in both themes,
+  // clears a size floor (the sliver failure signature was 1.7 kB), and — for
+  // the full-window shots — is actually 3200×2200, the guard for the
+  // capture-scale regression that silently halved every xterm glyph. They
+  // replace an `expect(true).toBe(true)` that let three broken shots reach
+  // docs/, and they catch a missing file (`shoot()` swallows its own errors), a
+  // degenerate clip, and a wrong capture scale.
+  //
+  // What they CANNOT catch is a full-window shot whose target pane is blank or
+  // empty — the surrounding chrome dominates the byte count. That is what the
+  // per-slug `requireContent()` probes above are for. Neither layer replaces
+  // opening the images: a green run says the surfaces were populated, not that
+  // they look right.
   const missing: string[] = [];
   const undersized: string[] = [];
   const wrongSize: string[] = [];

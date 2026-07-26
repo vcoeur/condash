@@ -34,10 +34,10 @@ Read the README. The summary points at a specific test corpus, and the `notes/st
 
 ## 2. Open the repo from the repo strip
 
-Switch to the **Code** pane. The three helio repos render as cards — `helio` (with its `crates/parser` and `crates/search` submodules sharing its family accent), `helio-web`, and `helio-docs`. The `helio` card's branch row carries a `1 dirty` pill; click it and the popover lists the changed file — you left a WIP note there last week.
+Switch to the **Code** pane. Five cards render in declaration order — `helio`, its two declared submodules `crates/parser` and `crates/search` (each tagged `submodule`), then `helio-web` and `helio-docs`. The `helio` card's branch row carries a `1 dirty` pill; click it and the popover lists the changed file — you left a WIP note there last week.
 
-![Code pane — the helio family plus helio-web and helio-docs, with helio's dirty-file popover open on README.md](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — the helio family plus helio-web and helio-docs, with helio's dirty-file popover open on README.md](../assets/screenshots/code-pane-dark.png#only-dark)
+![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-light.png#only-light)
+![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-dark.png#only-dark)
 
 Each repo has four icon buttons: README preview, code browser, embedded terminal, and "open in main IDE". Click the IDE icon on `helio` — your main editor launches in that directory.
 

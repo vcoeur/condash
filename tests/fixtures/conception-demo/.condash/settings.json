@@ -1,5 +1,5 @@
 {
-  "$schema_doc": "Demo conception fixture for the documentation screenshot harness. Conception-scoped keys only — the personal/per-machine half (agents, terminal, open_with, pdf_viewer) is seeded into the throwaway XDG settings.json by tests/screenshots.spec.ts, because a conception tree never owns those keys.",
+  "$schema_doc": "Demo conception fixture for the documentation screenshot harness. Conception-scoped keys only — the personal/per-machine half (agents, terminal, open_with, pdf_viewer) is seeded into the throwaway XDG settings.json by tests/screenshots.spec.ts, because a conception tree never owns those keys. workspace_path and worktrees_path below are readable defaults only: the spec rewrites both from its own <tmpdir>/condash-demo root at boot, so the seeded repos always sit inside the tree it wipes.",
   "workspace_path": "/tmp/condash-demo/workspace",
   "worktrees_path": "/tmp/condash-demo/worktrees",
   "repositories": [

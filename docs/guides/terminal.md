@@ -199,7 +199,7 @@ Every terminal tab can be captured to disk for later review. Capture is **opt-in
 The file carries the rendered terminal buffer with two `# condash: {...}` JSON metadata lines folded in: a header at line 1 (`{sid, side, repo?, cwd, cmd, argv, started}`) and a footer at the last line, written when the session exits (`{finished, exitCode}`). `cat`ing the file shows everything — no sidecar to keep in sync.
 
 ```
-# condash: {"sid":"t-…","side":"my","cmd":"npm","argv":["run","dev"],"repo":"condash","cwd":"/home/alice/…","started":"2026-05-14T10:00:27Z"}
+# condash: {"sid":"t-…","side":"my","cmd":"npm","argv":["run","dev"],"repo":"condash","cwd":"/home/you/…","started":"2026-05-14T10:00:27Z"}
 
 <rendered terminal buffer — plain UTF-8 text, no SGR / ANSI escapes>
 

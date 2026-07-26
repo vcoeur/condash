@@ -20,7 +20,7 @@ make install-dev       # uv-backed venv, editable install + dev extras
 .venv/bin/helio --version
 ```
 
-Don't run the real install against `/home/alice/src/` — the demo workspace is the correct sandbox for any helio exercise driven from this conception tree.
+Don't run the real install against `/srv/src/` — the demo workspace is the correct sandbox for any helio exercise driven from this conception tree.
 
 ## Benchmarking
 
