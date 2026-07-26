@@ -148,6 +148,16 @@ declare global {
      *  the `data-test-xterm-registry` opt-in is set, so Playwright can assert a
      *  repaint fired without racing the fleeting resize nudge. */
     __condashRefreshLog?: string[];
+    /** Test-only repaint counters: how many repaints the terminal pane has
+     *  started, and how many have fully finished — nudge dip restored, trailing
+     *  fit run. Populated by the controller only when the
+     *  `data-test-xterm-registry` opt-in is set. A test that has to observe a
+     *  *settled* grid cannot poll the geometry for it: for the length of a
+     *  nudge's hold the terminal, the pty and the frame the program painted all
+     *  agree on the dipped `rows - 1`, so a mid-nudge grid is indistinguishable
+     *  from a finished one. Waiting for `settled` to catch `started` is the
+     *  signal that no further resize is pending. */
+    __condashRepaints?: { started: number; settled: number };
   }
 }
 

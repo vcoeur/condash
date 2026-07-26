@@ -82,6 +82,41 @@ async function waitForDomTerm(window: Page, sid: string, timeoutMs = 5000): Prom
   throw new Error(`Timed out waiting for DOM Terminal for ${sid}`);
 }
 
+/** How many repaints the pane has started so far — the baseline a later
+ *  {@link waitForRepaintsSettled} counts from. */
+async function repaintsStarted(window: Page): Promise<number> {
+  return window.evaluate(() => window.__condashRepaints?.started ?? 0);
+}
+
+/** Wait until the pane has started a repaint past `since` and every repaint it
+ *  started has fully finished — dip restored, trailing fit run.
+ *
+ *  This is the barrier the whole spec rests on, and it cannot be replaced by a
+ *  geometry poll. A fresh spawn's pty starts at xterm's 80×24, the mount-fit
+ *  resizes it to the pane's real grid, and that resize costs the tab its
+ *  "hydrate is exact" record — so the pane's first-activation repaint nudges it,
+ *  holding the grid at `rows - 1` for REPAINT_NUDGE_MS. For the length of that
+ *  hold the terminal, the pty and the frame the TUI painted all agree on the
+ *  dipped size, so a mid-nudge grid is self-consistent and indistinguishable
+ *  from a settled one: reading the geometry there and freezing after the restore
+ *  captured a frame painted for `rows` against a `rows - 1` reading (the
+ *  `rows=16` vs `rows=17` failure). `__condashRefreshLog` cannot stand in for
+ *  this either — it records the *start* of a nudge and says nothing about its
+ *  restore. */
+async function waitForRepaintsSettled(window: Page, since = 0): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const counts = await window.evaluate(
+          () => window.__condashRepaints ?? { started: 0, settled: 0 },
+        );
+        return counts.started > since && counts.started === counts.settled;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
 /** Spawn the fixture TUI, wait for it to paint at the pty's real size, freeze it,
  *  and return its id plus the frame it painted. Shared by both tests: they differ
  *  only in how the tab is torn down and brought back. */
@@ -101,11 +136,17 @@ async function spawnFrozenTui(
   await expect
     .poll(async () => (await termState(window, tui.id)).cols, { timeout: 5000 })
     .toBeGreaterThan(80);
+
+  // Every repaint the pane started for this spawn has finished, so the grid this
+  // reads is the final one and not a nudge's transient dip — see
+  // `waitForRepaintsSettled`. Nothing after this point resizes the terminal, so
+  // the geometry captured here is still the geometry the freeze paints for.
+  await waitForRepaintsSettled(window);
   const state = await termState(window, tui.id);
   expect(state.alt, 'the TUI runs on the alternate buffer').toBe(true);
 
-  // Let the mount-driven fit settle, then freeze the program so nothing can
-  // repaint over a bad hydrate.
+  // The frame on screen is now the one the TUI painted for that settled
+  // geometry; freeze the program so nothing can repaint over a bad hydrate.
   await expect
     .poll(async () => (await readGrid(window, tui.id))[0], { timeout: 5000 })
     .toContain(`cols=${state.cols} rows=${state.rows}`);
@@ -150,14 +191,19 @@ test('a hidden→visible tab hydrates into the frame its pty last painted', asyn
     });
     await waitForDomTerm(booted.window, other.id);
 
-    // Switch back. The repaint nudge holds the grid one row short for 160 ms and
-    // fits again 150 ms after restoring, so wait past that whole sequence before
-    // reading — then poll, so a restore that lands a few frames late is a slow
-    // pass rather than a flake. Nothing else can change the grid meanwhile: the
-    // program is frozen and the alternate buffer does not reflow.
+    // Switch back, then wait for the repaint the switch asks for to finish
+    // rather than for a duration: a nudge holds the grid one row short for
+    // REPAINT_NUDGE_MS and fits again 150 ms after restoring, and reading inside
+    // that window sees a dipped grid that looks exactly like a settled one.
+    // (The correct outcome here is a stand-down — the hydrate is provably exact
+    // — but the barrier must not assume that, or a regression to a real nudge
+    // would show up as a flake instead of a failure.) Nothing else can change
+    // the grid meanwhile: the program is frozen and the alternate buffer does
+    // not reflow.
+    const repaintsBefore = await repaintsStarted(booted.window);
     await booted.window.click(`[data-sid="${tui.id}"]`);
     await waitForDomTerm(booted.window, tui.id);
-    await wait(500);
+    await waitForRepaintsSettled(booted.window, repaintsBefore);
 
     await expect
       .poll(
@@ -213,6 +259,11 @@ test('a tab restored after a renderer reload hydrates into the frame its pty las
       timeout: 10_000,
     });
     await waitForDomTerm(booted.window, tui.id, 10_000);
+    // The reload starts a fresh document, so the pane's repaint counters restart
+    // from zero and the baseline is 0. Same barrier as the switch path: read the
+    // restored grid only once the restore's repaint has finished, so a dip can
+    // never be mistaken for the settled frame.
+    await waitForRepaintsSettled(booted.window);
 
     await expect
       .poll(

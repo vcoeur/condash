@@ -1144,6 +1144,20 @@ export function createTerminalController(props: TerminalPaneProps) {
   /** Ids with a restart in flight, so a double-click can't fire two spawns. */
   const restartingTabs = new Set<string>();
 
+  /** Test seam (mirrors `__condashXterms` / `__condashRefreshLog`): count a
+   *  repaint as started or as fully finished. A Playwright test that has to
+   *  observe a settled grid cannot poll the geometry for it — for the length of
+   *  a nudge's hold the terminal, the pty and the frame the program painted all
+   *  agree on the dipped `rows - 1`, so a mid-nudge grid reads exactly like a
+   *  finished one — and it cannot wait on `__condashRefreshLog` either, which
+   *  records the *start* of a nudge and says nothing about its restore. Inert
+   *  unless the test opts into the registry. */
+  const countRepaint = (field: 'started' | 'settled'): void => {
+    if (!document.body.hasAttribute('data-test-xterm-registry')) return;
+    const counts = (window.__condashRepaints ??= { started: 0, settled: 0 });
+    counts[field] += 1;
+  };
+
   /**
    * Repaint a session. `auto` marks a repaint condash asked for rather than the
    * user, and it is the single flag behind both stand-down rules: an automatic
@@ -1161,6 +1175,17 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
     if (!tab) return;
+    countRepaint('started');
+    /** Record this repaint as finished, once. Every exit path below calls it —
+     *  including the nudge's timers and the chain's error tail — so a test
+     *  waiting for the counters to balance can never hang on a repaint that has
+     *  in fact stopped. */
+    let counted = false;
+    const markSettled = (): void => {
+      if (counted) return;
+      counted = true;
+      countRepaint('settled');
+    };
     // Promote the session to its column's active DOM Terminal so there is a live
     // terminal to resize — but only when it isn't already active. Re-asserting an
     // unchanged active id still allocates a new signal object, which re-runs the
@@ -1209,7 +1234,10 @@ export function createTerminalController(props: TerminalPaneProps) {
           // is already the pty's screen.
           allowExactSkip: opts?.auto ?? false,
         });
-        if (action.kind === 'skip') return;
+        if (action.kind === 'skip') {
+          markSettled();
+          return;
+        }
         // Past `skip`, `decideRefreshAction` guarantees a live handle; bind it
         // non-nullable so the deferred restore below narrows cleanly.
         const live = handle!;
@@ -1219,6 +1247,7 @@ export function createTerminalController(props: TerminalPaneProps) {
           // `frameExact`: the grid already IS the pty's screen; nudging it would
           // only shear its bottom row (automatic repaints only).
           live.term.focus();
+          markSettled();
           return;
         }
         // A nudge is already holding this exact terminal one row short — two
@@ -1233,6 +1262,9 @@ export function createTerminalController(props: TerminalPaneProps) {
           // to press Refresh", so a press that lands mid-hold has to queue behind
           // it rather than disappear.
           if (!opts?.auto) setTimeout(() => refreshSession(id, opts), REPAINT_NUDGE_MS);
+          // The requeued press counts as its own repaint when it runs; this one
+          // resized nothing and is done.
+          markSettled();
           return;
         }
         // Committed to the nudge. Test seam (mirrors `__condashXterms`): recorded
@@ -1256,7 +1288,10 @@ export function createTerminalController(props: TerminalPaneProps) {
           // and collapse its dip.
           nudging.release(id, live);
           // Bail if the tab was demoted, closed, or re-mounted while we waited.
-          if (xterms.get(id) !== live) return;
+          if (xterms.get(id) !== live) {
+            markSettled();
+            return;
+          }
           // Give the row back explicitly first. The restore used to be the fit
           // alone, which meant a host that never resolved a usable box (the fit
           // gives up) left the terminal — and the pty — permanently one row
@@ -1276,8 +1311,10 @@ export function createTerminalController(props: TerminalPaneProps) {
           // size did not change). The second attempt is a no-op if the first
           // restore already succeeded.
           setTimeout(() => {
-            if (xterms.get(id) !== live) return;
-            fitWhenReady(id);
+            if (xterms.get(id) === live) fitWhenReady(id);
+            // The last scheduled effect of this repaint has run: nothing else
+            // will move this grid on its account.
+            markSettled();
           }, 150);
           try {
             live.term.focus();
@@ -1288,6 +1325,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       })
       .catch(() => {
         if (claimed) nudging.release(id, claimed);
+        markSettled();
       });
   };
 
