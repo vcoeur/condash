@@ -11,6 +11,9 @@ description: Where condash keeps its configuration — one scrolling modal, two 
 
 Open it from **File → Settings** (or `Ctrl+,`). It's a full-viewport modal, not a popover. Everything it edits is plain JSON on disk — the modal is a convenience over the same two files documented in **[Config files](../reference/config.md)**; nothing here is exclusive to the UI.
 
+![Settings modal — the left rail grouped under Personal · this machine and This conception, with the Appearance section and its scope chip on the right](../assets/screenshots/settings-modal-light.png#only-light)
+![Settings modal — the left rail grouped under Personal · this machine and This conception, with the Appearance section and its scope chip on the right](../assets/screenshots/settings-modal-dark.png#only-dark)
+
 ## One modal, two files
 
 There are no tabs. The modal is a single scrolling surface; the left rail groups its sections under two scope headers, one per file. **Every setting has exactly one home** — the two files have disjoint schemas, so a setting is never in both, and there is nothing to override or inherit. The scope header decides **which file** the sections under it write to:
@@ -26,8 +29,10 @@ Each section also carries a **scope chip** naming the file it writes. The active
 
 The left rail lists every section once, under its scope group:
 
-- **Personal · this machine** — Recent conceptions · Appearance · Terminal · Launchers · Open with · Dashboard
+- **Personal · this machine** — Recent conceptions · Appearance · Terminal · Launchers · Open with · Dashboard · Auto-commit
 - **This conception** — Workspace & paths · Repositories
+
+Below the rail sit two **Open …** buttons, one per file, that hand the raw JSON to your `$EDITOR`.
 
 | Section | Scope group | Config key(s) | Guide |
 |---------|-------------|---------------|-------|
@@ -37,6 +42,7 @@ The left rail lists every section once, under its scope group:
 | Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
 | Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Dashboard | Personal | `dashboard` | [Config files → Dashboard](../reference/config.md#dashboard) |
+| Auto-commit | Personal | `autoSync` | [Config files → Auto-commit](../reference/config.md#auto-commit) |
 | Workspace & paths | This conception | `workspace_path`, `worktrees_path`, `long_lived_branches` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Repositories | This conception | `repositories` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 

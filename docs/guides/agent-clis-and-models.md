@@ -195,6 +195,11 @@ Agents are a flat list under the top-level `agents` key — a **personal** setti
 
 Each agent appears in the terminal **spawn dropdown** (by its `label`, alongside `New shell`) and is a binding target for project / new-project actions and tasks. There is no token store and no provider form — secrets and model wiring live entirely in the command (or the wrapper it calls).
 
+![Terminal spawn dropdown — New shell, two starred favourite agents, and the remaining agents behind the More fly-out](../assets/screenshots/spawn-dropdown-light.png#only-light)
+![Terminal spawn dropdown — New shell, two starred favourite agents, and the remaining agents behind the More fly-out](../assets/screenshots/spawn-dropdown-dark.png#only-dark)
+
+Mark an agent `"favorite": true` and the dropdown lists it inline with a ★; everything else moves under a `More ▸` fly-out. With no favourite marked, every agent lists inline.
+
 ## See also
 
 - [Use the embedded terminal](terminal.md) — the spawn dropdown and tabs that run these agents.

@@ -39,8 +39,8 @@ If `workspace_path` is unset, the Code pane disappears.
 
 Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order — keep the repos you touch most often at the top.
 
-![Code pane — flat list of repo cards](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — flat list of repo cards](../assets/screenshots/code-pane-dark.png#only-dark)
+![Code pane — one card per repo in declaration order, helio's submodules sharing its family accent](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — one card per repo in declaration order, helio's submodules sharing its family accent](../assets/screenshots/code-pane-dark.png#only-dark)
 
 Each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
 

@@ -6,6 +6,9 @@ The Deliverables pane is a **separate left-band pane with its own activity-rail 
 
 Every project whose README has a `## Deliverables` section, **grouped by project** (newest first). Each group header shows the project title, a status pill, and the date; expand it to see the project's deliverables.
 
+![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-light.png#only-light)
+![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-dark.png#only-dark)
+
 It is **parse-only**: the pane reuses the deliverables already parsed from each README for the Projects pane — there is no separate filesystem scan and no dedicated `outputs/` directory to maintain. A project appears here the moment it links at least one deliverable, and disappears when it links none.
 
 Each deliverable row carries a coarse type tag:

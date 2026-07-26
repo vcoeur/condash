@@ -177,10 +177,10 @@ now → review → later → backlog → done
 Anything outside this set is **preserved verbatim** — the parser does not rewrite the value. Two side-effects keep typos from slipping past:
 
 - The parser logs a `WARNING` with the offending value and the item's path, e.g. `unknown Status 'wip' in projects/2026-04/2026-04-17-foo/README.md`.
-- The card renders a red **`!? <value>`** badge next to the status pill, with a tooltip showing the valid enum. Sort order falls back to "after every known value" (per `statusOrder` in [`src/shared/projects.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/projects.ts)), so the typo sits visibly at the end of the list until corrected. The badge disappears as soon as the README is fixed — the next poll cycle re-parses, finds a valid Status, and drops the badge.
+- The card renders a red warning badge carrying the offending value verbatim, with a tooltip showing the valid enum, and the item is filed under its own **`?`** group. Sort order falls back to "after every known value" (per `statusOrder` in [`src/shared/projects.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/projects.ts)), so the typo sits visibly at the end of the list until corrected. The badge disappears as soon as the README is fixed — the next poll cycle re-parses, finds a valid Status, and drops the badge.
 
-![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-light.png#only-light)
-![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-dark.png#only-dark)
+![A `?` group at the end of the Projects pane, its one card carrying a red `wip` badge](../assets/screenshots/status-unknown-badge-light.png#only-light)
+![A `?` group at the end of the Projects pane, its one card carrying a red `wip` badge](../assets/screenshots/status-unknown-badge-dark.png#only-dark)
 
 Without the badge, a typo like `active` would silently sit at the tail of the sort with no visible marker; with it, the item sticks out until corrected.
 

@@ -45,6 +45,15 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 
 The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.
 
+### The activity rail
+
+Every View toggle above has a pointer twin on the **activity rail** down the left edge. Top to bottom: **Projects · Tasks · Deliverables · Performance**, a divider, then **Code · Knowledge · Resources · Skills · Logs**. The first group fills the left band; the second fills the right working slot. The active item is highlighted, and hovering any of them shows its name and shortcut.
+
+![Activity rail — Projects, Tasks, Deliverables, Performance, then a divider, then Code, Knowledge, Resources, Skills, Logs](../assets/screenshots/activity-rail-light.png#only-light)
+![Activity rail — Projects, Tasks, Deliverables, Performance, then a divider, then Code, Knowledge, Resources, Skills, Logs](../assets/screenshots/activity-rail-dark.png#only-dark)
+
+Clicking the item that is already active hides its pane — the same tristate the `Show …` menu items have.
+
 ## Dashboard global
 
 | Shortcut | Action | Configurable |

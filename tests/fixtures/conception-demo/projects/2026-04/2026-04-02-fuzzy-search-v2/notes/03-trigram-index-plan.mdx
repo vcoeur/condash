@@ -1,0 +1,75 @@
+---
+title: Trigram index — implementation plan
+kind: plan
+---
+
+## Goal
+
+Land the on-disk trigram index behind the existing `helio search` surface, so a
+query over a 1 GB corpus returns its first hit in under 200 ms without changing
+a single CLI flag.
+
+### Where the time goes today
+
+<Table
+  id="latency"
+  columns={["Corpus", "v1 scan", "trigram (spike)", "First hit"]}
+  rows={[
+    ["120 MB", "1.4 s", "0.09 s", "streamed"],
+    ["500 MB", "11.2 s", "0.14 s", "streamed"],
+    ["2.3 GB", "58.0 s", "0.18 s", "streamed"]
+  ]}
+/>
+
+### The shape of the change
+
+<Diff
+  id="writer"
+  filename="helio/search/writer.rs"
+  language="rust"
+  mode="split"
+  before={"let mut candidates = Vec::new();\nfor hit in scan(corpus) {\n    candidates.push(hit.range());\n}\ndedup(&mut candidates);\n"}
+  after={"let mut candidates = BoundedSet::new(cap);\nfor hit in index.probe(query) {\n    candidates.insert(hit.range());\n}\n"}
+  annotations={[
+    { lines: "1", note: "Bounded up front — the unbounded Vec is what the OOM incident hit." },
+    { lines: "2-4", note: "Probe the index instead of scanning; dedup is incremental." }
+  ]}
+/>
+
+<Callout id="decision" tone="decision">
+
+**Chosen: memory-mapped postings with a 64 MB sliding window.** A fully
+in-memory index was 3× faster on the spike but needs the whole corpus resident,
+which is exactly the failure mode reported in
+[[search-crash-large-logs]]. The sliding window keeps the resident set flat and
+costs ~20 ms on the 2.3 GB corpus.
+
+</Callout>
+
+### Open for approval
+
+<QuestionForm
+  id="approval"
+  questions={[
+    {
+      id: "scope",
+      title: "Ship the legacy engine escape hatch in the same release?",
+      mode: "single",
+      options: [
+        { id: "yes", label: "Yes — keep `--engine=legacy` for one release", recommended: true },
+        { id: "no", label: "No — cut over in one step" }
+      ]
+    },
+    {
+      id: "bench",
+      title: "Which corpora must the benchmark cover before merge?",
+      mode: "multi",
+      options: [
+        { id: "small", label: "120 MB (CI-affordable)" },
+        { id: "medium", label: "500 MB" },
+        { id: "large", label: "2.3 GB (nightly only)" }
+      ]
+    }
+  ]}
+  submitLabel="Record decision"
+/>

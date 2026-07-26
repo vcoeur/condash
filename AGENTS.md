@@ -77,6 +77,17 @@ A Playwright run launches the **real Electron app**, which on a Wayland desktop 
 - **After touching `src/`, use `make test` (or `npm run build` first).** The fixture launches the *built* app (`main` → `dist-electron/`), and bare `npm run test` has no build step — so it silently exercises the previous build and reports green on code that is not the code you changed. Only `npm run test -- <spec>` on an already-current build is safe.
 - A visible run (to watch it) is the explicit opt-in `CONDASH_TEST_HEADED=1` (`make test-visible`).
 
+### Documentation screenshots
+
+`tests/screenshots.spec.ts` is the only source of the PNGs under `docs/assets/screenshots/`. Run it as `npm run test -- --reporter=list screenshots.spec.ts`; it writes `tests/screenshots-out/{light,dark}/<slug>.png` (no theme suffix — the copy into `docs/` renames *and* halves them; the recipe is in the spec's header). Four things about it are load-bearing:
+
+- **It captures at 2× on purpose.** Electron's `--force-device-scale-factor=2` makes the compositor surface 2×, and a CDP `Emulation.setDeviceMetricsOverride` makes the *page* agree — `page.setViewportSize` cannot carry a scale factor and pins the page to dpr 1. With only the Electron flag (the pre-2026-07 setup) xterm rendered its glyphs at half size and every committed `terminal-*.png` had an unreadable body.
+- **Everything it writes lives under one stable `<tmpdir>/condash-demo/`**, not a `mkdtemp` suffix: deliverable rows and the Settings modal render absolute paths straight into published PNGs.
+- **`tests/fixtures/conception-demo/` is a conception tree and nothing else.** Its `.condash/settings.json` carries only conception-owned keys; the personal half (`agents`, `terminal`, `open_with`, `pdf_viewer`) is seeded into the throwaway XDG `settings.json` by the spec (`demoGlobalSettings`). The spec also `git init`s the repos the fixture's `repositories` list names, so the Code pane has real branches and a real dirty count.
+- **The test asserts its own output** — every slug present in both themes, over a size floor, and at the expected capture size. It used to end on `expect(true).toBe(true)`, which is how three blank shots reached `docs/`. Never weaken that back: `shoot()` swallows its own errors by design.
+
+`tests/ui-revamp-shots.spec.ts` is the sibling that shoots the theme presets against a **real** tree (`CONDASH_SHOTS_CONCEPTION=<tree>`); it skips when that is unset, so it never gates a release.
+
 ## Configuration
 
 - **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Owned by Electron's `app.getPath('userData')`, derived from `package.json`'s `name` field. JSON only. Sole owner of `lastConceptionPath` + `recentConceptionPaths` (cap 5); also carries global defaults for every workspace key.
