@@ -7,7 +7,7 @@ description: Common problems, what they look like, and how to fix them — insta
 
 > **Audience.** New user and Daily user — anything that surprises someone using condash for real work.
 
-If you hit something not on this page, file an [issue](https://github.com/vcoeur/condash/issues) with the OS, condash version (footer of the dashboard), and a minimal repro.
+If you hit something not on this page, file an [issue](https://github.com/vcoeur/condash/issues) with the OS, the condash version (**Help → About Condash**), and a minimal repro.
 
 ## Install / first launch
 
@@ -48,7 +48,7 @@ If `lastConceptionPath` is not set or points to a directory that no longer exist
 
 ### "Projects (0)" but my tree has READMEs
 
-Check the conception path is correct (footer of the dashboard, or `cat settings.json`). If the path is right but the count is zero, your items don't match the strict layout. condash only renders items at:
+Check the conception path is correct — it is the first thing in the **status bar along the top of the window**, or `cat settings.json`. If the path is right but the count is zero, your items don't match the strict layout. condash only renders items at:
 
 ```
 projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md
@@ -65,11 +65,11 @@ The Code pane scans `workspace_path` from `.condash/settings.json` (or the legac
 - `workspace_path` is unset. Set it to the directory containing your repos.
 - `workspace_path` points at a parent directory whose direct children are *not* git repos (e.g. an extra nesting level — `~/src/` when your repos are in `~/src/projects/`). The scan is one level deep.
 
-Fix: open the gear modal and edit `workspace_path` to point at the right directory. The Code pane refreshes within a couple of seconds.
+Fix: open Settings — the **Settings** button at the right of the status bar, `Ctrl+,`, or **File → Settings** — and edit `workspace_path` under **Workspace & paths** to point at the right directory. The Code pane refreshes within a couple of seconds.
 
 ### Knowledge pane is empty
 
-Same shape: condash looks for `<conception_path>/knowledge/`. If the directory is missing, the pane is hidden. Create it with `mkdir knowledge && echo "# Knowledge" > knowledge/index.md` — the pane appears immediately.
+Same shape: condash looks for `<conception_path>/knowledge/`. When the directory is missing the rail item stays put and the pane renders *"No knowledge/ directory under the selected conception path."* Create it with `mkdir knowledge && echo "# Knowledge" > knowledge/index.md` — the tree appears immediately.
 
 ## Embedded terminal
 
@@ -99,10 +99,13 @@ The terminal works on all three platforms. If the pane fails to open on Windows,
 
 ## "Open in IDE" buttons do nothing
 
-The buttons spawn the command in `open_with.<slot>.command` from `settings.json` (per-machine) or `.condash/settings.json` (tree-wide; legacy `condash.json` still read). Two failure modes:
+The buttons spawn the command in `open_with.<slot>.command`. **`open_with` is a personal, global-only key** — it lives in the per-machine `settings.json` and nowhere else; a conception's `.condash/settings.json` carrying it is rejected by the schema. Three failure modes:
 
+- **The slot isn't configured at all.** There are no built-in defaults: a slot with no `command` produces no button, and asking for it explicitly errors with `open_with.<slot> is not configured`. Add the block — see [Repositories and open-with buttons](repositories-and-open-with.md#the-three-open_with-slots).
 - The command isn't on `$PATH` (typical for macOS GUI editors that don't install a shell launcher). Use the `open -na` form on macOS — see [Config files — Per-OS recipes](../reference/config.md#per-os-recipes).
-- The path being passed isn't under `workspace_path` or `worktrees_path`. condash refuses to spawn launchers outside those sandboxes; check the toast message.
+- The path being passed isn't under one of the three allowed roots — the **conception path**, `workspace_path`, or `worktrees_path`. condash refuses to spawn launchers outside those sandboxes; check the toast message.
+
+Remember the command is **argv-split, not shell-parsed**: no `&&`, no pipes, no `$VAR`. If your command needs any of that, point the slot at a script.
 
 ## File-edit conflicts
 
@@ -110,7 +113,7 @@ The buttons spawn the command in `open_with.<slot>.command` from `settings.json`
 
 A drift check failed: the file on disk no longer matches what condash had cached. Two reasons:
 
-- You edited the file in your editor while the dashboard had an older version. **Click the refresh icon** in the dashboard header, then redo the change.
+- You edited the file in your editor while the dashboard had an older version. Refresh with **View → Refresh** (`F5`) — or the Projects pane's own refresh control — then redo the change.
 - A chokidar event was missed (rare; usually a network filesystem). Same fix.
 
 ### My step toggles silently undo themselves
@@ -127,12 +130,12 @@ The conception tree is too big or sits on a slow filesystem (network mount). con
 
 xterm.js renders a lot of cells on every paint. Two knobs help:
 
-- Lower `terminal.xterm.scrollback` from the default 10 000 to something smaller (1 000).
+- Lower `terminal.xterm.scrollback` from its default of **5000** to something smaller (1000).
 - Toggle `terminal.xterm.ligatures` off — the ligatures addon is expensive on long lines.
 
-Both keys live under `terminal.xterm` in `.condash/settings.json` (or the legacy `condash.json`). The Settings → Terminal tab in the gear modal edits them live.
+Both keys live under `terminal.xterm` in the **per-machine** `settings.json` — `terminal` is a global-only key, so there is one copy shared by every conception. The Settings modal's **Terminal** section edits them live; the modal has no tabs, just a scrolling surface with a section rail.
 
-If that doesn't account for it, measure rather than guess. Open the **Performance** pane in the left band and press **Record**: it shows main-process event-loop delay (the most direct measure of UI stalls — main is a single thread shared by every tab as well as git status, file watching, and all IPC), plus per-tab byte rates and where main's time is going. Records land in `<conception>/.condash/perf/`.
+If that doesn't account for it, measure rather than guess. Open the **[Performance pane](performance-pane.md)** in the left band: per-tab memory, growth rate, and throttle state are always live, and pressing **Record** adds main-process event-loop delay — the most direct measure of UI stalls, since main is a single thread shared by every tab as well as git status, file watching, and all IPC. Records land in `<conception>/.condash/perf/`.
 
 Disk logging (`terminal.logging.enabled`) is worth checking specifically: when it's on, the main process runs a second full ANSI parse of every byte, duplicating work the renderer already does. Turning it off is a quick A/B.
 
@@ -150,7 +153,7 @@ The verdicts that matter:
 
 The same verdict is written into the session's log footer under `.condash/logs/`, so a tab that died while you were away can still be diagnosed after the fact.
 
-To catch the second case before it kills anything, watch the Performance pane: a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
+To catch the second case before it kills anything, watch the **[Performance pane](performance-pane.md)**: a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
 
 ### If every tab shows the same memory figure
 
@@ -172,7 +175,13 @@ The CLI honours the same path-resolution chain as the GUI but does not open the 
 condash --conception ~/src/conception projects list
 ```
 
-Or set the path through `condash config conception-path ~/src/conception` (writes to `settings.json`, picked up by both the GUI and the CLI).
+To make it stick, write the path into the per-machine settings file:
+
+```bash
+condash config set lastConceptionPath ~/src/conception
+```
+
+Both the GUI and the CLI pick that up. Note that `condash config conception-path` **only prints** the resolved path and how it was resolved — it takes no argument and writes nothing; it is the verb to run when you want to know *which* tree the CLI thinks it is looking at.
 
 ### `condash` reports an unknown noun
 

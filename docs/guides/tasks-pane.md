@@ -9,7 +9,7 @@ description: Save reusable, parameterized agent prompts as tasks, fill their mar
 
 A **task** is a reusable, parameterized agent prompt: a name, a referenced [agent](agent-clis-and-models.md), and a markdown prompt that carries fillable `{markers}`. You fill the markers in a form, click **Run**, and condash spawns the agent in a fresh terminal tab and submits the filled prompt.
 
-The Tasks pane is a **left-band view** with its own activity-rail item, ordered **Projects · Tasks · Deliverables**. Click the **Tasks** item to fill the left band with it (clicking the active item hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
+The Tasks pane is a **left-band view** with its own activity-rail item. The rail's four left views are ordered **Projects · Tasks · Deliverables · [Performance](performance-pane.md)**. Click the **Tasks** item to fill the left band with it (clicking the active item hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
 
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-light.png#only-light)
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-dark.png#only-dark)
@@ -21,11 +21,11 @@ Each task is one directory under your conception:
 ```
 <conception>/tasks/
   refresh-app-docs/
-    task.json      { "name": "Refresh app docs", "agent": "claude-deepseek-v4-pro", "submit": true }
+    task.json      { "name": "Refresh app docs", "agent": "claude-deepseek-v4-pro" }
     prompt.md      Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}
 ```
 
-- **`task.json`** carries config only — `name`, `agent` (the **id** of an agent from the `agents` settings list), and `submit` (optional, default `true`).
+- **`task.json`** carries exactly two fields — `name` and `agent` (the **id** of an agent from the `agents` settings list). Nothing else is read from it; every other per-task setting lives in `taskConfig` (see [Create or edit a task](#create-or-edit-a-task)).
 - **`prompt.md`** is the raw markdown prompt with markers — a real, hand-editable, diffable file. Edit it in the pane or in your editor; both round-trip.
 - The directory name is the **slug** (`^[a-z0-9-]+$`). The `tasks/` tree is created on first save.
 
@@ -76,7 +76,7 @@ A task card carries a single **Run…** button — clicking it opens the **run p
 3. Fill the markers below — pick an app / project where prompted, edit the text fields (prefilled from defaults).
 4. A **Run mode** select and a **Keep out of logs** checkbox sit beside the agent picker, each prefilled from the task's default (below). Run mode switches this one run between **Interactive (`--prompt`)** and **One-shot (`--run`)** (disabled for an opaque agent). When *Keep out of logs* is ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible.
 5. The **Prompt to run** box previews the substituted text live.
-6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv for a **promptFlags** agent — `--prompt` (interactive) or `--run` (one-shot) per the chosen run mode.
+6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent label>•<task name>`** — the agent's `label`, not its `id` — so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab and submitted for an opaque agent, or passed in argv for a **promptFlags** agent — `--prompt` (interactive) or `--run` (one-shot) per the chosen run mode. Submission is unconditional; there is no per-task "submit" switch.
 
 Run is disabled when the selected agent is not defined — pick a current one from the top select (a task whose stored agent went missing opens with that dangling id shown as *(missing)*). The card's **Run…** button itself stays disabled while the task's stored agent is missing (the card shows a *missing* badge).
 
@@ -84,9 +84,9 @@ Run is disabled when the selected agent is not defined — pick a current one fr
 
 Click **+ New task**, or **click a task card** to open the **editor popup** for an existing task:
 
-- **Name** — the card title. For a new task the **slug** auto-derives from the name until you hand-edit it.
+- **Name** — the card title.
+- **Slug (directory under `tasks/`)** — its own field. For a new task it auto-derives from the name until you hand-edit it; after that it stays put.
 - **Agent** — pick an agent from the [`agents` settings list](agent-clis-and-models.md#register-it-as-a-condash-agent); the select shows the agent's `label` and stores its stable `id`. Only agents with [`promptFlags`](../reference/config.md#agents) are selectable — a task hands its filled prompt to the agent via `--prompt`/`--run`, which an opaque command can't accept. Agents without the flag are shown disabled (a new task defaults to the first prompt-seedable agent). A task already pointing at an opaque agent keeps that selection and still runs via the type-into-tab fallback.
-- **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
 - **Schedule** — an opt-in cadence typed as a number plus a unit — `s` / `m` / `h` / `d` (e.g. `5m`, `2h`, `1d`); blank = off. The editor shows the parsed interval beside the field as you type (and flags an unrecognised one). See *Schedule a task* below.
 - **Run mode** — how a prompt-seedable agent is driven, and the default for this task's runs (overridable per run): **Interactive (`--prompt`)** keeps the tab open after the prompt runs; **One-shot (`--run`)** runs the prompt once and exits. Prefer one-shot for a scheduled task so its headless run exits cleanly instead of waiting for the timeout. Moot for an opaque agent (the keystroke path is interactive only).
@@ -102,7 +102,7 @@ The **Schedule**, **Run mode**, **Run timeout**, **Only run when a tab changed**
 
 A task with a **Schedule** cadence runs itself on that interval — **headless**, with no visible tab and no `termSessions` broadcast. There is no default schedule and no default agent: a task is inert until you give it a cadence, and it always carries its own (prompt-seedable) agent.
 
-A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes to disk; condash does not capture it.
+A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (the newest 5 runs are kept; older files are rotated out), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes to disk; condash does not capture it.
 
 The scheduler **single-flights** every task (never overlaps a still-running run of the same task), and always hands the run the tabs that changed since its last run via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). For a task that only acts on what changed, tick **Only run when a tab changed (skip idle ticks)** to add the **per-tab growth gate**: a tick with no changed tab is then skipped entirely, so a quiet workspace spends nothing and a busy one only pays for the tabs that moved. The gate is **off by default** — without it the task fires on every interval regardless of tab activity, which is what a task that ignores `{UPDATED_TABS}` wants.
 
@@ -120,6 +120,7 @@ Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — a
 
 ## See also
 
-- **[Agent CLIs and model providers](agent-clis-and-models.md)** — define the agents a task references.
-- **[The deliverables pane](deliverables-pane.md)** — the other left-band view that shares the rail.
+- **[Agent CLIs and model providers](agent-clis-and-models.md)** — define the agents a task references, including the `promptFlags` a task needs.
+- **[The Logs pane](logs-pane.md)** — where the Task-runs store is browsed.
+- **[The Deliverables pane](deliverables-pane.md)** and **[the Performance pane](performance-pane.md)** — the other left-band views that share the rail.
 - **[The embedded terminal](terminal.md)** — where a running task's agent tab opens.

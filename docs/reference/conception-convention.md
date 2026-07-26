@@ -9,7 +9,9 @@ description: The content-level syntax condash reads out of each README body — 
 
 ## At a glance
 
-Every item is a directory under `projects/YYYY-MM/YYYY-MM-DD-slug/` containing a `README.md`. There is no top-level `incidents/` or `documents/` folder — the `kind` field in the header discriminates. Three body sections are parsed: `## Steps`, `## Deliverables`, and anything whose heading is used by the step-add-by-section flow (`## Timeline`, etc., are left alone).
+Every item is a directory under `projects/YYYY-MM/YYYY-MM-DD-slug/` containing a `README.md`. There is no top-level `incidents/` or `documents/` folder — the `kind` field in the header discriminates.
+
+Three body sections carry meaning to the parser: **`## Steps`** (and any other `##` section holding checkboxes, which contributes to the same progress count), **`## Deliverables`**, and **`## Timeline`**. Every other heading is rendered verbatim.
 
 For the header format, see [README format](readme-format.md).
 
@@ -87,7 +89,7 @@ Markdown checklists inside any `##`-level section. The dashboard's default "add 
 | `[x]` or `[X]` | `done` | yes |
 | `[-]` | `abandoned` | yes |
 
-The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx) (UI cycle order). The `[!]` (blocked) marker is **not** part of the cycle — set it by editing the README directly when work on a step is paused waiting for an external decision; the parser, counter, writer, and renderer all round-trip it without loss.
+The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and as `CLICK_CYCLE` in [`src/renderer/panes/projects-parts/data.ts`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects-parts/data.ts) (UI cycle order, re-exported through `projects.tsx`). The `[!]` (blocked) marker is **not** part of the cycle — set it by editing the README directly when work on a step is paused waiting for an external decision; the parser, counter, writer, and renderer all round-trip it without loss.
 
 The canonical list of markers (and the parsing regex bracket class) lives in [`src/shared/types/project.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/types/project.ts) as `STEP_MARKERS`.
 
@@ -142,7 +144,7 @@ One line per event, dated, imperative, linkable. Useful when re-reading the item
 
 Anything not in the README goes in `notes/<name>.md` (or any other subdirectory you create from the dashboard — `scripts/`, `drafts/`, whatever). The item preview's **Files** section renders the whole item directory as a collapsible tree: directories (empty ones included) toggle open/closed, files open in the in-app viewers, and every row has a hover affordance to open it with the OS. New files and folders can be created inline — at the item root or inside any directory. Hidden entries (leading `.`) and the top-level `README.md` are skipped. Top-level directories start expanded, except `local/` — the gitignored scratch dir by conception convention — which renders dimmed with a "gitignored" badge, sorts last, and starts collapsed.
 
-See [mutations](mutations.md) for the create/rename/upload routes, and [Linking items with wikilinks](../guides/wikilinks.md) for the in-note link syntax.
+The dashboard **creates** — `createProjectNote` for the next `notes/NN-<slug>.md`, `createProjectFile` and `createProjectDir` for the inline file-tree buttons — and **overwrites** an open note through `writeNote`. It does **not** rename, move, or upload into an item directory: there is no rename verb, and `treeImportFile` targets the Knowledge and Resources trees only. Use your shell for the rest. See [mutations](mutations.md) for the exact surface, and [Linking items with wikilinks](../guides/wikilinks.md) for the in-note link syntax.
 
 ## What is not part of the convention
 

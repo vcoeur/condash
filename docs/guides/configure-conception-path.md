@@ -21,6 +21,12 @@ This is the right setup for your main tree — the path you work in every day.
 
 After the first launch, **File → Open…** (shortcut `Ctrl+O`) reopens the same native folder picker. Pick a different directory and condash reloads against it without restarting; the new path is written to `settings.json`. This is the friendly way to switch between two trees you both use regularly.
 
+### File → Open Recent
+
+Once you have opened more than one tree, **File → Open Recent** carries a live submenu of the trees you've used, each labelled `<basename> — <parent path>` so two trees with the same directory name stay distinguishable. The currently open one is check-marked. A **Clear menu** entry at the bottom empties the list.
+
+The same list is surfaced inside the app as the **Recent conceptions** section at the top of the Settings modal. It's backed by `recentConceptionPaths` in the per-machine `settings.json` — the app maintains it for you; it has no editable form fields.
+
 ## Option 3 — edit `settings.json` by hand
 
 Change the saved path without re-launching the picker by editing `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` directly:
@@ -72,4 +78,6 @@ Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `set
 
 ## Multiple machines pointed at the same tree
 
-`lastConceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `.condash/settings.json` at its root; per-machine preferences stay in the global `settings.json`.
+`lastConceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `.condash/settings.json` at its root.
+
+The split between those two files is **total and disjoint**, not a fallback chain: every key has exactly one owning file, so nothing is inherited and nothing overrides anything. `workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `long_lived_branches`, and `taskConfig` belong to the tree; everything else — `terminal`, `theme`, `agents`, `open_with`, `dashboard`, `autoSync`, `pdf_viewer`, layout state, and the path-tracking keys above — is personal and per-machine. A key written to the wrong file is **rejected by the schema** and relocated to its owner by the scope-partition migrator the next time you open the conception. See [The Settings modal](settings-modal.md) and [Config files → Scope-partition migration](../reference/config.md#scope-partition-migrator).

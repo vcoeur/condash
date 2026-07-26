@@ -74,31 +74,34 @@ Slug the filename to match the item: `<item-slug>.pdf` for the primary deliverab
 - Click a row to open the PDF in an embedded viewer modal.
 - The viewer's header has an **↗ Open in OS default viewer** button (`shell.openPath`, so whichever app your OS associates with `.pdf`) and an **× Close** button.
 
-The embedded viewer is an Electron `<webview>` pointed at a `file://` URL — Chrome's built-in PDF rendering does the work. No bundled pdf.js, no external dependency, works offline.
+**Two viewers, two schemes.** PDFs render in an Electron `<webview>` pointed at a `file://` URL, so Chrome's built-in PDF engine does the work — no bundled pdf.js, no external dependency, works offline. HTML deliverables use a *different* path: a sandboxed webview on the `condash-file://` scheme, so relative assets resolve against the deliverable's own directory (see below).
 
 ## Generating the PDF
 
-The quick path is built in: open any markdown note in the viewer and click **Export as PDF** in the header. condash prints the rendered note (code highlighting, task lists, Mermaid diagrams, embedded images) to a PDF via a save dialog that defaults to `<note-name>.pdf` next to the source — no external tools. The export always uses a light, print-oriented style regardless of the app theme.
+**The quick path is built in.** Open any Markdown note in the viewer and click **Export as PDF** in the header. condash prints the rendered note — code highlighting, task lists, Mermaid diagrams, embedded images — through a save dialog that defaults to `<note-name>.pdf` next to the source. No external tools, and the export always uses a light, print-oriented style regardless of the app theme. For most deliverables this is the whole story.
 
-For finer typographic control (LaTeX-grade output, custom numbering), generate the PDF yourself from whatever source lives alongside the item. The common shape:
+Reach for a toolchain only when you need finer typographic control — LaTeX-grade output, section numbering, a house template. condash has no opinion about which one; the shape is:
 
 - Write the body as Markdown under `<item>/notes/<name>.md`.
-- Convert with `~/.claude/scripts/md_to_pdf.sh` (pandoc + xelatex + mermaid-filter):
+- Convert it into `<item>/deliverables/` with whatever you already use. A pandoc baseline:
 
 ```bash
 cd <conception_path>/projects/2026-04/2026-04-08-plugin-api-proposal
-bash ~/.claude/scripts/md_to_pdf.sh notes/draft.md deliverables/plugin-api-proposal.pdf
+pandoc notes/draft.md \
+  --pdf-engine=xelatex \
+  --toc --number-sections \
+  -o deliverables/plugin-api-proposal.pdf
 ```
 
-The script handles heading-level shifts, section numbering, Mermaid diagrams, and French accents. See the global `CLAUDE.md` in your home directory for the full recipe.
+Add `--filter mermaid-filter` if your notes carry Mermaid diagrams, and `-V mainfont=...` for a font that covers your accents.
 
-Refresh the dashboard; the PDF badge lights up and the viewer picks up the file. No extra registration step.
+Refresh the dashboard; the deliverable row picks up the file. No extra registration step.
 
 ## Opening PDFs in your OS viewer
 
 Click **↗** in the embedded viewer's header. condash hands the file to `shell.openPath()`, which uses whatever app your OS has registered for `.pdf` (Evince / Okular on Linux, Preview on macOS, the bundled Reader / Acrobat on Windows). On Linux you can change that default through `xdg-mime default`; condash itself does no path resolution.
 
-> **Note.** `.condash/settings.json` accepts a `pdf_viewer: string[]` key (a fallback chain like `["xdg-open {path}", "evince {path}"]`) — but it is currently parsed and ignored. The OS default wins regardless. If you want the chain honoured, file an issue or open a PR; the schema slot is already there.
+> **Note.** The schema accepts a `pdf_viewer: string[]` key (a fallback chain like `["xdg-open {path}", "evince {path}"]`) in the **per-machine** `settings.json` — it is a personal, global-only key, so a conception's `.condash/settings.json` carrying it is rejected. It is currently **parsed and ignored**: nothing reads it, the value is preserved across saves for a lossless round-trip, and the OS default wins regardless. If you want the chain honoured, file an issue or open a PR; the schema slot is already there.
 
 ## Deliverable lifecycle
 
@@ -110,8 +113,9 @@ Items that ship a deliverable go through a pattern:
 
 If the deliverable is a living document (a standards doc, a runbook), skip the `done` status — leave the item in `review` and keep regenerating when needed. The status model is yours to interpret.
 
-Do **not** check multiple versioned PDFs into the deliverables directory (`…-v1.pdf`, `…-v2.pdf`). Keep one canonical filename and rely on git for history. The card renders every `.pdf` file listed in the section, not every file on disk.
+Do **not** check multiple versioned PDFs into the deliverables directory (`…-v1.pdf`, `…-v2.pdf`). Keep one canonical filename and rely on git for history. The card renders every entry **listed in the section** — of any type, not just PDFs — never every file on disk.
 
 ## Next
 
-- [Search your history](search.md) — note that PDF **content** is not indexed, only the filename. Keep the source Markdown in `notes/` if you want the text searchable.
+- [Search](search.md) — a `.pdf` is not an indexed extension, so neither its text nor its path is searchable. Keep the source Markdown in `notes/` if you want the content findable.
+- [The Deliverables pane](deliverables-pane.md) — the same entries aggregated across every project.

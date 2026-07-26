@@ -177,21 +177,31 @@ Put that call in a wrapper (`kimi-kimi` above) or directly in the agent's `comma
 
 ## Register it as a condash agent
 
-Agents are a flat list under the top-level `agents` key — a **personal** setting, so it lives once in the per-machine `settings.json` (identical across every conception). Edit it in the **Settings** modal → **Launchers** section (under **Personal · this machine**), with **+ Add agent** rows (label / command / id) and move / remove controls — or in `settings.json` directly:
+Agents are a flat list under the top-level `agents` key — a **personal** setting, so it lives once in the per-machine `settings.json` (identical across every conception). Edit it in the **Settings** modal → **Launchers** section (under **Personal · this machine**), where each agent is a card with **Label**, **Command**, and **Id** fields (in that order), two checkboxes, and move / remove controls; **+ Add agent** appends a blank row. Or edit `settings.json` directly:
 
 ```json
 {
   "agents": [
-    { "id": "claude", "label": "Claude", "command": "claude" },
-    { "id": "claude-kimi", "label": "Claude · Kimi", "command": "claude-kimi" },
+    { "id": "claude", "label": "Claude", "command": "claude", "favorite": true },
+    { "id": "claude-kimi", "label": "Claude · Kimi", "command": "claude-kimi", "promptFlags": true },
     { "id": "opencode-kimi", "label": "OpenCode · Kimi", "command": "opencode-kimi" }
   ]
 }
 ```
 
-- **`id`** — a stable identity referenced by [tasks](tasks-pane.md) and project / new-project [action templates](../reference/config.md#terminalprojectactions). Renaming it in settings means re-pointing anything that referenced the old id.
+- **`id`** — a stable identity referenced by [tasks](tasks-pane.md) and project / new-project [action templates](../reference/config.md#terminalprojectactions). Renaming it in settings means re-pointing anything that referenced the old id. It is **required** — the Launchers form marks an agent with no id as invalid and refuses to launch it.
 - **`label`** — what the spawn dropdown and the pinned tab title show.
 - **`command`** — any shell command. Point it at a wrapper on your `PATH`, or inline the whole thing (`kimi --agent-file ~/.kimi/global-agent.yaml`). It runs in a fresh terminal tab with the terminal's ambient environment.
+- **`favorite`** *(boolean, optional)* — checkbox: *"Favourite — show directly in the new-tab menu (non-favourites move under `More ▸`)."*
+- **`promptFlags`** *(boolean, optional)* — checkbox: *"Seed prompt via `--run` / `--prompt` (command must accept them, e.g. agedum)."* Tick it only when the command really accepts those flags.
+
+### `promptFlags` is what makes an agent usable by a task
+
+A [task](tasks-pane.md) hands its filled prompt to the agent in **argv** — `--prompt` for an interactive run, `--run` for a one-shot. An agent without `promptFlags` cannot accept that, so the Tasks editor shows it **disabled** in its agent select and a new task defaults to the first prompt-seedable agent. If your agent doesn't appear in the Tasks picker, this checkbox is why.
+
+An agent without the flag still works everywhere else; a task pointing at one falls back to typing the prompt into the tab and submitting it.
+
+### Favourites and the `More ▸` fly-out
 
 Each agent appears in the terminal **spawn dropdown** (by its `label`, alongside `New shell`) and is a binding target for project / new-project actions and tasks. There is no token store and no provider form — secrets and model wiring live entirely in the command (or the wrapper it calls).
 

@@ -9,7 +9,7 @@ description: Browse the markdown skills condash ships — the conception's .agen
 
 **When to read this.** You want to see which management skills are installed in this conception (or globally on your machine), and whether any have drifted from what condash shipped.
 
-The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). It is **read-only**: it surfaces skills for browsing. The source of truth is your agedum config, edited through its own flow — condash places the sources and never compiles or rewrites them.
+The Skills pane sits alongside **Code**, **Knowledge**, **Resources**, and **Logs** in the right working-surface slot (`Ctrl+L` to switch in, or the activity rail). It is **read-only**: it surfaces skills for browsing. The source of truth is your agedum config, edited through its own flow — condash places the sources and never compiles or rewrites them.
 
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)
@@ -60,4 +60,4 @@ The pane uses it to flag two states:
 
 The flags are informational only — local edits are never blocked. They exist so a quick scan tells you where your customisations are and warns you before an upstream re-install would revert them.
 
-→ The CLI that lays these down: **[CLI → skills](../reference/cli.md)**. What condash ships and how installs behave: **[Extend the management skill](skill-extensions.md)**.
+→ The CLI that lays these down: **[CLI → `skills`](../reference/cli.md#skills)**. What condash ships and how installs behave: **[Extend the management skills](skill-extensions.md)**.

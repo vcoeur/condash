@@ -13,17 +13,31 @@ This guide covers the shape of the `## Specifics` section (below the marker).
 
 ## Apps table
 
-Open `## Specifics` with the **Apps** table — one row per app the conception covers.
+Open `## Specifics` with the **Apps** table — one row per live app the conception covers.
+
+**The table is generated.** [`condash applications sync-docs`](cli.md#applications) rewrites the whole region between two HTML-comment sentinels from the app registry:
+
+```markdown
+<!-- condash:apps:start -->
+| App | Repo | AGENTS.md | Knowledge |
+|-----|------|-----------|-----------|
+| `#helio` | `~/src/acme/helio` | `/home/you/src/acme/helio/AGENTS.md` | `knowledge/internal/helio.md` |
+| ↳ `#helio.web` | `~/src/acme/helio/apps/web` | | `knowledge/internal/helio.web.md` |
+<!-- condash:apps:end -->
+```
+
+Add both sentinels by hand the first time. Without them `sync-docs` writes nothing and reports `missingSentinels`, printing `AGENTS.md has no condash:apps sentinels — add them around the Apps table once, then re-run.` — so a maintainer who follows the shape below but omits the markers is told why, though the command still exits 0 rather than failing.
 
 | Column | Meaning |
 |---|---|
-| **App** | Logical name prefixed with `#` (e.g. `#alicepeintures.com`). Lower-case, kebab-or-dot, matching the repo basename when possible. The slug used in cross-references everywhere. |
-| **Purpose** | One line in plain English — what the app *is*. Lets a reader skim "what's in this conception" without opening anything. |
-| **Repo** | Absolute path on this host (e.g. `~/src/<workspace>/<repo>`). |
+| **App** | The `#handle`, backticked. Lower-case, kebab-or-dot, matching the repo basename when possible. The slug used in cross-references everywhere. A submodule row is prefixed `↳ ` and rendered directly under its parent. |
+| **Repo** | The path as configured in `repositories[]` (e.g. `~/src/<workspace>/<repo>`). |
 | **AGENTS.md** | Absolute path to the app's own agent-config file. `sync-docs` resolves it per checkout with the fallback `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md`, so the cell always points at the file that actually exists; empty when the checkout carries none. (Formerly labelled **Config**.) |
-| **Knowledge** | Path to the per-app knowledge entry-point in this conception (e.g. `knowledge/internal/<slug>.md`). The entry point is where deep details live — Config is the navigation layer. |
+| **Knowledge** | The conventional per-app knowledge entry point, `knowledge/internal/<handle>.md`. Emitted for every row whether or not the file exists — it is the path to create, not a link that was checked. |
 
-Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`, not here.
+Four columns, and there is **no `Purpose` column**: `sync-docs` regenerates the whole region, so any column you add by hand is erased on the next run. Retired handles are omitted too — the table documents live apps only. Keep it a navigation index; operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`.
+
+Everything the table needs comes from the registry, so the way to change a row is [`condash applications set`](cli.md#applications) followed by `sync-docs` — never a hand-edit inside the sentinels.
 
 ### Submodules
 

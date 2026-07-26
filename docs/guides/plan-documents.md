@@ -1,4 +1,5 @@
 ---
+title: Visual notes (plans, reviews, designs) · condash guide
 description: Visual-note MDX documents — the /visual skill, the four postures, the .mdx block dialect, the in-app viewer, and condash mdx check.
 ---
 

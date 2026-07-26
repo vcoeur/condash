@@ -32,7 +32,7 @@ The left rail lists every section once, under its scope group:
 - **Personal · this machine** — Recent conceptions · Appearance · Terminal · Launchers · Open with · Dashboard · Auto-commit
 - **This conception** — Workspace & paths · Repositories
 
-Below the rail sit two **Open …** buttons, one per file, that hand the raw JSON to your `$EDITOR`.
+Below the rail sit two buttons — **Open settings.json** and **Open .condash/settings.json** — that hand the raw file to your **OS default editor** for that file type (not `$EDITOR`; this is `shell.openPath`, so it's whatever your desktop opens a `.json` with).
 
 | Section | Scope group | Config key(s) | Guide |
 |---------|-------------|---------------|-------|
@@ -41,12 +41,16 @@ Below the rail sit two **Open …** buttons, one per file, that hand the raw JSO
 | Terminal | Personal | `terminal` | [Embedded terminal](terminal.md) |
 | Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
 | Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
-| Dashboard | Personal | `dashboard` | [Config files → Dashboard](../reference/config.md#dashboard) |
-| Auto-commit | Personal | `autoSync` | [Config files → Auto-commit](../reference/config.md#auto-commit) |
+| Dashboard | Personal | `dashboard` | [The Dashboard](dashboard.md) |
+| Auto-commit | Personal | `autoSync` | [Auto-commit](auto-commit.md) |
 | Workspace & paths | This conception | `workspace_path`, `worktrees_path`, `long_lived_branches` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Repositories | This conception | `repositories` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 
 App identity (`#handle`, `retired_apps`, `aliases`) is edited inline in the **Repositories** section — see **[Applications and handles](applications-and-handles.md)**.
+
+## Finding a setting
+
+A **Search settings…** box sits directly under the modal header, above the rail and the scrolling surface. Type into it and every field across **both** files is filtered live; a `×` on the right clears it. This is the fastest way into the modal — you rarely need to know which section owns a key, only roughly what it's called.
 
 ## One home per setting — no inheritance
 
@@ -54,8 +58,18 @@ Because the two files have disjoint schemas, there is no override and no inherit
 
 A small **dirty pip** next to a section label means that section has unsaved edits. Stage as many edits as you like across both files, then **Save** to flush them to disk (each file through its own atomic CAS write) or **Discard** to drop them. The rail highlights whichever section is currently in view as you scroll.
 
+Closing the modal with staged edits — `Esc`, the `×`, or a backdrop click — raises a **Save before closing?** confirmation offering *Keep editing*, *Discard and close*, and *Save and close*. Unsaved work is never dropped silently.
+
 ## What it does *not* edit
 
-Layout state (`leftView`, branch filters, tree-expansion), the welcome-screen dismissal, and the recents list are written by the app as you use it — they live in `settings.json` but have no Settings section. For the exhaustive key list, see **[Config files → All config keys](../reference/config.md#all-config-keys)**.
+Some keys are written by the app as you use it, or carried for round-trip only, and have no Settings section:
+
+- **Layout and UI state** — `layout` (including `leftView`), `selectedBranches`, `branchFilterStickyAll`, `treeExpansion`, `skillsActiveScope`.
+- **Welcome-screen dismissal** — `welcome`.
+- **Conception path tracking** — `lastConceptionPath` and `recentConceptionPaths` (the Recent conceptions section *shows* the list but the file is managed outside the modal).
+- **`pdf_viewer`** — present in the schema and preserved across saves, but not surfaced and not currently consumed. See [Deliverables and PDFs](deliverables.md#opening-pdfs-in-your-os-viewer).
+- **`retired_apps` and `taskConfig`** — conception keys written by `condash applications` and by the Tasks pane respectively.
+
+For the exhaustive key list, see **[Config files → All config keys](../reference/config.md#all-config-keys)**.
 
 → Prefer editing the JSON directly? Every key, with defaults and which file owns it, is in **[Config files](../reference/config.md)**.

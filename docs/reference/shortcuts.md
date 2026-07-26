@@ -9,14 +9,16 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 ## At a glance
 
-| Area | Count | Configurable? |
+| Area | Bindings | Configurable? |
 |---|---|---|
-| Application menu (File / View) | 14 | no |
+| Application menu (File / View) | 13 set by condash, plus 11 OS defaults | no |
 | Dashboard global | 3 | no |
 | Project cards | 6 | no |
-| Note modal | 4 | no |
-| Terminal — pane | 3 | yes (`[terminal]`) |
-| Terminal — xterm | 4 | no |
+| Note modal | 5 | no |
+| Terminal — pane | 4 | yes (`terminal.*`) |
+| Terminal — xterm | 4 xterm-level (+ 2 pane-level re-listed for context) | no |
+
+"Set by condash" means an explicit `accelerator:` in [`src/main/menu.ts`](https://github.com/vcoeur/condash/blob/main/src/main/menu.ts). The 11 OS defaults come from Electron `role:` menu items — the whole Edit menu plus zoom / devtools / fullscreen — and carry whatever binding the platform assigns; they are listed below but counted separately because condash does not choose them.
 
 ## Application menu
 
@@ -25,6 +27,7 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | Menu | Item | Shortcut | What it does |
 |---|---|---|---|
 | File | Open… | `Ctrl+O` / `Cmd+O` | Reopen the conception folder picker. |
+| File | Open Recent ▸ | — | Submenu of the last five conception paths, plus **Clear menu**. Picking one switches the active conception immediately. |
 | File | Open conception directory | — | Reveal the current conception in the OS file manager. |
 | File | Settings | `Ctrl+,` / `Cmd+,` | Open the Settings modal. |
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
@@ -44,6 +47,17 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
 The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.
+
+### OS-default menu items
+
+Eleven further items are Electron `role:` entries. condash sets **no** accelerator on any of them, so each item's label and binding come from Electron's per-platform defaults rather than from condash — which is why they are not listed with the accelerators above and why this page does not spell them out.
+
+| Menu | Roles |
+|---|---|
+| Edit | `undo`, `redo`, `cut`, `copy`, `paste`, `selectAll` |
+| View | `toggleDevTools`, `resetZoom`, `zoomIn`, `zoomOut`, `togglefullscreen` |
+
+The Edit-menu roles act on whatever the OS considers focused. They are **not** the terminal's copy/paste path — a focused xterm handles `Ctrl+C` / `Ctrl+V` itself (see [xterm-level](#embedded-terminal-xterm-level)), because Electron's paste role does not reliably deliver a paste event to xterm's hidden textarea.
 
 ### The activity rail
 
@@ -98,11 +112,11 @@ Inside the CodeMirror edit pane:
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+S` / `Cmd+S` | Save (atomic overwrite via `POST /note`). Refuses if the file has drifted on disk. |
+| `Ctrl+S` / `Cmd+S` | Save (atomic overwrite via the [`writeNote`](ipc-api.md#mutations) IPC verb). Refuses if the file has drifted on disk. |
 
 ## Embedded terminal — pane-level
 
-These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block in `settings.json` (preferred, per-machine) or `.condash/settings.json` (tree default). Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
+These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block, which is a **personal/per-machine key** — it lives in the global `settings.json` only, and a conception file that carries it is rejected by the strict schema. Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
 
 | Default | Action | Config key |
 |---|---|---|
@@ -121,15 +135,20 @@ key           := single char | KeyboardEvent.key name (e.g. "Enter", "`")
 
 All parts are joined with `+`. Examples: `Ctrl+T`, `Ctrl+Shift+F`, `Alt+1`, `` Ctrl+` ``.
 
-The toggle shortcut is intercepted both at the document level and inside xterm's own keydown listener — otherwise a focused terminal would swallow it. Same for screenshot-paste and the move-tab shortcuts.
+All four are handled by one document-level `keydown` listener registered in the **capture** phase, so they run before xterm's own textarea listener rather than being swallowed by a focused terminal. Two nuances:
+
+- The **pane toggle** is the only shortcut that fires unconditionally — from inside an `<input>`, the CodeMirror editor, or the active xterm alike.
+- **Screenshot-paste** also wins inside the xterm (that's the surface you want to paste into) and additionally calls `stopPropagation()`, which is what suppresses xterm's own built-in `Ctrl+Shift+V` clipboard paste from overwriting the path.
+
+The `?` overlay, `Ctrl+K`, and the two move-tab shortcuts yield to any editable target instead. Move-tab additionally requires the terminal pane to be open.
 
 ### Screenshot-paste flow
 
 When `terminal.screenshot_paste_shortcut` fires:
 
-1. Server-side: `GET /recent-screenshot` scans `terminal.screenshot_dir` for the newest image file (by mtime).
-2. Client-side: the returned path is pasted into the active terminal tab — **no `Enter` appended**. User confirms.
-3. If the directory is missing or empty, a transient toast surfaces the reason.
+1. **Main process:** the [`termLatestScreenshot(dir)`](ipc-api.md#pty-sessions) IPC verb scans the top level of `terminal.screenshot_dir` and returns the most recently modified **file** (any extension — it does not filter on image types). There is no HTTP route.
+2. **Renderer:** the returned path is typed into the active terminal tab — **no `Enter` appended**. You confirm.
+3. If `terminal.screenshot_dir` is unset, or the directory is missing or empty, a transient toast surfaces the reason.
 
 See [using the embedded terminal](../guides/terminal.md#screenshot-paste).
 
@@ -140,24 +159,33 @@ These live inside xterm's `attachCustomKeyEventHandler` and only fire while a te
 | Shortcut | Action |
 |---|---|
 | `Ctrl+C` | Copy the selection if there is one; otherwise send `SIGINT` to the foreground process. |
-| `Ctrl+Shift+C` | Always copy (no-op with no selection). |
 | `Ctrl+V` | Paste from the system clipboard. The clipboard is read in the main process (`clipboardReadText` IPC) and fed through `term.paste()`, which applies bracketed-paste wrapping when the program has that mode on. |
 | `Ctrl+Shift+V` | Paste the path of the newest screenshot — intercepted by the screenshot-paste handler unless rebound. |
 | `Ctrl+F` | Open the in-tab **search bar** (xterm search addon). `Esc` closes it. |
 | `Ctrl+Up` / `Ctrl+Down` | Jump to the previous / next OSC 133 prompt boundary in the active tab. Requires the [shell integration snippet](../guides/terminal.md#shell-integration); without it, the keys fall through to the shell. |
-| `Ctrl+Left` / `Ctrl+Right` | Same as the pane-level move-tab shortcuts — intercepted here because xterm consumes arrow keys. |
 
 Copy writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. Paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), because `navigator.clipboard.readText()` is permission-gated and unreliable in the renderer. There is no HTTP endpoint.
 
+**There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
+
+**`Ctrl+Left` / `Ctrl+Right` are not intercepted here either.** The move-tab shortcuts live in the pane-level (global) handler above, which yields to anything inside `.xterm-host` — so while a terminal tab has focus they fall through to the shell, where word-wise cursor motion keeps working, and they move a tab only when focus is elsewhere in the app. See [Input focus rules](#input-focus-rules) below and [using the embedded terminal](../guides/terminal.md#power-user-shortcuts).
+
 ## Input focus rules
 
-The pane-level shortcuts skip keystrokes where all of the following are true:
+"Editable" means the event target sits inside an `<input>`, a `<textarea>`, a `contenteditable` element, the CodeMirror editor (`.cm-editor`), or the embedded xterm (`.xterm-host`). Whether a shortcut yields to one is decided per cluster, not globally:
 
-- The event target is an `<input>`, `<textarea>`, or `contenteditable` element.
-- The shortcut has no non-shift modifier (so a bare `Tab` or single-letter key in an input never steals focus).
+| Cluster | Inside an editable target |
+|---|---|
+| Terminal-pane toggle (`` Ctrl+` ``) | **Fires anyway** — always wins, deliberately. |
+| Screenshot-paste (`Ctrl+Shift+V`) | **Fires anyway** when the terminal pane is open, and suppresses xterm's own paste. |
+| `?` overlay, `Ctrl+K` search, move-tab | Yields. |
+| Project-card digits (`Ctrl+1..5`) | Yields when the target is an `<input>` / `<textarea>` / `<select>` / contenteditable, and it additionally ignores any keypress carrying `Alt` or `Shift`. |
+| Note-modal shortcuts | Handled at capture phase inside the modal, so xterm / CodeMirror cannot swallow them. |
 
-This keeps `` Ctrl+` `` from firing while you're typing in the search modal, but lets `Ctrl+Left` and `` Ctrl+` `` still work everywhere because they carry a modifier.
+The application-menu accelerators are owned by the OS menu bar and are unaffected by renderer focus entirely.
 
 ## Reloading shortcut changes
 
-`terminal` shortcut changes saved via the gear modal take effect **live** — chokidar fires a `config` event, the renderer reloads the parsed shortcut specs. No restart needed. Changes made by hand-editing `.condash/settings.json` or `settings.json` likewise re-render via the watcher; only `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart.
+`terminal` shortcut changes saved from **File → Settings → Terminal** take effect **live** — the renderer re-reads the prefs and reparses the shortcut specs, no restart.
+
+A **hand-edit of the global `settings.json` does not**. condash's chokidar watcher is rooted at the conception directory, so it never sees that file; the prefs reload is driven by a `config` event on `.condash/settings.json` (or by the modal's own save). Reopen the conception — or just save once from the Settings modal — to pick a hand-edit up. Separately, `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart whichever way they are edited.
