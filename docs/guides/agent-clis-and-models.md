@@ -192,8 +192,8 @@ Agents are a flat list under the top-level `agents` key — a **personal** setti
 - **`id`** — a stable identity referenced by [tasks](tasks-pane.md) and project / new-project [action templates](../reference/config.md#terminalprojectactions). Renaming it in settings means re-pointing anything that referenced the old id. It is **required** — the Launchers form marks an agent with no id as invalid and refuses to launch it.
 - **`label`** — what the spawn dropdown and the pinned tab title show.
 - **`command`** — any shell command. Point it at a wrapper on your `PATH`, or inline the whole thing (`kimi --agent-file ~/.kimi/global-agent.yaml`). It runs in a fresh terminal tab with the terminal's ambient environment.
-- **`favorite`** *(boolean, optional)* — checkbox: *"Favourite — show directly in the new-tab menu."*
-- **`promptFlags`** *(boolean, optional)* — checkbox: *"Seed prompt via `--run` / `--prompt`"*. Tick it only when the command really accepts those flags.
+- **`favorite`** *(boolean, optional)* — checkbox: *"Favourite — show directly in the new-tab menu (non-favourites move under `More ▸`)."*
+- **`promptFlags`** *(boolean, optional)* — checkbox: *"Seed prompt via `--run` / `--prompt` (command must accept them, e.g. agedum)."* Tick it only when the command really accepts those flags.
 
 ### `promptFlags` is what makes an agent usable by a task
 

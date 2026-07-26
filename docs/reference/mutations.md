@@ -74,7 +74,7 @@ The `writeNote` verb takes `(path, expectedContent, newContent)`. If `expectedCo
 
 ## Config edits
 
-**There is no in-modal JSON editor.** **File → Settings…** is one scrolling surface of typed form controls; each section stages a draft and **Save** flushes it through an atomic CAS write — `writeGlobalSettings` for `settings.json`, `writeNote` for `.condash/settings.json` — schema-validated by the strict zod schemas before the bytes hit disk. The rail also carries **Open settings.json** / **Open .condash/settings.json** buttons if you'd rather hand-edit in your own editor. See [Editing from the dashboard](config.md#editing-from-the-dashboard) for the section list. Legacy `condash.json` / `configuration.json` are read but never written.
+**There is no in-modal JSON editor.** **File → Settings** is one scrolling surface of typed form controls; each section stages a draft and **Save** flushes it through an atomic CAS write — `writeGlobalSettings` for `settings.json`, `writeNote` for `.condash/settings.json` — schema-validated by the strict zod schemas before the bytes hit disk. The rail also carries **Open settings.json** / **Open .condash/settings.json** buttons if you'd rather hand-edit in your own editor. See [Editing from the dashboard](config.md#editing-from-the-dashboard) for the section list. Legacy `condash.json` / `configuration.json` are read but never written.
 
 Beyond the modal, these verbs each write one narrow key of the per-machine `settings.json`:
 
@@ -138,7 +138,7 @@ The launcher verbs spawn an external process. These **do not** write to the conc
 | Open conception root | `openConceptionDirectory()` | Always the resolved conception path | OS default file manager |
 | Open a local path | `openPath(target)` | Absolute path, OS-validated | OS default handler — used by the Settings modal "Open externally" buttons |
 | Open an external URL | `openExternal(target)` | Scheme must be `http:`, `https:`, or `mailto:` | OS default handler |
-| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in the conception's `repositories` (resolved from `.condash/settings.json` or the legacy `condash.json`) | The repo's `force_stop:` shell command — no path argument |
+| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in the conception's `repositories` (resolved from `.condash/settings.json` or the legacy `condash.json`) | The repo's `force_stop:` command, argv-split and spawned directly (no shell) — no path argument |
 
 Paths outside the configured sandbox are rejected **before the shell sees them**. The validation lives in [`src/main/launchers.ts`](https://github.com/vcoeur/condash/blob/main/src/main/launchers.ts) (path checks) and the per-verb handlers in [`src/main/index.ts`](https://github.com/vcoeur/condash/blob/main/src/main/index.ts).
 

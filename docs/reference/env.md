@@ -127,13 +127,22 @@ Override hatches, primarily for tests. Nothing in normal use needs them.
 
 ## What a spawned subprocess inherits
 
-Every child condash starts — a terminal tab, a Code-pane **Run**, a `force_stop`, an open-with launcher — gets a copy of condash's own environment with three edits:
+Every child condash starts inherits a copy of condash's own environment, with `PATH` replaced by the resolved login-shell PATH (above). **How much more is done to it depends on whether the child is a pty:**
 
-1. `PATH` replaced by the resolved login-shell PATH (above).
-2. `TERM` forced to `xterm-256color` for pty spawns.
+| Child | Environment |
+|---|---|
+| A terminal tab, a Code-pane **Run**, a scheduled task run | All three edits below — these are pty spawns. |
+| An open-with launcher, a `force_stop` | The PATH replacement only. They are spawned directly (`shell: false`, no pty), so neither `TERM` nor the `npm_config_*` scrub applies. |
+
+The three edits, in full:
+
+1. `PATH` replaced by the resolved login-shell PATH (above) — **every** child gets this one.
+2. `TERM` forced to `xterm-256color`.
 3. `npm_config_prefix`, `npm_config_globalconfig`, and `npm_config_userconfig` **deleted**. Electron inherits these from whatever shell launched it, and a global `npm_config_prefix` breaks nvm in a child shell.
 
-Nothing else is removed. In particular, a POSIX `run:` / `force_stop:` command is deliberately run through a **non-login** shell (`-c`, not `-lc`): a login shell would re-source `~/.profile` and undo the scrub, and the login-shell PATH is already injected by the mechanism above. Prefix your command with `bash -lc` yourself if you want full login behaviour.
+So an IDE started through an `open_with` slot still carries whatever `npm_config_prefix` Electron was launched with — if that breaks a tool inside the IDE, scrub it in the launcher command rather than expecting condash to have done it.
+
+Nothing else is removed. In particular, a POSIX `run:` command is deliberately run through a **non-login** shell (`-c`, not `-lc`): a login shell would re-source `~/.profile` and undo the scrub, and the login-shell PATH is already injected by the mechanism above. Prefix your command with `bash -lc` yourself if you want full login behaviour.
 
 ## Cross-reference
 

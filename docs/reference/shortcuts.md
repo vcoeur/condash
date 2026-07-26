@@ -163,11 +163,12 @@ These live inside xterm's `attachCustomKeyEventHandler` and only fire while a te
 | `Ctrl+Shift+V` | Paste the path of the newest screenshot — intercepted by the screenshot-paste handler unless rebound. |
 | `Ctrl+F` | Open the in-tab **search bar** (xterm search addon). `Esc` closes it. |
 | `Ctrl+Up` / `Ctrl+Down` | Jump to the previous / next OSC 133 prompt boundary in the active tab. Requires the [shell integration snippet](../guides/terminal.md#shell-integration); without it, the keys fall through to the shell. |
-| `Ctrl+Left` / `Ctrl+Right` | Same as the pane-level move-tab shortcuts — intercepted here because xterm consumes arrow keys. |
 
 Copy writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. Paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), because `navigator.clipboard.readText()` is permission-gated and unreliable in the renderer. There is no HTTP endpoint.
 
 **There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
+
+**`Ctrl+Left` / `Ctrl+Right` are not intercepted here either.** The move-tab shortcuts live in the pane-level (global) handler above, which yields to anything inside `.xterm-host` — so while a terminal tab has focus they fall through to the shell, where word-wise cursor motion keeps working, and they move a tab only when focus is elsewhere in the app. See [Input focus rules](#input-focus-rules) below and [using the embedded terminal](../guides/terminal.md#power-user-shortcuts).
 
 ## Input focus rules
 
@@ -185,6 +186,6 @@ The application-menu accelerators are owned by the OS menu bar and are unaffecte
 
 ## Reloading shortcut changes
 
-`terminal` shortcut changes saved from **File → Settings… → Terminal** take effect **live** — the renderer re-reads the prefs and reparses the shortcut specs, no restart.
+`terminal` shortcut changes saved from **File → Settings → Terminal** take effect **live** — the renderer re-reads the prefs and reparses the shortcut specs, no restart.
 
 A **hand-edit of the global `settings.json` does not**. condash's chokidar watcher is rooted at the conception directory, so it never sees that file; the prefs reload is driven by a `config` event on `.condash/settings.json` (or by the modal's own save). Reopen the conception — or just save once from the Settings modal — to pick a hand-edit up. Separately, `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart whichever way they are edited.

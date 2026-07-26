@@ -45,7 +45,7 @@ Rules:
 - **`{path}`** in the template is substituted with the absolute path of the checkout the click originated from (main or a worktree). Omit it and the command runs with `cwd` set to that checkout — either form works.
 - **Inheritance is off.** A parent's `run:` doesn't cascade to its submodules; a submodule without its own `run:` has no Run button. This is deliberate — a repo's top-level dev command is almost never what a subdir wants.
 
-Edit `run` and `force_stop` from **File → Settings… → Repositories**, which gives each configured repo its own form controls. (There is no JSON editor in the Settings modal; the rail's **Open .condash/settings.json** button hands the file to your own editor if you prefer.)
+Edit `run` and `force_stop` from **File → Settings → Repositories**, which gives each configured repo its own form controls. (There is no JSON editor in the Settings modal; the rail's **Open .condash/settings.json** button hands the file to your own editor if you prefer.)
 
 ## The Run button lifecycle
 

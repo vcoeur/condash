@@ -153,7 +153,7 @@ status: review
 apps:
   - notes.vcoeur.com
   - vcoeur.com
-  - alicepeintures.com
+  - helio-web
 languages:
   - fr
   - en

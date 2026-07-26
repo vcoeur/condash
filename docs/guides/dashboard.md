@@ -79,8 +79,8 @@ That is the minimum. The rest has defaults:
 | `writerReasoning` | `false` | Reasoning on the writer tier. |
 | `cardInputChars` | `16000` | How much recent tab output the card model sees. |
 | `intervalSec` | `120` | Summarisation cadence, clamped to 30–300. |
-| `gateOnActivity` | `true` | Skip a whole cycle when no open tab produced new output. |
-| `skipIdle` | `true` | Skip individual tabs with nothing new, even when the cycle runs. |
+| `gateOnActivity` | `true` | Skip a **due tab's** refresh when that tab produced no new output since its last summary. Per tab, not per cycle — one busy tab among nine quiet ones still gets summarised. |
+| `skipIdle` | `true` | The narrower backstop **under** `gateOnActivity`: it applies only when the gate is **off**, and only to a due tab whose last card already read `idle` and whose byte count hasn't moved. |
 | `historyLimit` | `20` | Retained events per tab and globally. |
 
 Full per-key detail: [Config files → Dashboard](../reference/config.md#dashboard).
@@ -89,9 +89,11 @@ Full per-key detail: [Config files → Dashboard](../reference/config.md#dashboa
 
 With `enabled: false` — nothing. Nothing runs, and no request is made.
 
-With it on, each cycle sends **recent terminal output** (up to `cardInputChars` per tab, plus the derived facts) to the configured endpoint. Terminal output routinely carries secrets: pasted tokens, env dumps, `curl -H` lines. Treat enabling this the same way you would treat enabling disk logging — and if you want the summaries without a third party, point `baseUrl` at a self-hosted OpenAI-compatible gateway and set `model` / `writerModel` to ids it serves.
+With it on, each cycle sends **recent terminal output** (up to `cardInputChars` per tab, plus the derived facts) to the configured endpoint. Every captured field is run through the same secret redactor as `condash logs --redact` first — one chokepoint before the POST, turning provider key prefixes, bearer tokens, JWTs, secret-named assignments, and PEM private-key blocks into `«redacted:…»`.
 
-The two gates (`gateOnActivity`, `skipIdle`) are both on by default, so an idle workspace makes no calls at all.
+That redactor is conservative by design and recognises only high-precision secret shapes, so treat it as a backstop, not a guarantee. Terminal output routinely carries secrets that don't match any of those shapes: pasted tokens, env dumps, `curl -H` lines. Treat enabling this the same way you would treat enabling disk logging — and if you want the summaries without a third party, point `baseUrl` at a self-hosted OpenAI-compatible gateway and set `model` / `writerModel` to ids it serves.
+
+`gateOnActivity` is on by default, so an idle workspace makes no calls at all; `skipIdle` is the narrower backstop for when you turn that gate off.
 
 ## See also
 

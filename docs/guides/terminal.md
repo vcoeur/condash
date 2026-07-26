@@ -43,7 +43,7 @@ Tab titles depend on how the tab was spawned:
 
 A manual double-click rename always wins. The full path shows in the title attribute.
 
-**Only a clean `exit 0` auto-closes its tab.** An abnormal exit *keeps* its row, badged with a verdict (out of memory, SIGKILL, `exited — code N`, …) and a **Restart** button, so a tab that died while you were away can still be read. See [Troubleshooting → A terminal tab disappeared](troubleshooting.md#a-terminal-tab-disappeared) for the verdicts. If you want the buffer before a close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
+**A clean `exit 0` auto-closes its tab, and so does a Stop you asked for** — the one exception being a Stop during which the cgroup OOM killer fired, which counts as abnormal precisely because "something here ran out of memory" is news you didn't have. An abnormal exit *keeps* its row, badged with a verdict (out of memory, SIGKILL, `exited — code N`, …) and a **Restart** button, so a tab that died while you were away can still be read. See [Troubleshooting → A terminal tab disappeared](troubleshooting.md#a-terminal-tab-disappeared) for the verdicts. If you want the buffer before a close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
 
 The full title precedence is **manual rename → cwd basename (unpinned) → window title (OSC 0/2) → spawn-time label**.
 
@@ -55,7 +55,7 @@ When the program running in a tab announces a window title via OSC 0 / OSC 2 —
 
 ## Power-user shortcuts
 
-Two combos are intercepted by the xterm custom-key hook **before the bytes reach the shell**:
+These two combos are intercepted by the xterm custom-key hook **before the bytes reach the shell** — as are `Ctrl+C` and `Ctrl+V` below:
 
 | Shortcut | Effect |
 |---|---|
@@ -176,10 +176,12 @@ The scalar keys:
     "screenshot_paste_shortcut": "Ctrl+Shift+V",
     "move_tab_left_shortcut": "Ctrl+Left",
     "move_tab_right_shortcut": "Ctrl+Right",
-    "autoRefreshOnTabSwitch": false
+    "autoRefreshOnTabSwitch": true
   }
 }
 ```
+
+`autoRefreshOnTabSwitch` defaults to `true` — only an explicit `false` narrows auto-refresh to alternate-buffer tabs (the previous default). See [Config files](../reference/config.md#terminal) for the full per-key detail.
 
 Plus six nested blocks:
 

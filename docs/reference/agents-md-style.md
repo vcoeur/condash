@@ -26,7 +26,7 @@ Open `## Specifics` with the **Apps** table — one row per live app the concept
 <!-- condash:apps:end -->
 ```
 
-Add both sentinels by hand the first time. Without them `sync-docs` writes nothing and reports `missingSentinels` — a maintainer who follows the shape below but omits the markers gets silence, not an error message.
+Add both sentinels by hand the first time. Without them `sync-docs` writes nothing and reports `missingSentinels`, printing `AGENTS.md has no condash:apps sentinels — add them around the Apps table once, then re-run.` — so a maintainer who follows the shape below but omits the markers is told why, though the command still exits 0 rather than failing.
 
 | Column | Meaning |
 |---|---|
