@@ -37,12 +37,12 @@ If `workspace_path` is unset, the Code pane disappears.
 }
 ```
 
-Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order — keep the repos you touch most often at the top.
+Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order, flowing left to right and then down once the pane is wide enough for more than one column — so keep the repos you touch most often first.
 
-![Code pane — flat list of repo cards](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — flat list of repo cards](../assets/screenshots/code-pane-dark.png#only-dark)
+![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-dark.png#only-dark)
 
-Each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
+Each repo renders as its own top-level card — including any sub-repos declared for it (see [Submodules in a monorepo](#submodules-in-a-monorepo) below), which are cards alongside the parent rather than children nested under it. A sub-repo card is marked by the `submodule` tag in its header and by the parent-rooted path on its path chip; nothing groups a family by colour or border. The `#handle` pill's colour is hashed from the handle alone, so it is stable for a given repo but carries no parent/child meaning — in the shot above `#helio` and `#parser` happen to land on the same palette slot while `#search`, helio's other submodule, matches the unrelated `#helio-docs`. Worktrees for a given repo or sub-repo are rows inside that repo's own card.
 
 ## Pinning branches across cards
 
@@ -71,7 +71,7 @@ If you work in a monorepo where different subdirectories are edited independentl
 }
 ```
 
-Each declared submodule renders as a **top-level row** alongside its parent, not as a collapsible child under it. Parent and submodules share a row level; the whole family is wrapped in a left-border accent (the blue "family" line) so the eye still groups them. Submodules are always rendered when they exist.
+Each declared submodule renders as a **top-level card** alongside its parent, not as a collapsible child under it. Declaration order puts a parent immediately before its own submodules, so the family stays contiguous in the grid; the card itself is marked only by the `submodule` tag in its header and by its parent-rooted path. Submodules are always rendered when they exist.
 
 Each row in the family (parent or submodule) keeps its own dirty count, its own set of `open_with` buttons, its own [inline runner](../reference/inline-runner.md), and its own nested worktrees. A repo without declared submodules simply renders as a family of one.
 

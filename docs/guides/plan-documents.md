@@ -67,6 +67,9 @@ block as a labeled placeholder instead of blanking the document, and carries
 a **Rendered / Source** toggle. Wireframe and diagram HTML is sanitized and
 themed through `--wf-*` tokens, so screens read correctly in light and dark.
 
+![MDX viewer — a plan document with its PLAN pill, a table, a split diff with line annotations, a decision callout, and the approval question-form](../assets/screenshots/plan-document-light.png#only-light)
+![MDX viewer — a plan document with its PLAN pill, a table, a split diff with line annotations, a decision callout, and the approval question-form](../assets/screenshots/plan-document-dark.png#only-dark)
+
 Canvas boards and prototypes (`canvas.mdx` / `prototype.mdx`) are not
 supported — flows are expressed as ordered wireframe blocks in the document.
 

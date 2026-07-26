@@ -58,7 +58,15 @@ Related: see [[search-crash-large-logs|the OOM incident on this branch]] — rep
 - 2026-04-08 — OOM filed as `[[search-crash-large-logs]]` during stress testing of the streaming writer. Unblocked same day by a guard on the mmap window.
 - 2026-04-15 — In progress. Streaming writer and index builder are wired together; benchmark and API work remain.
 
+## Deliverables
+
+- [Trigram index plan](notes/03-trigram-index-plan.mdx) — visual plan; the approval gate before the rewrite.
+- [Benchmark results](notes/benchmarks/results.md) — v1 vs. trigram on three corpus sizes.
+- [0.4.0-rc1 pre-release](https://helio.example.org/releases/0.4.0-rc1) — changelog for the beta testers.
+- [[search-crash-large-logs|the OOM incident on this branch]] — reproduced while stressing the streaming writer.
+
 ## Notes
 
 - [`notes/design.md`](notes/design.md) — architecture sketch, index layout, fallback rules.
+- [`notes/03-trigram-index-plan.mdx`](notes/03-trigram-index-plan.mdx) — visual plan: latency table, writer diff, the mmap decision, approval questions.
 - [`notes/benchmarks/results.md`](notes/benchmarks/results.md) — comparison table vs. v1 on three corpus sizes.

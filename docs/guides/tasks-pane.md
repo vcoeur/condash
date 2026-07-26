@@ -11,6 +11,9 @@ A **task** is a reusable, parameterized agent prompt: a name, a referenced [agen
 
 The Tasks pane is a **left-band view** with its own activity-rail item, ordered **Projects · Tasks · Deliverables**. Click the **Tasks** item to fill the left band with it (clicking the active item hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
 
+![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-light.png#only-light)
+![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-dark.png#only-dark)
+
 ## Where tasks live
 
 Each task is one directory under your conception:

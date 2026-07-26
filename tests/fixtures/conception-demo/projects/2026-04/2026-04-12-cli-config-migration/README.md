@@ -40,6 +40,11 @@ Move helio's configuration from a single flat `~/.config/helio/config.ini` to a 
 - [~] PR open, awaiting review from @mkl. Two inline comments outstanding on the precedence-rules section of the docs.
 - [ ] Merge after review; ship in the next helio point release.
 
+## Deliverables
+
+- [Precedence rules](notes/precedence-rules.md) — the four-layer lookup order, with worked examples.
+- [[plugin-api-proposal]] — the proposal whose plugin-scoped config sections assume this scheme.
+
 ## Timeline
 
 - 2026-04-12 — Project created.

@@ -13,7 +13,7 @@ ls -lh /tmp/access.log   # expect ~1.0G
 ## 2. Check out the trigram-index branch
 
 ```bash
-git clone https://github.com/alice-voland/helio.git /tmp/helio
+git clone https://github.com/example-org/helio.git /tmp/helio
 git -C /tmp/helio checkout search/fuzzy-v2
 cd /tmp/helio
 make install-dev

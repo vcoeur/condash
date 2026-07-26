@@ -14,7 +14,11 @@
  *
  * Run as `CONDASH_SHOTS_CONCEPTION=<tree> npm run test -- ui-revamp-shots.spec.ts`. Output
  * lands in `tests/screenshots-out/ui-revamp/<name>.png` at 3200×2200
- * (1600×1100 logical, deviceScaleFactor=2), mirroring screenshots.spec.ts.
+ * (1600×1100 logical, deviceScaleFactor=2), mirroring screenshots.spec.ts —
+ * including the two-part scaling that spec documents: Electron's
+ * `--force-device-scale-factor=2` alone leaves the page at `devicePixelRatio` 1
+ * and the capture at 1600×1100, so the CDP device-metrics override below is what
+ * actually makes the shots 2×.
  */
 
 import {
@@ -28,6 +32,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { THEME_PRESETS } from '../src/shared/themes';
 
 const repoRoot = resolve(__dirname, '..');
 const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
@@ -43,8 +48,13 @@ const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
  */
 const REAL_CONCEPTION = process.env.CONDASH_SHOTS_CONCEPTION ?? '';
 
-/** Registry ids from src/shared/themes.ts. */
-const THEMES = ['light', 'mist', 'dark', 'nocturne', 'console'] as const;
+/** Every preset id paired with the `data-theme-kind` it must resolve to, read
+ *  straight out of the registry. Derived rather than re-typed so neither a NEW
+ *  preset nor a `kind` change on an existing one can leave this spec asserting
+ *  something the app no longer does — hardcoding "light is light, everything
+ *  else is dark" went stale the moment Mist shipped as a second light preset,
+ *  and a hand-maintained map would go stale the same way on a re-classification. */
+const THEME_KINDS = THEME_PRESETS.map((preset) => [preset.id, preset.kind] as const);
 
 test.skip(
   !REAL_CONCEPTION || !existsSync(REAL_CONCEPTION),
@@ -94,8 +104,16 @@ async function boot(theme: string): Promise<Booted> {
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
-  // Pin viewport so the captured PNG is exactly 3200×2200 at scale-factor 2.
-  await page.setViewportSize({ width: 1600, height: 1100 });
+  // Pin the logical viewport AND the scale factor so the captured PNG is
+  // exactly 3200×2200. `page.setViewportSize` cannot carry the scale factor —
+  // it pins the page to dpr 1 — so the override goes through CDP.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1600,
+    height: 1100,
+    deviceScaleFactor: 2,
+    mobile: false,
+  });
   // Collapse animations/transitions (same trick as tests/fixtures/electron-app.ts):
   // under xvfb the settings-revamp transitions can keep elements "unstable"
   // for Playwright's actionability checks. Final rendered pixels are unaffected.
@@ -154,7 +172,7 @@ async function sendMenu(app: ElectronApplication, command: string): Promise<void
   }, command);
 }
 
-for (const theme of THEMES) {
+for (const [theme, expectedKind] of THEME_KINDS) {
   test(`capture the ${theme} theme against the real conception`, async () => {
     test.setTimeout(180_000);
     const b = await boot(theme);
@@ -166,10 +184,10 @@ for (const theme of THEMES) {
       await settle(page, 1500);
       await shoot(page, `theme-${theme}-dashboard`);
 
-      // Both dark presets must resolve to kind=dark, and light to kind=light —
-      // this is what every hljs / app-pill / dashboard dark rule now keys on.
+      // Every preset must resolve to its registry `kind` — that is what every
+      // hljs / app-pill / dashboard dark rule keys on.
       const kind = await page.evaluate(() => document.documentElement.dataset.themeKind);
-      expect(kind).toBe(theme === 'light' ? 'light' : 'dark');
+      expect(kind).toBe(expectedKind);
     } finally {
       await shutdown(b);
     }

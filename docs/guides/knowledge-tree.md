@@ -78,9 +78,9 @@ Open the **Knowledge** pane in the header. The explorer shows the tree's top lev
 ![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-light.png#only-light)
 ![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-dark.png#only-dark)
 
-Click a tile to open the file in the right-hand pane. Click a folder to expand it; the folder's `index.md` (if any) renders as a summary tile at the top.
+Click a tile to open the file in the right-hand pane. Click a folder to expand it; the folder's `index.md` (if any) renders as an `INDEX`-badged summary tile at the top.
 
-The pane's header count is the total number of `.md` files across the tree. In the demo above: `Knowledge (8)` means eight files in total across the root, `internal/`, and `topics/`.
+Each section header carries the number of `.md` files directly inside it. In the demo above: `KNOWLEDGE 2` at the root, then `INTERNAL 3`, `TOPICS 3`, and the nested `TOPICS · OPS 2`.
 
 ## Writing style
 

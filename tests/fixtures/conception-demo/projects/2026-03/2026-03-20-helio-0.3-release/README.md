@@ -40,6 +40,12 @@ All three shipped on 2026-03-20 within a 2-hour window. Announcement went out th
 
 A follow-on low-severity incident was filed on 2026-03-25 — [[docs-site-404s|docs-site 404s]] — caused by a stale `site/` build committed over the fresh one during the release-branch cleanup. Resolved within the day, no user action required.
 
+## Deliverables
+
+- [Release announcement](https://helio.example.org/blog/helio-0-3) — the public post sent to the mailing list.
+- [Latency comparison](deliverables/latency-comparison.svg) — p50/p95 before and after, three corpus sizes.
+- [Release checklist](deliverables/release-checklist.md) — the exact order the three repos were shipped in.
+
 ## Timeline
 
 - 2026-03-20 — Release cut, tagged, published, announced.
