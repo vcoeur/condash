@@ -1,6 +1,6 @@
 ---
 title: Management skills · condash reference
-description: Reference for the four shipped Claude Code skills — /projects, /knowledge, /pr, /applications — and how they shell out to the condash CLI.
+description: Reference for the five shipped Claude Code skills — /projects, /knowledge, /pr, /applications, /visual — and how they shell out to the condash CLI.
 ---
 
 # Management skills
@@ -9,7 +9,7 @@ description: Reference for the four shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships four [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
+condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
@@ -17,6 +17,7 @@ condash ships four [Claude Code](https://docs.claude.com/en/docs/claude-code/) s
 | **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. Audits (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, stale stamps) flow through `verify`. |
 | **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
 | **`/applications`** | app registry | Manage the `#handle` app registry (list / add / set / rename / sync-docs / validate) — the single source of truth for how apps are referenced across the tree. |
+| **`/visual`** | visual notes (`.mdx`) | Author MDX documents of typed blocks — wireframes, diagrams, data models, API contracts, annotated diffs, question forms — that render in the in-app viewer. One skill, four postures set by frontmatter `kind`: **design**, **plan**, **review**, **note**. Owns the block vocabulary and wraps [`condash mdx`](cli.md#mdx). |
 
 The skills are **editorial only**. Every mechanical step shells out to `condash`, so the dashboard, the CLI, and the skills always see the same canonical view of the tree. A skill never re-implements parsing or validation in `bash + grep + sed`.
 
@@ -28,7 +29,7 @@ Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matchi
 
 | Action | Trigger | Wraps |
 |---|---|---|
-| `list` | `/projects list [kind=…] [status=…] [apps=…] [branch=…]` | `condash projects list` |
+| `list` | `/projects list [kind=…] [status=…] [apps=…] [branch=…] [parent=…]` | `condash projects list` |
 | `read` | `/projects read <slug>` | `condash projects read` |
 | `search` | `/projects search <keyword>` | `condash projects search` |
 | `validate` | `/projects validate [<slug>]` | `condash projects validate` |
@@ -40,7 +41,7 @@ Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matchi
 | `index` | `/projects index` | `condash projects index` |
 | `worktree` | `/projects worktree {setup\|remove\|check\|list\|status} [branch]` | `condash worktrees …` |
 
-The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry then records the dated `Checked knowledge promotion` marker; `reopen` appends `Reopened.`. Both take an optional `--summary` appended to that entry, which lands in its bare form when the flag is omitted. `check-knowledge` is the standalone recorder for that marker (`--record`, after a real `/knowledge` review) — the date and format are always written by condash, never hand-typed. There is no mass/backfill writer: a done project gets the marker only once it has actually been reviewed.
+The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex, and carries `--branch` / `--base` / `--parent` through to the header ([`parent` links a spin-off to its plan](readme-format.md#parent-subprojects)). The `close` action appends the `Closed.` timeline entry then records the dated `Checked knowledge promotion` marker; `reopen` appends `Reopened.`. Both take an optional `--summary` appended to that entry, which lands in its bare form when the flag is omitted. `check-knowledge` is the standalone recorder for that marker (`--record`, after a real `/knowledge` review) — the date and format are always written by condash, never hand-typed. There is no mass/backfill writer: a done project gets the marker only once it has actually been reviewed.
 
 ## `/knowledge`
 
@@ -59,6 +60,20 @@ Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones 
 
 Open a GitHub PR from the current branch with condash's standard PR shape: title stating the objective, a short Summary, a Changes list, and the optional Impact / Watchpoints sections when relevant. Project-level wrappers (e.g. conception's `/pr`) defer body shape to this skill — read it before drafting.
 
+## `/visual`
+
+Author a **visual note**: Markdown prose interleaved with capitalised JSX-like block tags whose props are static JSON literals (`<Diff>`, `<DataModel>`, `<WireframeBlock>`, `<QuestionForm>`, …). condash renders it natively — there is no hosted service and nothing leaves the machine.
+
+| Action | Trigger | Wraps |
+|---|---|---|
+| author | "visual note / plan / design / review" | direct file edits |
+| validate | before handing the document over | `condash mdx check <path>` |
+| vocabulary | "what blocks are there?" | `condash mdx blocks` |
+
+The frontmatter `kind` picks the posture: a **design** explores directions, a **plan** is the approval gate before code, a **review** is built from a landed diff, and a plain **note** is for anything a visual layout serves better than prose. The skill ships its own `blocks.md`, `wireframe.md`, `document-quality.md`, `exemplar.md`, and `review.md` alongside `SKILL.md`.
+
+The parser, the zod schemas, the in-app viewer, and `condash mdx check` are one code path, so a green check means the document matches the viewer by construction. See the [visual notes guide](../guides/plan-documents.md).
+
 ## Install
 
 ```bash
@@ -69,7 +84,7 @@ condash skills install
 condash skills install
 ```
 
-The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, `/projects`, `/knowledge`, `/pr` become available in a session.
+The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, all five become available in a session.
 
 `condash skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently. It records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace retained for legacy entries; condash ≤ 4.0.1 shipped a region-delimited `.gitignore` and no longer ships any top-level file). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
 
@@ -79,20 +94,22 @@ The `.agents/skills/` source tree is the committed, canonical copy of each skill
 
 ## Conception-path resolution
 
-The skills resolve the conception path the same way the CLI does:
+The skills resolve the conception path the same way the CLI does, because they *are* the CLI — every step below is [`condash`'s own chain](cli.md#conception-path-resolution):
 
 1. `--conception <path>` flag (when invoked with explicit args).
-2. The `CONDASH_CONCEPTION` environment variable.
-3. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`.
+2. `CONDASH_CONCEPTION_PATH` (legacy alias `CONDASH_CONCEPTION` still accepted).
+3. `CLAUDE_PROJECT_DIR` — the variable a Claude Code session already sets, which is why a skill invoked from inside a conception checkout usually needs no configuration at all.
 4. Walk-up from the current working directory looking for `.condash/settings.json` (or legacy `condash.json` / `configuration.json`) next to a `projects/` directory.
+5. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`.
+6. Hard error (exit 5), listing every candidate it tried.
 
-See [Environment variables](env.md) for the full list.
+The cwd walk-up comes **before** `lastConceptionPath`, so running a skill inside one conception never silently targets the one the GUI happens to have open. See [Environment variables](env.md) for the full list.
 
 ## What the skills do **not** do
 
 | Not included | Why |
 |---|---|
-| Generate PDFs | Out of scope. Use [`scripts/md_to_pdf.sh`](https://github.com/vcoeur/condash/tree/main/scripts) or your own pipeline. |
+| Generate PDFs | Out of scope — condash ships no conversion script. Use your own pandoc pipeline, or the dashboard's **Export as PDF** button in the note viewer. |
 | Move or archive items | Items live at `projects/YYYY-MM/YYYY-MM-DD-slug/` for life. Status flips, directories don't. |
 | Edit `.condash/settings.json` | Use the dashboard's Settings modal or your editor. |
 | Push to a remote without confirmation | The `/pr` skill always confirms before `git push`. |

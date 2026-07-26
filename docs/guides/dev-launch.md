@@ -17,7 +17,9 @@ cd condash
 make install
 ```
 
-`make install` runs `npm install` and then `electron-rebuild` against the bundled Electron's Node ABI. The rebuild step is the one that fails on a missing C/C++ toolchain — see [Contributing — prerequisites](../explanation/contributing.md#prerequisites) for the per-OS package list.
+`make install` is just `npm install` — `electron-rebuild` then fires from the package's `postinstall` hook, rebuilding native modules against the bundled Electron's Node ABI. That distinction matters when you're debugging a failed rebuild: re-running `npm install` re-runs it; nothing in the Makefile does.
+
+The rebuild step is the one that fails on a missing C/C++ toolchain — see [Contributing — prerequisites](../explanation/contributing.md#prerequisites) for the per-OS package list.
 
 ## The watch loop
 
@@ -27,11 +29,31 @@ make dev
 
 `make dev` runs three things concurrently:
 
-- `tsc --watch` typechecks `src/main/` and `src/renderer/` continuously (no emit; esbuild handles bundling).
-- `vite` serves the renderer at `localhost:5600` with hot module reload.
-- `electron` opens a single `BrowserWindow` against the dev URL. Main / preload changes restart on the next launch (`Ctrl+R` reloads the renderer in-place).
+- **`dev:main`** — esbuild in `--watch` mode, rebundling `src/main/` and the preload on every save.
+- **`dev:renderer`** — `vite`, serving the renderer at `localhost:5600` with hot module reload.
+- **`dev:electron`** — `electron`, opening a single `BrowserWindow` against the dev URL once both the port and the main bundle are ready.
 
-If port `5600` is in use, `make kill` frees it.
+**There is no typechecker in the loop.** esbuild strips types without checking them, so a type error will not stop `make dev` — run `npm run typecheck` (`tsc --noEmit` over both tsconfigs) yourself, or let CI catch it.
+
+Renderer edits hot-reload. Main / preload edits are rebundled but need the window reloaded to take effect: **`Ctrl+Shift+R`** (View → Reload window). Note that `Ctrl+R` is *not* reload here — that accelerator is given to **View → Show Resources**, which is more useful day to day.
+
+If port `5600` is in use, `make kill` frees it. The production preview served by `vite preview` uses `5601`; both are `strictPort`, so a busy port fails loudly rather than silently sliding to the next one.
+
+## Tests and gates
+
+The other half of the loop:
+
+| Target | What it does |
+|---|---|
+| `make test` | Build, then run the Playwright suite. **Headless by default** — the runner wraps the suite in a throwaway Xvfb display so no window ever steals your focus. |
+| `make test-headless` | Same thing, named explicitly. |
+| `make test-visible` | Build and run with the window visible (`CONDASH_TEST_HEADED=1`). |
+| `make test-unit` | The vitest unit suite, no build needed. |
+| `make deadcode` | `knip` — fails on dead files, dead/unlisted deps, and duplicate exports. |
+| `make typecheck` | `tsc --noEmit` over main and renderer. |
+| `make format` | Prettier over `src/`. |
+
+A direct `npx playwright test` that skips the wrapper is aborted by a global-setup guard before any window opens — that guard is deliberate, not an obstacle to route around.
 
 ## `--no-sandbox` and the sandbox toggle
 

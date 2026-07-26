@@ -57,7 +57,9 @@ The three-folder split (`topics/`, `internal/`, `external/`) is not enforced by 
 
 Put `conventions.md` at the root because it's the first thing a new teammate opens.
 
-There is no cap on subdirectory depth — `knowledge/topics/ops/dev-ports.md` works the same as `knowledge/conventions.md`. Before v0.12.6 the note-serving endpoint capped at one sub-level and deeper files returned `Failed to load note.`; since v0.12.6 arbitrary depth is served and linkable.
+There is no cap on subdirectory depth — `knowledge/topics/ops/dev-ports.md` works the same as `knowledge/conventions.md`.
+
+One consequence worth knowing before you nest deeply: **wikilinks key off the basename alone**, at any depth. `knowledge/topics/ops/dev-ports.md` is `[[dev-ports]]` and nothing else — the directories are not part of the link target, and two files with the same basename in different subtrees collide. See [Link items with wikilinks](wikilinks.md#how-a-target-resolves).
 
 ## How condash scans the tree
 
@@ -73,35 +75,59 @@ Titles come from the first `# Heading` line of the file. If the file has no top-
 
 ## The Knowledge pane
 
-Open the **Knowledge** pane in the header. The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
+Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, Skills, and Logs. Open it from the **activity rail** on the left edge, from **View → Show Knowledge**, or with `Ctrl+Shift+K`. (The status bar along the top has no pane switcher.)
+
+The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 
 ![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-light.png#only-light)
 ![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-dark.png#only-dark)
 
-Click a tile to open the file in the right-hand pane. Click a folder to expand it; the folder's `index.md` (if any) renders as an `INDEX`-badged summary tile at the top.
+Click a card to open the file. Click a folder header to expand it; the folder's `index.md` (if any) renders as an `INDEX`-badged summary row at the top of that level. Each directory header carries the count of `.md` files **directly** inside it — `INTERNAL 3`, `TOPICS 3`, `TOPICS · OPS 2` in the shot above. The tree root itself has no header and no total: what you see is the top level's contents, not a summary of them.
 
-Each section header carries the number of `.md` files directly inside it. In the demo above: `KNOWLEDGE 2` at the root, then `INTERNAL 3`, `TOPICS 3`, and the nested `TOPICS · OPS 2`.
+A card carries a bucket-coloured stripe (general / internal / topics / external, derived from the top-level directory), the file's title, and its first-paragraph summary.
+
+### Verification stamps
+
+A knowledge file can carry a **verification date** — the last time somebody checked its claims still hold. When present, the pane renders it as a `Verified <date>` chip on the file's card, and as a bare date on a directory's `INDEX` row, with the full date in the tooltip. The chip is colour-graded by age:
+
+| Age | Reads as |
+|---|---|
+| under 90 days | fresh |
+| 90 days – 1 year | stale |
+| over a year | old |
+
+That grading is the whole point of the mechanism: a knowledge tree with no freshness signal quietly rots, and a year-old runbook that *looks* the same as yesterday's is worse than no runbook. `condash audit` carries a stale-verification check that reports the same thing from the CLI.
+
+### Creating files in place
+
+The pane is not read-only. Every directory header carries two buttons:
+
+- **`+ md`** — create a new Markdown file in that directory, naming it in a prompt. The new file opens straight away.
+- **`+ dir`** — create a subdirectory.
+
+Both write directly into the tree, so the tree stays the source of truth — there is no import step and no separate "add to index" action.
 
 ## Writing style
 
-Two conventions that make the knowledge pane usable at scale:
+Three conventions that make the knowledge pane usable at scale:
 
-- **Start every file with a one-sentence "what this is" line.** The search modal indexes README-like headers heavily, so a good first line surfaces the file from a keyword match.
-- **Cross-link with wikilinks**, not absolute paths. `[[topics/pdf-pipeline]]` survives a rename of `knowledge/` (to e.g. `docs/`); a path like `../../knowledge/topics/pdf-pipeline.md` does not.
+- **Give every file a real `# Heading`.** Search weights an H1 hit twenty times a body hit, and the pane uses it as the card title — a file whose H1 is `# Notes` is unfindable and unreadable at once. A one-sentence "what this is" line under it becomes the card's summary.
+- **Cross-link with wikilinks**, not relative paths. `[[pdf-pipeline]]` survives the file moving between subtrees; `../../knowledge/topics/pdf-pipeline.md` does not. Remember the target is the **basename only** — no directories, no `.md`.
+- **Keep basenames unique across the tree.** Because wikilinks key off the basename, two `index.md`-adjacent files called `setup.md` in different subtrees are one collision waiting to happen.
 
 Use `index.md` files as signposts, not walls of prose. Two lines of "what's here, pick the right subtree" is worth more than a comprehensive TOC — the explorer already shows the TOC visually.
 
 ## Optional tree
 
-If your conception root doesn't have a `knowledge/` directory, condash hides the pane entirely. There's no setup step to "enable knowledge mode" — the directory's presence is the signal.
+The `knowledge/` directory is optional. When it's missing the rail item stays where it is and the pane renders an empty state — *"No knowledge/ directory under the selected conception path."* There's no setup step to "enable knowledge mode"; the directory's presence is the signal.
 
-To start: `mkdir -p <conception_path>/knowledge` and add a `conventions.md`. Refresh the dashboard. The pane appears.
+To start: `mkdir -p <conception_path>/knowledge` and add a `conventions.md`. Refresh the dashboard, and the tree appears.
 
 ## Search
 
-Knowledge files are indexed by the **History** pane alongside items. A keyword match in a knowledge file surfaces as source `note` (same ranking weight as an item note). See [Search your history](search.md) for the ranking details.
+Knowledge is one of the four Markdown sources in the **search modal** (`Ctrl+K` / `Ctrl+Shift+F`) — there is no History pane. Every `.md` under `knowledge/` is indexed at any depth, and ranking keys off *where in the file* the match landed: a hit in the H1 is worth twenty in the body. See [Search](search.md#ranking) for the weights.
 
 ## Next
 
 - [Link items with wikilinks](wikilinks.md) — cross-link from an item's notes into `knowledge/` so the reference material is one click away.
-- [Search your history](search.md) — find that convention you half-remember writing six months ago.
+- [Search](search.md) — find that convention you half-remember writing six months ago.

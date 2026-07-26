@@ -43,9 +43,12 @@ The registry is your config's **`repositories[]`** array — a conception-owned 
 ```
 
 - **`handle`** — the canonical identity. Omit it and you get `appHandle(name)` (directory name, sigil-stripped + lowercased).
+- **`name`** / **`path`** — an entry needs at least one of them. `name` is a bare directory name under `workspace_path`; `path` locates a repo directly, and the directory name is then its `basename` — which is why the entries above give `path` and no `name`.
 - **`aliases`** — legacy spellings that still resolve to this handle. `validate` flags a README `apps:` value matching an alias and suggests the `#handle` rewrite; `rename` records the old handle here for you.
 - **`label`** — an optional human title rendered as a secondary subtitle; the primary pill is always the `#handle`.
 - **`submodules`** — nested repo entries are apps in their own right: each gets a handle by the same rules and resolves everywhere a handle is expected (a project may depend on a single submodule of a repo). `list` and the generated Apps table render them under their parent, prefixed `↳`.
+
+> **Not every array element is a repo.** `repositories[]` also accepts **section markers** — `{ "section": "Services" }` — which group the Code pane's cards and the Settings modal's rows under a heading. They carry no identity and no behaviour, and the config walker strips them before any consumer sees the list, so `applications list` will never show one. Expect them if you hand-edit a registry someone else wrote.
 
 ### Retired apps
 

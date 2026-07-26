@@ -9,7 +9,7 @@ description: Open the PTY pane, manage tabs across two sides, spawn agents from 
 
 **When to read this.** You want to stop alt-tabbing out to a separate terminal window while you work — or you've toggled the pane open once and couldn't find half the features.
 
-The embedded terminal is a real PTY driven by `node-pty` in the main process and rendered by `xterm.js` (locked to xterm 6.x with the recommended addon stack — search, web-links, clipboard, unicode11, webgl, serialize, image, ligatures) in the renderer.
+The embedded terminal is a real PTY driven by `node-pty` in the main process and rendered by `xterm.js` (locked to xterm 6.x with the recommended addon stack — fit, search, web-links, clipboard, unicode11, webgl, serialize, image, ligatures) in the renderer.
 
 ## Opening the pane
 
@@ -33,7 +33,7 @@ Each side header carries:
 
 - **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent, shown by its `label`, from the [`agents` settings list](agent-clis-and-models.md). Selecting an agent spawns a tab running its `command`. The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height. When favourites push the rest behind a `More ▸` fly-out (see [Config → Agents](../reference/config.md#agents)), a long fly-out is likewise capped to the viewport and wraps into multiple columns — flipping left or up as needed — so the whole list stays on-screen instead of running off the bottom edge.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at). Tabs are coloured buttons that **wrap onto multiple compact rows** when the strip gets crowded rather than scrolling sideways, so every tab stays visible; the focused tab is set apart by an accent ring + bold label (not by dimming the rest), and hovering a truncated tab shows its full title.
-- **Dashboard tab** — the left strip's first entry is a fixed **Dashboard** tab (it can't be renamed, closed, or dragged). Selecting it swaps the bottom band to the live tab-summaries Dashboard — a minimal top status line (a product label, an on/off dot reflecting whether the summary feature is enabled and keyed, live tab tallies by state, and the last-update time; **hovering** it reveals the full summarizer config — provider, the card and writer models with their reasoning flags, the refresh interval, the activity gate, and whether the API key and base URL are set), then a card per **open tab**, in the same order as the tab strip. Each tab refreshes on its **own independent timer**, in parallel with the others, and carries a manual **Update** button showing the time since its last refresh. A card shows a small state health dot, the few-word title with an **activity stage** pill (implementing, reviewing, making-PR, documenting, …), a breadcrumb of where the work lives (`#app › worktree › project`), a one-sentence subtitle giving the work's context and purpose, and a list of recent actions; a tab with no summary yet falls back to a card drawn from its command and cwd that shows when its first output is expected, so no open tab is ever hidden, and a card being recomputed shows a small pulsing dot. Any last-cycle error is surfaced below the top line. Selecting any real terminal tab switches straight back to that terminal. It's always present, even with the summary feature off (the body then explains how to enable it).
+- **Dashboard tab** — the left strip's first entry is a fixed **Dashboard** tab (it can't be renamed, closed, or dragged). Selecting it swaps the bottom band to the live tab-summaries Dashboard; selecting any real terminal tab switches straight back, and clicking it while it's already active closes the pane. It's always present, even with summarisation off — the body then explains how to enable it. The whole feature has its own page: **[The Dashboard](dashboard.md)**.
 
 Tab titles depend on how the tab was spawned:
 
@@ -41,7 +41,9 @@ Tab titles depend on how the tab was spawned:
 - **Launcher option** — labelled with the entry's `title` if set, otherwise the `command` (e.g. `Claude`, `claude`, `python -m notebook`). The label is **pinned**: OSC 7 cwd updates do *not* override it.
 - **Code-card "open in term"** — labelled `<repo> · <branch>` (e.g. `condash · my-feature`). Also pinned, so the branch stays visible even after the shell `cd`s inside the worktree.
 
-A manual double-click rename always wins. The full path shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
+A manual double-click rename always wins. The full path shows in the title attribute.
+
+**Only a clean `exit 0` auto-closes its tab.** An abnormal exit *keeps* its row, badged with a verdict (out of memory, SIGKILL, `exited — code N`, …) and a **Restart** button, so a tab that died while you were away can still be read. See [Troubleshooting → A terminal tab disappeared](troubleshooting.md#a-terminal-tab-disappeared) for the verdicts. If you want the buffer before a close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
 
 The full title precedence is **manual rename → cwd basename (unpinned) → window title (OSC 0/2) → spawn-time label**.
 
@@ -53,13 +55,16 @@ When the program running in a tab announces a window title via OSC 0 / OSC 2 —
 
 ## Power-user shortcuts
 
-The custom-key hook intercepts a few combos before the bytes hit the shell:
+Two combos are intercepted by the xterm custom-key hook **before the bytes reach the shell**:
 
 | Shortcut | Effect |
 |---|---|
 | `Ctrl+F` | Open the **search bar** at the top of the active tab — find-as-you-type with case / regex toggles. `Esc` to close. |
 | `Ctrl+Up` / `Ctrl+Down` | **Jump to the previous / next OSC 133 prompt boundary.** Requires shell integration — see [Shell integration](#shell-integration) below. Without integration, the keys fall through to the shell. |
-| `Ctrl+Left` / `Ctrl+Right` | Move the active tab between the left and right sides. |
+
+`Ctrl+C` / `Ctrl+V` are also handled specially — see [Screenshot-paste](#screenshot-paste) below and the copy/SIGINT note in [Troubleshooting](troubleshooting.md#ctrlc-copies-instead-of-sending-sigint-or-vice-versa).
+
+**The move-tab shortcuts are different.** `Ctrl+Left` / `Ctrl+Right` (see [Moving tabs between sides](#moving-tabs-between-sides)) live in the *global* keyboard handler, which deliberately bails out for anything inside the terminal host. So while a terminal has focus those keys fall through to the shell — word-wise cursor motion keeps working — and they move a tab only when focus is elsewhere in the app. The two exceptions that always win, even inside a focused terminal, are the pane-toggle shortcut and the screenshot-paste shortcut.
 
 URLs in the buffer are clickable thanks to the web-links addon — clicking opens through the safe `openExternal` IPC verb (allowlists `https:` and `mailto:`).
 
@@ -123,7 +128,7 @@ A snippet sourced from a non-condash terminal (gnome-terminal, iTerm2, …) emit
 
 ## Live theming and font tweaks (Settings → Terminal)
 
-**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** section) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. `terminal` is a **personal** setting — the whole block lives in the per-machine `settings.json`, so the section sits under **Personal · this machine** and writes there (there is one copy, no per-conception override and no inheritance badge). Changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
+**File → Settings → Terminal** (`Ctrl+,`, then the **Terminal** section) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. `terminal` is a **personal** setting — the whole block lives in the per-machine `settings.json`, so the section sits under **Personal · this machine** and writes there (there is one copy, no per-conception override and no inheritance badge). Changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
 
 See [`terminal.xterm` in the config reference](../reference/config.md#terminalxterm) for the full key table.
 
@@ -136,6 +141,8 @@ Keyboard shortcuts move the active tab left or right:
 | Move active tab to left side | `Ctrl+Left` | `terminal.move_tab_left_shortcut` |
 | Move active tab to right side | `Ctrl+Right` | `terminal.move_tab_right_shortcut` |
 
+These are **global** shortcuts and they yield to a focused terminal (and to any text input) — see the note under [Power-user shortcuts](#power-user-shortcuts). Click outside the xterm first, or rebind them to a combination your shell doesn't use.
+
 The shortcut syntax follows the HTML `KeyboardEvent.key` convention: `Ctrl+Shift+X`, `Alt+1`, etc. Modifiers allowed: `Ctrl`, `Shift`, `Alt`, `Meta`.
 
 Use this to pair a build terminal on one side with a log-tail on the other without leaving the keyboard.
@@ -146,8 +153,8 @@ This is the feature nobody discovers on their own. It solves one specific proble
 
 Press `Ctrl+Shift+V` (configurable as `terminal.screenshot_paste_shortcut`) anywhere in the dashboard. condash:
 
-1. Looks up `terminal.screenshot_dir` (default: `$XDG_PICTURES_DIR/Screenshots` on Linux, `~/Desktop` on macOS).
-2. Finds the newest image file there.
+1. Looks up `terminal.screenshot_dir`. **There is no default** — with it unset the shortcut does nothing but flash *"No screenshot directory set — open Settings → Terminal → Screenshot directory."* (The `~/Pictures/Screenshots` you see in the Settings form is placeholder text, not a value.)
+2. Finds the newest file there — **any** file, top-level only. There is no extension filter, so a stray download in that directory will win.
 3. Inserts its absolute path at the active tab's prompt — no `Enter` appended; you confirm.
 
 Typical use: take a screenshot of a failing test → `Ctrl+Shift+V` → the path appears → prefix with `cat ` or drop into a `gh issue create --body-file ` command.
@@ -156,7 +163,9 @@ Regular text paste (`Ctrl+V`) reads the system clipboard in the main process (`c
 
 ## Configuration surface
 
-Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`:
+`terminal` is a **personal, per-machine** setting: the whole block — including its `xterm`, `logging`, `memory`, and `perf` sub-blocks — lives in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` and **nowhere else**. A conception's `.condash/settings.json` carrying a `terminal` key is rejected by the schema, and an older condash that wrote one there has it relocated by the scope-partition migrator. There is no per-conception terminal config and no inheritance.
+
+The scalar keys:
 
 ```json
 {
@@ -166,10 +175,22 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
     "screenshot_dir": "/home/you/Pictures/Screenshots",
     "screenshot_paste_shortcut": "Ctrl+Shift+V",
     "move_tab_left_shortcut": "Ctrl+Left",
-    "move_tab_right_shortcut": "Ctrl+Right"
+    "move_tab_right_shortcut": "Ctrl+Right",
+    "autoRefreshOnTabSwitch": false
   }
 }
 ```
+
+Plus six nested blocks:
+
+| Key | What it holds |
+|---|---|
+| `terminal.xterm` | Typography, cursor, scrollback depth, ligatures, the ANSI palette — [reference](../reference/config.md#terminalxterm). |
+| `terminal.logging` | Session capture: on/off, retention, directory cap, marker cadence — [Session logging](#session-logging) below. |
+| `terminal.memory` | Per-tab `MemoryHigh` / `MemoryMax` / swap caps, plus an `appScope` set for condash itself — [reference](../reference/config.md#terminal-memory). |
+| `terminal.perf` | Main-process performance recording — [The Performance pane](performance-pane.md). |
+| `terminal.projectActions` | Per-project action buttons — [reference](../reference/config.md#terminalprojectactions). |
+| `terminal.newProjectActions` | Actions offered when a project is created — [reference](../reference/config.md#terminalnewprojectactions). |
 
 See the [config reference](../reference/config.md) for the full key table with defaults.
 
@@ -177,7 +198,9 @@ The spawn dropdown is populated from the top-level **`agents`** list, not from a
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** section has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal's **Launchers** section (under **Personal · this machine**).
+The Settings modal's **Terminal** section has a form field for every scalar `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shell`, `shortcut`, `screenshot_dir`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, and the *Refresh the active tab on switch* toggle (`autoRefreshOnTabSwitch`). The same section also edits the nested blocks: xterm typography and colours, logging, the memory limits, and the perf-recording toggle. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed.
+
+Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal's **Launchers** section (also under **Personal · this machine**).
 
 ## Platform notes
 
@@ -186,7 +209,7 @@ The terminal works on Linux, macOS, and Windows. The shell defaults differ by pl
 - **Linux / macOS** — `$SHELL` (or `/bin/bash` if unset).
 - **Windows** — `%ComSpec%` (`cmd.exe` by default). Override with `terminal.shell = "C:\\Program Files\\PowerShell\\7\\pwsh.exe"` if you prefer PowerShell, or any `bash` from Git for Windows / MSYS2.
 
-Per-platform shell wrapping (so `terminal.run` strings reach the right shell) lives in `src/main/terminals.ts:wrapForShell`. Shell-integration snippets under `integrations/` cover bash, zsh, fish, and PowerShell.
+Per-platform shell wrapping (so `terminal.run` strings reach the right shell) lives in `src/main/terminals.ts:wrapForShell`. The shell-integration snippets under `integrations/` cover **bash, zsh, and fish only** — there is no PowerShell snippet, so semantic prompts and prompt-jumping are unavailable in a PowerShell tab.
 
 ## Session logging
 
@@ -219,21 +242,13 @@ The body also carries periodic `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers at 
 
 Toggling logging off does **not** delete past transcripts — the Logs pane keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
 
-The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so logs (and per-host settings) stay per-host with no commit-leak risk.
+The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so nothing under it can leak into a commit. Besides `logs/`, that directory now holds `perf/` (performance records), `scheduled/` and `manual/` (task-run consoles), `transcripts/` (per-tab agent transcript sidecars), and the per-conception `settings.json` itself.
 
 ### Browsing logs
 
-`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface — sessions as a **collapsible card grid grouped by date**, newest first. The last 7 days each get their own collapsible group; **today is always expanded** while the other recent days start collapsed. Anything older is folded into collapsible **per-month** groups (with a day sub-header inside each). Each session card shows the spawn time, repo (when launched via Run), short command, size on disk, and exit code (or "running" while alive; the left edge tints red for non-zero exits).
+`View → Show Logs` (`Ctrl+Shift+L` / `Cmd+Shift+L`) opens the Logs working surface — sessions grouped by day, a virtualised viewer with search, and a **Task runs** switch for the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store. Logs are also a source of the global search modal, scanned only when you pick the **Logs** filter pill.
 
-Clicking a card opens the **session viewer modal**: a wide overlay with the full plain-text transcript and a case-insensitive search box. The transcript is virtualised — only the visible window of lines is mounted, so scrolling stays smooth however long the log is (the writer caps a grid body at 2 MB and a transcript body at 8 MB, so that is the range in practice). Long lines horizontal-scroll rather than wrap (every row stays exactly one line-height tall, which the virtualizer needs). Search precomputes per-line hit indices once per query; the n/N counter plus the ↑/↓ buttons cycle hits, `Enter` jumps forward, `Shift+Enter` backward, `Cmd/Ctrl+F` focuses the search box, `Esc` closes the modal.
-
-A **Sessions | Task runs** switch at the top of the pane flips to the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store — scheduled runs and manual runs flagged *Keep out of logs*, grouped by task with a `scheduled` / `manual` badge. These never appear in the normal Sessions list, search, or reports; the same viewer modal opens them.
-
-The `⌫` button in the modal head deletes the open session (one `.txt`, no sidecar to clean up).
-
-### Searching logs across sessions
-
-Logs are a source of the global search modal (`Cmd+K`) — but, being large and rarely searched, they're searched only when you pick the **Logs** filter pill, not in the default **All** view (see [Search · Source filters](search.md#source-filters)). A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it opens the viewer modal directly on that session. The `# condash:` header / footer lines are stripped from the body before substring matching so search snippets carry actual transcript text, not the metadata JSON.
+**→ Full walkthrough: [The Logs pane](logs-pane.md).**
 
 #### What's captured
 
@@ -255,7 +270,7 @@ The in-band echo has a transport gap: a cooperating program writes the frames to
 
 ### Tuning capture
 
-The `terminal.logging` block in `.condash/settings.json` (or in the global `settings.json` for cross-conception defaults) carries the knobs:
+The `terminal.logging` block carries the knobs. Like the rest of `terminal`, it is **global-only** — it lives in the per-machine `settings.json` and there is exactly one copy, shared by every conception you open. A `.condash/settings.json` carrying it is rejected:
 
 ```json
 {
@@ -273,7 +288,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
 
 See the [config reference](../reference/config.md#terminal-logging) for per-key defaults and effects.
 
-A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, gzips any uncompressed `.txt` whose day-directory is at least one day old (today's dir is always skipped to avoid racing with active writers), then evicts the oldest day-directory while total size is over `maxDirMb`. There is no per-file rotation — `scrollback` is the only size knob.
+A janitor runs at app start and every 24 hours. It works in **whole days**, never per file: first it deletes every day-directory older than `retentionDays` (`0` means "never delete by age"), then, while the total is still over `maxDirMb`, it deletes the oldest surviving day-directory. The current day is never a victim — live writers are still flushing into it. Nothing is compressed; the files stay plain `.txt` so `grep` and `cat` keep working on them.
 
 #### Migration from `.jsonl`
 
@@ -285,7 +300,7 @@ Terminal output routinely carries secrets: `gh auth login` paste, env-var dumps,
 
 - `.condash/` is gitignored by default — no accidental commit.
 - Logs never leave the host — no telemetry, no cloud sync.
-- `terminal.logging.enabled = false` cuts capture per-conception or globally; existing files stay on disk for the janitor.
-- The Logs pane's **Delete day** button wipes one day at a time.
+- `terminal.logging.enabled = false` cuts capture. It is a single global switch, not a per-conception one, so turning it off stops capture everywhere; existing files stay on disk for the janitor.
+- The Logs pane's session viewer has a `⌫` button that deletes one session at a time. Bulk cleanup is the janitor's job (`retentionDays` / `maxDirMb`).
 
 No automatic redaction — pattern-based scrubbing is unreliable and gives false reassurance. To capture a sensitive command without recording its output, disable logging via the settings toggle before running it.

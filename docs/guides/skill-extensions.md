@@ -1,6 +1,6 @@
 ---
 title: Extend the management skills · condash guide
-description: How to fork or wrap the shipped /projects, /knowledge, /pr Claude Code skills with team-specific behaviour.
+description: How to fork or wrap the five shipped management skills — /projects, /knowledge, /pr, /applications, /visual — with team-specific behaviour.
 ---
 
 # Extend the management skills
@@ -15,20 +15,35 @@ For the base reference (every action, every CLI verb each one wraps), see [the m
 
 ## Where the skills live
 
+condash ships **five** skills:
+
 ```bash
 # After running `condash skills install`
-<conception>/.agents/skills/projects/
+<conception>/.agents/skills/applications/
 <conception>/.agents/skills/knowledge/
 <conception>/.agents/skills/pr/
+<conception>/.agents/skills/projects/
+<conception>/.agents/skills/visual/
 ```
 
 Each directory contains a `SKILL.md` (the entry point) plus per-action detail files (e.g. `create.md`, `close.md` for `/projects`) and, where a harness needs its own frontmatter, an optional `SKILL.<harness>.md` overlay (e.g. `SKILL.claude.md`). The sources are placed verbatim — the harness launcher renders them per agent at run time.
 
-The manifest at `<conception>/.agents/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
+The manifest at `<conception>/.agents/.condash-skills.json` tracks the shipped version + SHA256 per file. **`condash skills install` is non-interactive.** When a file's on-disk content differs from what it shipped, the install **refuses** that file and exits with a validation error:
+
+```
+3 item(s) refused (locally edited). Re-run with --force to overwrite or --diff to inspect.
+```
+
+There is no prompt and no yes/no. Your customisations are never clobbered silently — but they are also never merged for you.
 
 ## Path 1 — fork the shipped files
 
-The simplest extension: edit the file in place. Add a section to `SKILL.md`, change a step in `create.md`, override a default flag in `close.md`. Next `condash skills install` will detect the drift, show you the diff, and ask whether to overwrite — answer "no" to keep your local copy.
+The simplest extension: edit the file in place. Add a section to `SKILL.md`, change a step in `create.md`, override a default flag in `close.md`. The next `condash skills install` detects the drift and **refuses that file**, leaving your copy untouched and exiting non-zero. Two flags steer it from there:
+
+- **`--diff`** — print what upstream would have written, so you can merge by hand.
+- **`--force`** — overwrite your edit with the shipped version.
+
+Doing nothing keeps your local copy, which is the point: the default is safe, and taking an upstream change is an explicit act.
 
 This is the right path when:
 
@@ -76,10 +91,21 @@ The patterns below are realistic shapes — copy and adapt to your tree.
 **Wrapper sketch.** After `/projects create` returns:
 
 ```bash
-condash worktrees setup <branch> --copy-env
+condash worktrees setup <branch>
 ```
 
-Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` itself is the canonical path — it knows where worktrees live (the `worktrees_path` key in `.condash/settings.json`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
+Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` is the canonical path — it knows where worktrees live (the `worktrees_path` key in `.condash/settings.json`), and by default it both copies the files listed in each repo's `env:` key and runs its `install:` hook.
+
+The flags a wrapper author actually needs:
+
+| Flag | Effect |
+|---|---|
+| `--repo <r>` | Restrict to specific repos (comma-separated) instead of every repo declaring the branch. |
+| `--base <ref>` | Base ref. Defaults to **Base** from the declaring items' READMEs; with no base at all each repo branches from its default-branch tip. |
+| `--no-install` | Skip the per-repo `install:` command. |
+| `--no-env` | Skip the per-repo `env:` file copy. |
+
+`--copy-env` still parses but is **legacy** — an opportunistic `.env` / `.env.local` copy for repos that declare no `env:` key. New configuration should declare `env: [...]` on the repo entry instead; it applies unconditionally and is explicit about what gets copied. See [Repositories and open-with buttons](repositories-and-open-with.md#other-keys-a-repository-entry-accepts).
 
 ### Deliverable generation on close
 
@@ -93,7 +119,7 @@ This pattern only fits `document`-kind items; `project` and `incident` items rar
 
 **Problem.** Items accumulate notes. Without an index, the only way to discover what's in the `notes/` folder is the Files panel.
 
-**Wrapper sketch.** After creating a note (the shipped `/projects` skill does this via `condash`'s `createProjectNote` IPC verb), edit the README:
+**Wrapper sketch.** After creating a note — a skill runs in a terminal, so it writes the file directly under `notes/NN-<slug>.md`; there is no CLI verb and no IPC available to it — edit the README:
 
 1. Locate `## Notes`. If absent, append one before `## Timeline`.
 2. Add a bullet `- [filename](notes/filename.md) — <first 80 chars of body>`.

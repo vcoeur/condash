@@ -28,7 +28,7 @@ For running condash from a source clone (`make install`, `make dev`, `make packa
 
 ## How dispatch works
 
-One binary, one launcher: the `condash` entry on PATH inspects its argv. With no positional argument (or with the literal `gui` first), it boots the Electron GUI. With a known CLI noun (`projects`, `knowledge`, …) first, it runs the bundled CLI script in plain-Node mode (no Chromium, no window). An unknown first positional reports an unknown noun and exits with code 2 (usage).
+One binary, one launcher: the `condash` entry on PATH inspects its argv. With no positional argument (or with the literal `gui` first), it boots the Electron GUI. **Anything else** runs the bundled CLI script in plain-Node mode (no Chromium, no window) — the dispatcher is deliberately not noun-aware (`src/main/dispatch.ts`), so it is the CLI itself that reports an unknown noun and exits with code 2 (usage).
 
 CLI nouns:
 
@@ -37,6 +37,8 @@ projects   knowledge   search   repos   applications   worktrees   audit   dirty
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
+
+`plans` is accepted as a **deprecated alias** for [`mdx`](#mdx) — it prints `warning: condash plans was renamed — use condash mdx` on stderr and forwards to the same handler. It was renamed in v4.81.0 and will be removed after one release; use `mdx`.
 
 ## Universal flags
 
@@ -89,18 +91,18 @@ Item lifecycle and reads.
 
 | Verb | What it does |
 |---|---|
-| `list` | List items, optionally filtered by `--status`, `--kind`, `--apps`, `--branch`, `--sort` |
-| `read <slug>` | Read one item by slug or path |
+| `list` | List items, optionally filtered by `--status`, `--kind`, `--apps`, `--branch`, `--parent`, and sorted by `--sort` (`status` (default) \| `slug` \| `date`). `--parent <slug>` lists one plan's spin-off subprojects — the slug is resolved leniently, so a short form works |
+| `read <slug> [--with-notes]` | Read one item by slug or path. `--with-notes` also returns the contents of every `notes/*.md` |
 | `activity [--begin <YYYY-MM-DD>] [--end <YYYY-MM-DD>] [--format md]` | Generic project-tree activity over a date range (default: last 7 days): every `## Timeline` beat parsed into items + dated events + day/week/month/app indices. `--json` is the reusable data layer for digest tooling and dashboards; plain output is a one-look summary; `--format md` emits a no-frills markdown digest |
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
 | `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
 | `status get <slug>` / `status set <slug> <new-status>` | Read or change the `status` field; a done-edge appends the same `Closed.` / `Reopened.` timeline entry as the verbs below, annotated with `--summary <text>` when given |
-| `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry, annotated with `--summary <text>` when given |
+| `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry, annotated with `--summary <text>` when given. `--no-touch-dirty` skips touching `projects/.index-dirty`, for a caller that regenerates the indexes itself |
 | `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry, annotated with `--summary <text>` when given |
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
-| `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [--status <s>]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. Incidents add `--severity` + `--severity-impact` + `--environment` |
+| `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [flags]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. `--date <YYYY-MM-DD>` overrides today (it picks both the `YYYY-MM/` bucket and the folder's date prefix), `--branch <name>` and `--base <ref>` seed the matching header fields, and `--parent <slug>` records the plan this item spins off from — the slug is resolved against the tree and stored in its canonical dated form, so a short form works and an unknown one exits 4 / 6. Incidents add `--severity` + `--severity-impact` + `--environment` |
 | `scan-promotions <slug>` | Walk a closed item's notes for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
 | `check-knowledge <slug> [--record]` | Signal whether a `done` project still needs a knowledge-promotion check (read-only). `--record` appends the dated `Checked knowledge promotion` marker after a real review (the mechanical recorder the `/knowledge` skill calls — never hand-typed). No mass/backfill writer: the marker is only ever written for a project that was actually reviewed |
 | `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
@@ -126,10 +128,10 @@ Knowledge-tree operations.
 
 | Verb | What it does |
 |---|---|
-| `tree` | Render the knowledge index as a tree, depth-limited via `--depth` |
-| `verify` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report stale ones |
-| `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`triage`, `grep`, `both`) |
-| `stamp <path>` | Add or refresh a verification stamp on a knowledge file, optionally `--where <field>` and `--date <iso>`. `<path>` must resolve inside the conception tree |
+| `tree` | Render the knowledge index as a tree, depth-limited via `--depth` (default: unlimited) |
+| `verify [--max-age <days>]` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report any older than `--max-age` days (default 30) |
+| `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`triage`, `grep`, `both`; default `both`) |
+| `stamp <path> --where <text>` | Add or refresh a verification stamp on a knowledge file. **`--where` is required** — it is the provenance string written into the stamp (e.g. `"condash@abc1234 on main"`). `--date <iso>` overrides today; `--insert-after "<heading>"` names the heading to insert below when the file carries no stamp yet. `<path>` must resolve inside the conception tree |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `knowledge/**/index.md` from the on-disk tree; clear `knowledge/.index-dirty` |
 
 ### `search`
@@ -148,7 +150,10 @@ List configured repositories from `.condash/settings.json` (or the legacy `conda
 
 ```bash
 condash repos list                       # configured repos
+condash repos list --include-worktrees   # … each one's worktrees too (slower)
 ```
+
+`--include-worktrees` runs a `git worktree list` per repo, so it costs an extra process per entry — off by default. [`condash worktrees list`](#worktrees) is an alias for exactly this invocation.
 
 ### `applications`
 
@@ -175,17 +180,21 @@ Worktree-centric operations on top of the conception's configured repositories (
 
 | Verb | What it does |
 |---|---|
-| `list` | Print every worktree, grouped by primary, with branch + dirty status |
+| `list` | Print every worktree, grouped by primary, with branch + dirty status. An alias for [`repos list --include-worktrees`](#repos) — same payload, no extra flags of its own |
 | `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
 | `mismatch` | Report worktrees referenced by an item's `branch` field that don't exist on disk (or vice versa) |
-| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch. Re-running setup on an already-present worktree backfills only the declared env files that worktree is missing — an existing copy is never overwritten, and `install:` does not re-run; `--no-env` suppresses that backfill too. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch) are expected outcomes reported under `blocked` and do **not** affect the exit code |
+| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` is the legacy opportunistic `.env` / `.env.local` copy for repos with no `env:` block; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook (which runs by default); `--base <ref>` overrides the base. With no `--base`, the base comes from the declaring items' `base:` header fields (which must agree); with no base at all, each repo branches from its own default-branch tip — `origin/HEAD`, else local `main` / `master`, else the primary checkout's HEAD. No fetch is run, so a base ref trailing its upstream only earns a **warning**. Re-running setup on an already-present worktree backfills only the declared env files that worktree is missing — an existing copy is never overwritten, and `install:` does not re-run; `--no-env` suppresses that backfill too. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch, missing base ref) are expected outcomes reported under `blocked` and do **not** affect the exit code |
 | `remove <branch> [--repo <r>...] [--force] [--force-rm]` | Tear down `<branch>` worktrees and (if safe) the local branch. `--force` passes through to `git worktree remove --force` (deletes even if dirty); `--force-rm` implies `--force` and `rm -rf`'s the leftover dir if git deregistered the worktree but left files behind (typical with `node_modules`). Without `--force-rm`, half-removed entries are reported under `partiallyRemoved[]` so the caller can distinguish them from genuinely protected repos |
 
 A declaring item's `apps:` tokens and explicit `--repo` values resolve to a repo by its `#handle`, its directory name, or a configured alias — so a repo whose handle differs from its directory (e.g. `#vcoeur` → `vcoeur.com`) is matched either way. The worktree directory is always named after the canonical directory name, so every spelling lands on the same `<worktrees_path>/<branch>/<dir>/`.
 
+`remove` refuses outright when `<branch>` matches [`long_lived_branches`](config.md#workspace-keys) (default `main` + `master`, glob patterns accepted): every requested repo comes back under `protected[]` with a "remove manually if really intended" reason, and nothing is deleted — `--force` does not override it.
+
+`setup` also accepts a bare `--install` for back-compat. It is **deprecated and does nothing**: running the per-repo `install:` hook has been the default since it was introduced, so the flag only prints a `[deprecated]` notice pointing at `--no-install`.
+
 ### `audit`
 
-Tree-wide health checks. Bundles the same passes the GUI exposes via the gear modal's "Audit" button.
+Tree-wide health checks. **CLI-only** — the GUI has no audit surface, so this noun (and the `/knowledge verify` skill action that wraps it) is the whole story.
 
 ```bash
 condash audit                       # run every check
@@ -200,7 +209,7 @@ condash audit --include lfs,binaries
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
 | `stale-index` | `index.md` files under `projects/` or `knowledge/` whose content has drifted from the tree (a regen would rewrite them); autofix re-runs `condash <tree> index` |
-| `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 30 days). Shares its engine with `condash knowledge verify`, so the GUI audit pane surfaces stale stamps too. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
+| `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 30 days). Shares its engine with `condash knowledge verify`, so the two agree on what counts as stale. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
 | `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 | `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 
@@ -343,8 +352,18 @@ Read or change condash configuration.
 | `path` | Print both config file paths (`settings.json` + `.condash/settings.json`) |
 | `list [--global\|--effective]` | Print every key. Default reads `.condash/settings.json` (with legacy `condash.json` / `configuration.json` as read fallbacks); `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
 | `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
-| `set <key> <value> [--global]` | Write a key. Default writes `.condash/settings.json`; `--global` writes the global `settings.json` |
+| `set <key> <value>` | Write a key. **The target file is chosen by the key, not by a flag** — see below |
 | `migrate` | Copy legacy `condash.json` / `configuration.json` content into `.condash/settings.json`, tombstone the source, and gitignore `.condash/` (the same auto-migration the GUI runs on first open) |
+
+`set` does not take a target selector. Since the two config files carry [disjoint schemas](config.md#all-config-keys), every key has exactly one home and condash derives the file from the key's first dotted segment:
+
+- A **personal** key (`terminal`, `theme`, `uiFonts`, `dashboard`, `autoSync`, `open_with`, `agents`, `pdf_viewer`, `layout`, …) writes the global `settings.json`.
+- A **this-tree** key (`workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `long_lived_branches`, `taskConfig`) writes the conception's `.condash/settings.json`.
+- Passing `--global` on a conception-owned key is a contradiction and **exits 2** with `<key> is a per-conception setting … Drop --global`. The flag is honoured only for a key the schema does not recognise (a typo, or the `$schema_doc` pointer), where it picks the file; without it such a key defaults to the conception file.
+
+`--global` / `--effective` remain real target selectors on `list` and `get`, which only read.
+
+The value is parsed as JSON when it starts with an optionally-negative digit, `"`, `[`, or `{`, and treated as a literal string otherwise — so `condash config set terminal.shell /bin/zsh` needs no quoting. Array-index segments (`repositories[0].path`) are **read-only**: set the whole array as one JSON value instead.
 
 `config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
 

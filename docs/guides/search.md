@@ -19,21 +19,19 @@ The query box takes focus the moment the modal opens. Start typing; results rend
 
 ## What's indexed
 
-For every item under `projects/*/*/`:
+Four Markdown sources are held in an in-memory index, plus terminal logs which are scanned from disk on demand:
 
-- The README title and slug.
-- The `Apps` field value.
-- The README body (everything below the header block).
-- Every file under `notes/`.
-- The filenames themselves (so you can find a note by its path even if the body doesn't match).
+| Source | What's walked | Extensions |
+|---|---|---|
+| **Projects** | Every file under `projects/<month>/<item>/`, at any depth — the README, everything in `notes/`, and anything else you put there | `.md` |
+| **Knowledge** | Everything under `knowledge/`, at any depth | `.md` |
+| **Resources** | Everything under `resources/` | `.md`, `.markdown`, `.txt` |
+| **Skills** | Everything under `.agents/skills/` | `.md` |
+| **Logs** | Saved session transcripts under `.condash/logs/` — **only** with the Logs filter picked | `.txt` |
 
-For every file under `knowledge/`:
+For each file, the **path** is indexed alongside the content, so you can find a note by its filename even when the body doesn't match.
 
-- The first heading.
-- The body.
-- The path.
-
-Content indexing covers `.md`, `.txt`, `.json`. Files larger than 512 KiB are skipped for content — filename and title still index. This keeps a stray large log or exported PDF text from dominating search cost.
+There is no file-size cap: every file matching those extensions is indexed in full.
 
 ## Source filters
 
@@ -43,66 +41,75 @@ Once your query is long enough, a row of filter pills appears: **All · Projects
 
 ## Ranking
 
-Matches are weighted by where they're found:
+Every occurrence scores by the **region of the file** it landed in — not by what kind of file it is:
 
-| Source | Weight |
+| Region | Weight |
 |---|---|
-| Title / header field | 4 |
-| Filename | 3 |
-| README body | 2 |
-| Note body | 2 |
-| Other file | 1 |
+| `h1` — the file's first `# Heading` | 20 |
+| `meta` — the `**Field**: value` header block right after the H1 (project files only) | 15 |
+| `heading` — any other `#`-prefixed line | 5 |
+| `path` — a match in the file's path | 5 |
+| `body` | 1 |
 
-A token found in the title contributes four times more to the score than the same token found deep in a note. Per-item scores sum across all hits. The final list is ordered by total score, with ties broken by most-recent-date-first.
+Two bonuses sit on top:
+
+- **+5 per matched phrase term.** A `"quoted phrase"` that matched earns it — phrases imply adjacency, so they're worth a little over a bare token.
+- **+10 for adjacency**, once per file, when two *different* query tokens land within 30 characters of each other. Path hits are excluded from this: a path is too short for adjacency to mean anything.
+
+A title hit is worth twenty body hits, which is the point — a file *about* your query beats a file that merely mentions it. The final list is ordered by total score, with ties broken by **file modification time** (newest first), then by path alphabetically.
+
+**The result list is capped at 100 hits.** When more matched, the modal shows a *Showing 100 of N* footer.
 
 ## Token matching
 
-The query is lower-cased and whitespace-split, preserving order. Duplicate tokens are dropped. Results must match **every** token (AND semantics) — there's no OR operator and no phrase-quoting.
+The query is lower-cased and split on whitespace, preserving order. `"Double-quoted strings"` become a single **phrase** term that must match contiguously — useful for `"force stop"` or `"exit code"`. Results must match **every** term (AND semantics); a term may match in the body *or* in the path.
 
-All matches are substring matches. Token `fuzz` matches `fuzzy`, `fuzzing`, and `defuzz`; no stemming, no fuzzy matching, no synonyms.
+There is no OR operator, no `-exclusion`, no field scoping, and no escape character. Repeated tokens are **not** de-duplicated — typing `parser parser` matches twice and scores twice.
 
-Case is ignored.
+All matches are substring matches. Token `fuzz` matches `fuzzy`, `fuzzing`, and `defuzz`; no stemming, no fuzzy matching, no synonyms. Case is ignored.
 
 ## Snippets
 
-Each hit row carries a snippet — the body text around the earliest token hit, with the matched substrings highlighted:
+Each hit carries **up to three** non-overlapping snippets — the text around a match, with every matched substring highlighted:
 
 > …to index the **corpus** with the same format as the parser's real input.
 
 Rules:
 
-- Radius is 60 characters on either side of the hit.
-- The snippet snaps to word boundaries (no mid-word cuts).
+- Snippets are ordered by region precedence: `meta` first, then `h1`, then `heading`, then `body`. So the most identifying context surfaces first.
+- Radius is 60 characters on either side of the hit. Once a window is committed, later matches falling inside it are skipped.
+- The window is a raw character slice — it does **not** snap to word boundaries, so a snippet can start or end mid-word.
 - Whitespace collapses to single spaces.
 - Ellipses indicate truncation on either side.
-- Every occurrence of every query token inside the snippet is highlighted, not just the anchor.
+- Every occurrence of every query term inside the snippet is highlighted, not just the anchor.
 
-An empty snippet means the match was in a field without a rich body (e.g. the slug or a filename); the hit still shows, labelled by its source.
+A hit with no snippet matched only in the path; it still shows, labelled by its source.
 
 ## Result layout
 
 Each result has:
 
 - The **item title and kind badge** — click to open that item's card.
-- One or more **hit rows** underneath, each showing the source (readme / note / filename / title), the path or label, and a snippet with the matched token highlighted.
+- One or more **hit rows** underneath, each showing its source, the file's path, and up to three snippets with the matched terms highlighted.
 
-Click any result to close the modal and jump to the corresponding card or knowledge file.
+Click any result to close the modal and jump to the corresponding card, knowledge file, or log session. When the raw hit count exceeded 100, a *Showing 100 of N* footer tells you the list was truncated — narrow the query rather than scrolling.
 
 ## What isn't searched
 
-- Non-markdown binary files (images, PDFs, archives) — filename only.
-- File content larger than 512 KiB.
-- Everything under dot-directories (`.git/`, `.claude/`, etc.).
-- `deliverables/` PDF **text** — the path is indexed, but condash doesn't extract PDF content.
+- Any extension outside the table above — images, PDFs, archives, and source files never reach the index at all, not even by filename.
+- Dot-prefixed files and directories **below** a source root (`.git/`, `.venv/`, …). The roots themselves may be dotted — `.agents/skills/` and `.condash/logs/` are always descended into.
+- `node_modules/`, `local/`, `dist/`, and `target/`, wherever they appear under a root. (`local/` is where gitignored deliverables live.)
+- `deliverables/` PDF **text** — condash doesn't extract PDF content, and a `.pdf` is not an indexed extension, so neither its text nor its path is searchable.
 
 If you need to search inside deliverable PDFs, grep them with an external tool or generate a searchable Markdown alongside the PDF (see [Deliverables and PDFs](deliverables.md)).
 
 ## Practical patterns
 
-- **"Where did I write about X?"** — type `X`. Titles and filenames will surface first; body matches follow.
-- **"What did I say about X in the Y project?"** — type `X Y`. Both tokens must match; results narrow to items that mention both.
-- **"Find the note about the config migration"** — type `config migration`. If both words are in a filename (e.g. `notes/config-migration-decision.md`), filename weight (3) dominates the ranking.
-- **"What's our convention for X?"** — knowledge files surface in the same ranking; a match in `knowledge/conventions.md` shows alongside item hits.
+- **"Where did I write about X?"** — type `X`. Titles and paths surface first; body matches follow.
+- **"What did I say about X in the Y project?"** — type `X Y`. Both tokens must match; results narrow to files that carry both, and the adjacency bonus floats the ones where they appear together.
+- **"Find the note about the config migration"** — type `config migration`. Both words in the path (e.g. `notes/config-migration-decision.md`) score 5 each, which outranks a passing body mention. Path hits are deliberately excluded from the adjacency bonus — a path is too short for proximity to mean anything.
+- **"That exact phrase"** — quote it: `"force stop"`. The phrase must match contiguously and earns the phrase bonus.
+- **"What's our convention for X?"** — knowledge files rank in the same list; a match in `knowledge/conventions.md` shows alongside project hits.
 
 ## CLI parity
 
@@ -113,4 +120,4 @@ condash search "session cookie" --scope all --limit 20
 condash search fuzz --json | jq '.data.hits[].path'
 ```
 
-`--scope` accepts `all`, `projects`, `knowledge` (default `all`). See [CLI reference — search](../reference/cli.md#search).
+`--scope` accepts `all`, `projects`, `knowledge`, `resources`, `skills`, `logs` (default `all`, which is the four Markdown sources — logs are disk-scanned and only searched with `--scope logs`). `--limit` defaults to `50`. See [CLI reference — search](../reference/cli.md#search).

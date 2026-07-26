@@ -1,10 +1,15 @@
+---
+title: The Deliverables pane · condash guide
+description: Every project's `## Deliverables`, aggregated across the whole conception, grouped by project and opened in a type-appropriate viewer.
+---
+
 # The Deliverables pane
 
-The Deliverables pane is a **separate left-band pane with its own activity-rail item**, peer to Projects — *not* a tab inside the Projects pane, and *not* in the right working-surface slot with Code / Knowledge / Resources / Skills / Logs. The left activity rail carries three stacked items, **Projects**, **[Tasks](tasks-pane.md)**, and **Deliverables**; click an item to fill the left band with that pane (clicking the active one hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
+The Deliverables pane is a **separate left-band pane with its own activity-rail item**, peer to Projects — *not* a tab inside the Projects pane, and *not* in the right working-surface slot with Code / Knowledge / Resources / Skills / Logs. The left activity rail carries four stacked items: **Projects**, **[Tasks](tasks-pane.md)**, **Deliverables**, and **[Performance](performance-pane.md)**. Click an item to fill the left band with that pane (clicking the active one hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
 
 ## What it shows
 
-Every project whose README has a `## Deliverables` section, **grouped by project** (newest first). Each group header shows the project title, a status pill, and the date; expand it to see the project's deliverables.
+Every project whose README has a `## Deliverables` section, **grouped by project**. A summary line at the top counts what you're looking at — `5 projects · 12 items`. Groups are sorted newest-first (the item slug starts with its ISO date, so a descending slug sort is a date sort) and all start **expanded**. Each group header shows the project title, a status pill, and the date; collapse the ones you're done with.
 
 ![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-light.png#only-light)
 ![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-dark.png#only-dark)
@@ -37,5 +42,6 @@ When no project links a deliverable, the pane shows a one-line pointer: link art
 
 ## See also
 
-- **[Deliverables](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
+- **[Deliverables and PDFs](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
 - **[The Resources pane](resources-pane.md)** — the conception-global file browser (right slot), distinct from this per-project aggregation.
+- **[The Tasks pane](tasks-pane.md)** and **[the Performance pane](performance-pane.md)** — the other left-band views.

@@ -39,7 +39,7 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `listProjectFiles(path)` | `ProjectFileEntry[]` | List a project directory's contents recursively — files *and* directories (`kind: 'file' \| 'dir'`), dot-entries skipped. Directory entries are emitted too so the preview's file tree can render structure, including empty dirs. |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
 | `readResourcesTree()` | `ResourceNode \| null` | Walk `<conception>/resources/` (hard-coded, not configurable), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
-| `readSkillsTree(scope, tab)` | `SkillNode \| null` | Walk the `(scope, tab)` skills directory — `local` reads the conception, `global` reads the per-machine user scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (condash ships only the Generic `.agents/skills/` tree). `null` when the directory is absent. |
+| `readSkillsTree(scope)` | `SkillNode \| null` | Walk one skills scope. `SkillScope` is `'conception' \| 'user'`: `conception` reads `<conception>/AGENTS.md` + `<conception>/.agents/skills/`; `user` reads `~/.config/agents/AGENTS.md` + `~/.config/agents/skills/`. Both are agedum **sources** — condash never reads a per-harness compiled output (`~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (shipped SHAs come from `.condash-skills.json` when present). `null` when neither the skills directory nor the `AGENTS.md` exists. |
 | `readSkillFile(path)` | `string` | Read-only content fetch for a Skills-pane file. Like `readNote` but also permits the user-scope skill locations (the global scope lives outside the conception); rejects anything else. |
 | `search(query, scopes?)` | `SearchResults` | Full-text search across projects, knowledge, resources, skills, and logs. Markdown sources are served from an in-memory index; logs are scanned on disk, and only when in scope (see [Internals — The search index](../explanation/internals.md#search-index)). |
 
@@ -61,7 +61,7 @@ The Settings modal does not: it holds its baseline for as long as it is open, so
 | `readNote(path)` | Read a single file's contents. Path must resolve under the conception. |
 | `exportNotePdf(path, html)` | Export a rendered note as a PDF. `html` is the self-contained document the renderer built (`note-modal-parts/export-pdf.ts`); `path` is the source note, used only to seed the save dialog's default `<name>.pdf`. Main pops the save dialog, prints the document via `printToPDF` in a hidden window, and writes the result. Returns the saved path, or `null` on cancel. |
 
-Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned), `[!]` (blocked). The dashboard cycle order through the toggle button is `open → progress → done → abandoned → open` (see [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx)); `[!]` is reachable by editing the README directly and round-trips through every layer (parser, counter, writer, renderer badge).
+Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned), `[!]` (blocked). The dashboard cycle order through the toggle button is `open → progress → done → abandoned → open` (`CLICK_CYCLE` in [`src/renderer/panes/projects-parts/data.ts`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects-parts/data.ts), re-exported through `projects.tsx`); `[!]` is reachable by editing the README directly and round-trips through every layer (parser, counter, writer, renderer badge).
 
 All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate.ts:withFileQueue`) serialises concurrent writes to the same path.
 
@@ -92,7 +92,8 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 
 | Verb | What it does |
 |---|---|
-| `termSpawn(request)` | Allocate a pty (setsid → own process group), return session id and resolved cwd. |
+| `termSpawn(request)` | Allocate a pty (setsid → own process group), return session id and resolved cwd. A `side: 'code'` spawn carrying a `repo` first stops every existing code-side session for that repo, so a repo never has two dev servers racing on one port. |
+| `termRestart(id)` | Relaunch an **exited** session with its original command, cwd, and side, retiring the dead row. Returns the new `{ id, cwd }`. Rejects for an unknown id or a session that is still running. Backs the **Restart** action on an abnormally-exited tab. |
 | `termWrite(id, data)` | Forward stdin bytes. |
 | `clipboardReadText()` | Read the system clipboard via the main-process Electron `clipboard`. Backs the terminal's `Ctrl+V` handler — the renderer's `navigator.clipboard.readText()` is permission-gated and unreliable. |
 | `termResize(id, cols, rows)` | `TIOCSWINSZ` on the pty. |
@@ -103,7 +104,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `termSetSide(id, side)` | Re-side a session — used by the Code-pane pop-out button to surface a running dev server in the bottom "My terms" pane. `side` is `'my'` or `'code'`. |
 | `termGetPrefs()` | Read `settings.json:terminal` (shell, shortcut, font, palette). |
 | `termSetPrefs(prefs)` | Replace the persisted terminal prefs in `settings.json`. The patch is a full replacement; pass `{}` to clear back to defaults. |
-| `termLatestScreenshot(dir)` | Find the newest `*.png` under `dir` (used by the screenshot-paste helper). |
+| `termLatestScreenshot(dir)` | Return the most recently modified **file** at the top level of `dir` — any extension, no recursion, no image-type filter. `null` when the directory is missing or holds no files. Backs the [screenshot-paste shortcut](shortcuts.md#screenshot-paste-flow). |
 | `onTermData(cb)` | Subscribe to stdout/stderr bytes — single channel, multiplexed by session id. |
 | `onTermExit(cb)` | Subscribe to session-exit events. |
 | `onTermSessions(cb)` | Sessions changed (spawn / exit / close). Receives the full snapshot. |
@@ -115,17 +116,29 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 
 > **Flow control (`termAck`).** `onTermData` payloads carry an `epoch` field, and for every payload the preload fires a fire-and-forget `ipcRenderer.invoke('termAck', id, byteLength, epoch)` back to main. This is a backpressure ack — main counts the acked bytes to decide when to pause / resume the pty — **not** part of the typed `CondashApi`; it lives below the interface as a preload-internal channel. The `epoch` guards against a stale ack (minted before a renderer re-navigation flow reset) debiting the fresh flow. It fails soft: a dropped ack can only stall the pty, never corrupt it.
 
+## Auto-commit and status indicators
+
+The opt-in [auto-commit engine](config.md#auto-commit) runs [`condash sync run`](cli.md#sync) on a timer while a conception is open (`ipc/auto-sync.ts`). Two further read-only verbs back the status-bar pills and deliberately stay **disjoint** from the engine — neither takes the sync lock, so polling them can never block a sweep.
+
+| Verb | What it does |
+|---|---|
+| `autoSyncGetStatus()` | Latest engine status — phase, next-run ETA, last result. Read on mount of the **Settings → Auto-commit** section so it shows current state without waiting for the next push. |
+| `autoSyncNow()` | Run one sweep now regardless of the cadence — the **Commit & push now** button and the status bar's **Sync now**. Resolves the resulting status; no-ops when the engine is unarmed or already mid-sweep. |
+| `onAutoSyncStatus(cb)` | Subscribe to engine status pushed on every state change (channel `auto-sync-status`). Returns an unsubscribe function. |
+| `syncStatusSnapshot()` | Read-only git snapshot of the conception checkout: uncommitted-file count, unpushed-commit count, and the recent commits (each flagged pushed / unpushed) behind the status bar's click-to-open list. Zeroed when no conception is active or git can't be read. |
+| `skillsSyncStatus()` | Aggregate shipped-skills state for the status bar: whether condash-shipped skills are installed, and how many files are missing or outdated. Defaults to not-installed when no conception is active. |
+
 ## Terminal log surfaces
 
 Per-session terminal capture (when `terminal.logging.enabled` is true) lands at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. The Logs working surface reads the directory tree through this set of verbs; deletions go through the same paths the in-app janitor uses, with `requirePathUnder` bounding every input against the conception's logs root.
 
 | Verb | What it does |
 |---|---|
-| `logsListDays()` | List day directories under `.condash/logs/` newest first. Returns `Array<{ day: 'YYYY-MM-DD', sessionCount: number, totalBytes: number }>`. |
+| `logsListDays()` | List day directories under `.condash/logs/` newest first. Returns `Array<{ day: string; path: string; sessions: number }>` — `day` is `YYYY-MM-DD`, `path` the absolute directory, `sessions` the file count. Empty when no conception is active or nothing has been captured. |
 | `logsListSessions(day)` | List session files within a given day. Returns `TermLogSessionMeta[]` — see [`src/shared/types/logs.ts:TermLogSessionMeta`](https://github.com/vcoeur/condash/blob/main/src/shared/types/logs.ts). Parses the `# condash: {...}` header (+ footer when present) on each file. |
 | `logsReadSession(filePath)` | Read one session file. Returns `TermLogSessionRead` — `{ text, meta }` with metadata header / footer stripped from the body. |
-| `logsDeleteDay(day)` | Delete an entire day directory. Returns the number of session files removed. |
-| `logsDeleteSession(filePath)` | Delete one session file. Refuses paths outside `.condash/logs/`. |
+| `logsDeleteDay(day)` | Delete an entire day directory. Returns `{ deleted: boolean }` — not a count. |
+| `logsDeleteSession(filePath)` | Delete one session file. Returns `{ deleted: boolean }`. Refuses paths outside `.condash/logs/` and files that don't end in `.txt`. |
 | `logsListTaskRuns()` | Enumerate the segregated task-run store under `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One `TaskRunGroup` per `<trigger>/<slug>`, runs newest-first. Never reads `.condash/logs/`; the Logs pane's **Task runs** view renders it. |
 | `listRunningTaskRuns()` | Snapshot of the headless scheduled runs currently in flight (capability 1) — `RunningTaskRun[]` of `{ slug, sid, startedAt, logPath }`. Feeds the Tasks pane's **Running** section. |
 | `killTaskRun(sid)` | Kill (SIGKILL) and discard the live run with this `sid`. Returns `false` when none is live. |
@@ -158,18 +171,24 @@ The opt-in dashboard engine (`ipc/dashboard.ts`) periodically summarizes the ope
 | `onDashboardState(cb)` | Subscribe to full dashboard-state snapshots pushed after each engine cycle. Returns an unsubscribe function. |
 | `onDashboardTabSummaries(cb)` | Subscribe to the per-tab summaries pushed each cycle (tab titles + hover popovers). Returns an unsubscribe function. |
 
-## Tree mutations (Knowledge / Resources / Skills panes)
+## Tree mutations (Knowledge / Resources panes)
 
-The tree panes (Knowledge / Resources / Skills) and the project preview's file tree expose create-file / create-dir / import verbs so the user can add content without leaving the dashboard. Each verb names its target explicitly so the main process can bound the write against the correct root (knowledge is hardcoded to `knowledge/`; resources and skills resolve from the conception's config; the project create verbs bound against the item's own directory).
+The two **writable** tree panes — Knowledge and Resources — and the project preview's file tree expose create-file / create-dir / import verbs so the user can add content without leaving the dashboard. Each verb names its target explicitly so the main process can bound the write against the correct root: `knowledge` is hardcoded to `<conception>/knowledge/`, `resources` to `<conception>/resources/`, and the project create verbs against the item's own directory.
+
+!!! warning "The Skills pane is read-only"
+
+    `root === 'skills'` is **rejected** by all three `tree*` verbs (`Skills tree is read-only`). Post-reframe, agedum owns the skills source of truth and condash only surfaces it — see [`readSkillsTree`](#tree-reads). There is no `skillTab` parameter on any verb; earlier drafts of this page listed one, and it never shipped.
 
 | Verb | What it does |
 |---|---|
 | `createProjectNote(projectPath, slug)` | Create `<projectPath>/notes/NN-<slug>.md`. Scans `notes/` for the highest existing `NN-` prefix, increments by one, sanitises the slug, writes an empty file, returns the absolute path. Used by the "+ Note" button on every project card. |
 | `createProjectFile(projectPath, dirRelPath, name)` | Create an empty file named `name` inside `<projectDir>/<dirRelPath>/` (`''` = the project root; `projectPath` is the README path or the project directory). The project dir must realpath to an actual **item** directory — `projects/<YYYY-MM>/<YYYY-MM-DD-slug>/` — so the verb can neither scatter entries into the `projects/` root or a month bucket nor fabricate item dirs; the target's parent must exist and resolve back under the item dir (symlink-escape safe). Names keep their case after a trim but are rejected when empty, containing path separators, starting or ending with a dot, or matching a Windows reserved device name; an existing target is refused (`wx`). Returns the new file's absolute posix path. Backs the preview file tree's inline "new file" input. |
 | `createProjectDir(projectPath, dirRelPath, name)` | Like `createProjectFile` but creates an empty directory (non-recursive `mkdir`, so an existing target — symlinks included — is refused). Backs the file tree's inline "new folder" input. |
-| `treeCreateMd(root, dirRelPath, filename, skillTab?)` | Create an empty `.md` file under `<root>/<dirRelPath>/<filename>`. `root` is `'knowledge' \| 'resources' \| 'skills'`; `skillTab` selects which Skills sub-root (`generic` / `claude` / `kimi`) for the Skills pane. Filename must end in `.md` and pass slug-safety checks. |
-| `treeMkdir(root, dirRelPath, name, skillTab?)` | Create an empty directory at `<root>/<dirRelPath>/<name>`. Same path-bounding rules as `treeCreateMd`. |
-| `treeImportFile(root, dirRelPath, skillTab?)` | Open an OS file picker, then copy the chosen file into `<root>/<dirRelPath>/`. Used to drop PDFs / images into the Resources pane without leaving the dashboard. |
+| `treeCreateMd(root, dirRelPath, filename)` | Create an empty file under `<root>/<dirRelPath>/<filename>`, returning its absolute path. The stem is sanitised to lowercase-hyphen; knowledge always forces `.md`, resources keep a supplied extension and default to `.md`. Refuses to overwrite an existing file. |
+| `treeMkdir(root, dirRelPath, name)` | Create a subdirectory at `<root>/<dirRelPath>/<name>`, returning its absolute path. `name` is sanitised the same way. Idempotent for a plain existing directory, but refuses when the target already exists **as a symlink** — `mkdir({recursive:true})` would otherwise create straight through it. |
+| `treeImportFile(root, dirRelPath)` | Open an OS file picker, then copy the chosen file into `<root>/<dirRelPath>/`. Resolves to the destination's absolute path, or `null` when the user cancels. Refuses to overwrite. Used to drop PDFs / images into the Resources pane without leaving the dashboard. |
+
+Every one of the three normalises `dirRelPath` and then re-checks the joined result is still under the pane's root via `requirePathUnder`, so a `..` segment or an absolute path from the renderer cannot escape the bound.
 
 ## Conception path + first launch
 
@@ -177,28 +196,28 @@ The tree panes (Knowledge / Resources / Skills) and the project preview's file t
 |---|---|
 | `pickConceptionPath()` | Open a native folder picker, write the choice to `settings.json:lastConceptionPath`. Returns the picked path or `null` on cancel. |
 | `getConceptionPath()` | Return the saved path (`null` if unset). |
-| `getConceptionConfigPath()` | Absolute path to the active conception's per-tree config file (`.condash/settings.json`; falls back to legacy `condash.json` / `configuration.json` when one of those is the source of truth). Used by the Settings modal's "Open externally" button on the **This conception** tab. |
+| `getConceptionConfigPath()` | Absolute path to the active conception's per-tree config file (`.condash/settings.json`; falls back to legacy `condash.json` / `configuration.json` when one of those is the source of truth). Backs the Settings rail's **Open .condash/settings.json** button. |
 | `openConception(path)` | Switch the active conception to `path`. Validates that the folder exists and has a recognisable shape, writes `path` to `settings.json:lastConceptionPath`, promotes it to the head of `recentConceptionPaths`, and reloads every tree. |
 | `getRecentConceptionPaths()` | Read the recents list (newest first, capped at 5). Drives the **File → Open Recent** submenu and the Settings modal's recents section. |
 | `clearRecentConceptionPaths()` | Empty the recents list. Used by the Settings modal's "Clear all" button. |
 | `removeRecentConceptionPath(path)` | Drop one entry from the recents list. Used by the per-row remove button in the Settings modal. |
 | `detectConceptionState(path)` | Probe a candidate folder — does it already have `projects/` and a configuration file (`.condash/settings.json`, `condash.json`, or `configuration.json`)? Used by the first-launch flow before deciding whether to offer initialisation. |
 | `initConception(path)` | Lay the bundled `conception-template/` tree into `path`. Existing files are preserved. Returns `{ created: string[] }`. |
-| `getSettingsPath()` | Absolute path to `~/.config/condash/settings.json` (or platform equivalent), for the Settings modal's "Open externally" button on the **Global** tab. |
+| `getSettingsPath()` | Absolute path to `~/.config/condash/settings.json` (or platform equivalent). Backs the Settings rail's **Open settings.json** button. |
 
 ## UI plumbing
 
 | Verb | What it does |
 |---|---|
-| `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'dark'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
-| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
+| `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'mist'` \| `'dark'` \| `'nocturne'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
+| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `leftView: 'projects' \| 'tasks' \| 'deliverables' \| 'perf'`, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
 | `getWelcomeDismissed()` / `setWelcomeDismissed(value)` | Persistent first-launch welcome-screen flag (`welcome.dismissed` in `settings.json`). |
 | `getCardMinWidth()` / `setCardMinWidth(prefs)` | Read or write the per-pane card-grid min-width block (`projects`, `code`, `knowledge`, `resources`, `skills`, `logs`, `tasks`, `deliverables`). See [Config — CardMinWidth](config.md#cardminwidth). |
-| `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (Knowledge / Resources / Skills tabs). Empty values mean every directory is collapsed — the on-purpose first-load state. |
+| `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (`knowledge`, `resources`, `skills` for the conception scope, `skillsUser` for the Skills pane's user scope). Empty values mean every directory is collapsed — the on-purpose first-load state. |
 | `getSelectedBranches()` / `setSelectedBranches(list)` | Read or write the Code-pane top-of-pane branch filter selection. Honoured only when `branchFilterStickyAll` is false. |
 | `getBranchFilterStickyAll()` / `setBranchFilterStickyAll(value)` | Read or write the "All (sticky)" mode flag for the Code-pane branch filter — when true, every branch is shown and new branches auto-pin. |
-| `getSkillsActiveScope()` / `setSkillsActiveScope(scope)` | Read or write the active scope in the Skills pane (`local` / `global`). Persisted per-machine; defaults to `local`. |
-| `getGlobalSettingsRaw()` | Return the raw JSON text of the global `settings.json` (or `''` if the file does not exist). Used by the Settings modal to seed its in-memory editor without parsing through the Zod schema. |
+| `getSkillsActiveScope()` / `setSkillsActiveScope(scope)` | Read or write the active scope in the Skills pane. `SkillScope` is `'conception'` \| `'user'`; persisted per-machine in `settings.json:skillsActiveScope` and defaults to `'conception'`. |
+| `getGlobalSettingsRaw()` | Return the raw JSON text of the global `settings.json` (or `''` if the file does not exist — the Settings modal reads that as "fresh defaults" and creates the file on first save). Seeds the modal's draft and its CAS baseline without going through the Zod schema. Note this `get*` paired with `writeGlobalSettings` breaks the `read*`/`write*` pairing used for other file-backed resources; it is a known, contained inconsistency, and new file-backed channels should use `read*`/`write*`. |
 | `writeGlobalSettings(expectedContent, newContent)` | Atomic rewrite of the global `settings.json` with a full-content drift check, mirroring `writeNote`. Returns the bytes actually written (after Zod canonicalisation). |
 | `getAppInfo()` | About-modal payload: `{ name, version, electron, chrome, node, platform }`. `platform` is the Node string (`linux`/`darwin`/`win32`). |
 | `readHelpDoc(name)` | Read a bundled help doc from the asar. Allowed names: `welcome`, `quick-start`, `shortcuts`, `configuration`, `cli`, `why-markdown`. Anything else rejects. |
@@ -209,7 +228,11 @@ The tree panes (Knowledge / Resources / Skills) and the project preview's file t
 
 ## Push events
 
-The main process pushes to the renderer over several one-way channels, **all** delivered through the shared `safeSend` guard (`src/main/safe-send.ts`), which drops a payload whose target frame is gone and reports whether it landed. The PTY (`onTermData` / `onTermExit` / `onTermSessions`) and dashboard (`onDashboardState` / `onDashboardTabSummaries`) channels are documented in their own sections above; the file-watcher and status channels follow. A single chokidar watcher rooted at `<conception>/`, debounced 250 ms, drives `onTreeEvents` and `onRepoEvents`.
+The main process pushes to the renderer over several one-way channels, **all** delivered through the shared `safeSend` guard (`src/main/safe-send.ts`), which drops a payload whose target frame is gone and reports whether it landed. Every channel name lives once, in `EVENT_CHANNELS` (`src/shared/ipc-channels.ts`), because a push channel has no typed anchor tying the `webContents.send` end to the `ipcRenderer.on` end.
+
+The PTY (`onTermData` / `onTermExit` / `onTermSessions`), dashboard (`onDashboardState` / `onDashboardTabSummaries`), auto-sync (`onAutoSyncStatus`, channel `auto-sync-status`), task-run (`onTaskRuns`), and perf (`onPerfState`) channels are documented in their own sections above; the file-watcher and status channels follow. A single chokidar watcher rooted at `<conception>/`, debounced 250 ms, drives `onTreeEvents` and `onRepoEvents`.
+
+That watcher covers `projects/`, `knowledge/`, the resources and skills roots, the three conception-config candidates, and the conception-level `AGENTS.md` / `CLAUDE.md`. It does **not** cover the per-machine `settings.json`, which lives outside the conception — a hand-edit there produces no event.
 
 ### `onTreeEvents(cb)`
 

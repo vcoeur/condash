@@ -1,6 +1,6 @@
 ---
 title: Environment variables · condash reference
-description: The short list of environment variables condash reads.
+description: Every environment variable condash reads — the GUI, the CLI, and the spawned-subprocess environment — and the ones it deliberately doesn't.
 ---
 
 # Environment variables
@@ -15,15 +15,27 @@ description: The short list of environment variables condash reads.
 | `CLAUDE_PROJECT_DIR`                | Back-compat alias for `CONDASH_CONCEPTION_PATH` in Claude Code sessions (CLI only)              | unset       | Any absolute path                     |
 | `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback)                                                  | unset       | Positive number                       |
 | `CONDASH_FORCE_PROD`                | Force the renderer to load the packaged build (Playwright fixture)                              | unset       | `1` or unset                          |
+| `CONDASH_DEV_USER_DATA_DIR`         | Redirect Electron's `userData` dir for an unpackaged dev launch                                 | unset       | Any absolute path                     |
 | `SHELL`                             | Fallback for `terminal.shell`                                                                   | `/bin/bash` | Absolute path to an interactive shell |
 | `XDG_CONFIG_HOME`                   | Linux per-user config root                                                                      | `~/.config` | Any absolute path                     |
 | `ELECTRON_DISABLE_SANDBOX`          | Disable Chromium's setuid sandbox                                                               | unset       | `1` or unset                          |
+| `NO_COLOR`                          | **CLI only** — any non-empty value disables ANSI styling                                        | unset       | Any non-empty value                   |
+| `CLICOLOR`                          | **CLI only** — the literal `0` disables ANSI styling; nothing else is read                      | unset       | `0`, or unset                         |
+| `DEEPSEEK_API_KEY`                  | Fallback for `dashboard.apiKey` when the key is not in `settings.json`                          | unset       | Provider API key                      |
+| `DEEPSEEK_BASE_URL`                 | Fallback for `dashboard.baseUrl`                                                                | unset       | OpenAI-compatible base URL            |
+| `CONDASH_CLI_VERSION`               | Version string the CLI reports; baked in at build time                                          | `dev`       | Any string                            |
+| `CONDASH_CLI_DEBUG`                 | **CLI only** — print the JS stack alongside a runtime error                                     | unset       | Any non-empty value                   |
+| `CONDASH_TEMPLATE_ROOT`             | Override the shipped `conception-template/` root                                                | bundled     | Any absolute path                     |
+| `CONDASH_USER_SKILLS_ROOT`          | Override the user-scope skills root the Skills pane reads (test seam)                           | `~/.config/agents/skills` | Any absolute path       |
+| `CONDASH_USER_AGENTS_MD`            | Override the user-scope `AGENTS.md` the Skills pane reads (test seam)                           | `~/.config/agents/AGENTS.md` | Any absolute path    |
 
-condash itself reads almost no environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The handful of vars below either feed Electron's startup or back the embedded terminal.
+condash reads few environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The vars above either feed Electron's startup, back the embedded terminal, or exist as CLI ergonomics and test seams.
+
+A handful of standard POSIX / platform variables are consulted as fallbacks and never as configuration: `HOME` (default worktrees root when `worktrees_path` is unset), `APPDATA` (the Windows equivalent of `XDG_CONFIG_HOME`), `ComSpec` (Windows shell fallback when `SHELL` is unset), `XDG_SESSION_TYPE` (Wayland detection), and `XDG_RUNTIME_DIR` (the systemd-scope capability probe behind [`terminal.memory`](config.md#terminal-memory)). The inherited `PATH` is kept as the fallback when the [login-shell probe](#login-shell-path-for-spawned-subprocesses) can't resolve one.
 
 ## `SHELL`
 
-Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in `.condash/settings.json` or `settings.json`. The embedded terminal spawns a node-pty session running this shell. `$SHELL` is also the shell condash probes once at startup to resolve your login-shell PATH (next section).
+Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in the per-machine `settings.json` (`terminal` is a global-only key). On Windows, where `SHELL` is normally unset, the chain falls through to `ComSpec` and then `cmd.exe`. The embedded terminal spawns a node-pty session running the resolved shell. `$SHELL` is also the shell condash probes once at startup to resolve your login-shell PATH (next section).
 
 ## Login-shell PATH for spawned subprocesses
 
@@ -31,7 +43,7 @@ GUI-launched condash (a Wayland session, the macOS Dock, a `.desktop` entry) nev
 
 condash resolves this once at startup: it spawns `$SHELL` as a login + interactive shell, reads the PATH that shell exports, caches the result, and uses it as the PATH for every subprocess it spawns. No configuration and no dotfile changes are required — keep your PATH wherever your login shell already reads it.
 
-- **PATH only.** Every other variable keeps its inherited value; the [environment-hygiene scrub](../explanation/internals.md#environment-hygiene) is unaffected.
+- **PATH only.** Every other variable keeps its inherited value, so the [environment-hygiene scrub](../explanation/internals.md#environment-hygiene) applied on top is unaffected.
 - **Timeout-guarded.** A hung rc-file can't block startup — after 5 s condash falls back to the inherited PATH.
 - **Resolved once.** Edit a dotfile after launch → restart condash to pick it up.
 - **POSIX only.** On Windows the PATH is inherited as-is.
@@ -74,15 +86,56 @@ Forces the renderer to load the built `dist/` bundle via `file://` instead of th
 
 Omitting it in such a script is a silent failure, not a loud one: `isDev` stays true, the app navigates to a dev server nobody started, and the run continues against a renderer that never mounted. Note that forcing prod mode also skips the dev `userData` redirect, so an isolated launch must pass `--user-data-dir` and verify the live path rather than relying on `CONDASH_DEV_USER_DATA_DIR`.
 
+## `NO_COLOR` / `CLICOLOR` { #no_color-clicolor }
+
+**CLI only.** `condash <noun> <verb>` decides ANSI styling from four inputs, in this order:
+
+1. The explicit `--no-color` flag wins.
+2. Styling is off whenever stdout is not a TTY — pipes, redirection, CI logs.
+3. `NO_COLOR` set to **any non-empty value** disables it ([no-color.org](https://no-color.org)).
+4. `CLICOLOR` set to exactly `0` disables it ([bixense.com](https://bixense.com/clicolors/)). Any other value is ignored.
+
+There is no way to force styling back **on** — `FORCE_COLOR` is not read, and neither is `CLICOLOR_FORCE`. None of this touches the Electron GUI, whose colours come from the `theme` setting.
+
+## `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`
+
+Fallbacks for the [`dashboard`](config.md#dashboard) block's `apiKey` and `baseUrl`. The settings value wins when it is set and non-blank; the environment fills in otherwise. This exists so a headless or CI run can supply the key without writing it into the per-machine `settings.json` — the same reason `apiKey` is a global-file-only key. A blank `baseUrl` on both sides means the provider's built-in endpoint.
+
+Setting these does **not** enable the dashboard: `dashboard.enabled` is still off by default, and nothing leaves the machine until you turn it on.
+
+## `CONDASH_CLI_VERSION`, `CONDASH_CLI_DEBUG`
+
+Both are CLI-only.
+
+- **`CONDASH_CLI_VERSION`** is baked into the bundle at build time by `scripts/build-cli.mjs` and is what `condash --version` prints; it is also stamped into the `.agents/.condash-skills.json` manifest by `condash skills install`. An unbuilt bundle reports `dev`. You would only set it by hand when building the CLI yourself.
+- **`CONDASH_CLI_DEBUG`**, when non-empty, makes a runtime failure print the underlying JS stack after the `error: …` line. Off by default so a scripted caller gets one clean line on stderr.
+
+## `CONDASH_TEMPLATE_ROOT`, `CONDASH_USER_SKILLS_ROOT`, `CONDASH_USER_AGENTS_MD`
+
+Override hatches, primarily for tests. Nothing in normal use needs them.
+
+- **`CONDASH_TEMPLATE_ROOT`** replaces the bundled `conception-template/` root that the **CLI** ships skills and marker regions from ([`condash skills install`](cli.md#skills)). Point it at a checkout to test skill sources without rebuilding the bundle. The GUI resolves its own copy from `app.getAppPath()` and ignores this variable.
+- **`CONDASH_USER_SKILLS_ROOT`** and **`CONDASH_USER_AGENTS_MD`** relocate the two paths the Skills pane reads in its **user** scope — by default `~/.config/agents/skills/` and `~/.config/agents/AGENTS.md`, the agedum sources. The pane is read-only in that scope either way.
+
 ## Not read from the environment
 
 - `CONDASH_ASSET_DIR` — the Electron build has no equivalent. Use `make dev` for the Vite hot-reload loop instead; the production renderer bundle is served from `dist/` inside the asar at runtime.
 - `CONDASH_PORT` — there is no embedded HTTP server. The Vite dev server listens on `5600` (configured in `vite.config.ts`, `Makefile`, `package.json` together — see the dev-port checklist in `AGENTS.md`).
-- `CONCEPTION_PATH` — despite the [management skill](skill.md) reading it, condash itself does not.
-- `NO_COLOR`, `CLICOLOR`, `FORCE_COLOR` — unused. The dashboard's colour scheme is driven by the theme toggle.
+- `CONCEPTION_PATH` — the unprefixed name is not read anywhere. Use `CONDASH_CONCEPTION_PATH`.
+- `FORCE_COLOR` — not read. Its two siblings **are**: see [`NO_COLOR` / `CLICOLOR`](#no_color-clicolor) below. The GUI's colour scheme is driven entirely by the theme setting, not by any environment variable.
 - `VISUAL`, `EDITOR` — condash doesn't spawn a system `$EDITOR` itself. The "Open in editor" buttons resolve through `settings.json:open_with` slots.
+
+## What a spawned subprocess inherits
+
+Every child condash starts — a terminal tab, a Code-pane **Run**, a `force_stop`, an open-with launcher — gets a copy of condash's own environment with three edits:
+
+1. `PATH` replaced by the resolved login-shell PATH (above).
+2. `TERM` forced to `xterm-256color` for pty spawns.
+3. `npm_config_prefix`, `npm_config_globalconfig`, and `npm_config_userconfig` **deleted**. Electron inherits these from whatever shell launched it, and a global `npm_config_prefix` breaks nvm in a child shell.
+
+Nothing else is removed. In particular, a POSIX `run:` / `force_stop:` command is deliberately run through a **non-login** shell (`-c`, not `-lc`): a login shell would re-source `~/.profile` and undo the scrub, and the login-shell PATH is already injected by the mechanism above. Prefix your command with `bash -lc` yourself if you want full login behaviour.
 
 ## Cross-reference
 
 - [Config files](config.md) — the `settings.json` + `.condash/settings.json` schema.
-- [Environment hygiene](../explanation/internals.md#environment-hygiene) — how condash strips `PYTHONHOME` / `PYTHONPATH` / `PERLLIB` / `QT_PLUGIN_PATH` / `GSETTINGS_SCHEMA_DIR` from spawned subprocesses, and why the AppImage build also patches `AppRun` so the leak doesn't reach launchers it spawns.
+- [Environment hygiene](../explanation/internals.md#environment-hygiene) — the wider rationale for keeping interpreter-specific variables out of spawned children, and the AppImage-launcher side of the same problem.
