@@ -65,5 +65,5 @@ Every piece earns its keep:
 
 ## More
 
-The full pitch — three scenarios in detail, the design tradeoffs, the
+The full pitch — four scenarios in detail, the design tradeoffs, the
 non-goals — lives at **https://condash.vcoeur.com/explanation/why-markdown/**.

@@ -11,7 +11,7 @@ Things condash will deliberately not do. Each entry has a *why* — read it befo
 
 ## No code editing in condash
 
-condash is a Markdown reader/editor and a project dashboard. Source files (`.ts`, `.py`, `.tsx`, etc.) open in the user's IDE via the `open_with` slots. The CodeMirror editor inside the renderer is for Markdown content only — project READMEs, knowledge notes, and the JSON config file `.condash/settings.json` (which uses CodeMirror's JSON mode for syntax highlighting in the gear modal).
+condash is a Markdown reader/editor and a project dashboard. Source files (`.ts`, `.py`, `.tsx`, etc.) open in the user's IDE via the `open_with` slots. The CodeMirror editor inside the renderer is for Markdown content only — project READMEs, knowledge notes, and item notes. Config is not a text-editing surface by default: the Settings modal is a set of typed form controls, with **Open settings.json** / **Open .condash/settings.json** buttons that hand the file to your OS default handler when you want the raw thing. Raw JSON does remain editable — the note editor gives any `.json` file JSON highlighting, and `src/main/write-config.ts` routes those saves back through the same zod canonicalisers the form uses — but the typed form is the surface the product is designed around.
 
 **Why**: an IDE is a different product. Trying to be one would mean LSP integration, language servers, multi-file refactoring, debugger UI — none of which serve the dashboard's role. Users already have a real IDE configured via `open_with.main_ide`.
 
@@ -53,7 +53,9 @@ The Markdown sources *are* indexed in RAM (`src/main/search/index-cache.ts`), so
 
 ## No multi-window UI
 
-A single `BrowserWindow`. Modals (note, PDF, help) are in-renderer overlays. The terminal pane is a bottom strip in the same window.
+One visible `BrowserWindow`. Modals (note, PDF, help, settings) are in-renderer overlays. The terminal pane is a bottom strip in the same window.
+
+The one exception is invisible by design: **Export as PDF** spins up a hidden, sandboxed, script-free `BrowserWindow` (`src/main/export-pdf.ts`) purely so `printToPDF` captures the rendered note and not the app UI. It never shows, never takes focus, and is destroyed when the print returns.
 
 **Why**: window state is hard. Multi-window means restoring layouts, focus tracking, drag-between-windows. The dashboard's job is "one place to see what's going on" — multiple windows fight that goal.
 

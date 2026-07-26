@@ -43,7 +43,7 @@ GUI-launched condash (a Wayland session, the macOS Dock, a `.desktop` entry) nev
 
 condash resolves this once at startup: it spawns `$SHELL` as a login + interactive shell, reads the PATH that shell exports, caches the result, and uses it as the PATH for every subprocess it spawns. No configuration and no dotfile changes are required — keep your PATH wherever your login shell already reads it.
 
-- **PATH only.** Every other variable keeps its inherited value, so the [environment-hygiene scrub](../explanation/internals.md#environment-hygiene) applied on top is unaffected.
+- **PATH only.** Every other variable keeps its inherited value; the pty-only `TERM` and `npm_config_*` edits are applied on top of it, and nothing else is touched. Design rationale: [environment hygiene](../explanation/internals.md#environment-hygiene).
 - **Timeout-guarded.** A hung rc-file can't block startup — after 5 s condash falls back to the inherited PATH.
 - **Resolved once.** Edit a dotfile after launch → restart condash to pick it up.
 - **POSIX only.** On Windows the PATH is inherited as-is.
@@ -147,4 +147,4 @@ Nothing else is removed. In particular, a POSIX `run:` command is deliberately r
 ## Cross-reference
 
 - [Config files](config.md) — the `settings.json` + `.condash/settings.json` schema.
-- [Environment hygiene](../explanation/internals.md#environment-hygiene) — the wider rationale for keeping interpreter-specific variables out of spawned children, and the AppImage-launcher side of the same problem.
+- [Environment hygiene](../explanation/internals.md#environment-hygiene) — the same three edits from the design side, including why the interpreter-specific variables an AppImage runtime can leak (`PYTHONHOME`, `PERLLIB`, `QT_PLUGIN_PATH`, …) are *not* scrubbed, and the AppImage-launcher side of the same problem.

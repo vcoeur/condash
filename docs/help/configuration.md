@@ -42,7 +42,7 @@ Only the tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branch
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
 | `long_lived_branches` | Branch patterns (`*` / `?` globs) that `condash worktrees remove` never deletes. Defaults to `main` + `master`. |
-| `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header — see [Reference → Configuration → `repositories`](../reference/config.md#repositories) for the full table. |
+| `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header. Full table: **https://condash.vcoeur.com/reference/config/#repositories** |
 
 The Skills pane (`<conception>/.agents/skills/`) and Resources pane
 (`<conception>/resources/`) read hard-coded folders — no override is
@@ -84,7 +84,7 @@ prepends the path to `recentConceptionPaths`. Theme follows the OS
 unless you set it explicitly via the toolbar toggle.
 
 Personal keys (`terminal`, `theme`, `uiFonts`, `cardMinWidth`, `open_with`,
-`pdf_viewer`, `dashboard`, `agents`, …) live **only** in `settings.json`;
+`pdf_viewer`, `dashboard`, `autoSync`, `agents`, …) live **only** in `settings.json`;
 the tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branches`,
 `repositories`, `retired_apps`, `taskConfig`) live **only** in `.condash/settings.json`.
 A key in the wrong file is rejected (and relocated on the next conception
@@ -92,13 +92,13 @@ open).
 
 ## Editing in the app
 
-**File → Settings…** (`Ctrl+,`) opens a full-viewport modal — one
+**File → Settings** (`Ctrl+,`) opens a full-viewport modal — one
 scrolling surface, no tabs, no in-modal JSON editor (each preference has
 its own form control). The left rail groups the sections under two scope
 headers, one per file, and each section carries a **scope chip** naming
 the file it writes.
 
-**Personal · this machine** (writes `settings.json`):
+**Personal · this machine** (writes `settings.json`), in rail order:
 
 - **Recent conceptions** — manage the recents list backing
   **File → Open Recent**.
@@ -107,6 +107,10 @@ the file it writes.
 - **Launchers** — the `agents` list.
 - **Open with** — slot labels and commands.
 - **Dashboard** — live tab-summarization config (incl. the secret `apiKey`).
+- **Auto-commit** — the `autoSync` timer that makes condash the single git
+  writer for this conception checkout: on/off, interval, quiet period,
+  push, plus a **Commit & push now** button and a live status line. The
+  same state shows as a pill in the status bar.
 
 **This conception** (writes `.condash/settings.json`; the legacy
 `condash.json` and `configuration.json` are read but never written to):

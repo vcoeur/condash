@@ -44,7 +44,7 @@ Legacy bold-prose headers (`**Date**: 2026-04-10`, etc.) are still accepted — 
 
 Every piece earns its keep. The YAML frontmatter parses straight into the metadata block; `## Steps` checkboxes work in any Markdown tool. `git diff` shows exactly what changed when you flip a step. `rg "session cookie"` finds it in 30 ms.
 
-→ Full pitch with three good-fit scenarios: **[Why Markdown-first](why-markdown.md)**.
+→ Full pitch with four good-fit scenarios: **[Why Markdown-first](why-markdown.md)**.
 
 ## What condash deliberately doesn't do
 
@@ -53,13 +53,15 @@ Every piece earns its keep. The YAML frontmatter parses straight into the metada
 - **No code editing.** Source files open in your IDE via configurable launcher slots.
 - **No telemetry.** Nothing leaves your machine, period.
 - **No general-purpose terminal.** The xterm pane is a log view + project-scoped shell, not a Konsole / iTerm replacement.
-- **No notes search index.** The conception tree is small enough that re-walking on every query is faster than maintaining an index.
+- **No log search index.** The Markdown *is* indexed in RAM, so a query never re-walks the tree. Terminal transcripts are not — they're the bulk of the bytes and rarely searched, so they stay scanned on disk and only when you pick the Logs filter.
 
 → Full list with rationale per item: **[Non-goals](non-goals.md)**.
 
 ## How the pieces fit
 
 condash is an Electron app: a main process (Node.js — filesystem, IPC, watcher) and a renderer (Solid.js — dashboard UI). They talk over a single typed `CondashApi` IPC contract. Markdown reads on every refresh; mutations rewrite specific lines in your README files. A chokidar watcher fires on every file change so the UI is live without polling.
+
+The window is one shell: an **activity rail** down the left edge switching four left-hand views (Projects, Tasks, Deliverables, Performance) and five mutually-exclusive right-hand surfaces (Code, Knowledge, Resources, Skills, Logs), with a bottom band shared by the Terminal and the Dashboard. Search is a global modal, not a pane.
 
 → Process layout, IPC contract, write queue: **[Internals](internals.md)**.
 

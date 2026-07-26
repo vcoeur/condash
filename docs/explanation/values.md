@@ -15,11 +15,11 @@ The conception tree on disk is authoritative. The dashboard is a renderer, not a
 
 Practical consequences:
 
-- **No cache except where simplicity demands one.** The git-status TTL cache exists because polling `git status` on every paint is wasteful, but the cache is 3 seconds — short enough to be invisible, short enough to never lie about reality.
+- **Caches are derived, never authoritative.** Every one of them is keyed so that the file on disk always wins: the git-status TTL cache (3 s), the mtime-keyed README parse memo (`parse-cache.ts`), its disk-backed twin for cold CLI processes (`parse-cache-disk.ts` → `.condash/cache/readme-parse.json`), the in-RAM search index (`search/index-cache.ts`, kept fresh by the watcher), and a scattering of smaller memos besides — TTL'd `gh pr` lookups, the merged-config view, the login-shell PATH probe. Delete any of them and condash re-derives it; none of them can outvote the tree.
 - **No background sync.** The user's editor and the dashboard write to the same files; concurrency is handled by drift checks, not by reconciling a separate database.
 - **No schema migration.** Markdown header fields are parsed lazily. New fields can appear; old fields can disappear; existing trees keep working.
 
-If a feature needs a database, an index, or a sync server, it probably belongs somewhere other than condash.
+If a feature needs a *database* — something that holds state the files do not — it belongs somewhere other than condash. An index is a different thing: an index that is rebuildable from the tree and invalidated by the watcher is a legitimate performance move, and search is exactly that (see [Internals — The search index](internals.md#search-index)). The test is not "does it cache?" but "if I delete it, does anything become unrecoverable?".
 
 ## 2. Single user, local only
 
@@ -33,7 +33,9 @@ Practical consequences:
 
 ## 3. Simple over clever
 
-Reach for the boring solution first. Re-walk the tree on every search query. Use a 3-second cache instead of a coherent index. Atomic writes via tmp + rename instead of an in-memory journal. Solid signals instead of state-management folklore.
+Reach for the boring solution first. A 3-second TTL instead of a coherent invalidation graph. Atomic writes via tmp + rename instead of an in-memory journal. Solid signals instead of state-management folklore.
+
+Boring first does not mean boring forever. Search re-walked the whole tree on every query through v4.31.0 — the right call while the answer was a handful of milliseconds, and the wrong one once a large tree pushed it past a second. The index landed in v4.32.0, when the measurement said so, not before.
 
 Practical consequences:
 
@@ -96,7 +98,7 @@ When in doubt, do less from the dashboard, more from the editor.
 
 ## 8. Skills are first-class
 
-condash ships its own Claude Code skills (`/projects`, `/knowledge`) and is designed to coexist with them. Anything the dashboard does, the user can also do from a Claude Code session via plain file I/O — no IPC bridge, no API surface, no integration layer.
+condash ships **five** Claude Code skills — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — and is designed to coexist with them. Anything the dashboard does, the user can also do from a Claude Code session via plain file I/O: no IPC bridge, no API surface, no integration layer.
 
 Practical consequences:
 

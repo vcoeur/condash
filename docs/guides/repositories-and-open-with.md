@@ -23,7 +23,7 @@ The workspace, worktrees, and repository settings on this page live in `<concept
 - **`workspace_path`** — the directory condash scans for git repositories. Every direct subdirectory that contains a `.git/` becomes a row in the Code pane.
 - **`worktrees_path`** — the root under which `condash worktrees setup <branch>` creates `<worktrees_path>/<branch>/<repo>/`. That is the main reason to set it; it also counts as an allowed root for the "open with" launchers.
 
-If `workspace_path` is unset, the Code pane disappears.
+With `workspace_path` unset the Code pane still opens — it just has no repos to resolve, so it renders empty.
 
 ### `long_lived_branches`
 
@@ -113,7 +113,7 @@ Per-key detail with defaults: [Config files → `repositories`](../reference/con
 
 ## The three `open_with` slots
 
-Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **terminal**. Wire them in the per-machine `settings.json` (`open_with` is a personal setting, not a conception one):
+A repo row carries one button that opens a condash terminal tab there, and a chevron that opens the **Open with…** menu — that menu is where the three configured slots appear. (A row with a `run:` command also gets a Run/Stop button.) Wire the slots in the per-machine `settings.json` (`open_with` is a personal setting, not a conception one):
 
 ```json
 {
