@@ -7,11 +7,16 @@ The few you'll actually use.
 | Shortcut | Action |
 |---|---|
 | `Ctrl+O` | **Open…** — pick a different conception folder |
-| `Ctrl+,` | **Settings…** — open the configuration modal |
-| `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
+| `Ctrl+N` | **New project…** — open the create-item modal |
+| `Ctrl+,` | **Settings** — open the configuration modal |
+| `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — full-text search across the tree |
+| `?` | Show the full shortcut overlay |
+| `Ctrl+Shift+C` | Show **Code** pane |
+| `Ctrl+Shift+K` | Show **Knowledge** pane |
 | `Ctrl+R` | Show **Resources** pane |
 | `Ctrl+L` | Show **Skills** pane |
 | `Ctrl+Shift+L` | Show **Logs** pane (per-session terminal log viewer) |
+| `Ctrl+Shift+D` | Show **Dashboard** (bottom band, shared with the terminal) |
 | `F5` | **Refresh** — re-read repos, drop git-status cache |
 | `Ctrl+Shift+R` | **Reload window** — full hard reload |
 | `Ctrl+Shift+I` | Toggle DevTools |
@@ -29,7 +34,13 @@ The few you'll actually use.
 | `Ctrl+Up` / `Ctrl+Down` | Jump between OSC 133 prompts (needs shell integration) |
 
 The terminal toggle, screenshot-paste, and move-tab shortcuts are
-configurable via the **Terminal** tab in **File → Settings…**.
+configurable in the **Terminal** section of **File → Settings**.
+
+## Project cards
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+1` … `Ctrl+5` | Set the focused card's status (`now`, `review`, `later`, `backlog`, `done`) |
 
 ## Note modal
 

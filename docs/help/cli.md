@@ -30,9 +30,10 @@ condash <noun> <verb> [args] [--flags]
 | `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>`, `mismatch` |
 | `audit` | `--include all\|lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,knowledge-recheck,knowledge-check` |
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
+| `sync` | `run` (default), `commit <item> --message "…"` — the single-writer git sweeper for a checkout shared by parallel sessions. Backs the Settings → Auto-commit timer. |
 | `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
 | `skills` | `list`, `install`, `status`, `validate` |
-| `mdx` | `check <path>`, `blocks` |
+| `mdx` | `check <path>`, `blocks` (`condash plans` is a deprecated alias that warns and forwards) |
 | `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 

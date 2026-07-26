@@ -9,7 +9,16 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 ## What condash is
 
-A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.claude/skills/`, and `.condash/settings.json` tree, presents it through three slots — Projects (left edge), one of Code / Knowledge / Resources / Skills / Logs in the working slot (right edge, mutually exclusive), Terminal (bottom). Search is a global modal opened with `Ctrl+Shift+F`, not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).
+A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.agents/skills/`, and `.condash/settings.json` tree and presents it through one app shell:
+
+- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`), nine items in two groups.
+- A **left view** — one of `projects`, `tasks`, `deliverables`, `perf` (`LEFT_VIEWS` in `src/shared/types/layout.ts`).
+- A **working surface** on the right edge — one of Code / Knowledge / Resources / Skills / Logs, mutually exclusive.
+- A **bottom band** shared by the Terminal and the Dashboard (`Ctrl+Shift+D`), which never coexist.
+
+Search is a global modal (`Ctrl+Shift+F` / `Ctrl+K`), not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).
+
+condash reads **agedum sources only** — `<conception>/.agents/skills/` and `~/.config/agents/skills/`. It never reads the compiled harness views (`~/.claude/`, `<conception>/.claude/`, …), and the Skills pane is read-only in both scopes.
 
 There is no backend, no database, and no message bus. Every feature is a filesystem walk + a Markdown parse, with chokidar pushing change notifications.
 
@@ -121,7 +130,7 @@ F5 / View → Refresh fans out across **every working surface** (`reloadAll` in 
 
 ### 7. IPC contract
 
-`CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process registers one handler per verb. `src/main/index.ts:registerIpc` is a thin dispatcher that calls each per-domain module under `src/main/ipc/` — all eleven: `bootstrap.ts`, `projects.ts`, `agents.ts`, `tasks.ts`, `trees.ts`, `repos.ts`, `terminal.ts`, `logs.ts`, `dashboard.ts`, `settings.ts`, `system.ts`. No string-mux'd actions, no implicit channels. Every main → renderer *push* (the tree + repo watchers, `termData`/`termExit`/`termSessions`, the dashboard snapshots, the `watcher-status` toast, and the menu) funnels through the shared `safeSend` helper (`src/main/safe-send.ts`), which delivers only to a live frame and returns whether the payload landed.
+`CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process registers one handler per verb. `src/main/index.ts:registerIpc` is a thin dispatcher that calls each per-domain module under `src/main/ipc/` — all twelve, in registration order: `bootstrap.ts`, `projects.ts`, `agents.ts`, `tasks.ts`, `trees.ts`, `repos.ts`, `terminal.ts`, `logs.ts`, `dashboard.ts`, `auto-sync.ts`, `settings.ts`, `system.ts`. No string-mux'd actions, no implicit channels. Every main → renderer *push* (the tree + repo watchers, `termData`/`termExit`/`termSessions`, the dashboard snapshots, the `watcher-status` toast, and the menu) funnels through the shared `safeSend` helper (`src/main/safe-send.ts`), which delivers only to a live frame and returns whether the payload landed.
 
 **`listProjects` projection.** `listProjects` returns the same `Project[]` shape as `getProject`, but with the potentially large `timeline[]` **emptied** on every row (`toListProjection` in `ipc/projects.ts`) — the array grows with a project's age, and multiplied across hundreds of resident projects + every reload's structured-clone it was a real long-session cost (review G1). The single timeline datum the card needs — the most recent entry's date — is precomputed at parse time as `Project.lastActivity` (kept on the row). The **preview** is the only surface that renders the full `timeline[]`, and it lazy-fetches the full project via `getProject` (a parse-cache hit, so effectively free) when it opens. The tree-events single-card patch strips the timeline the same way so the resident list stays uniformly timeline-free.
 
@@ -206,15 +215,15 @@ Output that arrives while a tab is mid-transition — its worker Terminal serial
 
 ## Environment hygiene { #environment-hygiene }
 
-condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:
+condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). Every one of them starts from a **copy** of `process.env` — `process.env` itself is never mutated — with exactly three edits, all in `src/main/shell-env.ts`:
 
-- `PYTHONHOME` / `PYTHONPATH` — leak from AppImage's stock `AppRun.wrapped`. A spawned `python3` would otherwise hit "No module named 'encodings'" because the leaked vars point into the AppImage mount.
-- `PERLLIB` / `PERL5LIB` — same root cause; spawned `perl` scripts can't find their libs.
-- `QT_PLUGIN_PATH`, `GSETTINGS_SCHEMA_DIR` — leak similarly; spawned GUI apps pick up the AppImage's bundled plugins instead of their own.
+1. **`PATH` is replaced** with the login-shell PATH. A Wayland session, the macOS Dock, or a `.desktop` entry never sources `~/.profile` / `~/.zprofile`, so the inherited `process.env.PATH` lacks user-installed CLIs (`opencode`, `~/bin` wrappers). `spawnEnv()` resolves the real one once at boot (`$SHELL -lic`, memoised, 5 s timeout) the way VS Code's integrated terminal does. On Windows, and on any probe failure, it falls back to the inherited PATH.
+2. **`TERM` is forced to `xterm-256color`** on pty spawns (`spawnPtyEnv`).
+3. **`npm_config_prefix` / `npm_config_globalconfig` / `npm_config_userconfig` are deleted.** Electron inherits them from whatever shell launched it, and a global `npm_config_prefix` breaks nvm loading in every child shell.
 
-This is defence in depth. The AppImage build also patches `AppRun` itself (see [Install — Linux AppImage](../get-started/index.md#linux-appimage)) so the leak doesn't reach launchers spawned *outside* of condash either.
+**That is the whole scrub.** Interpreter-specific variables an AppImage runtime can leak — `PYTHONHOME`, `PYTHONPATH`, `PERLLIB`, `PERL5LIB`, `QT_PLUGIN_PATH`, `GSETTINGS_SCHEMA_DIR` — are **not** unset anywhere in the codebase, and no earlier version of this page's claim survives in source. If a spawned `python3` inside the AppImage build ever reports `No module named 'encodings'`, that is a real open gap, not a defence already in place: the fix would be an extra scrub in `spawnPtyEnv`. Treat this paragraph as the known state, not as a to-do that has been done.
 
-The inverse problem — a GUI launch *missing* entries the user put in their login dotfiles — is handled by `src/main/shell-env.ts`. A Wayland session, the macOS Dock, or a `.desktop` entry never sources `~/.profile` / `~/.zprofile`, so `process.env.PATH` lacks user-installed CLIs (`opencode`, `~/bin` wrappers). `spawnEnv()` resolves the login-shell PATH once at boot (`$SHELL -lic`, cached, 5 s timeout) the way VS Code's integrated terminal does, and replaces PATH on every spawned env. It rewrites **PATH only**, so the scrub above is untouched; on Windows and on any probe failure it falls back to the inherited PATH.
+The AppImage build *is* patched, but for an unrelated reason: `.github/workflows/_build.yml` rewrites the `exec "$BIN" …` lines in the repacked AppImage's `AppRun` to inject `--no-sandbox`, and verifies the patch landed by re-extracting the image. It touches no environment variable. See [Install — Linux AppImage](../get-started/index.md#linux-appimage).
 
 ## The search index { #search-index }
 
@@ -258,7 +267,7 @@ The renderer bundle ships in the asar at `dist/`. The dev server (`vite`) listen
 - **Log search index.** The Markdown sources are indexed in RAM ([above](#search-index)), but logs stay scanned on disk — and only when the **Logs** filter is selected (the default All query is index-only) — because they're the bulk of the bytes and rarely searched.
 - **Worker isolation.** Mutations and parses run on the main-process event loop. The largest file is a project README (kilobytes); the parse is microseconds.
 - **Authentication / authorisation.** condash is single-user, local-only. There is no user model.
-- **Cross-process logging.** Main and renderer write to their own console streams. There is no aggregator and no log file.
+- **Cross-process diagnostic logging.** Main and renderer write to their own console streams; there is no aggregator and no *diagnostic* log file. condash does write other files under `.condash/` — terminal-session transcripts (`terminal-logger.ts`, opt-in under `terminal.logging.enabled`) and perf counters (`perf-log.ts` → `.condash/perf/YYYY-MM-DD.jsonl`, opt-in under `terminal.perf.enabled`) — but those record the *child processes*, not condash's own diagnostics. A main-process stack trace still only exists on stderr.
 
 ## See also
 

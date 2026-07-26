@@ -73,21 +73,21 @@ The dashboard is not the only way to view or edit this file. That's the whole po
 
 ## The dashboard as a view layer
 
-`condash` is a desktop app that reads the tree and renders a kanban, a history search, a PDF viewer, a repo strip, an embedded terminal. **It writes back for a handful of actions** (toggling steps, dragging cards between status columns, editing notes in-modal — see [mutation model](../reference/mutations.md)), but the write surface is deliberately small enough that you could reproduce any single action with `sed` if you wanted.
+`condash` is a desktop app that reads the tree and renders a status board, a full-text search, a PDF viewer, a repo pane, an embedded terminal, a knowledge tree, a deliverables index, and a task runner. **It writes back for a handful of actions** (toggling steps, dragging cards between status columns, editing notes in-modal — see [mutation model](../reference/mutations.md)), but the write surface is deliberately small enough that you could reproduce any single action with `sed` if you wanted.
 
 Concretely:
 
 - No database. The Markdown files are the state, parsed straight from disk.
 - No stale cache. A README parse is memoised by file mtime (and dropped by the file watcher on change/unlink), so an unchanged tree re-parses nothing — yet editing a README, in condash or your own editor, changes its mtime and the next refresh always shows the change.
-- No sync server. condash binds to `127.0.0.1`. If you want multi-machine, you `git pull`.
-- No auth. Single-user, localhost-only.
+- No sync server. condash binds to nothing at all — there is no HTTP server, no port, no socket. The renderer talks to the main process over Electron IPC end to end. If you want multi-machine, you `git pull`.
+- No auth, because there is nothing to authenticate against. Single-user, one process, one tree.
 - No signup. Download a release, launch `condash`.
 
 What you gain from the view layer is what a view layer is for: visual grouping, quick edits, cross-linking, and the class of features that aren't worth writing by hand (a kanban drag-drop, a history search with snippets, an embedded PDF viewer).
 
 What you give up: everything multi-user, everything web-hosted, everything that requires a backend. If that's what you need, `condash` is the wrong tool — use something else, happily.
 
-## Three scenarios where this shape is the right one
+## Four scenarios where this shape is the right one
 
 The Markdown-first approach is not universal. It is very good at a few things.
 
@@ -109,7 +109,7 @@ This is cheap writing. A SaaS with a rich editor and a separate comments section
 
 A Claude Code session can read, write, and edit Markdown files natively. No API, no webhook, no permissions model — the agent just edits files, you review in `git diff`, the dashboard picks up the change on the next poll.
 
-The shipped [`/conception-items` skill](../reference/skill.md) does exactly this. You say "create a project called add dark mode, Kind project, Status later, Apps notes.vcoeur.com" and the agent writes `projects/2026-04/2026-04-18-add-dark-mode/README.md` with the right template. No integration layer. No OAuth. Just file I/O.
+The five [shipped skills](../reference/skill.md) — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — do exactly this. You say "create a project called add dark mode, Kind project, Status later, Apps notes.vcoeur.com" and `/projects` writes `projects/2026-04/2026-04-18-add-dark-mode/README.md` with the right template. No integration layer. No OAuth. Just file I/O. They ship inside condash and land in your tree with `condash skills install`.
 
 For multi-project setups with branch isolation, deliverable generation, cross-item linking via [wikilinks](../guides/wikilinks.md), and a shared [knowledge tree](../guides/knowledge-tree.md), the agent-friendly nature compounds: every tool the agent knows (Read, Write, Edit, Grep) works on the same files that render in the dashboard.
 
@@ -133,7 +133,7 @@ Listing these keeps everyone honest:
 - Markdown files in git beat a SaaS for the class of work that outlives quarters.
 - The dashboard is a view — edit the files however you want.
 - The write surface is small, auditable, and reversible by `sed`.
-- Three good-fit scenarios: solo dev across apps, engineering logbook, AI-agent workspace, post-mortem tracker.
+- Four good-fit scenarios: solo dev across apps, engineering logbook, AI-agent workspace, post-mortem tracker.
 - Not a fit when you need multi-user, web-hosted, or a proper project-management product.
 
 If that sounds right, start with [First run](../get-started/index.md).

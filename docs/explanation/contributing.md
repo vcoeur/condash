@@ -28,15 +28,17 @@ That's it. No framework boilerplate, no per-developer config.
 ```bash
 git clone https://github.com/vcoeur/condash.git
 cd condash
-make install      # one-off — npm install + electron-rebuild
-make dev          # watch mode: tsc + vite + electron with --no-sandbox
+make install      # one-off — npm install; its postinstall runs electron-rebuild
+make dev          # watch mode: esbuild + vite + electron with --no-sandbox
 ```
 
-`make dev` runs three processes concurrently:
+`make dev` does a one-shot dev build, then runs three processes concurrently:
 
-- `tsc --watch` typechecks `src/main/` and `src/renderer/` continuously. No emit — esbuild handles bundling.
-- `vite` serves the renderer at `localhost:5600`. Hot module reload works for the renderer.
-- `electron` opens a single `BrowserWindow` against the dev URL. Main / preload changes restart on the next launch (`Ctrl+R` on the dev window).
+- **esbuild in watch mode** (`scripts/build-electron.mjs --watch`) rebuilds main + preload on change.
+- **`vite`** serves the renderer at `localhost:5600` with hot module reload.
+- **`electron`** waits for both, then opens a single `BrowserWindow` against the dev URL. Main / preload changes need a window reload (`Ctrl+Shift+R`) to take effect.
+
+**No typechecker runs in that loop.** esbuild strips types without checking them, so a type error will not stop `make dev` — run `make typecheck` yourself, and note that CI will. See [Dev launch from a clone](../guides/dev-launch.md) for the fuller loop.
 
 If port 5600 is in use, `make kill` frees it. Add or change ports? See the dev-port checklist in [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md).
 
@@ -136,16 +138,22 @@ mkdocs serve     # → http://localhost:8000
 
 Conventions:
 
-- Every page declares its **Audience** at the top, immediately under the H1.
+- Every **content page** in `get-started/`, `tutorials/`, `guides/`, `reference/`, and `explanation/` declares its **Audience** at the top, immediately under the H1. Section index pages, the home page, `legal.md`, and the in-app help bodies under `docs/help/` are exempt.
 - Diátaxis layout: tutorials teach, guides solve, reference looks up, explanation explains.
 - Cross-link to neighbouring pages.
-- Source-of-truth fields (config keys, IPC verbs, exit codes) are tested against the code in CI: if the docs diverge, the test fails.
+- `docs/help/*.md` is a **special case**: those six files are loaded from inside the packaged asar by the in-app Help menu. Keep them self-contained, and use **absolute `https://condash.vcoeur.com/…` URLs** for every off-page link — `help-modal.tsx` routes only `http(s)`, `mailto:`, and in-page anchors, so a relative link renders as clickable text that silently does nothing inside the app. The filenames are an allowlist (`src/main/help.ts`), mirrored in the `HelpDocName` union, the Help menu, the modal's title map, `electron-builder.yml`, and `tests/help-loader.spec.ts` — renaming or adding one means touching all six.
 
 Every code change that affects user-visible behaviour ships with a docs update in the same commit.
 
+!!! warning "Docs drift is not caught by CI"
+
+    Nothing in the test suite reads `docs/reference/*`. The only docs-touching test is `tests/help-loader.spec.ts`, which asserts the six in-app help files load non-empty and that `help/cli.md` contains one literal string. `config-schema.test.ts` enforces key *casing*, not doc parity. So a config key, IPC verb, flag, or exit code can be renamed with a green build and a wrong page — **the docs are only as current as the commit that changed the code**. That is why "same commit" above is a hard rule rather than a nicety.
+
+Docs also do **not** deploy on merge. `.github/workflows/docs.yml` triggers on a completed `release` workflow run or a manual dispatch, so a docs-only fix reaches `condash.vcoeur.com` at the next tag (or when someone dispatches the workflow), not when it lands on `main`.
+
 ## Issues, PRs, releases
 
-- **Issues** — file at [`github.com/vcoeur/condash/issues`](https://github.com/vcoeur/condash/issues). For bugs, include the OS, the condash version (footer of the dashboard), and a minimal repro tree if you can.
+- **Issues** — file at [`github.com/vcoeur/condash/issues`](https://github.com/vcoeur/condash/issues). For bugs, include the OS, the condash version (**Help → About Condash**), and a minimal repro tree if you can.
 - **PRs** — branch from `main`, open a PR against `main`. The PR template asks for a Summary, a Changes list, and an optional Impact / Watchpoints section.
 - **Releases** — tagged `vMAJOR.MINOR.PATCH`. PATCH for bug fixes and docs; MINOR for new behaviour; MAJOR for breaking config or Markdown changes. The version is derived from the tag — **no version-bump commit**; push the tag on a merged commit and `release.yml`'s `publish` job runs automatically (gated behind the heavy CI matrix).
 
@@ -154,7 +162,7 @@ Every code change that affects user-visible behaviour ships with a docs update i
 Three good places to start:
 
 1. **Issues tagged `good first issue`** at the issue tracker.
-2. **Pages tagged "stub" or "TODO"** in this docs tree — search the source for `TODO` and `<!-- stub -->`.
+2. **A page that has drifted.** Because [nothing in CI checks the docs](#documentation-changes), a careful read of one reference page against its source file is genuinely useful work, and it needs no build environment.
 3. **A feature you want yourself.** condash exists because someone wanted it; the next feature probably will too.
 
 Before starting on anything large, open an issue with the proposed approach and link to the values it serves. A 200-word issue saves a 2000-word PR rewrite.

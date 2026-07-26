@@ -70,6 +70,16 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
 
+# The six `docs/help/*.md` bodies are the *in-app* Help menu pages: `src/main/help.ts`
+# reads them out of the packaged asar through a filename allowlist, so they must stay
+# in `docs/` and must keep their names. They are published (their absolute
+# condash.vcoeur.com links have to resolve, and the app's "Open documentation site"
+# entry lands on the same host) but deliberately kept out of the nav, where they would
+# duplicate `get-started/`. Declaring them here is what stops every build reporting
+# them as accidental orphans.
+not_in_nav: |
+  /help/*.md
+
 nav:
   - Home: index.md
 

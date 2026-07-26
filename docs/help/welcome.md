@@ -9,36 +9,65 @@ are still on disk; delete condash and the files don't move.
 
 ## What you'll see
 
-- **Projects** (left pane) — items grouped by status (Current / Next /
-  Backlog / Done).
-- **Code** (right pane) — your repos, dirty state, run / open-with
-  buttons.
-- **Knowledge** (right pane, alternate) — your reference notes as cards.
-- **Resources** (right pane, alternate, `Ctrl+R`) — every file under
-  `resources/` as cards (any extension), with copy / open / paste-to-term
-  actions. The directory ships with sensible defaults: nothing to set up
-  on first launch — drop a file in `resources/` and the pane will
-  surface it.
-- **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
-  `.agents/skills/`, read-only. Hosts the three shipped skills
-  (`/projects`, `/knowledge`, `/pr`) once `condash skills install` has
+An **activity rail** runs down the left edge. Its top group picks what
+fills the left of the window; its bottom group picks one right-hand
+working surface at a time.
+
+Left views:
+
+- **Projects** — your items as one scrolling stack of status sections,
+  in the order `now`, `review`, `later`, `backlog`, `done`, plus a
+  trailing `?` for any item whose status isn't one of those five.
+  Drag a card to another section to change its status.
+- **Tasks** — saved agent prompts you can run on demand or on a
+  schedule.
+- **Deliverables** — every `## Deliverables` entry across the whole
+  tree, grouped by item.
+- **Performance** — live per-terminal memory, growth rate, and throttle
+  state.
+
+Working surfaces (one at a time, on the right):
+
+- **Code** (`Ctrl+Shift+C`) — your repos, their branches, dirty counts,
+  run / open-with buttons.
+- **Knowledge** (`Ctrl+Shift+K`) — your reference notes as cards.
+- **Resources** (`Ctrl+R`) — every file under `resources/` as cards
+  (any extension), with copy / open / paste-to-term actions. Nothing to
+  set up: drop a file in `resources/` and the pane surfaces it.
+- **Skills** (`Ctrl+L`) — the Markdown skills under `.agents/skills/`,
+  read-only. Hosts the five shipped skills (`/projects`, `/knowledge`,
+  `/pr`, `/applications`, `/visual`) once `condash skills install` has
   run, and toggles to user-scope agedum sources via the Conception/User
   segmented control.
-- **Logs** (right pane, alternate, `Ctrl+Shift+L`) — per-session
-  terminal capture viewer. Sessions are a collapsible card grid
-  grouped by date (last 7 days per-day with today always expanded,
-  older folded into per-month groups); opens a full-overlay viewer
-  with virtualised text + case-insensitive search. Turn capture on
-  under Settings → Terminal → Logging.
-- **Terminal** — toggle with `` Ctrl+` ``.
-- **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
+- **Logs** (`Ctrl+Shift+L`) — per-session terminal capture viewer.
+  Sessions are a collapsible card grid grouped by date (last 7 days
+  per-day with today always expanded, older folded into per-month
+  groups); opens a full-overlay viewer with virtualised text +
+  case-insensitive search. Turn capture on under Settings → Terminal →
+  Logging.
+
+Across the bottom:
+
+- **Terminal** — toggle with `` Ctrl+` ``. Real shells, one tab each.
+- **Dashboard** (`Ctrl+Shift+D`) — shares the bottom band with the
+  terminal and summarises what each terminal tab is doing. Off by
+  default; needs an API key.
+
+And one modal:
+
+- **Search** — `Ctrl+K` or `Ctrl+Shift+F` for full-text search across
+  projects, knowledge, resources, skills, and (on request) logs.
 
 ## Changing the conception folder
 
-**File → Open…** (`Ctrl+O`) opens the native folder picker again.
+**File → Open…** (`Ctrl+O`) opens the native folder picker.
 
-**File → Settings…** (`Ctrl+,`) opens a tabbed editor for theme, the
-embedded terminal, and `.condash/settings.json`.
+**File → Open Recent** lists the last five trees you opened; picking one
+switches immediately, with no dialog.
+
+**File → Settings** (`Ctrl+,`) opens a single full-viewport modal — one
+scrolling surface, no tabs — covering appearance, the embedded terminal,
+launchers, auto-commit, and this conception's workspace paths and repos.
 
 ## Where to go next
 
