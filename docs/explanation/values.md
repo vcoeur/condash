@@ -15,7 +15,7 @@ The conception tree on disk is authoritative. The dashboard is a renderer, not a
 
 Practical consequences:
 
-- **Caches are derived, never authoritative.** There are four, and each one is keyed so that the file on disk always wins: the git-status TTL cache (3 s), the mtime-keyed README parse memo (`parse-cache.ts`), its disk-backed twin for cold CLI processes (`parse-cache-disk.ts` → `.condash/cache/readme-parse.json`), and the in-RAM search index (`search/index-cache.ts`, kept fresh by the watcher). Delete any of them and condash re-derives it; none of them can outvote the tree.
+- **Caches are derived, never authoritative.** Every one of them is keyed so that the file on disk always wins: the git-status TTL cache (3 s), the mtime-keyed README parse memo (`parse-cache.ts`), its disk-backed twin for cold CLI processes (`parse-cache-disk.ts` → `.condash/cache/readme-parse.json`), the in-RAM search index (`search/index-cache.ts`, kept fresh by the watcher), and a scattering of smaller memos besides — TTL'd `gh pr` lookups, the merged-config view, the login-shell PATH probe. Delete any of them and condash re-derives it; none of them can outvote the tree.
 - **No background sync.** The user's editor and the dashboard write to the same files; concurrency is handled by drift checks, not by reconciling a separate database.
 - **No schema migration.** Markdown header fields are parsed lazily. New fields can appear; old fields can disappear; existing trees keep working.
 
@@ -35,7 +35,7 @@ Practical consequences:
 
 Reach for the boring solution first. A 3-second TTL instead of a coherent invalidation graph. Atomic writes via tmp + rename instead of an in-memory journal. Solid signals instead of state-management folklore.
 
-Boring first does not mean boring forever. Search re-walked the whole tree on every query until v4.31.0 — the right call while the answer was a handful of milliseconds, and the wrong one once a large tree pushed it past a second. The index landed when the measurement said so, not before.
+Boring first does not mean boring forever. Search re-walked the whole tree on every query through v4.31.0 — the right call while the answer was a handful of milliseconds, and the wrong one once a large tree pushed it past a second. The index landed in v4.32.0, when the measurement said so, not before.
 
 Practical consequences:
 

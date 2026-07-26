@@ -56,7 +56,7 @@ Pick your editor from **Open with…** and it launches in that directory. The la
 
 ## 3. Run the repro in the embedded terminal
 
-Press `` Ctrl+` `` (or **View → Show Terminal**) — a pane opens beneath the dashboard with a real bash prompt.
+Press `` Ctrl+` `` (or **View → Show Terminal**) — a pane opens beneath the dashboard with a real shell prompt — your `$SHELL`.
 
 ![The terminal pane open beneath the dashboard, one shell tab running a helio search command, with New shell ▼ in its header](../assets/screenshots/terminal-light.png#only-light)
 ![The terminal pane open beneath the dashboard, one shell tab running a helio search command, with New shell ▼ in its header](../assets/screenshots/terminal-dark.png#only-dark)

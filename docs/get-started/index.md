@@ -235,8 +235,10 @@ condash projects create --kind project --slug try-condash \
 !!! success "Checkpoint — you have a file on disk"
 
     ```bash
-    cat ~/conception/projects/2026-07/2026-07-26-try-condash/README.md
+    cat ~/conception/projects/$(date +%Y-%m)/$(date +%Y-%m-%d)-try-condash/README.md
     ```
+
+    condash names the directory from the day you created the item, so the two `date` calls just fill in today's.
 
     That file is the whole item. Nothing else was written anywhere.
 
@@ -247,7 +249,7 @@ This is the part worth thirty seconds, because it is the entire premise.
 1. In the dashboard, click your new item's card to open it. Under **Steps**, click the **marker button** to the left of `<first task>`.
 2. Back in the shell, `cat` the README again.
 
-The line is now `- [~] <first task>`. Clicking cycles the marker `[ ]` → `[~]` (in progress) → `[x]` (done) → `[-]` (dropped) → back. The dashboard did not update a record *about* your file — it rewrote that one line, in place, and nothing else. Run `git diff` and you will see a one-line diff you could have made with `sed`.
+The line is now `- [~] <first task>`. Clicking cycles the marker `[ ]` → `[~]` (in progress) → `[x]` (done) → `[-]` (dropped) → back. The dashboard did not update a record *about* your file — it rewrote that one line, in place, and nothing else: a change you could have made with `sed`. In a conception you keep in git, that is exactly what `git diff` shows — one line. (Initialising from the template lays down files, not a repository, so `git init` and a first commit come first if you want to watch it that way.)
 
 The same holds in the other direction: edit the README in your editor, save, and the card updates without a refresh — a filesystem watcher pushes the change. Two writers, one file, no sync.
 
@@ -266,7 +268,7 @@ Three ways to change an item's status: **drag its card** to another section, pre
 
 **Code** (right) lists the git repos this tree cares about, each with its branches, a `N dirty` pill you can click for the file list, and per-branch **Run** / **open a shell here** / **Open with…** actions. It is empty until you set `workspace_path` and `repositories` — Settings → **Workspace & paths** + **Repositories**, or `.condash/settings.json` directly. See **[Repositories and open-with buttons](../guides/repositories-and-open-with.md)**.
 
-**Terminal** (bottom) is a real bash session in the same window. Toggle it with `` Ctrl+` `` or **View → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
+**Terminal** (bottom) is a real shell session — your `$SHELL` — in the same window. Toggle it with `` Ctrl+` `` or **View → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
 
 ### Everything else
 
@@ -287,7 +289,7 @@ The **activity rail** down the left edge switches between four left-hand views a
 Not on the rail:
 
 - **Dashboard** (`Ctrl+Shift+D`) — a bottom band that shares its space with the terminal and summarises what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
-- **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and logs. [Guide](../guides/search.md).
+- **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and (on request) logs. [Guide](../guides/search.md).
 - **Status-bar indicators** — the auto-commit state with a **Sync now** button, and the shipped-skills state with an **Install** button that runs `condash skills install` for you. See [Auto-commit](../guides/auto-commit.md) and [Extend the management skills](../guides/skill-extensions.md).
 
 ### The CLI you already installed

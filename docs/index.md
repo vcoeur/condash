@@ -31,7 +31,7 @@ conception/
 └── .condash/settings.json         ← which repos and paths this tree knows about
 ```
 
-Every item is one dated directory with a `README.md` inside it. The README's YAML frontmatter carries `status`, `kind`, and which apps it touches; its `## Steps` section is a GitHub-style checklist. That is the whole convention — [README format](reference/readme-format.md) is two pages long and everything else in the tree is free-form Markdown.
+Every item is one dated directory with a `README.md` inside it. The README's YAML frontmatter carries `status`, `kind`, and which apps it touches; its `## Steps` section is a GitHub-style checklist. That is the whole convention — [README format](reference/readme-format.md) writes it down in full, and everything else in the tree is free-form Markdown.
 
 Because it is only files, everything else still works: `git diff` shows what changed when you flip a step, `rg` finds a decision from two years ago in milliseconds, your editor opens it, and an agent can read and write it with no integration layer at all.
 

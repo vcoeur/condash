@@ -73,7 +73,7 @@ The dashboard is not the only way to view or edit this file. That's the whole po
 
 ## The dashboard as a view layer
 
-`condash` is a desktop app that reads the tree and renders a status board, a full-text search, a PDF viewer, a repo pane, an embedded terminal, a knowledge tree, a deliverables index, and a task runner. **It writes back for a handful of actions** (toggling steps, dragging cards between status columns, editing notes in-modal — see [mutation model](../reference/mutations.md)), but the write surface is deliberately small enough that you could reproduce any single action with `sed` if you wanted.
+`condash` is a desktop app that reads the tree and renders a status board, a full-text search, a PDF viewer, a repo pane, an embedded terminal, a knowledge tree, a deliverables index, and a task runner. **It writes back for a handful of actions** (toggling steps, dragging cards between status sections, editing notes in-modal — see [mutation model](../reference/mutations.md)), but the write surface is deliberately small enough that you could reproduce any single action with `sed` if you wanted.
 
 Concretely:
 

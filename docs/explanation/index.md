@@ -44,7 +44,7 @@ Legacy bold-prose headers (`**Date**: 2026-04-10`, etc.) are still accepted — 
 
 Every piece earns its keep. The YAML frontmatter parses straight into the metadata block; `## Steps` checkboxes work in any Markdown tool. `git diff` shows exactly what changed when you flip a step. `rg "session cookie"` finds it in 30 ms.
 
-→ Full pitch with three good-fit scenarios: **[Why Markdown-first](why-markdown.md)**.
+→ Full pitch with four good-fit scenarios: **[Why Markdown-first](why-markdown.md)**.
 
 ## What condash deliberately doesn't do
 
