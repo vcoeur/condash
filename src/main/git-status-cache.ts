@@ -131,8 +131,8 @@ export async function isZeroByteUntracked(
  * `git status` (the pending promise lives in the map). The TTL clock starts
  * when the result lands, preserving the {@link STATUS_TTL_MS} freshness window
  * documented in internals §3; an `invalidateForPath` during flight drops the
- * pending slot,
- * so the completing computation is discarded rather than written back.
+ * pending slot, so the completing computation is discarded rather than written
+ * back.
  *
  * Filters out zero-byte untracked files — those are typically sandbox
  * runtime artifacts (scratch logs, empty placeholder files) that the user

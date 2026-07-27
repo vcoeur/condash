@@ -133,6 +133,20 @@ describe('listRepos git budget (#475)', () => {
     expect(inner?.worktrees?.map((w) => w.path)).toEqual(['/ws/alpha/inner']);
   });
 
+  it('does not hand a name-colliding repo the other one’s worktrees', async () => {
+    // Two configured repos whose paths end in the same basename share a bare
+    // `name`, and the by-name parent map keeps only the last. Reusing the
+    // precomputed list by name alone would show `a/docs` the branches and dirty
+    // counts of `b/docs` — silently. Each must still get its own.
+    getEffectiveConceptionConfig.mockResolvedValue({
+      workspace_path: '/ws',
+      repositories: [{ path: 'a/docs' }, { path: 'b/docs' }],
+    });
+    const entries = await listRepos(PATH_A);
+    expect(entries.map((e) => e.path)).toEqual(['/ws/a/docs', '/ws/b/docs']);
+    expect(entries.map((e) => e.worktrees?.[0]?.path)).toEqual(['/ws/a/docs', '/ws/b/docs']);
+  });
+
   it('keeps the per-primary partial reload returning worktrees', async () => {
     // `listReposForPrimary` builds a one-entry parent map. The reuse must key
     // off that map correctly here too, or the structural-watcher path would
