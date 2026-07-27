@@ -82,11 +82,17 @@ Every rewrite of an existing file is `tmp` → `fsync` → `rename` (`atomic-wri
 
 ### 3. TTL git-status cache
 
-`git-status-cache.ts` caches per-working-tree dirty counts for 3 s. The Refresh button calls `invalidateAll()` before re-reading, so an explicit user request always sees fresh data. Ambient re-renders (pane switch, tree-events) hit the cache.
+`git-status-cache.ts` caches per-working-tree dirty counts for `STATUS_TTL_MS` — **12 s**, raised from 3 s in #475. The Refresh button calls `invalidateAll()` before re-reading, so an explicit user request always sees fresh data. Ambient re-renders (pane switch, tree-events) hit the cache.
 
-The 3 s window is short enough that staleness is invisible to a human; the cache only matters when chokidar fires a burst of events or the user mashes Refresh.
+The window is not what keeps a dirty count honest: a real edit invalidates the entry outright, through Refresh or the per-worktree chokidar watchers in `repo-watchers.ts` (`invalidateForPath`). It only bounds how long an *unwatched* change stays invisible. The 3 s original was short enough that a burst of filesystem activity re-triggered the whole fan-out repeatedly instead of coalescing onto one scan — the reason it was widened.
 
-**Boot prewarm (review finding S1).** The two cold scans that gate the default panes are warmed at `whenReady`, in parallel with `createWindow` and never blocking it (`src/main/prewarm.ts`): the project-README parse memo (via the same `findProjectReadmes` + `parseReadmeCached` path `listProjects` uses) and the repo git-status fan-out (`listRepos`). Because the git-status TTL is only 3 s — shorter than the window-create + renderer-mount gap — a naive prewarm would expire before the renderer's first `listRepos` and re-run the whole fan-out; so the boot scan's promise is stashed and the first `listRepos` awaits *that same promise* (`listReposReusingBoot` in `repos.ts`), reused one-shot regardless of the underlying cache's TTL. The parse memo needs no such trick — it is mtime-keyed, not time-bounded. Both prewarms are fire-and-forget and swallow their own errors.
+**Bounded git fan-out (#475).** Every read-only git lookup on this path — `git worktree list`, `git status`, `rev-parse`, `rev-list` — runs through `withGitSlot` (`src/main/git-concurrency.ts`), which caps them at `GIT_SLOT_LIMIT` (6) in flight. `listRepos` issues its git calls from several *nested* fan-outs (`resolveParentWorktrees`, then a `buildEntry` per registry entry, then a per-worktree lookup inside each), so a pool at any one `Promise.all` bounds chains rather than spawns; the cap belongs at the spawn. On a 29-entry registry the unbounded version reached ~90 back-to-back `git` spawns and blocked the main event loop for ~4 s in one stretch — the cost is the fork of a ~450 MB Electron main process, not git's runtime (an individual `git status` there measures 6-23 ms), so it scales with the app's own RSS.
+
+The cap is deliberately **not** applied to `exec` itself, which also carries `git fetch` / `git push` (sync), `gh` (pr-lookup), and the per-repo `install:` command of worktree setup — one slow network call holding a slot would starve the pane the cap exists to unblock.
+
+Two spawns per parent repo were removed outright alongside it: `buildEntry` reuses the worktree list `resolveParentWorktrees` already computed instead of re-running `git worktree list`, and `isGitRepo` answers a repo root from a `.git` stat, falling back to `git rev-parse --git-dir` only for an entry pointing *inside* a repo (a submodule subdirectory).
+
+**Boot prewarm (review finding S1).** The two cold scans that gate the default panes are warmed at `whenReady`, in parallel with `createWindow` and never blocking it (`src/main/prewarm.ts`): the project-README parse memo (via the same `findProjectReadmes` + `parseReadmeCached` path `listProjects` uses) and the repo git-status fan-out (`listRepos`). A naive prewarm alone wouldn't do: the warmed entries are governed by the git-status TTL, so they could expire before the renderer's first `listRepos` (after the window loads and the renderer mounts) and re-run the whole fan-out. So the boot scan's promise is stashed and the first `listRepos` awaits *that same promise* (`listReposReusingBoot` in `repos.ts`), reused one-shot regardless of the underlying cache's TTL. The parse memo needs no such trick — it is mtime-keyed, not time-bounded. Both prewarms are fire-and-forget and swallow their own errors.
 
 ### 4. PTY kill pipeline { #pty-kill-pipeline }
 
@@ -279,5 +285,6 @@ The renderer bundle ships in the asar at `dist/`. The dev server (`vite`) listen
 - [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — re-export barrel over the split mutation modules: `mutate-steps.ts` (checklist edits), `mutate-status.ts` (status + timeline), `write-config.ts` (note/config writes), `mutate-shared.ts` (EOL detection + per-file queue).
 - [`src/main/terminals.ts`](https://github.com/vcoeur/condash/blob/main/src/main/terminals.ts) — pty lifecycle + the kill pipeline.
 - [`src/main/git-status-cache.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-status-cache.ts) — the TTL cache.
+- [`src/main/git-concurrency.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-concurrency.ts) — the read-only git-lookup cap.
 - [`src/main/watcher.ts`](https://github.com/vcoeur/condash/blob/main/src/main/watcher.ts) — chokidar wiring + event classification.
 - [Non-goals](non-goals.md) — what condash deliberately doesn't do.

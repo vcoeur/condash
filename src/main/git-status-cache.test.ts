@@ -1,12 +1,12 @@
 /**
  * Tests for the dirty-count cache: concurrent misses coalesce onto one
  * in-flight `git status`, an invalidate during flight discards the completing
- * result, and the 3 s TTL still governs completed entries (internals §3).
+ * result, and the TTL still governs completed entries (internals §3).
  * `simple-git` is mocked so the tests control exactly when "git" resolves.
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { simpleGit } from 'simple-git';
-import { getDirtyCount, invalidateAll, invalidateForPath } from './git-status-cache';
+import { getDirtyCount, invalidateAll, invalidateForPath, STATUS_TTL_MS } from './git-status-cache';
 
 vi.mock('simple-git', () => ({ simpleGit: vi.fn() }));
 
@@ -88,8 +88,11 @@ describe('getDirtyCount coalescing', () => {
     rawMock.mockResolvedValue(' M a.ts\n');
     expect(await getDirtyCount('/coalesce-d')).toBe(1);
     expect(rawMock).toHaveBeenCalledTimes(1);
-    // Inside the 3 s window: cached.
-    vi.advanceTimersByTime(2_000);
+    // Derive the jumps from the constant rather than restating it — the window
+    // was widened once already (#475) and a hardcoded 3 s silently stopped
+    // testing the boundary it names.
+    // Inside the window: cached.
+    vi.advanceTimersByTime(STATUS_TTL_MS - 1_000);
     expect(await getDirtyCount('/coalesce-d')).toBe(1);
     expect(rawMock).toHaveBeenCalledTimes(1);
     // Past it: recomputed.

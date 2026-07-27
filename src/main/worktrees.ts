@@ -1,5 +1,8 @@
+import { join } from 'node:path';
 import { exec } from './exec';
+import { withGitSlot } from './git-concurrency';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
+import { pathExists } from './fs-helpers';
 import { toPosix } from '../shared/path';
 import type { Worktree } from '../shared/types';
 
@@ -10,9 +13,9 @@ import type { Worktree } from '../shared/types';
  */
 export async function getCurrentBranch(repoPath: string): Promise<string | null> {
   try {
-    const { stdout } = await exec('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
-      cwd: repoPath,
-    });
+    const { stdout } = await withGitSlot(() =>
+      exec('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd: repoPath }),
+    );
     const branch = stdout.trim();
     return branch.length > 0 ? branch : null;
   } catch {
@@ -23,10 +26,18 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
 /**
  * Probe whether `repoPath` is inside a git repository.
  * Returns false when the path doesn't exist or isn't a git repo.
+ *
+ * A `.git` entry answers the common case without a subprocess — a directory in
+ * a primary checkout, a pointer *file* in a linked worktree or a gitlinked
+ * submodule, both of which `fs.access` reports alike. Only a path that sits
+ * *inside* a repo without being its root — a registry entry pointing at a
+ * submodule subdirectory — still needs git to decide, so the spawn becomes the
+ * exception rather than one per registry entry (#475).
  */
 export async function isGitRepo(repoPath: string): Promise<boolean> {
+  if (await pathExists(join(repoPath, '.git'))) return true;
   try {
-    await exec('git', ['rev-parse', '--git-dir'], { cwd: repoPath });
+    await withGitSlot(() => exec('git', ['rev-parse', '--git-dir'], { cwd: repoPath }));
     return true;
   } catch {
     return false;
@@ -51,10 +62,12 @@ export async function isGitRepo(repoPath: string): Promise<boolean> {
 export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
   let stdout = '';
   try {
-    const result = await exec('git', ['worktree', 'list', '--porcelain'], {
-      cwd: repoPath,
-      maxBuffer: 1024 * 1024,
-    });
+    const result = await withGitSlot(() =>
+      exec('git', ['worktree', 'list', '--porcelain'], {
+        cwd: repoPath,
+        maxBuffer: 1024 * 1024,
+      }),
+    );
     stdout = result.stdout;
   } catch {
     return [];

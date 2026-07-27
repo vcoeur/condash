@@ -292,5 +292,6 @@ Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Appli
 - [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — drift checks + atomic write + per-file queue, all in one file.
 - [`src/main/terminals.ts`](https://github.com/vcoeur/condash/blob/main/src/main/terminals.ts) — pty lifecycle + the kill pipeline.
 - [`src/main/git-status-cache.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-status-cache.ts) — the TTL cache.
+- [`src/main/git-concurrency.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-concurrency.ts) — the read-only git-lookup cap.
 - [`src/main/watcher.ts`](https://github.com/vcoeur/condash/blob/main/src/main/watcher.ts) — chokidar wiring + event classification.
 - [`src/main/repo-watchers.ts`](https://github.com/vcoeur/condash/blob/main/src/main/repo-watchers.ts) — per-repo watcher set + `onRepoEvents` plumbing.

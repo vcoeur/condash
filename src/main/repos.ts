@@ -77,9 +77,16 @@ async function buildEntry(
   let worktrees: Worktree[] | undefined;
   let dirty: number | null;
   if (isGit) {
+    // `resolveParentWorktrees` already listed the worktrees of every top-level
+    // repo before the fan-out started, so re-running `git worktree list` here
+    // spawned that command a second time per parent — 16 of the ~90 spawns a
+    // refresh cost on a 29-entry registry (#475). The lookup is the same one:
+    // that helper keys on the parent's `name` and swallows failures to `[]`
+    // exactly as the call below does. The fallback covers a caller that hands
+    // in a map not built from this entry's parent set.
     worktrees = entry.parent
       ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
-      : await listWorktrees(entry.cwd).catch(() => []);
+      : (parentWorktrees.get(entry.name) ?? (await listWorktrees(entry.cwd).catch(() => [])));
     const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
     dirty = await getDirtyCount(entry.cwd, dirtyOpts);
   } else {
@@ -111,15 +118,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
 }
 
 // Boot prewarm handoff (review finding S1). The whenReady handler kicks off a
-// listRepos before the window even exists, so the ~20-repo git-status fan-out
-// (~460 ms measured) overlaps window creation instead of blocking the Code
-// pane's first paint. A naive prewarm alone wouldn't help: the git-status cache
-// TTL is 3 s, so by the time the renderer's first listRepos runs (after the
-// window loads and the renderer mounts) the warmed entries could already have
-// expired — re-running the whole fan-out. Instead we stash the boot scan's
-// promise here and let the renderer's first listRepos *await the same promise*,
-// which resolves once regardless of the underlying cache TTL. One-shot: the slot
-// is consumed on first read, so later refreshes recompute fresh.
+// listRepos before the window even exists, so the git-status fan-out (~460 ms
+// measured at ~20 repos; seconds at the ~29-entry registry of #475, before the
+// spawn cap and the two spawn removals landed) overlaps window creation instead
+// of blocking the Code pane's first paint. A naive prewarm alone wouldn't help:
+// the entries it warms are governed by the git-status cache TTL, so by the time
+// the renderer's first listRepos runs (after the window loads and the renderer
+// mounts) they could already have expired — re-running the whole fan-out.
+// Instead we stash the boot scan's promise here and let the renderer's first
+// listRepos *await the same promise*, which resolves once regardless of the
+// underlying cache TTL. One-shot: the slot is consumed on first read, so later
+// refreshes recompute fresh.
 let bootReposPromise: Promise<RepoEntry[]> | null = null;
 let bootReposPath: string | null = null;
 /** Epoch ms the current boot slot was stashed — drives the TTL backstop. */

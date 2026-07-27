@@ -3,7 +3,9 @@
 // listRepos() ends up running `git status` once per repo + once per worktree
 // every time the Code pane refreshes. With ~10 repos and ~2 worktrees apiece
 // that's 30 git invocations on every render — fast on its own but adds up
-// when the user mashes Refresh or chokidar fires.
+// when the user mashes Refresh or chokidar fires. At the ~29-entry registry
+// of #475 the same path reached ~90 spawns per refresh; each lookup here goes
+// through the shared `withGitSlot` cap so they can't all fork at once.
 //
 // Strategy: cache for a short TTL. Dirty counts can lag a few seconds — the
 // user is the one editing files in those repos, so any change they care
@@ -17,6 +19,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { SimpleGit } from 'simple-git';
 import type { UpstreamStatus } from '../shared/types';
+import { withGitSlot } from './git-concurrency';
 import { perfLog } from './perf-log';
 
 // `simple-git` is dynamic-imported at its two call sites (below) rather than
@@ -53,7 +56,18 @@ interface DirtyCountOptions {
   scopeToSubtree?: boolean;
 }
 
-const TTL_MS = 3_000;
+/** Freshness window for a completed lookup. Exported so the tests derive their
+ *  clock jumps from it instead of restating the number.
+ *
+ *  Raised from 3 s in #475: a burst of filesystem activity re-triggered the
+ *  whole ~90-spawn fan-out repeatedly rather than coalescing onto one scan. The
+ *  window is not what keeps a dirty count honest — a real edit invalidates the
+ *  entry outright, through the Refresh button (`invalidateAll`) or the
+ *  per-worktree chokidar watchers in `repo-watchers.ts` (`invalidateForPath`).
+ *  It only bounds how long an *unwatched* change stays invisible, so trading
+ *  seconds of that for a fan-out that fires far less often is the right side
+ *  of the deal. */
+export const STATUS_TTL_MS = 12_000;
 const cache = new Map<string, CacheSlot>();
 
 function cacheKey(path: string, opts: DirtyCountOptions): string {
@@ -71,7 +85,7 @@ function cacheKey(path: string, opts: DirtyCountOptions): string {
 export async function statusPathPrefix(git: SimpleGit, scopeToSubtree: boolean): Promise<string> {
   if (!scopeToSubtree) return '';
   try {
-    return (await git.raw(['rev-parse', '--show-prefix'])).trim();
+    return (await withGitSlot(() => git.raw(['rev-parse', '--show-prefix']))).trim();
   } catch {
     return '';
   }
@@ -115,8 +129,9 @@ export async function isZeroByteUntracked(
  *
  * Concurrent misses on the same key coalesce onto a single in-flight
  * `git status` (the pending promise lives in the map). The TTL clock starts
- * when the result lands, preserving the 3 s freshness window documented in
- * internals §3; an `invalidateForPath` during flight drops the pending slot,
+ * when the result lands, preserving the {@link STATUS_TTL_MS} freshness window
+ * documented in internals §3; an `invalidateForPath` during flight drops the
+ * pending slot,
  * so the completing computation is discarded rather than written back.
  *
  * Filters out zero-byte untracked files — those are typically sandbox
@@ -130,7 +145,7 @@ export async function getDirtyCount(
   const slot = cache.get(key);
   if (slot) {
     if (slot.kind === 'pending') return slot.promise;
-    if (Date.now() - slot.capturedAt < TTL_MS) return slot.dirty;
+    if (Date.now() - slot.capturedAt < STATUS_TTL_MS) return slot.dirty;
   }
   const pending: CacheSlot = {
     kind: 'pending',
@@ -173,7 +188,7 @@ async function runDirtyCount(path: string, opts: DirtyCountOptions): Promise<num
     const args = ['status', '--porcelain=v1'];
     if (opts.scopeToSubtree) args.push('--', '.');
     const prefix = await statusPathPrefix(git, opts.scopeToSubtree === true);
-    const out = await git.raw(args);
+    const out = await withGitSlot(() => git.raw(args));
     const lines = out.split('\n').filter((l) => l.length > 0);
 
     const untrackedChecks = await Promise.all(
@@ -222,7 +237,7 @@ export function invalidateForPath(path: string): void {
 export async function getUpstreamStatus(path: string): Promise<UpstreamStatus | null> {
   const now = Date.now();
   const cached = upstreamCache.get(path);
-  if (cached && now - cached.capturedAt < TTL_MS) return cached.upstream;
+  if (cached && now - cached.capturedAt < STATUS_TTL_MS) return cached.upstream;
   const span = perfLog.startSpan();
   try {
     return await computeUpstreamStatus(path, now);
@@ -239,7 +254,9 @@ async function computeUpstreamStatus(path: string, now: number): Promise<Upstrea
     const git = simpleGit({ baseDir: path });
     let upstreamRef: string | null = null;
     try {
-      const out = await git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+      const out = await withGitSlot(() =>
+        git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']),
+      );
       const trimmed = out.trim();
       if (trimmed.length > 0 && trimmed !== '@{u}') upstreamRef = trimmed;
     } catch {
@@ -253,7 +270,7 @@ async function computeUpstreamStatus(path: string, now: number): Promise<Upstrea
     }
     let ahead = 0;
     try {
-      const out = await git.raw(['rev-list', '--count', '@{u}..HEAD']);
+      const out = await withGitSlot(() => git.raw(['rev-list', '--count', '@{u}..HEAD']));
       const n = Number.parseInt(out.trim(), 10);
       ahead = Number.isFinite(n) ? n : 0;
     } catch {
