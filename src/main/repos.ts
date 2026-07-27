@@ -51,6 +51,33 @@ async function resolveParentWorktrees(
   return out;
 }
 
+/**
+ * Worktrees for a TOP-LEVEL entry, reusing the list `resolveParentWorktrees`
+ * already computed. That helper runs `git worktree list` for every top-level
+ * repo before the fan-out starts, so listing again per entry spawned the
+ * command a second time per parent — 16 of the ~90 spawns a refresh cost on the
+ * 29-entry registry of #475. It swallows failures to `[]` exactly as a direct
+ * call does, so the reuse is otherwise identical.
+ *
+ * The identity check is what makes it safe. `parentByName` is keyed by bare
+ * directory name and a duplicate collapses (two configured repos whose paths
+ * end in the same basename — `{path: 'a/docs'}` and `{path: 'b/docs'}`), so
+ * keying on the name alone would hand one of them the *other*'s branches and
+ * dirty counts, silently. Anything the precomputed map doesn't positively
+ * cover falls back to listing for itself.
+ */
+async function topLevelWorktrees(
+  entry: FlatRepo,
+  parentByName: Map<string, FlatRepo>,
+  parentWorktrees: Map<string, Worktree[]>,
+): Promise<Worktree[]> {
+  if (parentByName.get(entry.name) === entry) {
+    const precomputed = parentWorktrees.get(entry.name);
+    if (precomputed) return precomputed;
+  }
+  return listWorktrees(entry.cwd).catch(() => []);
+}
+
 async function buildEntry(
   entry: FlatRepo,
   parentByName: Map<string, FlatRepo>,
@@ -79,7 +106,7 @@ async function buildEntry(
   if (isGit) {
     worktrees = entry.parent
       ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
-      : await listWorktrees(entry.cwd).catch(() => []);
+      : await topLevelWorktrees(entry, parentByName, parentWorktrees);
     const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
     dirty = await getDirtyCount(entry.cwd, dirtyOpts);
   } else {
@@ -111,15 +138,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
 }
 
 // Boot prewarm handoff (review finding S1). The whenReady handler kicks off a
-// listRepos before the window even exists, so the ~20-repo git-status fan-out
-// (~460 ms measured) overlaps window creation instead of blocking the Code
-// pane's first paint. A naive prewarm alone wouldn't help: the git-status cache
-// TTL is 3 s, so by the time the renderer's first listRepos runs (after the
-// window loads and the renderer mounts) the warmed entries could already have
-// expired — re-running the whole fan-out. Instead we stash the boot scan's
-// promise here and let the renderer's first listRepos *await the same promise*,
-// which resolves once regardless of the underlying cache TTL. One-shot: the slot
-// is consumed on first read, so later refreshes recompute fresh.
+// listRepos before the window even exists, so the git-status fan-out (~460 ms
+// measured at ~20 repos; seconds at the ~29-entry registry of #475, before the
+// spawn cap and the two spawn removals landed) overlaps window creation instead
+// of blocking the Code pane's first paint. A naive prewarm alone wouldn't help:
+// the entries it warms are governed by the git-status cache TTL, so by the time
+// the renderer's first listRepos runs (after the window loads and the renderer
+// mounts) they could already have expired — re-running the whole fan-out.
+// Instead we stash the boot scan's promise here and let the renderer's first
+// listRepos *await the same promise*, which resolves once regardless of the
+// underlying cache TTL. One-shot: the slot is consumed on first read, so later
+// refreshes recompute fresh.
 let bootReposPromise: Promise<RepoEntry[]> | null = null;
 let bootReposPath: string | null = null;
 /** Epoch ms the current boot slot was stashed — drives the TTL backstop. */
