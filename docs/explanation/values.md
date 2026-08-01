@@ -29,7 +29,7 @@ Practical consequences:
 
 - **No login screen, ever.** No accounts, no API keys, no OAuth flow.
 - **No opt-out telemetry either.** condash collects nothing about you, and it does not phone home.
-- **No feature where "single-user" is in tension with how it's meant to work.** Real-time collaboration, presence indicators, "X is editing this" markers: not even on the long-term roadmap. Use git.
+- **No feature where "single-user" is in tension with how it's meant to work.** condash is single-*writer* per checkout — one process commits — not single-*user*: collaboration happens through git, each collaborator on their own checkout pushing to one shared remote (the sweeper fast-forwards an ahead-only remote and refuses to push, never to commit, on divergence). Real-time collaboration, presence indicators, "X is editing this" markers: not even on the long-term roadmap. Use git.
 
 ## 3. Simple over clever
 

@@ -13,6 +13,7 @@ export const AUTO_SYNC_DEFAULTS: AutoSyncConfig = {
   intervalMinutes: 10,
   quietPeriodSeconds: 90,
   push: true,
+  integration: 'ff-only',
 };
 
 export const MIN_INTERVAL_MINUTES = 1;
@@ -48,6 +49,10 @@ export function resolveAutoSyncConfig(raw: AutoSyncSettings | undefined): AutoSy
       AUTO_SYNC_DEFAULTS.quietPeriodSeconds,
     ),
     push: raw?.push ?? AUTO_SYNC_DEFAULTS.push,
+    // Enum coercion: the zod schema rejects an unknown value at config-write
+    // time, but a hand-edited or pre-schema file can still carry one — fall
+    // back to the safe default rather than refusing to resolve.
+    integration: raw?.integration === 'off' ? 'off' : 'ff-only',
   };
 }
 

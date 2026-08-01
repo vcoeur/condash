@@ -16,7 +16,10 @@ import type { IndexStrategy } from '../index-tree';
 import { closeMilestoneSubject, extractClosedEntries } from './close-milestone';
 import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT, type CommitGroup } from './group';
 import {
+  behindUpstream,
   commitPaths,
+  fetchUpstream,
+  ffOnlyMerge,
   inProgressOperation,
   push,
   readChangedPaths,
@@ -44,6 +47,8 @@ export interface SyncOptions {
   dryRun: boolean;
   /** Push when the branch ends up ahead of its upstream. */
   push: boolean;
+  /** ff-only: fetch and fast-forward before pushing when the remote is ahead-only; off: legacy behavior, no fetch/integration. */
+  integration: 'off' | 'ff-only';
 }
 
 export interface SyncRunOptions extends SyncOptions {
@@ -75,11 +80,21 @@ export interface SyncReport {
   /** Index regeneration was held back because some item is still mid-write;
    *  the marker stays set and the next settled tick does it. */
   indexesDeferred: boolean;
-  /** Commits ahead of upstream after the run; `null` when no upstream. */
+  /** Commits on HEAD that upstream doesn't have after the last check; `null`
+   *  when no upstream. */
   ahead: number | null;
+  /** Commits on upstream that HEAD doesn't have after the fetch; `null` when
+   *  there is no upstream or the integration wasn't attempted. */
+  behind: number | null;
+  /** True when the fetch found commits on both sides — the push is refused
+   *  until a human reconciles with `git pull --rebase`. */
+  diverged: boolean;
   pushed: boolean;
   /** Set when the push was rejected. Not fatal — the next run retries. */
   pushError: string | null;
+  /** Set when the fetch or the fast-forward failed; the push is skipped.
+   *  Not fatal — the next run retries. */
+  integrateError: string | null;
 }
 
 /**
@@ -98,6 +113,8 @@ export async function syncRun(
   return withLock(conceptionPath, options.dryRun, async (gitDir) => {
     const changed = await readChangedPaths(conceptionPath);
     await assertOperable(gitDir, changed);
+
+    const integration = await integrateBeforePush(conceptionPath, options);
 
     const cutoffMs = Date.now() - options.quietPeriodSeconds * 1000;
 
@@ -152,7 +169,7 @@ export async function syncRun(
     }
 
     return {
-      ...(await pushState(conceptionPath, options)),
+      ...(await pushState(conceptionPath, options, integration)),
       commits,
       skipped,
       regeneratedTrees,
@@ -185,6 +202,8 @@ export async function syncCommit(
       const changed = await readChangedPaths(conceptionPath);
       await assertOperable(gitDir, changed);
 
+      const integration = await integrateBeforePush(conceptionPath, options);
+
       const prefix = `${itemRelPath}/`;
       const paths = changed
         .map(({ path }) => path)
@@ -196,7 +215,7 @@ export async function syncCommit(
 
       const commits = [await record(conceptionPath, paths, message, options.dryRun)];
       return {
-        ...(await pushState(conceptionPath, options)),
+        ...(await pushState(conceptionPath, options, integration)),
         commits,
         skipped: [],
         regeneratedTrees: [],
@@ -237,8 +256,11 @@ async function withLock(
       regeneratedTrees: [],
       indexesDeferred: false,
       ahead: null,
+      behind: null,
+      diverged: false,
       pushed: false,
       pushError: null,
+      integrateError: null,
     };
   }
   try {
@@ -319,25 +341,172 @@ async function record(
   return { subject, sha, paths };
 }
 
+/** The part of a {@link SyncReport} that describes remote integration. */
+type Integration = Pick<SyncReport, 'ahead' | 'behind' | 'diverged' | 'integrateError'>;
+
+/**
+ * Fetch the remote and fast-forward it when it is ahead-only, so the sweep's
+ * own commits keep the push a fast-forward. A genuine divergence is never
+ * resolved here: the local commits stay, the push is refused, and the human
+ * runs `git pull --rebase` — the sweeper itself must never rebase, because
+ * that would rewrite the tree under a live session.
+ *
+ * Returns `null` when the run won't push (dry-run, `--no-push`, or
+ * `autoSync.integration: 'off'`), leaving `pushState` on the legacy
+ * reporting path.
+ */
+async function integrateBeforePush(
+  conceptionPath: string,
+  options: SyncOptions,
+): Promise<Integration | null> {
+  if (options.dryRun || !options.push || options.integration === 'off') return null;
+
+  try {
+    await fetchUpstream(conceptionPath);
+  } catch (err) {
+    return {
+      ahead: null,
+      behind: null,
+      diverged: false,
+      integrateError: `fetch failed: ${firstLine(err)}`,
+    };
+  }
+
+  const ahead = await upstreamAhead(conceptionPath);
+  const behind = await behindUpstream(conceptionPath);
+  if (ahead === null || behind === null) {
+    // No upstream configured — nothing to integrate against.
+    return { ahead, behind, diverged: false, integrateError: null };
+  }
+
+  let resolvedBehind = behind;
+  let diverged = false;
+  let integrateError: string | null = null;
+  if (behind > 0 && ahead === 0) {
+    const ff = await ffOnlyMerge(conceptionPath);
+    if (!ff.ok) {
+      integrateError = `fast-forward failed: ${ff.error}`;
+    } else {
+      // The remote commits are now on HEAD; the sweep's own commits will keep
+      // the push a fast-forward.
+      resolvedBehind = 0;
+    }
+  } else if (behind > 0 && ahead > 0) {
+    diverged = true;
+  }
+
+  return { ahead, behind: resolvedBehind, diverged, integrateError };
+}
+
 /**
  * Push when asked and when there's something to push. A rejected push is
  * recorded, not repaired: `git pull --rebase` would rewrite the tree under a
  * live session, which is the very race sync exists to prevent.
+ *
+ * With an integration result, a divergence or a failed integration refuses the
+ * push outright — the local commits stay and the human reconciles.
  */
 async function pushState(
   conceptionPath: string,
   options: SyncOptions,
-): Promise<Pick<SyncReport, 'ahead' | 'pushed' | 'pushError'>> {
+  integration: Integration | null,
+): Promise<
+  Pick<SyncReport, 'ahead' | 'behind' | 'diverged' | 'pushed' | 'pushError' | 'integrateError'>
+> {
+  // Integration not attempted (dry-run, `--no-push`): report only what the
+  // branch shows right now.
+  if (integration === null) {
+    const ahead = await upstreamAhead(conceptionPath);
+    if (options.dryRun || !options.push || ahead === null || ahead === 0) {
+      return {
+        ahead,
+        pushed: false,
+        pushError: null,
+        behind: null,
+        diverged: false,
+        integrateError: null,
+      };
+    }
+    try {
+      await push(conceptionPath);
+      return {
+        ahead: 0,
+        pushed: true,
+        pushError: null,
+        behind: null,
+        diverged: false,
+        integrateError: null,
+      };
+    } catch (err) {
+      return {
+        ahead,
+        pushed: false,
+        pushError: err instanceof Error ? err.message : String(err),
+        behind: null,
+        diverged: false,
+        integrateError: null,
+      };
+    }
+  }
+
+  // A divergence or a failed integration refuses the push: the local commits
+  // stay and the human runs `git pull --rebase`.
+  if (integration.diverged || integration.integrateError) {
+    return {
+      ahead: integration.ahead,
+      behind: integration.behind,
+      diverged: integration.diverged,
+      integrateError: integration.integrateError,
+      pushed: false,
+      pushError: null,
+    };
+  }
+
+  // The integration was clean (remote-only changes fast-forwarded), but the
+  // sweep may have committed since — re-count what is actually pushable.
   const ahead = await upstreamAhead(conceptionPath);
-  if (options.dryRun || !options.push || ahead === null || ahead === 0) {
-    return { ahead, pushed: false, pushError: null };
+  if (!options.dryRun && options.push && ahead !== null && ahead > 0) {
+    try {
+      await push(conceptionPath);
+      return {
+        ahead: 0,
+        behind: integration.behind,
+        diverged: false,
+        integrateError: null,
+        pushed: true,
+        pushError: null,
+      };
+    } catch (err) {
+      return {
+        ahead,
+        behind: integration.behind,
+        diverged: false,
+        integrateError: null,
+        pushed: false,
+        pushError: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
-  try {
-    await push(conceptionPath);
-    return { ahead: 0, pushed: true, pushError: null };
-  } catch (err) {
-    return { ahead, pushed: false, pushError: err instanceof Error ? err.message : String(err) };
-  }
+  return {
+    ahead: integration.ahead,
+    behind: integration.behind,
+    diverged: false,
+    integrateError: null,
+    pushed: false,
+    pushError: null,
+  };
+}
+
+/** First non-empty line of an exec error's stderr/stdout/message. */
+function firstLine(err: unknown): string {
+  const e = err as { stderr?: string; stdout?: string; message?: string };
+  const text = e.stderr ?? e.stdout ?? e.message ?? '';
+  return (
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? 'unknown error'
+  );
 }
 
 /** A path older than the cutoff — or gone entirely — is safe to commit. */

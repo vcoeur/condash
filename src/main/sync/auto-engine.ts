@@ -53,7 +53,13 @@ function disabledStatus(): AutoSyncStatus {
 function sameResult(a: AutoSyncLastResult | null, b: AutoSyncLastResult | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.committed === b.committed && a.pushed === b.pushed && a.pushError === b.pushError;
+  return (
+    a.committed === b.committed &&
+    a.pushed === b.pushed &&
+    a.pushError === b.pushError &&
+    a.diverged === b.diverged &&
+    a.integrateError === b.integrateError
+  );
 }
 
 function broadcast(next: AutoSyncStatus): void {
@@ -198,23 +204,46 @@ async function sweep(path: string, config: AutoSyncConfig, myGeneration: number)
       dryRun: false,
       push: config.push,
       quietPeriodSeconds: config.quietPeriodSeconds,
+      integration: config.integration,
     });
     if (generation !== myGeneration) return;
     lastSweepAt = Date.now();
     nextDueAt = config.enabled ? lastSweepAt + intervalMs : 0;
-    publish({
-      phase: config.enabled ? 'idle' : 'disabled',
+    const base = {
       enabled: config.enabled,
       intervalMinutes: config.intervalMinutes,
       lastRunAt: lastSweepAt,
       nextRunAt: config.enabled ? nextDueAt : null,
-      lastResult: {
-        committed: report.commits.length,
-        pushed: report.pushed,
-        pushError: report.pushError,
-      },
       lastError: null,
-    });
+    } as const;
+    if (report.diverged || report.integrateError) {
+      // The push was refused and the local commits stay — the human reconciles
+      // with `git pull --rebase`. Distinct from the 'error' phase: this is a
+      // completed sweep with a state to resolve, not a mid-op refusal.
+      publish({
+        ...base,
+        phase: 'integration-needed',
+        lastResult: {
+          committed: report.commits.length,
+          pushed: false,
+          pushError: report.pushError,
+          diverged: report.diverged,
+          integrateError: report.integrateError,
+        },
+      });
+    } else {
+      publish({
+        ...base,
+        phase: config.enabled ? 'idle' : 'disabled',
+        lastResult: {
+          committed: report.commits.length,
+          pushed: report.pushed,
+          pushError: report.pushError,
+          diverged: false,
+          integrateError: null,
+        },
+      });
+    }
   } catch (err) {
     if (generation !== myGeneration) return;
     // A refusal (mid-merge, conflict) or unexpected error: record it and retry

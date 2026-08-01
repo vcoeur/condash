@@ -39,7 +39,8 @@ A sweep that introduces an item's `Closed.` timeline entry commits that item und
     "enabled": true,
     "intervalMinutes": 10,
     "quietPeriodSeconds": 90,
-    "push": true
+    "push": true,
+    "integration": "ff-only"
   }
 }
 ```
@@ -50,6 +51,7 @@ A sweep that introduces an item's `Closed.` timeline entry commits that item und
 | `intervalMinutes` | `10` | Sweep cadence. Clamped to 1–120. |
 | `quietPeriodSeconds` | `90` | A file touched more recently than this is left for the next sweep. Clamped to 0–3600; `0` commits even just-touched files. |
 | `push` | `true` | Push after committing. Off leaves the branch ahead of upstream. |
+| `integration` | `ff-only` | Fetch and fast-forward before pushing when the remote is ahead-only; `off` restores legacy behavior (no fetch, no integration). |
 
 The engine re-reads its config every 30 seconds, so a change in Settings takes effect within one tick — no restart. Enabling it does **not** commit immediately: the first enabled tick only establishes a baseline, so the first sweep lands one full interval later rather than the instant the app opens.
 
@@ -57,17 +59,22 @@ Full key detail: [Config files → Auto-commit](../reference/config.md#auto-comm
 
 ## Reading the status
 
-The Settings section carries a **Commit & push now** button and a live status line beside it: the phase (*Off* / *Waiting for first sweep* / *Idle* / *Committing…* / *Last sweep failed*), when the next sweep is due, the last result (`3 commits, pushed · 4 min ago`), and the last error if there was one. A manual sweep also defers the next automatic one by a full interval.
+The Settings section carries a **Commit & push now** button and a live status line beside it: the phase (*Off* / *Waiting for first sweep* / *Idle* / *Committing…* / *Integration needed* / *Last sweep failed*), when the next sweep is due, the last result (`3 commits, pushed · 4 min ago`), and the last error if there was one. A manual sweep also defers the next automatic one by a full interval.
 
 The status bar carries the same engine, condensed:
 
-- **A sync pill** — a state dot plus a label: `Synced`, `12 to sync`, `3 to push`, `Syncing…`, `Sync failed`, or `Auto-sync off`. Its tooltip spells out uncommitted and unpushed counts. **Click it** to open a **Recent commits** popover listing the conception's latest commits with their SHAs and subjects; unpushed ones are tagged.
+- **A sync pill** — a state dot plus a label: `Synced`, `12 to sync`, `3 to push`, `Syncing…`, `Sync failed`, `Integration needed`, or `Auto-sync off`. Its tooltip spells out uncommitted and unpushed counts. **Click it** to open a **Recent commits** popover listing the conception's latest commits with their SHAs and subjects; unpushed ones are tagged.
 - **A Sync now button** beside it, and another inside the popover — one immediate sweep, exactly what the Settings button does.
 
 ## When a sweep can't run
 
 - **The lock is already held** (a CLI `condash sync` is mid-sweep): the tick exits quietly and tries again next interval.
 - **The repo refuses** — mid-merge, a conflict, anything `syncRun` won't touch: the error is recorded, shown in both the Settings status line and the status-bar pill, and retried on the next interval. A failure is treated as a completed attempt so it can never hot-loop.
+- **The tree has diverged from the remote** (commits on both sides): the sweep still commits local work but refuses to push — the status shows *Integration needed*. Run `git pull --rebase` (or `git merge origin/main`) once your work is settled, and the next sweep pushes. Never `git reset --hard` — it discards the local commits.
+
+## Working with collaborators
+
+Each collaborator keeps their own checkout and pushes to the one shared remote. The sweeper fetches first, fast-forwards when the remote is ahead-only, and refuses to push — never to commit — when both sides have gained commits; the human resolves that with `git pull --rebase`. `integration: 'off'` restores the old behavior (no fetch, no integration).
 
 ## Doing it by hand
 

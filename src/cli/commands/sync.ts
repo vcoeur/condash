@@ -15,6 +15,7 @@
  *  timer, a launchd agent, or cron — condash stays a CLI with no daemon. */
 import { relative } from 'node:path';
 import { syncCommit, syncRun, SyncRefusedError, type SyncReport } from '../../main/sync/run';
+import { readAutoSyncConfig } from '../../main/sync/auto-config';
 import { toPosix } from '../../shared/path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import {
@@ -64,11 +65,16 @@ async function runRun(args: ParsedArgs, ctx: OutputContext, conceptionPath: stri
   const quietPeriod = takeIntFlag(args, 'quiet-period', true);
   assertNoExtraFlags(args, NOUN_FLAGS);
 
+  // The machine's `autoSync.integration` key decides whether the sweep fetches
+  // before pushing. A config-read failure is fatal, as in `condash config`.
+  const { integration } = await readAutoSyncConfig(conceptionPath);
+
   const report = await refuseAsCliError(() =>
     syncRun(conceptionPath, {
       dryRun,
       push: !noPush,
       quietPeriodSeconds: quietPeriod ?? DEFAULT_QUIET_PERIOD_SECONDS,
+      integration,
     }),
   );
   emitReport(ctx, report);
@@ -95,8 +101,14 @@ async function runCommit(
   const candidate = await resolveSlug(conceptionPath, slug);
   const itemRelPath = toPosix(relative(conceptionPath, candidate.itemDir));
 
+  const { integration } = await readAutoSyncConfig(conceptionPath);
+
   const report = await refuseAsCliError(() =>
-    syncCommit(conceptionPath, itemRelPath, message.trim(), { dryRun, push: !noPush }),
+    syncCommit(conceptionPath, itemRelPath, message.trim(), {
+      dryRun,
+      push: !noPush,
+      integration,
+    }),
   );
   emitReport(ctx, report);
 }
@@ -118,7 +130,8 @@ async function refuseAsCliError(body: () => Promise<SyncReport>): Promise<SyncRe
  * A rejected push is a warning, never a failure: the commits are safely local
  * and the next tick retries, because the push condition is "ahead of upstream"
  * rather than "we just committed". A sweeper on a timer must not go red over a
- * transient network blip.
+ * transient network blip. The same holds for a divergence or a failed
+ * integration — the work is safely local and the human reconciles.
  */
 function emitReport(ctx: OutputContext, report: SyncReport): void {
   const warnings: string[] = [];
@@ -128,6 +141,16 @@ function emitReport(ctx: OutputContext, report: SyncReport): void {
   }
   if (report.pushError) {
     warnings.push(`push rejected, commits stay local: ${report.pushError}`);
+  }
+  if (report.diverged) {
+    warnings.push(
+      'conception has diverged from origin — commits stay local. After your work is settled, run `git pull --rebase` (or `git merge origin/main`), then sync again. Do not `git reset --hard`.',
+    );
+  }
+  if (report.integrateError) {
+    warnings.push(
+      `couldn't integrate with upstream — push skipped: ${report.integrateError}. Will retry next run.`,
+    );
   }
   emit(ctx, report, formatReport, warnings);
 }
@@ -185,6 +208,13 @@ function printHelp(verb: string | null): void {
           "A sweep that introduces an item's `Closed.` timeline entry commits that",
           'item under a synthesized `Close <item>. Outcome: …` subject instead of',
           '`<item>: sync`, so closing an item stays write-files-only.',
+          '',
+          'Before committing, the sweep fetches the remote and fast-forwards it',
+          'when the remote is ahead-only, so its own commits keep the push a',
+          'fast-forward. When both sides gained commits the push is refused and',
+          'the local commits stay local: run `git pull --rebase` once your work is',
+          'settled, then sync again — never `git reset --hard`. The fetch-first',
+          "behaviour is off when `autoSync.integration` is `'off'`.",
           '',
           'Flags:',
           '  --dry-run              Report what would be committed; write nothing.',

@@ -24,7 +24,14 @@ const POLL_MS = 20_000;
 /** Command the Install button runs — matches the Skills-pane hint. */
 const SKILLS_INSTALL_CMD = 'condash skills install';
 
-type SyncState = 'off' | 'syncing' | 'error' | 'pending' | 'synced' | 'unknown';
+type SyncState =
+  | 'off'
+  | 'syncing'
+  | 'error'
+  | 'integration-needed'
+  | 'pending'
+  | 'synced'
+  | 'unknown';
 type SkillsState = 'synced' | 'update' | 'install' | 'unknown';
 
 interface StatusBarIndicatorsProps {
@@ -87,6 +94,9 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     const s = sync();
     if (busy() || a?.phase === 'syncing') return 'syncing';
     if (a?.phase === 'error') return 'error';
+    // A refused push leaves the commits local and ahead — that is not "to
+    // push", it is a divergence the human must reconcile.
+    if (a?.phase === 'integration-needed') return 'integration-needed';
     if (s && (s.pendingCount > 0 || s.ahead > 0)) return 'pending';
     if (a && !a.enabled) return 'off';
     if (!s && !a) return 'unknown';
@@ -100,6 +110,8 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
         return 'Syncing…';
       case 'error':
         return 'Sync failed';
+      case 'integration-needed':
+        return 'Integration needed';
       case 'off':
         return 'Auto-sync off';
       case 'pending': {
@@ -117,6 +129,9 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   const syncTitle = (): string => {
     const s = sync();
     const a = auto();
+    if (a?.phase === 'integration-needed') {
+      return 'Integration needed — run `git pull --rebase`, then sync again. Do not `git reset --hard`.';
+    }
     const parts: string[] = [];
     if (s) {
       parts.push(`${s.pendingCount} uncommitted`);

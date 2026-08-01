@@ -18,6 +18,9 @@ export interface AutoSyncSettings {
   quietPeriodSeconds?: number;
   /** Push after committing. Default true. */
   push?: boolean;
+  /** Fetch + fast-forward the remote before pushing (`'ff-only'`, the default)
+   *  or behave exactly as before (`'off'`). */
+  integration?: 'off' | 'ff-only';
 }
 
 /** Resolved auto-sync config (defaults applied, numbers clamped), used inside
@@ -27,6 +30,9 @@ export interface AutoSyncConfig {
   intervalMinutes: number;
   quietPeriodSeconds: number;
   push: boolean;
+  /** Whether the sweeper fetches + fast-forwards before pushing (`'ff-only'`)
+   *  or behaves exactly as before (`'off'`). */
+  integration: 'off' | 'ff-only';
 }
 
 /** Where the engine is in its cycle — drives the Settings status line. */
@@ -38,7 +44,10 @@ export type AutoSyncPhase =
   /** A sweep is in progress. */
   | 'syncing'
   /** The last sweep threw (mid-merge/conflict, or an unexpected error). */
-  | 'error';
+  | 'error'
+  /** The last sweep could not integrate with upstream (diverged, or the fetch
+   *  / fast-forward failed) — the push was refused and a human reconciles. */
+  | 'integration-needed';
 
 /** What the last completed sweep did — shown in the Settings status line. */
 export interface AutoSyncLastResult {
@@ -48,6 +57,10 @@ export interface AutoSyncLastResult {
   pushed: boolean;
   /** A skipped/rejected push message, else null. */
   pushError: string | null;
+  /** True when the sweep found the branch diverged from its upstream. */
+  diverged: boolean;
+  /** A fetch / fast-forward failure that skipped the push, else null. */
+  integrateError: string | null;
 }
 
 /** One recent commit on the conception checkout, for the status-bar

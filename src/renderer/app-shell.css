@@ -132,6 +132,7 @@
 }
 
 .status-bar .status-dot--pending,
+.status-bar .status-dot--integration-needed,
 .status-bar .status-dot--skills-update {
   background: var(--warn-bg);
 }
