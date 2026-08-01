@@ -52,7 +52,7 @@ A repo is a **card** with a header (its `#handle` pill, its path, a **Repo actio
 2. **Open a shell here** — spawns a condash terminal tab with its cwd in that worktree.
 3. **Open with… ▾** — a dropdown holding your configured launchers (main IDE, secondary IDE, external terminal), **Open in file manager**, **Pull branch**, and **Open PR #N** when `gh` finds one.
 
-Pick your editor from **Open with…** and it launches in that directory. The launcher commands live in the per-machine `settings.json` under `open_with`, with `{path}` substituted at launch time — see [Repositories and open-with buttons](../guides/repositories-and-open-with.md).
+Pick your editor from **Open with…** and it launches in that directory. The launcher commands live in the per-machine `settings.json` under `open_with`, with `{path}` substituted at launch time — see [Repositories and open-with launchers](../guides/repositories-and-open-with.md).
 
 ## 3. Run the repro in the embedded terminal
 

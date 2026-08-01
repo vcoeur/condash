@@ -10,7 +10,7 @@ Each guide answers one specific question.
 **Setup**
 
 - **[Configure the conception path](configure-conception-path.md)** — change the folder condash renders, with the menu, the CLI, or by editing `settings.json`.
-- **[Repositories and open-with buttons](repositories-and-open-with.md)** — populate the Code pane and wire IDE/terminal launch slots.
+- **[Repositories and open-with launchers](repositories-and-open-with.md)** — the workspace and worktrees paths, the repositories list, and the IDE/terminal launch slots behind the Code pane.
 - **[The Settings modal](settings-modal.md)** — one scrolling modal, two files with disjoint schemas, and which setting lives where.
 - **[Applications and handles](applications-and-handles.md)** — identify each app by one canonical `#handle`, manage the registry, keep `apps:` references resolving.
 - **[Auto-commit](auto-commit.md)** — let condash be the single writer for a versioned conception: commit settled changes on a timer and push.
@@ -19,6 +19,7 @@ Each guide answers one specific question.
 
 The left activity rail switches four **left-band** views and five **right-slot** working surfaces.
 
+- **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.
 - **[The Tasks pane](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
 - **[The Deliverables pane](deliverables-pane.md)** — every project's `## Deliverables`, aggregated and grouped by project.
 - **[The Performance pane](performance-pane.md)** — per-tab memory, growth rate, and throttle state, plus main-process event-loop delay.

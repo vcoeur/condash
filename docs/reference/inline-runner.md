@@ -102,6 +102,6 @@ Runner state changes don't go through a polling loop — the main process pushes
 
 ## See also
 
-- [Repositories and open-with buttons](../guides/repositories-and-open-with.md) — the related but distinct "launcher slots" that open external IDEs rather than PTY-owned processes.
+- [Repositories and open-with launchers](../guides/repositories-and-open-with.md) — the related but distinct "launcher slots" that open external IDEs rather than PTY-owned processes.
 - [Use the embedded terminal](../guides/terminal.md) — the sibling surface for ad-hoc commands.
 - [Config files — `repositories`](config.md#repositories) — the broader schema the `run:` field sits inside.
