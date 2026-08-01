@@ -23,6 +23,8 @@ The skills are **editorial only**. Every mechanical step shells out to `condash`
 
 The pre-reframe `/tidy` and `/skills` skills were dropped: tidy's audits are now reachable from `/knowledge verify` (which wraps `condash audit` + `condash knowledge verify`), and `/skills` was a thin wrapper over `condash skills install` — call the CLI directly.
 
+`condash skills list`, `status`, and `install` track only the five shipped skills. A conception-local skill — a hand-written `.agents/skills/<name>/SKILL.md` that condash doesn't ship — is not tracked and never appears in `skills list` / `status`; it still works as a slash-command skill and shows in the Skills pane.
+
 ## `/projects`
 
 Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matching CLI verbs through `condash projects ...`.
