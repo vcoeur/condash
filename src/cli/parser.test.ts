@@ -25,6 +25,27 @@ describe('parseArgs', () => {
     expect(r.positional).toEqual(['my-slug', 'extra']);
   });
 
+  it('keeps the whole query positional for the verbless search noun', () => {
+    const r = parseArgs(['search', 'session cookie']);
+    expect(r.noun).toBe('search');
+    expect(r.verb).toBeNull();
+    expect(r.positional).toEqual(['session cookie']);
+  });
+
+  it('keeps every unquoted query word for the verbless search noun', () => {
+    const r = parseArgs(['search', 'fuzzy', 'search', 'v2']);
+    expect(r.noun).toBe('search');
+    expect(r.verb).toBeNull();
+    expect(r.positional).toEqual(['fuzzy', 'search', 'v2']);
+  });
+
+  it('parses a bare verbless noun with no query', () => {
+    const r = parseArgs(['search']);
+    expect(r.noun).toBe('search');
+    expect(r.verb).toBeNull();
+    expect(r.positional).toEqual([]);
+  });
+
   it('parses --flag value pairs', () => {
     const r = parseArgs(['projects', 'list', '--status', 'now', '--limit', '5']);
     expect(r.flags).toEqual({ status: 'now', limit: '5' });
