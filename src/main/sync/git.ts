@@ -163,6 +163,23 @@ export async function upstreamAhead(cwd: string): Promise<number | null> {
 }
 
 /**
+ * Commits on the upstream branch that HEAD doesn't have — the mirror of
+ * `upstreamAhead`.
+ *
+ * @param cwd conception root
+ * @returns the count, or `null` when the branch has no upstream configured
+ */
+export async function behindUpstream(cwd: string): Promise<number | null> {
+  try {
+    const { stdout } = await exec('git', ['rev-list', '--count', 'HEAD..@{upstream}'], { cwd });
+    const count = Number.parseInt(stdout.trim(), 10);
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Push HEAD to its upstream. Never rebases or force-pushes: a rejected push is
  * reported and the commits stay local for the next tick to retry.
  *
@@ -170,6 +187,41 @@ export async function upstreamAhead(cwd: string): Promise<number | null> {
  */
 export async function push(cwd: string): Promise<void> {
   await exec('git', ['push'], { cwd });
+}
+
+/**
+ * Fetch the default remote. Read-only — never forces or rewrites local refs;
+ * updates the remote-tracking refs `behindUpstream` and `ffOnlyMerge` read.
+ *
+ * @param cwd conception root
+ */
+export async function fetchUpstream(cwd: string): Promise<void> {
+  await exec('git', ['fetch'], { cwd });
+}
+
+/**
+ * Fast-forward HEAD to its upstream, refusing on divergence or on any local
+ * change a remote update would clobber. The caller has already fetched.
+ *
+ * @param cwd conception root
+ * @returns `{ ok: true }` on a fast-forward, or `{ ok: false, error }` with
+ *          the first line of git's diagnostic when the merge is refused
+ */
+export async function ffOnlyMerge(
+  cwd: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await exec('git', ['merge', '--ff-only'], { cwd });
+    return { ok: true };
+  } catch (err) {
+    const e = err as ExecError;
+    const text = e.stderr ?? e.stdout ?? e.message ?? '';
+    const firstLine = text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    return { ok: false, error: firstLine ?? 'git merge --ff-only failed' };
+  }
 }
 
 async function exists(path: string): Promise<boolean> {
