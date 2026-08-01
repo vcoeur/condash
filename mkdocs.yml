@@ -89,6 +89,7 @@ nav:
     - tutorials/index.md
     - A day with condash: tutorials/daily-loop.md
     - Work in a branch-isolated worktree: tutorials/worktrees.md
+    - condash without the window: tutorials/cli-only.md
 
   - Guides:
     - guides/index.md
