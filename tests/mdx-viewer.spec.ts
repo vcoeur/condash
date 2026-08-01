@@ -117,6 +117,15 @@ test('MDX plan opens in the block viewer with issues banner and source toggle', 
     await window.locator('.mdx-modal .plan-answer-text').fill('not saved yet');
     await window.keyboard.press('Escape');
     await expect(window.locator('.mdx-modal .modal-confirm')).toBeVisible();
+
+    // Escape against the gate itself backs out of the close, keeping both the
+    // document and its pending answers.
+    await window.keyboard.press('Escape');
+    await expect(window.locator('.mdx-modal .modal-confirm')).toHaveCount(0);
+    await expect(window.locator('.mdx-modal')).toBeVisible();
+    await expect(window.locator('.mdx-modal .plan-answer-text')).toHaveValue('not saved yet');
+
+    await window.keyboard.press('Escape');
     await window.locator('.mdx-modal .modal-confirm .btn', { hasText: 'Discard' }).click();
     await expect(window.locator('.mdx-modal')).toHaveCount(0);
     expect(await readFile(mdxPath, 'utf8')).toContain('answer: "one more thing"');

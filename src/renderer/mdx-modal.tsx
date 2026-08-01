@@ -176,14 +176,11 @@ export function MdxModal(props: {
     setPendingClose(true);
   };
   const saveAndClose = async (): Promise<void> => {
-    if (await saveAll()) {
-      setPendingClose(false);
-      props.onClose();
-    } else {
-      // The write failed — keep the document open with its answers intact so
-      // the error banner is readable and the reader can retry.
-      setPendingClose(false);
-    }
+    const saved = await saveAll();
+    setPendingClose(false);
+    // A failed write keeps the document open with its answers intact, so the
+    // error banner is readable and the reader can retry.
+    if (saved) props.onClose();
   };
   const discardAndClose = (): void => {
     setDrafts({});
@@ -194,7 +191,10 @@ export function MdxModal(props: {
   const handleKeydown = (event: KeyboardEvent): void => {
     if (pendingClose() && event.key === 'Escape') {
       event.preventDefault();
-      event.stopPropagation();
+      // stopImmediatePropagation, not stopPropagation: the shared Modal shell
+      // listens for Esc on this same document node, so only the immediate form
+      // keeps its handler from re-raising the gate we are dismissing here.
+      event.stopImmediatePropagation();
       setPendingClose(false);
       return;
     }
