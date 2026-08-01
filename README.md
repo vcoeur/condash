@@ -2,6 +2,8 @@
 
 A desktop dashboard for a folder of Markdown files — **projects**, **incidents**, and **documents** kept as plain `.md` under `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md`. The files are the source of truth; condash is the live view on top.
 
+That folder is a **conception**: a plain directory — usually a git repo — whose `projects/` tree holds dated work items and whose `knowledge/` tree holds durable reference notes, both rendered live by condash. New here? Start with the five-minute intro at [Get started](https://condash.vcoeur.com/get-started/).
+
 ![condash dashboard overview](docs/assets/screenshots/dashboard-overview-light.png)
 
 ## What it does
