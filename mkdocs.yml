@@ -88,17 +88,19 @@ nav:
   - Tutorials:
     - tutorials/index.md
     - A day with condash: tutorials/daily-loop.md
+    - Work in a branch-isolated worktree: tutorials/worktrees.md
 
   - Guides:
     - guides/index.md
     - Configure the conception path: guides/configure-conception-path.md
-    - Repositories and open-with buttons: guides/repositories-and-open-with.md
+    - Repositories and open-with launchers: guides/repositories-and-open-with.md
     - The Settings modal: guides/settings-modal.md
     - Applications and handles: guides/applications-and-handles.md
     - Auto-commit: guides/auto-commit.md
     - Use the embedded terminal: guides/terminal.md
     - The Dashboard (tab summaries): guides/dashboard.md
     - Agent CLIs and model providers: guides/agent-clis-and-models.md
+    - The Code pane: guides/code-pane.md
     - The Tasks pane: guides/tasks-pane.md
     - The Deliverables pane: guides/deliverables-pane.md
     - The Performance pane: guides/performance-pane.md

@@ -101,7 +101,7 @@ The terminal works on all three platforms. If the pane fails to open on Windows,
 
 The buttons spawn the command in `open_with.<slot>.command`. **`open_with` is a personal, global-only key** — it lives in the per-machine `settings.json` and nowhere else; a conception's `.condash/settings.json` carrying it is rejected by the schema. Three failure modes:
 
-- **The slot isn't configured at all.** There are no built-in defaults: a slot with no `command` produces no button, and asking for it explicitly errors with `open_with.<slot> is not configured`. Add the block — see [Repositories and open-with buttons](repositories-and-open-with.md#the-three-open_with-slots).
+- **The slot isn't configured at all.** There are no built-in defaults: a slot with no `command` produces no button, and asking for it explicitly errors with `open_with.<slot> is not configured`. Add the block — see [Repositories and open-with launchers](repositories-and-open-with.md#the-three-open_with-slots).
 - The command isn't on `$PATH` (typical for macOS GUI editors that don't install a shell launcher). Use the `open -na` form on macOS — see [Config files — Per-OS recipes](../reference/config.md#per-os-recipes).
 - The path being passed isn't under one of the three allowed roots — the **conception path**, `workspace_path`, or `worktrees_path`. condash refuses to spawn launchers outside those sandboxes; check the toast message.
 

@@ -266,7 +266,7 @@ Every write condash is capable of is enumerated in **[Mutation model](../referen
 
 Three ways to change an item's status: **drag its card** to another section, press **`Ctrl`/`Cmd`+`1`…`5`** with the card focused, or click the status pill in the item modal's header. All three rewrite the README's `status:` line.
 
-**Code** (right) lists the git repos this tree cares about, each with its branches, a `N dirty` pill you can click for the file list, and per-branch **Run** / **open a shell here** / **Open with…** actions. It is empty until you set `workspace_path` and `repositories` — Settings → **Workspace & paths** + **Repositories**, or `.condash/settings.json` directly. See **[Repositories and open-with buttons](../guides/repositories-and-open-with.md)**.
+**Code** (right) lists the git repos this tree cares about, each with its branches, a `N dirty` pill you can click for the file list, and per-branch **Run** / **open a shell here** / **Open with…** actions. It is empty until you set `workspace_path` and `repositories` — Settings → **Workspace & paths** + **Repositories**, or `.condash/settings.json` directly. See **[The Code pane](../guides/code-pane.md)**.
 
 **Terminal** (bottom) is a real shell session — your `$SHELL` — in the same window. Toggle it with `` Ctrl+` `` or **View → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
 
@@ -280,7 +280,7 @@ The **activity rail** down the left edge switches between four left-hand views a
 | Tasks | — | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
 | Deliverables | — | Every item's `## Deliverables`, aggregated across the tree | [Deliverables pane](../guides/deliverables-pane.md) |
 | Performance | — | Live per-terminal memory, growth rate, and throttle state | [Performance pane](../guides/performance-pane.md) |
-| Code | `Ctrl+Shift+C` | Repos, branches, dirty counts, launchers | [Repositories and open-with](../guides/repositories-and-open-with.md) |
+| Code | `Ctrl+Shift+C` | Repos, branches, dirty counts, launchers | [The Code pane](../guides/code-pane.md) |
 | Knowledge | `Ctrl+Shift+K` | `knowledge/` as a browsable card tree | [The knowledge tree](../guides/knowledge-tree.md) |
 | Resources | `Ctrl+R` | Every file under `resources/`, any extension | [Resources pane](../guides/resources-pane.md) |
 | Skills | `Ctrl+L` | The Markdown skills under `.agents/skills/`, **read-only** | [Skills pane](../guides/skills-pane.md) |
@@ -294,11 +294,28 @@ Not on the rail:
 
 ### The CLI you already installed
 
-The same binary is a command-line tool against the same tree. Nothing extra to install:
+The same binary is a command-line tool against the same tree. Nothing extra to install — these six cover a normal day:
 
 ```bash
+# What's active right now?
 condash projects list --status now,review
-condash search "session cookie"
+
+# Create a new item without touching the dashboard.
+condash projects create --kind project --slug <slug> --title "<Title>" --apps <app>
+
+# Find anything, across projects, knowledge, resources, and skills.
+condash search "<query>"
+
+# Materialise a branch-isolated checkout at <worktrees_path>/<branch>/<repo>.
+condash worktrees setup <branch>
+
+# Which management skills are installed in this tree?
+condash skills list
+
+# Read one config key — e.g. worktrees_path.
+condash config get <key>
+
+# Machine-readable output, for scripts and jq.
 condash projects list --json | jq '.data[]'
 ```
 
