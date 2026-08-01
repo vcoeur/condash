@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    // src/**/*.test.ts are the CLI/unit suites; tests/**/*.test.ts hosts the
+    // docs-drift guards (the Playwright specs in tests/ are *.spec.ts and are
+    // deliberately excluded).
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
     reporters: ['default'],
   },

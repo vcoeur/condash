@@ -276,7 +276,7 @@ The **activity rail** down the left edge switches between four left-hand views a
 
 | Rail item | Shortcut | What it is | Guide |
 |---|---|---|---|
-| Projects | — | Your items, grouped by status | — |
+| Projects | — | Your items, grouped by status | [The Projects pane](../guides/projects-pane.md) |
 | Tasks | — | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
 | Deliverables | — | Every item's `## Deliverables`, aggregated across the tree | [Deliverables pane](../guides/deliverables-pane.md) |
 | Performance | — | Live per-terminal memory, growth rate, and throttle state | [Performance pane](../guides/performance-pane.md) |

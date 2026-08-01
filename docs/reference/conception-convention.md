@@ -63,6 +63,22 @@ Five ordered values, highest-urgency first:
 | `backlog` | Possible; worth keeping, not committed |
 | `done` | Closed. Stays in its `YYYY-MM/` folder indefinitely. |
 
+The status lifecycle, as a flow:
+
+```
+   later ────┐
+   backlog ──┴── waiting states — join the active path when picked up
+
+            (work shipped / proposal drafted)   (signal: verified)
+   now ───────────────────────────────────▶ review ──────────────▶ done
+    ▲                                           │                    │
+    │ (needs rework)                            │ (reopen)           │
+    │                                           │                    │
+    └───────────────────────────────────────────┴────────────────────┘
+```
+
+`now` and `review` are the active path: work ships into `review`, and a positive signal (a merge, a verification) closes it to `done`. A negative signal sends it back to `now` for rework, and a `done` item reopens to `now` the same way. `later` and `backlog` are waiting states outside the active path — they hold an agreed-but-unscheduled item until it is picked up.
+
 The parser normalises the value to lowercase and preserves it verbatim — there is **no silent rewrite** to `backlog`. Unknown values log a parser warning, sort after every known value (per `statusOrder` in [`src/shared/projects.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/projects.ts)), and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) stick out until corrected. A `status:` line that is absent altogether defaults to `backlog` (no badge). See [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the status line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for legacy bold-prose READMEs. See [mutations](mutations.md).
 
 ## Steps

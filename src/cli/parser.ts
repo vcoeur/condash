@@ -59,6 +59,15 @@ export const BOOL_FLAGS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Nouns whose first positional is data, not a verb — `condash search <query>`
+ * is the only one. Without this carve-out the noun/verb split below eats the
+ * query's first word as the verb and `runSearch` sees an empty positional
+ * (`Usage: condash search <query>`). Keep in sync with the dispatch in
+ * `index.ts`, which routes every other noun through a verb-based runner.
+ */
+const VERBLESS_NOUNS: ReadonlySet<string> = new Set(['search']);
+
+/**
  * Parse argv (without the leading `node` + script). Returns positional in
  * order, flags by long name. Short flags supported: -h, -q, -v.
  */
@@ -128,10 +137,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   }
 
   const [noun = null, verb = null, ...rest] = positional;
+  const verbless = noun !== null && VERBLESS_NOUNS.has(noun);
   return {
     noun,
-    verb,
-    positional: rest,
+    verb: verbless ? null : verb,
+    positional: verbless && verb !== null ? [verb, ...rest] : rest,
     flags,
   };
 }
