@@ -123,7 +123,7 @@ A year later the whole thing is still a directory full of Markdown. Nothing was 
 
 Listing these keeps everyone honest:
 
-- **Multi-user collaboration.** Two developers editing the same README at the same time will clash on merge. Git handles it like any other conflict. If you need real-time multi-user, use something else.
+- **Real-time multi-user collaboration.** Two developers editing the same README at the same time will clash on merge; git handles it like any other conflict. What *does* work is a small team sharing one tree — each on their own checkout, one shared remote — with the sync sweeper fast-forwarding an ahead-only remote and refusing to push, not to commit, on divergence. If you need real-time multi-user, use something else.
 - **Web publishing.** The dashboard is a local desktop app. There's no "share a link with a stakeholder". Generate a PDF ([deliverables](../guides/deliverables.md)) or publish a static site from the tree.
 - **Time tracking, invoicing, dependency graphs.** Scope creep. Build a sibling tool, or use a real project-management SaaS for that part.
 - **Mobile.** Markdown in git works on mobile; `condash` itself is desktop-only.

@@ -77,7 +77,17 @@ The Electron build talks IPC end-to-end. There is no embedded HTTP server, no `c
 
 **Why**: a dual front door (HTTP + IPC) is twice the surface to keep coherent. The Tauri build needed HTTP because Tauri *is* an HTTP server wrapped in a webview; Electron has direct IPC, so the cost-benefit collapses.
 
+## No shared checkout / no cross-machine lock
+
+The sync lock is a pid-based file under the git dir (`condash-sync.lock`) — it arbitrates between processes on the **same machine** and nothing else. Two machines pointed at one shared checkout (NFS, SSHFS, a VM's shared folder) cannot be made safe: pids are not globally unique, and file locking over those filesystems is not reliable. Collaboration works by giving each machine its own checkout, all pushing to one shared remote — the sweeper fetches first, fast-forwards an ahead-only remote, and refuses to push (never to commit) on divergence.
+
+**Why**: a cross-machine lock is a distributed-systems problem; each collaborator rebasing their own checkout is a solved one. A second writer on a shared checkout would also reintroduce the three-way corruption the sweeper exists to dissolve.
+
 ## Revision log
+
+### 2026-08-01 — collaboration revamp
+
+The sweeper now fetches before pushing and fast-forwards an ahead-only remote, so a small team sharing one conception remote keeps every push a fast-forward; on a genuine divergence it commits local work but refuses to push until a human runs `git pull --rebase`. The "no shared checkout / no cross-machine lock" entry is new: multi-machine collaboration stays per-checkout, and the pid-based lock remains single-machine by design.
 
 ### 2026-04-30 — terminal pane scope revision
 
