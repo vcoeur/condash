@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Hoisted mutable holders so the vi.mock factories (also hoisted) can close
 // over them and each test can steer the config + syncRun result.
 const h = vi.hoisted(() => ({
-  config: { enabled: false, intervalMinutes: 10, quietPeriodSeconds: 90, push: true },
+  config: {
+    enabled: false,
+    intervalMinutes: 10,
+    quietPeriodSeconds: 90,
+    push: true,
+    integration: 'ff-only',
+  },
   throwConfig: false,
   syncRun: vi.fn(),
 }));
@@ -39,7 +45,13 @@ const MINUTE = 60_000;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(BASE);
-  h.config = { enabled: false, intervalMinutes: 10, quietPeriodSeconds: 90, push: true };
+  h.config = {
+    enabled: false,
+    intervalMinutes: 10,
+    quietPeriodSeconds: 90,
+    push: true,
+    integration: 'ff-only',
+  };
   h.throwConfig = false;
   h.syncRun.mockReset();
   h.syncRun.mockResolvedValue({ commits: [], pushed: false, pushError: null });
@@ -96,6 +108,7 @@ describe('auto-sync engine', () => {
       dryRun: false,
       push: true,
       quietPeriodSeconds: 90,
+      integration: 'ff-only',
     });
     const status = getAutoSyncStatus();
     expect(status.phase).toBe('idle');

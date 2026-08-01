@@ -204,6 +204,7 @@ async function sweep(path: string, config: AutoSyncConfig, myGeneration: number)
       dryRun: false,
       push: config.push,
       quietPeriodSeconds: config.quietPeriodSeconds,
+      integration: config.integration,
     });
     if (generation !== myGeneration) return;
     lastSweepAt = Date.now();

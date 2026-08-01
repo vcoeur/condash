@@ -47,6 +47,8 @@ export interface SyncOptions {
   dryRun: boolean;
   /** Push when the branch ends up ahead of its upstream. */
   push: boolean;
+  /** ff-only: fetch and fast-forward before pushing when the remote is ahead-only; off: legacy behavior, no fetch/integration. */
+  integration: 'off' | 'ff-only';
 }
 
 export interface SyncRunOptions extends SyncOptions {
@@ -349,14 +351,15 @@ type Integration = Pick<SyncReport, 'ahead' | 'behind' | 'diverged' | 'integrate
  * runs `git pull --rebase` — the sweeper itself must never rebase, because
  * that would rewrite the tree under a live session.
  *
- * Returns `null` when the run won't push (dry-run, `--no-push`), leaving
- * `pushState` on the legacy reporting path.
+ * Returns `null` when the run won't push (dry-run, `--no-push`, or
+ * `autoSync.integration: 'off'`), leaving `pushState` on the legacy
+ * reporting path.
  */
 async function integrateBeforePush(
   conceptionPath: string,
   options: SyncOptions,
 ): Promise<Integration | null> {
-  if (options.dryRun || !options.push) return null;
+  if (options.dryRun || !options.push || options.integration === 'off') return null;
 
   try {
     await fetchUpstream(conceptionPath);

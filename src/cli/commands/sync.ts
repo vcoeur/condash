@@ -15,6 +15,7 @@
  *  timer, a launchd agent, or cron — condash stays a CLI with no daemon. */
 import { relative } from 'node:path';
 import { syncCommit, syncRun, SyncRefusedError, type SyncReport } from '../../main/sync/run';
+import { readAutoSyncConfig } from '../../main/sync/auto-config';
 import { toPosix } from '../../shared/path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import {
@@ -64,11 +65,16 @@ async function runRun(args: ParsedArgs, ctx: OutputContext, conceptionPath: stri
   const quietPeriod = takeIntFlag(args, 'quiet-period', true);
   assertNoExtraFlags(args, NOUN_FLAGS);
 
+  // The machine's `autoSync.integration` key decides whether the sweep fetches
+  // before pushing. A config-read failure is fatal, as in `condash config`.
+  const { integration } = await readAutoSyncConfig(conceptionPath);
+
   const report = await refuseAsCliError(() =>
     syncRun(conceptionPath, {
       dryRun,
       push: !noPush,
       quietPeriodSeconds: quietPeriod ?? DEFAULT_QUIET_PERIOD_SECONDS,
+      integration,
     }),
   );
   emitReport(ctx, report);
@@ -95,8 +101,14 @@ async function runCommit(
   const candidate = await resolveSlug(conceptionPath, slug);
   const itemRelPath = toPosix(relative(conceptionPath, candidate.itemDir));
 
+  const { integration } = await readAutoSyncConfig(conceptionPath);
+
   const report = await refuseAsCliError(() =>
-    syncCommit(conceptionPath, itemRelPath, message.trim(), { dryRun, push: !noPush }),
+    syncCommit(conceptionPath, itemRelPath, message.trim(), {
+      dryRun,
+      push: !noPush,
+      integration,
+    }),
   );
   emitReport(ctx, report);
 }

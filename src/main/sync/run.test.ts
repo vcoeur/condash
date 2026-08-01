@@ -15,7 +15,12 @@ import { syncCommit, syncRun, SyncRefusedError } from './run';
 
 const HOUR_AGO = () => new Date(Date.now() - 60 * 60 * 1000);
 
-const RUN_DEFAULTS = { dryRun: false, push: false, quietPeriodSeconds: 90 };
+const RUN_DEFAULTS = {
+  dryRun: false,
+  push: false,
+  quietPeriodSeconds: 90,
+  integration: 'ff-only' as const,
+};
 
 let savedGlobal: string | undefined;
 let savedSystem: string | undefined;
@@ -652,6 +657,31 @@ describe('syncRun', () => {
     expect(report.pushed).toBe(false);
     expect(await subjects(root)).toEqual(['init']);
   });
+
+  it("honors integration: 'off' as legacy behavior — no fetch, the push fails instead", async () => {
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    await git(remote, 'init', '-q', '--bare', '-b', 'main');
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-q', '-u', 'origin', 'main');
+    // The remote is gone, exactly as in the fetch-failure test — but with the
+    // integration off, the sweep never fetches, so the missing remote surfaces
+    // as a rejected push instead of an integrate error. This is the crisp
+    // differentiator: 'ff-only' yields integrateError, 'off' yields pushError.
+    await fs.rm(remote, { recursive: true, force: true });
+
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, push: true, integration: 'off' });
+
+    expect(report.integrateError).toBeNull();
+    expect(report.behind).toBeNull();
+    expect(report.diverged).toBe(false);
+    expect(report.pushed).toBe(false);
+    expect(report.pushError).toBeTruthy();
+    expect(report.commits).toHaveLength(1);
+    expect(await subjects(root)).toContain('2026-07-10-alpha: sync');
+  });
 });
 
 describe('syncCommit', () => {
@@ -673,7 +703,7 @@ describe('syncCommit', () => {
       root,
       'projects/2026-07/2026-07-10-alpha',
       'Close alpha: shipped v1.2.0',
-      { dryRun: false, push: false },
+      { dryRun: false, push: false, integration: 'ff-only' },
     );
 
     expect(report.commits.map((c) => c.subject)).toEqual(['Close alpha: shipped v1.2.0']);
@@ -687,6 +717,7 @@ describe('syncCommit', () => {
       syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'nothing', {
         dryRun: false,
         push: false,
+        integration: 'ff-only',
       }),
     ).rejects.toThrow(/No changes under/);
   });
@@ -700,7 +731,11 @@ describe('syncCommit', () => {
     );
 
     await expect(
-      syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'x', { dryRun: false, push: false }),
+      syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'x', {
+        dryRun: false,
+        push: false,
+        integration: 'ff-only',
+      }),
     ).rejects.toThrow(/holds the lock/);
   });
 
@@ -726,7 +761,7 @@ describe('syncCommit', () => {
       root,
       'projects/2026-07/2026-07-10-alpha',
       'Close alpha: shipped v1.2.0',
-      { dryRun: false, push: true },
+      { dryRun: false, push: true, integration: 'ff-only' },
     );
 
     expect(report.commits.map((c) => c.subject)).toEqual(['Close alpha: shipped v1.2.0']);
