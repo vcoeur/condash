@@ -203,8 +203,13 @@ test('redesign — empty / no-key pending state', async () => {
 
     const pane = booted.window.locator('.dashboard-pane');
     // The no-key state is on screen: the pending cards, the no-key power dot and
-    // the guidance hint.
+    // the guidance hint. The power dot renders once the config view resolves;
+    // wait on the product-exposed condition (the dot with any valid data-power
+    // value) with headroom, then pin the no-key state we seeded.
     await expect(pane.locator('.dashboard-card-pending')).toHaveCount(2, { timeout: 10_000 });
+    await expect(pane.locator('.dashboard-topline-power[data-power]')).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(pane.locator('.dashboard-topline-power[data-power="nokey"]')).toBeVisible();
     await expect(
       pane.locator('.dashboard-pane-hint', { hasText: 'No DeepSeek API key' }),

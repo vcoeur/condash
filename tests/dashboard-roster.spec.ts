@@ -67,7 +67,15 @@ test('Dashboard lists every open tab even with no summaries', async () => {
     // Liveness without a key (Direction-B): the always-visible top status line
     // must reflect the no-key state — this is the "I see no update / what's going
     // on" fix, now carried by the top-line power dot + the guidance hint rather
-    // than the old status/overview strip.
+    // than the old status/overview strip. The power dot renders as soon as the
+    // config view resolves (it does not wait for the engine's first roster
+    // tick), so wait on the product-exposed condition — the dot carrying any
+    // valid data-power value — with headroom, then pin the no-key state we
+    // seeded. (Per release.md: a spec waits on a condition the product exposes,
+    // never on a duration.)
+    await expect(pane.locator('.dashboard-topline-power[data-power]')).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(pane.locator('.dashboard-topline-power[data-power="nokey"]')).toBeVisible();
     await expect(pane.locator('.dashboard-topline-power[data-power="nokey"]')).toContainText('On');
     // The actionable guidance line is shown (engine can't summarize without a key).
