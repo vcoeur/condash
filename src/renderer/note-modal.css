@@ -181,21 +181,6 @@
   border-radius: 3px;
 }
 
-.modal-confirm {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elevated));
-  color: var(--warn);
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--warn);
-  font-size: var(--text-xs);
-}
-
-.modal-confirm-message {
-  flex: 1;
-}
-
 .find-bar {
   display: flex;
   gap: 6px;

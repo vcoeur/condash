@@ -41,10 +41,19 @@ import { CustomHtmlBlockView, DiagramBlockView, WireframeBlockView } from './vis
 
 /** Container blocks + the type → component dispatch every level renders through. */
 
+/** How a rendered question form reaches the viewer's shared answer state: the
+ *  pending answers to show, and the edit callback. Threaded down through the
+ *  container blocks so a form nested in `columns` is as editable as a top-level
+ *  one, and every form's answers land in the same place. */
+export interface AnswerBinding {
+  pending: (block: PlanBlock) => Record<string, string | string[]> | undefined;
+  onChange: (block: PlanBlock, answers: Record<string, string | string[]>) => void;
+}
+
 export function BlockView(props: {
   block: PlanBlock;
   baseDir: string;
-  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+  answers?: AnswerBinding;
 }): JSX.Element {
   const data = <T,>(): T => props.block.data as unknown as T;
   switch (props.block.type) {
@@ -80,11 +89,7 @@ export function BlockView(props: {
       return <WireframeBlockView data={data<WireframeData>()} />;
     case 'columns':
       return (
-        <ColumnsBlock
-          data={data<ColumnsData>()}
-          baseDir={props.baseDir}
-          onSaveAnswers={props.onSaveAnswers}
-        />
+        <ColumnsBlock data={data<ColumnsData>()} baseDir={props.baseDir} answers={props.answers} />
       );
     case 'tabs':
     case 'code-tabs':
@@ -94,9 +99,14 @@ export function BlockView(props: {
       return (
         <QuestionFormBlock
           data={data<QuestionFormData>()}
-          onSave={
-            props.onSaveAnswers && props.block.type === 'question-form'
-              ? (answers) => props.onSaveAnswers!(props.block, answers)
+          pending={
+            props.answers && props.block.type === 'question-form'
+              ? props.answers.pending(props.block)
+              : undefined
+          }
+          onChange={
+            props.answers && props.block.type === 'question-form'
+              ? (answers) => props.answers!.onChange(props.block, answers)
               : undefined
           }
         />
@@ -113,16 +123,12 @@ export function BlockView(props: {
 export function BlockList(props: {
   blocks: readonly NestedBlockRef[];
   baseDir: string;
-  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+  answers?: AnswerBinding;
 }) {
   return (
     <For each={props.blocks}>
       {(block) => (
-        <BlockView
-          block={block as PlanBlock}
-          baseDir={props.baseDir}
-          onSaveAnswers={props.onSaveAnswers}
-        />
+        <BlockView block={block as PlanBlock} baseDir={props.baseDir} answers={props.answers} />
       )}
     </For>
   );
@@ -144,7 +150,7 @@ function columnsMustStack(data: ColumnsData): boolean {
 export function ColumnsBlock(props: {
   data: ColumnsData;
   baseDir: string;
-  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
+  answers?: AnswerBinding;
 }) {
   const stacked = createMemo(() => columnsMustStack(props.data));
   return (
@@ -155,11 +161,7 @@ export function ColumnsBlock(props: {
             <Show when={column.label}>
               <h4 class="plan-column-label">{column.label}</h4>
             </Show>
-            <BlockList
-              blocks={column.blocks}
-              baseDir={props.baseDir}
-              onSaveAnswers={props.onSaveAnswers}
-            />
+            <BlockList blocks={column.blocks} baseDir={props.baseDir} answers={props.answers} />
           </div>
         )}
       </For>

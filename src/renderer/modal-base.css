@@ -217,6 +217,24 @@
   font-size: var(--text-xs);
 }
 
+/* Inline Save / Discard / Cancel bar for an unsaved-changes gate — a strip
+   under the head rather than a stacked dialog, so the content it is about
+   stays visible behind it. Shared by the note and MDX viewers. */
+.modal-confirm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elevated));
+  color: var(--warn);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--warn);
+  font-size: var(--text-xs);
+}
+
+.modal-confirm-message {
+  flex: 1;
+}
+
 @keyframes modal-in {
   from {
     opacity: 0;

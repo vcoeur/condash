@@ -68,6 +68,13 @@ block as a labeled placeholder instead of blanking the document, and carries
 a **Rendered / Source** toggle. Wireframe and diagram HTML is sanitized and
 themed through `--wf-*` tokens, so screens read correctly in light and dark.
 
+Question-forms are answered in place, and the **document** saves as a whole:
+answer as many forms as you like, then save once with the head Save button or
+**Ctrl+S** — every pending answer is written back into the `.mdx` in a single
+pass. A dot next to the button marks unsaved answers, and closing the viewer
+with answers still pending offers Save / Discard / Cancel rather than dropping
+them.
+
 ![MDX viewer — a plan document with its PLAN pill, a table, a split diff with line annotations, a decision callout, and the approval question-form](../assets/screenshots/plan-document-light.png#only-light)
 ![MDX viewer — a plan document with its PLAN pill, a table, a split diff with line annotations, a decision callout, and the approval question-form](../assets/screenshots/plan-document-dark.png#only-dark)
 

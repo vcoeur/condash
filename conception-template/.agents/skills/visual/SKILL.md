@@ -150,12 +150,13 @@ usually has none. Non-answerable assumptions stay as concise `callout`s in the
 relevant section.
 
 condash renders the form **interactively**: the reader picks options (radio for
-`single`, checkboxes for `multi`) or types a `freeform` answer and clicks
-**Save**. The answer is written back onto each question as an `answer` field in
-the same `.mdx` — an option id, a list of option ids, or the free text — so a
-question and its answer live in one file and one git diff. On the next turn,
-re-read the note and act on the `answer` fields; never re-ask in chat what the
-form already answered.
+`single`, checkboxes for `multi`) or types a `freeform` answer, then saves the
+whole document once — the head **Save** button or **Ctrl+S**, which writes the
+answers from every form in the note in a single pass. Each answer is written
+back onto its question as an `answer` field in the same `.mdx` — an option id, a
+list of option ids, or the free text — so a question and its answer live in one
+file and one git diff. On the next turn, re-read the note and act on the
+`answer` fields; never re-ask in chat what the form already answered.
 
 ## Validate and view
 

@@ -12,7 +12,7 @@ import type {
   QuestionFormData,
   TableData,
 } from '@shared/plan-blocks/schemas';
-import { buildFileTree, tryParseJson, type FileTreeNode } from './data';
+import { buildFileTree, seedAnswers, tryParseJson, type FileTreeNode } from './data';
 import { RichTextBlock } from './prose';
 
 /** Structured data blocks: callout, table, checklist, JSON explorer,
@@ -387,66 +387,37 @@ export function FileTreeBlock(props: { data: FileTreeData }) {
 }
 
 /** Interactive question form: the reader picks answers (radio / checkbox /
- *  free text) and Save writes them back into the same `.mdx` via `onSave`.
- *  With no `onSave` it renders read-only, still reflecting any saved answers. */
+ *  free text) and every edit is reported up through `onChange`. The form holds
+ *  no state of its own — the viewer owns the answers for every form in the
+ *  document so one Save persists them all. With no `onChange` it renders
+ *  read-only, still reflecting any saved answers. */
 export function QuestionFormBlock(props: {
   data: QuestionFormData;
-  onSave?: (answers: Record<string, string | string[]>) => Promise<void>;
+  /** Pending answers for this form; falls back to what the note already holds. */
+  pending?: Record<string, string | string[]>;
+  onChange?: (answers: Record<string, string | string[]>) => void;
 }) {
-  const seed = (): Record<string, string | string[]> => {
-    const out: Record<string, string | string[]> = {};
-    for (const question of props.data.questions) {
-      if (question.answer !== undefined) out[question.id] = question.answer;
-    }
-    return out;
+  const answers = (): Record<string, string | string[]> =>
+    props.pending ?? seedAnswers(props.data.questions);
+  const change = (questionId: string, value: string | string[]): void => {
+    props.onChange?.({ ...answers(), [questionId]: value });
   };
-  const [answers, setAnswers] = createSignal<Record<string, string | string[]>>(seed());
-  const [saving, setSaving] = createSignal(false);
-  const [saved, setSaved] = createSignal(false);
-  const [failed, setFailed] = createSignal(false);
 
   const isChosen = (questionId: string, optionId: string): boolean => {
     const value = answers()[questionId];
     return Array.isArray(value) ? value.includes(optionId) : value === optionId;
   };
-  const chooseSingle = (questionId: string, optionId: string): void => {
-    setAnswers({ ...answers(), [questionId]: optionId });
-    setSaved(false);
-    setFailed(false);
-  };
   const toggleMulti = (questionId: string, optionId: string): void => {
     const current = answers()[questionId];
     const list = Array.isArray(current) ? current : [];
-    const next = list.includes(optionId)
-      ? list.filter((id) => id !== optionId)
-      : [...list, optionId];
-    setAnswers({ ...answers(), [questionId]: next });
-    setSaved(false);
-    setFailed(false);
-  };
-  const setText = (questionId: string, text: string): void => {
-    setAnswers({ ...answers(), [questionId]: text });
-    setSaved(false);
-    setFailed(false);
+    change(
+      questionId,
+      list.includes(optionId) ? list.filter((id) => id !== optionId) : [...list, optionId],
+    );
   };
   const textValue = (questionId: string): string => {
     const value = answers()[questionId];
     return typeof value === 'string' ? value : '';
-  };
-  const save = async (): Promise<void> => {
-    const handler = props.onSave;
-    if (!handler) return;
-    setSaving(true);
-    setFailed(false);
-    try {
-      await handler(answers());
-      setSaved(true);
-    } catch {
-      setSaved(false);
-      setFailed(true);
-    } finally {
-      setSaving(false);
-    }
   };
 
   return (
@@ -475,11 +446,11 @@ export function QuestionFormBlock(props: {
                       type={question.mode === 'multi' ? 'checkbox' : 'radio'}
                       name={`q-${question.id}`}
                       checked={isChosen(question.id, option.id)}
-                      disabled={!props.onSave}
+                      disabled={!props.onChange}
                       onChange={() =>
                         question.mode === 'multi'
                           ? toggleMulti(question.id, option.id)
-                          : chooseSingle(question.id, option.id)
+                          : change(question.id, option.id)
                       }
                     />
                     <span class="plan-option-body">
@@ -504,32 +475,14 @@ export function QuestionFormBlock(props: {
                 class="plan-answer-text"
                 rows={2}
                 placeholder={question.placeholder ?? 'Free-text answer'}
-                disabled={!props.onSave}
+                disabled={!props.onChange}
                 value={textValue(question.id)}
-                onInput={(event) => setText(question.id, event.currentTarget.value)}
+                onInput={(event) => change(question.id, event.currentTarget.value)}
               />
             </Show>
           </div>
         )}
       </For>
-      <Show when={props.onSave}>
-        <div class="plan-questions-actions">
-          <button
-            type="button"
-            class="plan-answer-save"
-            disabled={saving()}
-            onClick={() => void save()}
-          >
-            {saving() ? 'Saving…' : (props.data.submitLabel ?? 'Save answers')}
-          </button>
-          <Show when={saved()}>
-            <span class="plan-muted">Saved ✓</span>
-          </Show>
-          <Show when={failed()}>
-            <span class="plan-issue-warning">Save failed — try again</span>
-          </Show>
-        </div>
-      </Show>
     </div>
   );
 }
