@@ -19,6 +19,7 @@ Each guide answers one specific question.
 
 The left activity rail switches four **left-band** views and five **right-slot** working surfaces.
 
+- **[The Projects pane](projects-pane.md)** — the status stack, changing status, creating items, closing and reopening.
 - **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.
 - **[The Tasks pane](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
 - **[The Deliverables pane](deliverables-pane.md)** — every project's `## Deliverables`, aggregated and grouped by project.

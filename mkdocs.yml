@@ -100,6 +100,7 @@ nav:
     - Use the embedded terminal: guides/terminal.md
     - The Dashboard (tab summaries): guides/dashboard.md
     - Agent CLIs and model providers: guides/agent-clis-and-models.md
+    - The Projects pane: guides/projects-pane.md
     - The Code pane: guides/code-pane.md
     - The Tasks pane: guides/tasks-pane.md
     - The Deliverables pane: guides/deliverables-pane.md
