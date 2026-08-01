@@ -71,6 +71,28 @@ async function subjects(root: string): Promise<string[]> {
   return log.trim().split('\n').filter(Boolean);
 }
 
+/**
+ * Simulate a second session advancing the shared remote: clone the bare
+ * remote, commit a file under a local identity, and push. Returns the sha
+ * the second session pushed.
+ */
+async function advanceRemote(remote: string, root: string): Promise<string> {
+  const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-second-'));
+  try {
+    await git(root, 'clone', '-q', remote, clone);
+    await git(clone, 'config', 'user.email', 'test@example.com');
+    await git(clone, 'config', 'user.name', 'Test');
+    const file = join(clone, 'advance-remote.txt');
+    await fs.writeFile(file, 'advanced by a second session\n');
+    await git(clone, 'add', file);
+    await git(clone, 'commit', '-q', '-m', 'advance remote');
+    await git(clone, 'push', '-q', 'origin', 'main');
+    return (await git(clone, 'rev-parse', 'HEAD')).trim();
+  } finally {
+    await fs.rm(clone, { recursive: true, force: true });
+  }
+}
+
 describe('syncRun', () => {
   let root: string;
 
@@ -468,12 +490,122 @@ describe('syncRun', () => {
     await fs.rm(remote, { recursive: true, force: true });
   });
 
-  it('reports a rejected push as a warning and keeps the commits local', async () => {
+  it('fast-forwards a remote-only lead before committing, keeping the push a fast-forward', async () => {
     const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
-    // Someone else moved the remote on: our push is now non-fast-forward.
+
+    // A second session advances the remote while the root stays stale.
+    const remoteSha = await advanceRemote(remote, root);
+
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
+
+    expect(report.pushed).toBe(true);
+    expect(report.diverged).toBe(false);
+    expect(report.integrateError).toBeNull();
+    expect(report.behind).toBe(0);
+    expect(report.commits).toHaveLength(1);
+
+    // The remote's commit is now part of the root's history…
+    await expect(git(root, 'merge-base', '--is-ancestor', remoteSha, 'HEAD')).resolves.toBe('');
+    // …and the push reached the remote.
+    expect((await git(remote, 'log', '--format=%s', '-1')).trim()).toBe('2026-07-10-alpha: sync');
+
+    await fs.rm(remote, { recursive: true, force: true });
+  });
+
+  it('refuses to push on a genuine divergence, keeping the local commits', async () => {
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    await git(remote, 'init', '-q', '--bare', '-b', 'main');
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-q', '-u', 'origin', 'main');
+
+    // A local lead the remote does not have yet.
+    const lead = await writeProjectReadme(root, 'lead', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await settle(lead);
+    await syncRun(root, { ...RUN_DEFAULTS, push: false });
+
+    // A second session advances the remote.
+    await advanceRemote(remote, root);
+
+    // The sweep finds another settled change on top of the lead.
+    const next = await writeProjectReadme(root, 'next', {
+      date: '2026-07-11',
+      kind: 'project',
+      status: 'now',
+    });
+    await settle(next);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
+
+    expect(report.commits.length).toBeGreaterThanOrEqual(1);
+    expect(report.pushed).toBe(false);
+    expect(report.diverged).toBe(true);
+    expect(report.behind).toBeGreaterThanOrEqual(1);
+    expect(report.ahead).toBeGreaterThanOrEqual(1);
+    expect(report.integrateError).toBeNull();
+    expect(report.pushError).toBeNull();
+
+    await fs.rm(remote, { recursive: true, force: true });
+  });
+
+  it('commits the local edit even when the fast-forward is blocked by a dirty collision', async () => {
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    await git(remote, 'init', '-q', '--bare', '-b', 'main');
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-q', '-u', 'origin', 'main');
+
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await git(root, 'add', '.');
+    await git(root, 'commit', '-q', '-m', 'alpha');
+    await git(root, 'push', '-q', 'origin', 'main');
+
+    // A second session edits the same README and pushes.
+    const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-second-'));
+    try {
+      await git(root, 'clone', '-q', remote, clone);
+      await git(clone, 'config', 'user.email', 'test@example.com');
+      await git(clone, 'config', 'user.name', 'Test');
+      const relReadme = 'projects/2026-07/2026-07-10-alpha/README.md';
+      await fs.writeFile(join(clone, relReadme), 'remote edit\n');
+      await git(clone, 'add', '.');
+      await git(clone, 'commit', '-q', '-m', 'remote edit');
+      await git(clone, 'push', '-q', 'origin', 'main');
+    } finally {
+      await fs.rm(clone, { recursive: true, force: true });
+    }
+
+    // The root edits the same file, uncommitted.
+    await fs.writeFile(readme, 'local edit\n');
+    await settle(readme);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
+
+    expect(report.integrateError).toBeTruthy();
+    expect(report.integrateError).toMatch(/fast-forward/i);
+    expect(report.pushed).toBe(false);
+    expect(report.diverged).toBe(false);
+    expect(report.commits.length).toBeGreaterThanOrEqual(1);
+    // The local edit was still swept into a commit.
+    expect(await git(root, 'status', '--porcelain')).toBe('');
+
+    await fs.rm(remote, { recursive: true, force: true });
+  });
+
+  it('reports a failed fetch as a non-fatal integrate error and still commits', async () => {
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    await git(remote, 'init', '-q', '--bare', '-b', 'main');
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-q', '-u', 'origin', 'main');
+    // Someone else moved the remote on: our fetch now fails.
     await fs.rm(remote, { recursive: true, force: true });
 
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
@@ -483,8 +615,42 @@ describe('syncRun', () => {
 
     expect(report.commits).toHaveLength(1);
     expect(report.pushed).toBe(false);
-    expect(report.pushError).toBeTruthy();
+    expect(report.pushError).toBeNull();
+    expect(report.integrateError).toBeTruthy();
+    expect(report.integrateError).toMatch(/fetch failed/i);
     expect(await subjects(root)).toContain('2026-07-10-alpha: sync');
+  });
+
+  it('reports a null behind when there is no upstream, without an integrate error', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
+
+    expect(report.commits).toHaveLength(1);
+    expect(report.ahead).toBeNull();
+    expect(report.behind).toBeNull();
+    expect(report.diverged).toBe(false);
+    expect(report.integrateError).toBeNull();
+    expect(report.pushed).toBe(false);
+    expect(await subjects(root)).toContain('2026-07-10-alpha: sync');
+  });
+
+  it('reports legacy fields under --dry-run even with push requested', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, dryRun: true, push: true });
+
+    expect(report.dryRun).toBe(true);
+    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+    expect(report.commits[0].sha).toBeNull();
+    expect(report.ahead).toBeNull();
+    expect(report.behind).toBeNull();
+    expect(report.diverged).toBe(false);
+    expect(report.integrateError).toBeNull();
+    expect(report.pushed).toBe(false);
+    expect(await subjects(root)).toEqual(['init']);
   });
 });
 
@@ -536,5 +702,45 @@ describe('syncCommit', () => {
     await expect(
       syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'x', { dryRun: false, push: false }),
     ).rejects.toThrow(/holds the lock/);
+  });
+
+  it('commits the item under a real subject but refuses to push on divergence', async () => {
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    await git(remote, 'init', '-q', '--bare', '-b', 'main');
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-q', '-u', 'origin', 'main');
+
+    // A local lead the remote does not have yet.
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+    await syncRun(root, { ...RUN_DEFAULTS, push: false });
+
+    // A second session advances the remote.
+    await advanceRemote(remote, root);
+
+    // A new settled change under the item, committed via syncCommit.
+    await fs.appendFile(readme, '# more\n');
+    await settle(readme);
+
+    const report = await syncCommit(
+      root,
+      'projects/2026-07/2026-07-10-alpha',
+      'Close alpha: shipped v1.2.0',
+      { dryRun: false, push: true },
+    );
+
+    expect(report.commits.map((c) => c.subject)).toEqual(['Close alpha: shipped v1.2.0']);
+    expect(report.diverged).toBe(true);
+    expect(report.pushed).toBe(false);
+    expect(report.behind).toBeGreaterThanOrEqual(1);
+    expect(report.ahead).toBeGreaterThanOrEqual(1);
+    expect(report.integrateError).toBeNull();
+    expect(await subjects(root)).toEqual([
+      'Close alpha: shipped v1.2.0',
+      '2026-07-10-alpha: sync',
+      'init',
+    ]);
+
+    await fs.rm(remote, { recursive: true, force: true });
   });
 });
