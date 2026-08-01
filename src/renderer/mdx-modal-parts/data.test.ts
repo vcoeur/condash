@@ -3,8 +3,11 @@ import { parsePlanMdx } from '../../shared/plan-blocks/parse-mdx';
 import type { QuestionFormData } from '../../shared/plan-blocks/schemas';
 import {
   annotatedLines,
+  answersEqual,
+  applyAllAnswers,
   applyAnswers,
   buildFileTree,
+  collectQuestionForms,
   computeSplitRows,
   computeUnifiedRows,
   findQuestionFormSpan,
@@ -12,6 +15,7 @@ import {
   parseLineRange,
   questionFormOrdinal,
   scopeCss,
+  seedAnswers,
   serializeLiteral,
   tryParseJson,
 } from './data';
@@ -286,5 +290,118 @@ describe('question-form answers', () => {
     expect(next).toContain(
       '<QuestionForm questions={[{ id: "n1", title: "Nested", mode: "freeform" }]} />',
     );
+  });
+});
+
+describe('whole-document answer save', () => {
+  // Three id-less forms — the reported loss: answering in more than one and
+  // saving wrote only the form whose own Save button was pressed.
+  const threeForms = [
+    '---',
+    'kind: plan',
+    '---',
+    '',
+    '### First',
+    '<QuestionForm questions={[{ id: "a1", title: "One", mode: "freeform" }]} />',
+    '',
+    '### Second',
+    '<QuestionForm questions={[{ id: "b1", title: "Two", mode: "freeform" }]} />',
+    '',
+    '### Third',
+    '<QuestionForm questions={[{ id: "c1", title: "Three", mode: "freeform" }]} />',
+    '',
+  ].join('\n');
+
+  const formsOf = (source: string) =>
+    parsePlanMdx(source).blocks.filter((block) => block.type === 'question-form');
+
+  const pendingFor = (source: string, answers: Record<string, string>[]) =>
+    collectQuestionForms(parsePlanMdx(source).blocks)
+      .map(({ block, ordinal }) => ({
+        blockId: block.id,
+        questions: (block.data as unknown as QuestionFormData).questions,
+        answers: answers[ordinal],
+        ordinal,
+      }))
+      .filter((form) => form.answers !== undefined);
+
+  it('writes every pending form in one pass', () => {
+    const pending = pendingFor(threeForms, [{ a1: 'first' }, { b1: 'second' }, { c1: 'third' }]);
+    const applied = applyAllAnswers(threeForms, pending);
+    expect(applied.ok).toBe(true);
+    const saved = formsOf((applied as { ok: true; source: string }).source);
+    expect(
+      saved.map((form) => (form.data as unknown as QuestionFormData).questions[0].answer),
+    ).toEqual(['first', 'second', 'third']);
+  });
+
+  it('leaves the forms that have no pending answers untouched', () => {
+    const pending = pendingFor(threeForms, [undefined!, { b1: 'only me' }, undefined!]);
+    const applied = applyAllAnswers(threeForms, pending) as { ok: true; source: string };
+    expect(applied.ok).toBe(true);
+    const saved = formsOf(applied.source);
+    expect((saved[0].data as unknown as QuestionFormData).questions[0].answer).toBeUndefined();
+    expect((saved[1].data as unknown as QuestionFormData).questions[0].answer).toBe('only me');
+    expect((saved[2].data as unknown as QuestionFormData).questions[0].answer).toBeUndefined();
+    // Untouched forms keep their exact source text — a save rewrites only what changed.
+    expect(applied.source).toContain(
+      '<QuestionForm questions={[{ id: "a1", title: "One", mode: "freeform" }]} />',
+    );
+  });
+
+  it('aborts on the form it cannot locate instead of writing a partial document', () => {
+    const pending = [
+      ...pendingFor(threeForms, [{ a1: 'first' }]),
+      { blockId: 'ghost', questions: [], answers: {}, ordinal: 9 },
+    ];
+    expect(applyAllAnswers(threeForms, pending)).toEqual({ ok: false, blockId: 'ghost' });
+  });
+
+  it('collectQuestionForms numbers forms in source order, nested ones included', () => {
+    const nested = [
+      '---',
+      'kind: plan',
+      '---',
+      '',
+      '<Columns>',
+      '<Column label="L">',
+      '',
+      '<QuestionForm questions={[{ id: "n1", title: "Nested", mode: "freeform" }]} />',
+      '',
+      '</Column>',
+      '</Columns>',
+      '',
+      '<QuestionForm questions={[{ id: "t1", title: "Top", mode: "freeform" }]} />',
+      '',
+    ].join('\n');
+    const forms = collectQuestionForms(parsePlanMdx(nested).blocks);
+    expect(forms.map((form) => form.ordinal)).toEqual([0, 1]);
+    expect(
+      forms.map((form) => (form.block.data as unknown as QuestionFormData).questions[0].id),
+    ).toEqual(['n1', 't1']);
+  });
+
+  it('seedAnswers/answersEqual make a saved form read as clean', () => {
+    const saved = applyAnswers(
+      threeForms,
+      formsOf(threeForms)[0].id,
+      (formsOf(threeForms)[0].data as unknown as QuestionFormData).questions,
+      undefined,
+      { a1: 'first' },
+      0,
+    )!;
+    const questions = (formsOf(saved)[0].data as unknown as QuestionFormData).questions;
+    expect(seedAnswers(questions)).toEqual({ a1: 'first' });
+    // The draft the reader still holds matches what the note now says.
+    expect(answersEqual({ a1: 'first' }, seedAnswers(questions))).toBe(true);
+    expect(answersEqual({ a1: 'changed' }, seedAnswers(questions))).toBe(false);
+  });
+
+  it('answersEqual treats an absent answer and an empty one as the same', () => {
+    expect(answersEqual({}, { q: '' })).toBe(true);
+    expect(answersEqual({}, { q: [] })).toBe(true);
+    expect(answersEqual({ q: '  ' }, {})).toBe(true);
+    expect(answersEqual({ q: ['x'] }, {})).toBe(false);
+    expect(answersEqual({ q: ['x', 'y'] }, { q: ['y', 'x'] })).toBe(false);
   });
 });

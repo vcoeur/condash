@@ -381,19 +381,17 @@ function questionFormSpans(source: string): { start: number; end: number }[] {
   return spans;
 }
 
-/** Doc-order index of the question-form block `id` among **all** question-form
- *  blocks (recursing into `columns`/`tabs` containers), or -1 when absent. This
- *  matches the source-span order `questionFormSpans` scans, so it locates the
- *  right form even when several share no explicit `id=` in the source. */
-export function questionFormOrdinal(blocks: readonly PlanBlock[] | undefined, id: string): number {
-  let index = -1;
-  let found = -1;
+/** Every question-form block in document order, each with the ordinal the
+ *  source scanner uses. Recurses into `columns`/`tabs` containers so the
+ *  ordinals match the `<QuestionForm …/>` span order `questionFormSpans`
+ *  scans, even for forms that carry no explicit `id=` in the source. */
+export function collectQuestionForms(
+  blocks: readonly PlanBlock[] | undefined,
+): { block: PlanBlock; ordinal: number }[] {
+  const found: { block: PlanBlock; ordinal: number }[] = [];
   const walk = (list: readonly PlanBlock[]): void => {
     for (const block of list) {
-      if (block.type === 'question-form') {
-        index += 1;
-        if (block.id === id) found = index;
-      }
+      if (block.type === 'question-form') found.push({ block, ordinal: found.length });
       const data = block.data as { columns?: unknown; tabs?: unknown };
       for (const group of [data.columns, data.tabs]) {
         if (!Array.isArray(group)) continue;
@@ -405,6 +403,12 @@ export function questionFormOrdinal(blocks: readonly PlanBlock[] | undefined, id
   };
   walk(blocks ?? []);
   return found;
+}
+
+/** Doc-order index of the question-form block `id` among **all** question-form
+ *  blocks, or -1 when absent. See `collectQuestionForms`. */
+export function questionFormOrdinal(blocks: readonly PlanBlock[] | undefined, id: string): number {
+  return collectQuestionForms(blocks).find((form) => form.block.id === id)?.ordinal ?? -1;
 }
 
 /** Char span of the `<QuestionForm …/>` element to write, or null when it can't
@@ -457,4 +461,72 @@ export function applyAnswers(
   if (submitLabel !== undefined) parts.push(`submitLabel={${JSON.stringify(submitLabel)}}`);
   const replacement = `<QuestionForm ${parts.join(' ')} />`;
   return source.slice(0, span.start) + replacement + source.slice(span.end);
+}
+
+/** The answers a freshly-parsed form starts from — the `answer` already written
+ *  into each question. Both the form block (as its initial value) and the
+ *  viewer's dirty check (as the baseline) derive from this one function. */
+export function seedAnswers(questions: readonly Question[]): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const question of questions) {
+    if (question.answer !== undefined) out[question.id] = question.answer;
+  }
+  return out;
+}
+
+/** Whether two answer maps hold the same answers. An absent key and an empty
+ *  value are the same thing — both clear the question — so clearing a never-set
+ *  answer doesn't read as an unsaved edit. */
+export function answersEqual(
+  a: Record<string, string | string[]>,
+  b: Record<string, string | string[]>,
+): boolean {
+  const filled = (value: string | string[] | undefined): string[] => {
+    if (value === undefined) return [];
+    if (Array.isArray(value)) return [...value];
+    return value.trim() === '' ? [] : [value];
+  };
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const left = filled(a[key]);
+    const right = filled(b[key]);
+    if (left.length !== right.length || left.some((item, i) => item !== right[i])) return false;
+  }
+  return true;
+}
+
+/** One form's pending answers, as `applyAllAnswers` consumes them. */
+export interface PendingFormAnswers {
+  blockId: string;
+  questions: readonly Question[];
+  submitLabel?: string;
+  answers: Record<string, string | string[]>;
+  ordinal?: number;
+}
+
+/**
+ * Write every pending form's answers into one new document source, so a single
+ * note write persists the whole document's answers instead of one form's.
+ * Each step re-scans the source it is handed, and rewriting a form never adds
+ * or removes a `<QuestionForm>` element, so the ordinals stay valid across the
+ * chain. All-or-nothing: a form that can't be located aborts with its id rather
+ * than writing a partial document. Pure — no IO.
+ */
+export function applyAllAnswers(
+  source: string,
+  pending: readonly PendingFormAnswers[],
+): { ok: true; source: string } | { ok: false; blockId: string } {
+  let next = source;
+  for (const form of pending) {
+    const applied = applyAnswers(
+      next,
+      form.blockId,
+      form.questions,
+      form.submitLabel,
+      form.answers,
+      form.ordinal,
+    );
+    if (applied === null) return { ok: false, blockId: form.blockId };
+    next = applied;
+  }
+  return { ok: true, source: next };
 }

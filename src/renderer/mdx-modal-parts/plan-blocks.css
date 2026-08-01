@@ -570,28 +570,6 @@
   border-radius: var(--radius-md);
   resize: vertical;
 }
-.plan-questions-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-}
-.plan-answer-save {
-  padding: 5px 12px;
-  font-size: var(--text-sm);
-  color: var(--accent);
-  background: transparent;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.plan-answer-save:hover {
-  background: var(--bg-elevated);
-}
-.plan-answer-save:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 
 /* -- invalid placeholder -- */
 .plan-invalid {

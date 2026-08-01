@@ -166,7 +166,9 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
     fields: 'questions, submitLabel?',
     description:
       'An open-questions form (single/multi/freeform, recommended options). condash renders it ' +
-      'interactively: the reader answers in the viewer and Save writes each answer back into the same .mdx.',
+      'interactively: the reader answers in the viewer, and one Save (head button or Ctrl+S) ' +
+      'writes the answers from every form in the document back into the same .mdx. submitLabel ' +
+      'is still round-tripped but no longer labels a per-form button.',
   },
   {
     type: 'custom-html',
