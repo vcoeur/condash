@@ -44,7 +44,10 @@ export type AutoSyncPhase =
   /** A sweep is in progress. */
   | 'syncing'
   /** The last sweep threw (mid-merge/conflict, or an unexpected error). */
-  | 'error';
+  | 'error'
+  /** The last sweep could not integrate with upstream (diverged, or the fetch
+   *  / fast-forward failed) — the push was refused and a human reconciles. */
+  | 'integration-needed';
 
 /** What the last completed sweep did — shown in the Settings status line. */
 export interface AutoSyncLastResult {
@@ -54,6 +57,10 @@ export interface AutoSyncLastResult {
   pushed: boolean;
   /** A skipped/rejected push message, else null. */
   pushError: string | null;
+  /** True when the sweep found the branch diverged from its upstream. */
+  diverged: boolean;
+  /** A fetch / fast-forward failure that skipped the push, else null. */
+  integrateError: string | null;
 }
 
 /** One recent commit on the conception checkout, for the status-bar

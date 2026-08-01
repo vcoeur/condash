@@ -99,7 +99,13 @@ describe('auto-sync engine', () => {
     });
     const status = getAutoSyncStatus();
     expect(status.phase).toBe('idle');
-    expect(status.lastResult).toEqual({ committed: 2, pushed: true, pushError: null });
+    expect(status.lastResult).toEqual({
+      committed: 2,
+      pushed: true,
+      pushError: null,
+      diverged: false,
+      integrateError: null,
+    });
     expect(status.nextRunAt).toBe(BASE + 11 * MINUTE + 10 * MINUTE);
   });
 
@@ -122,7 +128,75 @@ describe('auto-sync engine', () => {
     h.syncRun.mockResolvedValue({ commits: [{}], pushed: true, pushError: null });
     await syncNow();
     expect(h.syncRun).toHaveBeenCalledTimes(1);
-    expect(getAutoSyncStatus().lastResult).toEqual({ committed: 1, pushed: true, pushError: null });
+    expect(getAutoSyncStatus().lastResult).toEqual({
+      committed: 1,
+      pushed: true,
+      pushError: null,
+      diverged: false,
+      integrateError: null,
+    });
+  });
+
+  it('publishes integration-needed when the sweep finds a divergence', async () => {
+    await setSyncConception(CONCEPTION);
+    h.config = { ...h.config, enabled: true };
+    await tick(CONCEPTION); // baseline
+    h.syncRun.mockResolvedValue({
+      commits: [{}],
+      pushed: false,
+      pushError: null,
+      diverged: true,
+      integrateError: null,
+    });
+    vi.setSystemTime(BASE + 11 * MINUTE);
+    await tick(CONCEPTION);
+    const status = getAutoSyncStatus();
+    expect(status.phase).toBe('integration-needed');
+    expect(status.lastError).toBeNull();
+    expect(status.lastResult).toEqual({
+      committed: 1,
+      pushed: false,
+      pushError: null,
+      diverged: true,
+      integrateError: null,
+    });
+  });
+
+  it('republishes when the integrateError changes between sweeps', async () => {
+    await setSyncConception(CONCEPTION);
+    h.config = { ...h.config, enabled: true };
+    await tick(CONCEPTION); // baseline at BASE, due at BASE + 10 min
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      pushed: false,
+      pushError: null,
+      diverged: false,
+      integrateError: 'fetch failed: network down',
+    });
+    vi.setSystemTime(BASE + 11 * MINUTE);
+    await tick(CONCEPTION);
+    expect(getAutoSyncStatus().lastResult?.integrateError).toBe('fetch failed: network down');
+
+    // The next sweep fails differently — a changed integrateError must trigger
+    // a fresh publish (sameResult keys on it).
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      pushed: false,
+      pushError: null,
+      diverged: false,
+      integrateError: 'fetch failed: auth denied',
+    });
+    vi.setSystemTime(BASE + 21 * MINUTE);
+    await tick(CONCEPTION);
+    const status = getAutoSyncStatus();
+    expect(status.phase).toBe('integration-needed');
+    expect(status.lastResult).toEqual({
+      committed: 0,
+      pushed: false,
+      pushError: null,
+      diverged: false,
+      integrateError: 'fetch failed: auth denied',
+    });
   });
 
   it('does nothing once torn down', async () => {

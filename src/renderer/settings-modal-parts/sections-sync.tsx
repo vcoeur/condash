@@ -40,6 +40,8 @@ function phaseLabel(status: AutoSyncStatus): string {
       return 'Committing…';
     case 'error':
       return 'Last sweep failed';
+    case 'integration-needed':
+      return 'Integration needed';
     case 'idle':
       return status.lastRunAt ? 'Idle' : 'Waiting for first sweep';
   }
@@ -166,6 +168,14 @@ export function SyncSection(props: SyncSectionProps): JSX.Element {
                     {result.pushed ? ', pushed' : ''} {relTime(current.lastRunAt)}
                   </>
                 )}
+              </Show>
+              <Show when={current.lastResult?.diverged}>
+                <span class="settings-dashboard-test-error">
+                  {' · Integration needed — run git pull --rebase'}
+                </span>
+              </Show>
+              <Show when={current.lastResult?.integrateError} keyed>
+                {(error) => <span class="settings-dashboard-test-error"> · ✗ {error}</span>}
               </Show>
               <Show when={current.lastError} keyed>
                 {(error) => <span class="settings-dashboard-test-error"> · ✗ {error}</span>}
