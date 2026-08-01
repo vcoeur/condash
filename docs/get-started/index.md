@@ -294,11 +294,28 @@ Not on the rail:
 
 ### The CLI you already installed
 
-The same binary is a command-line tool against the same tree. Nothing extra to install:
+The same binary is a command-line tool against the same tree. Nothing extra to install — these six cover a normal day:
 
 ```bash
+# What's active right now?
 condash projects list --status now,review
-condash search "session cookie"
+
+# Create a new item without touching the dashboard.
+condash projects create --kind project --slug <slug> --title "<Title>" --apps <app>
+
+# Find anything, across projects, knowledge, resources, and skills.
+condash search "<query>"
+
+# Materialise a branch-isolated checkout at <worktrees_path>/<branch>/<repo>.
+condash worktrees setup <branch>
+
+# Which management skills are installed in this tree?
+condash skills list
+
+# Read one config key — e.g. worktrees_path.
+condash config get <key>
+
+# Machine-readable output, for scripts and jq.
 condash projects list --json | jq '.data[]'
 ```
 
