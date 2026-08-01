@@ -23,6 +23,20 @@ The skills are **editorial only**. Every mechanical step shells out to `condash`
 
 The pre-reframe `/tidy` and `/skills` skills were dropped: tidy's audits are now reachable from `/knowledge verify` (which wraps `condash audit` + `condash knowledge verify`), and `/skills` was a thin wrapper over `condash skills install` — call the CLI directly.
 
+`condash skills list`, `status`, and `install` track only the five shipped skills. A conception-local skill — a hand-written `.agents/skills/<name>/SKILL.md` that condash doesn't ship — is not tracked and never appears in `skills list` / `status`; it still works as a slash-command skill and shows in the Skills pane.
+
+## Which skill should I use?
+
+| Task | Slash command | Guide |
+|---|---|---|
+| Manage projects, incidents, documents + worktrees | `/projects` | [Guides index](../guides/index.md) · [worktrees tutorial](../tutorials/worktrees.md) |
+| Durable reference notes in `knowledge/` | `/knowledge` | [The knowledge tree](../guides/knowledge-tree.md) |
+| App identity / `#handle` registry | `/applications` | [Applications and handles](../guides/applications-and-handles.md) |
+| Open a PR | `/pr` | your `/git pr` rules (body shape — [the `/pr` section](#pr)) |
+| Visual notes (`.mdx` plans / reviews / designs) | `/visual` | [Visual notes (plans, reviews, designs)](../guides/plan-documents.md) |
+
+Two *tooling* surfaces sit beside the slash commands: the **Skills pane** (a read-only viewer of everything under `.agents/skills/`) and the CLI (`condash skills install` / `status` / `validate`). The pane is for browsing; the CLI installs, reports install state, and lints.
+
 ## `/projects`
 
 Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matching CLI verbs through `condash projects ...`.

@@ -284,7 +284,6 @@ function printHelp(verb: string | null): void {
       );
       return;
     case 'list':
-    case null:
       process.stdout.write(
         renderHelp([
           'condash config list [--effective|--global]',

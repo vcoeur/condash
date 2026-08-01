@@ -11,6 +11,7 @@
 
 import { promises as fs } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { CliError, ExitCodes } from '../output';
 import { resolveConception } from '../conception';
 import { isIgnoredSourceArtifact } from '../../shared/source-artifacts';
@@ -104,19 +105,20 @@ async function collectFilesRelative(dir: string): Promise<string[]> {
   return out;
 }
 
+/** Leading `---` YAML frontmatter block (the same fence shape header.ts uses). */
+const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
 /** Pull the `description:` value out of a SKILL.md YAML frontmatter block. */
 async function extractDescriptionFromSkillMd(skillMdPath: string): Promise<string | null> {
   try {
     const raw = await fs.readFile(skillMdPath, 'utf8');
-    const match = raw.match(/^description:\s*(.+?)\s*$/m);
+    const match = FRONTMATTER_RE.exec(raw);
     if (!match) return null;
-    let value = match[1].trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
+    const parsed: unknown = parseYaml(match[1]);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const description = (parsed as Record<string, unknown>).description;
+    if (typeof description !== 'string') return null;
+    let value = description.trim();
     if (value.length > 110) value = value.slice(0, 109) + '…';
     return value;
   } catch {

@@ -60,4 +60,6 @@ The pane uses it to flag two states:
 
 The flags are informational only — local edits are never blocked. They exist so a quick scan tells you where your customisations are and warns you before an upstream re-install would revert them.
 
+The manifest covers only what condash shipped. A conception-local skill — a hand-written `.agents/skills/<name>/SKILL.md` condash never installed — has no manifest entry and no chips, and stays invisible to `condash skills list` / `status`; it still renders in the pane and works as a slash-command skill.
+
 → The CLI that lays these down: **[CLI → `skills`](../reference/cli.md#skills)**. What condash ships and how installs behave: **[Extend the management skills](skill-extensions.md)**.
