@@ -40,11 +40,11 @@ Below the rail sit two buttons — **Open settings.json** and **Open .condash/se
 | Appearance | Personal | `theme`, `uiFonts`, `cardMinWidth` | — |
 | Terminal | Personal | `terminal` | [Embedded terminal](terminal.md) |
 | Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
-| Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
+| Open with | Personal | `open_with` | [Repositories and open-with launchers](repositories-and-open-with.md) |
 | Dashboard | Personal | `dashboard` | [The Dashboard](dashboard.md) |
 | Auto-commit | Personal | `autoSync` | [Auto-commit](auto-commit.md) |
-| Workspace & paths | This conception | `workspace_path`, `worktrees_path`, `long_lived_branches` | [Repositories and open-with buttons](repositories-and-open-with.md) |
-| Repositories | This conception | `repositories` | [Repositories and open-with buttons](repositories-and-open-with.md) |
+| Workspace & paths | This conception | `workspace_path`, `worktrees_path`, `long_lived_branches` | [Repositories and open-with launchers](repositories-and-open-with.md) |
+| Repositories | This conception | `repositories` | [Repositories and open-with launchers](repositories-and-open-with.md) |
 
 App identity (`#handle`, `retired_apps`, `aliases`) is edited inline in the **Repositories** section — see **[Applications and handles](applications-and-handles.md)**.
 

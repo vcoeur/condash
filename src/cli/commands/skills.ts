@@ -74,7 +74,6 @@ export async function runSkills(
 function printHelp(verb: string | null): void {
   switch (verb) {
     case 'list':
-    case null:
       process.stdout.write(
         renderHelp([
           'condash skills list [--dest <path>]',

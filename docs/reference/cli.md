@@ -40,6 +40,8 @@ A typo (`condash projct list`) reports an unknown noun and exits with code 2 (us
 
 `plans` is accepted as a **deprecated alias** for [`mdx`](#mdx) — it prints `warning: condash plans was renamed — use condash mdx` on stderr and forwards to the same handler. It was renamed in v4.81.0 and will be removed after one release; use `mdx`.
 
+`code` is **not** a CLI noun: `condash code` reports `Unknown noun: code` and exits 2. The Code pane is GUI-only — the CLI equivalent is [`worktrees`](#worktrees) (`setup`, `check`, `mismatch`, `remove`), [`repos list`](#repos), and `audit --include worktrees` for the same lifecycle checks. And `condash --list` does not exist either: `--list` is not a valid flag, so there is no way to ask the CLI to enumerate its nouns — `condash help` prints them.
+
 ## Universal flags
 
 Available on every noun:

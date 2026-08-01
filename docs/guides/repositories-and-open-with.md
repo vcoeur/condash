@@ -1,13 +1,15 @@
 ---
-title: Repositories and open-with buttons · condash guide
-description: Point condash at your workspace, list the repos surfaced on the Code pane, and wire the three launcher slots to your own editor and terminal.
+title: Repositories and open-with launchers · condash guide
+description: Configure the workspace and worktrees paths, the repositories list the Code pane renders, and the three open-with launcher slots that open your editor and terminal — the JSON behind the Code pane.
 ---
 
-# Repositories and open-with buttons
+# Repositories and open-with launchers
 
 > **Audience.** Daily user.
 
 **When to read this.** The **Code** pane shows the wrong repos, the order isn't what you want, or the "open in IDE" button launches the wrong thing (or nothing).
+
+> This is the **configuration** page for the Code pane. What the pane *looks* like — cards, branch rows, pinning, worktree rows — is on [The Code pane](code-pane.md); here is where the JSON lives.
 
 The workspace, worktrees, and repository settings on this page live in `<conception_path>/.condash/settings.json` (legacy filenames `condash.json` and `configuration.json` are read as fallbacks). The `open_with` launcher slots are a **personal** setting and live in the per-machine `settings.json` instead. The two files have **disjoint** schemas — each key has exactly one home, so there is no override or merge between them.
 
@@ -47,24 +49,13 @@ Branch names `condash worktrees remove` must **never** delete. Glob wildcards `*
 }
 ```
 
-Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order, flowing left to right and then down once the pane is wide enough for more than one column — so keep the repos you touch most often first.
+Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order — see [The Code pane](code-pane.md) for how cards, rows, and worktrees display. Keep the repos you touch most often first.
 
-![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-dark.png#only-dark)
-
-Each repo renders as its own top-level card — including any sub-repos declared for it (see [Submodules in a monorepo](#submodules-in-a-monorepo) below), which are cards alongside the parent rather than children nested under it. A sub-repo card is marked by the `submodule` tag in its header and by the parent-rooted path on its path chip; nothing groups a family by colour or border. The `#handle` pill's colour is hashed from the handle alone, so it is stable for a given repo but carries no parent/child meaning — in the shot above `#helio` and `#parser` happen to land on the same palette slot while `#search`, helio's other submodule, matches the unrelated `#helio-docs`. Worktrees for a given repo or sub-repo are rows inside that repo's own card.
+Each repo renders as its own top-level card — including any sub-repos declared for it (see [Submodules in a monorepo](#submodules-in-a-monorepo) below), which are cards alongside the parent rather than children nested under it.
 
 ## Pinning branches across cards
 
-The **primary worktree row** (the checkout under `workspace_path`) is always visible on every card and gets a subtly tinted background so it reads as the always-on reference row.
-
-Click the **Branches** button at the top of the Code pane to open the pin selector. Two quick-action buttons in the popover header switch between three explicit modes:
-
-- **All (sticky)** — show every branch on every card *and* auto-pin any branch that appears later (e.g. one you've just created). The default on a fresh install.
-- **None** — show only the main row on every card.
-- **Custom** — ticking an individual branch implicitly drops out of sticky-all into a hand-picked set. Each card then renders just its primary row plus any rows whose branch is in your pinned set, and is a silent no-op on cards that don't carry those branches.
-
-The mode and selection persist per-machine in `settings.json` under `selectedBranches` + `branchFilterStickyAll`, so a coffee break or a reboot doesn't clear them. Branches that match a conception project with status `now` or `review` carry a small "project" badge in the dropdown so the most likely picks stand out from ad-hoc local branches.
+The pin selector's modes, the `selectedBranches` + `branchFilterStickyAll` persistence, and the "project" badge are described on [The Code pane](code-pane.md#pinning-branches-across-cards) — they are display behaviour, not configuration.
 
 ## Submodules in a monorepo
 
@@ -81,13 +72,7 @@ If you work in a monorepo where different subdirectories are edited independentl
 }
 ```
 
-Each declared submodule renders as a **top-level card** alongside its parent, not as a collapsible child under it. Declaration order puts a parent immediately before its own submodules, so the family stays contiguous in the grid; the card itself is marked only by the `submodule` tag in its header and by its parent-rooted path. Submodules are always rendered when they exist.
-
-Each row in the family (parent or submodule) keeps its own dirty count, its own set of `open_with` buttons, its own [inline runner](../reference/inline-runner.md), and its own nested worktrees. A repo without declared submodules simply renders as a family of one.
-
-If a configured submodule path is missing in one of a repo's worktrees (the worktree predates the submodule's addition, or someone deleted the subdir), condash surfaces a greyed **"missing"** row in that family rather than silently omitting it — that way the visual family stays consistent across checkouts and the gap is obvious.
-
-A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name": "apps/web", "run": "make dev"}`). A plain string entry means "treat the whole repo as one unit".
+A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name": "apps/web", "run": "make dev"}`). A plain string entry means "treat the whole repo as one unit". Each declared submodule renders as a **top-level card** alongside its parent (see [The Code pane](code-pane.md#submodules-in-a-monorepo) for how the family displays); a repo without declared submodules simply renders as a family of one.
 
 ## Other keys a repository entry accepts
 

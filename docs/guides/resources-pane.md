@@ -49,7 +49,7 @@ A button row at the bottom of each card exposes:
     - `.mdx` → the **visual-note block viewer** — typed blocks (wireframes, diffs, data models, …) with the same Rendered / Source toggle. See [Visual notes](plan-documents.md).
     - Image (raster or SVG) → the image viewer modal, fit-to-window.
     - Audio, video, archives and binaries have no in-app viewer — the button is hidden and the card opens them in the OS default app instead.
-- **open** — opens the file via your `open_with.main_ide` slot. That is a **personal, global-only** setting: it lives in the per-machine `settings.json`, never in a conception's `.condash/settings.json`. If nothing happens, the slot is probably unconfigured — see [Repositories and open-with buttons](repositories-and-open-with.md#the-three-open_with-slots).
+- **open** — opens the file via your `open_with.main_ide` slot. That is a **personal, global-only** setting: it lives in the per-machine `settings.json`, never in a conception's `.condash/settings.json`. If nothing happens, the slot is probably unconfigured — see [Repositories and open-with launchers](repositories-and-open-with.md#the-three-open_with-slots).
 - **reveal** — reveals the file in your OS file manager (selected in its parent folder).
 - **copy** — copies the absolute path to the system clipboard.
 - **→ term** — pastes the absolute path into the focused terminal session (no `↵`). If no session is live, the button still pastes once you spawn one.
