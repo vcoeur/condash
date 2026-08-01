@@ -98,16 +98,25 @@ export async function bootApp(
   // throwaway virtual display and never the live compositor; the globalSetup
   // guard (tests/fixtures/headless-guard.ts) aborts any un-wrapped Wayland run
   // before a window can open. We just inherit that prepared environment here.
+  // The dashboard config falls back to DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL
+  // from the environment (config.ts resolveDashboardConfig), so a machine that
+  // has them exported would otherwise leak a real key into this throwaway
+  // "no API key" test config — the power dot would render `on` instead of
+  // `nokey` and the no-key specs would fail here while passing on CI. Strip
+  // them so the fixture's no-key premise is actually true on every host.
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    // Electron honours XDG_CONFIG_HOME for app.getPath('userData') on Linux.
+    XDG_CONFIG_HOME: userDataDir,
+    CONDASH_FORCE_PROD: '1',
+    DEEPSEEK_API_KEY: '',
+    DEEPSEEK_BASE_URL: '',
+    ...(options.env ?? {}),
+  };
   const app = await electron.launch({
     args: ['.', '--no-sandbox'],
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      // Electron honours XDG_CONFIG_HOME for app.getPath('userData') on Linux.
-      XDG_CONFIG_HOME: userDataDir,
-      CONDASH_FORCE_PROD: '1',
-      ...(options.env ?? {}),
-    },
+    env,
   });
   const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
