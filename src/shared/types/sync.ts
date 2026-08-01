@@ -18,6 +18,9 @@ export interface AutoSyncSettings {
   quietPeriodSeconds?: number;
   /** Push after committing. Default true. */
   push?: boolean;
+  /** Fetch + fast-forward the remote before pushing (`'ff-only'`, the default)
+   *  or behave exactly as before (`'off'`). */
+  integration?: 'off' | 'ff-only';
 }
 
 /** Resolved auto-sync config (defaults applied, numbers clamped), used inside
@@ -27,6 +30,9 @@ export interface AutoSyncConfig {
   intervalMinutes: number;
   quietPeriodSeconds: number;
   push: boolean;
+  /** Whether the sweeper fetches + fast-forwards before pushing (`'ff-only'`)
+   *  or behaves exactly as before (`'off'`). */
+  integration: 'off' | 'ff-only';
 }
 
 /** Where the engine is in its cycle — drives the Settings status line. */

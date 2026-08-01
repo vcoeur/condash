@@ -282,6 +282,16 @@ describe('configSchema autoSync', () => {
       true,
     );
   });
+
+  it('accepts either integration mode and rejects an unknown one', () => {
+    expect(globalSettingsSchema.safeParse({ autoSync: { integration: 'ff-only' } }).success).toBe(
+      true,
+    );
+    expect(globalSettingsSchema.safeParse({ autoSync: { integration: 'off' } }).success).toBe(true);
+    expect(globalSettingsSchema.safeParse({ autoSync: { integration: 'merge' } }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('configSchema dropped path keys', () => {
@@ -721,6 +731,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       intervalMinutes: 10,
       quietPeriodSeconds: 90,
       push: true,
+      integration: 'ff-only',
     },
     // agents / open_with / pdf_viewer have no narrow IPC setter — they are
     // edited through the Settings modal's raw save (writeNote →

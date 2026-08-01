@@ -17,6 +17,7 @@ describe('resolveAutoSyncConfig', () => {
       intervalMinutes: 5,
       quietPeriodSeconds: AUTO_SYNC_DEFAULTS.quietPeriodSeconds,
       push: false,
+      integration: AUTO_SYNC_DEFAULTS.integration,
     });
   });
 
@@ -39,5 +40,20 @@ describe('resolveAutoSyncConfig', () => {
     expect(resolveAutoSyncConfig({ intervalMinutes: NaN }).intervalMinutes).toBe(
       AUTO_SYNC_DEFAULTS.intervalMinutes,
     );
+  });
+
+  it('defaults the integration mode to ff-only', () => {
+    expect(AUTO_SYNC_DEFAULTS.integration).toBe('ff-only');
+    expect(resolveAutoSyncConfig(undefined).integration).toBe('ff-only');
+  });
+
+  it('passes an explicit off through', () => {
+    expect(resolveAutoSyncConfig({ integration: 'off' }).integration).toBe('off');
+  });
+
+  it('falls back to ff-only on an unknown integration value', () => {
+    // The zod schema rejects an unknown value at config-write time; the
+    // resolver's coercion is the runtime fallback for hand-edited files.
+    expect(resolveAutoSyncConfig({ integration: 'merge' as never }).integration).toBe('ff-only');
   });
 });
