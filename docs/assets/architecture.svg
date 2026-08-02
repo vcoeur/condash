@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1440" viewBox="0 0 1200 1440" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <style>
+      .title      { font-size: 24px; font-weight: 800; fill: #202124; }
+      .subtitle   { font-size: 12.5px; fill: #5f6368; }
+      .section    { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; fill: #9aa0a6; }
+      .section-r  { font-size: 12px; fill: #9aa0a6; }
+      .box-title  { font-size: 14.5px; font-weight: 700; fill: #202124; }
+      .box-sub    { font-size: 12px; fill: #5f6368; }
+      .card-title { font-size: 14.5px; font-weight: 700; fill: #202124; }
+      .card-body  { font-size: 12px; fill: #3c4043; }
+      .flow-label { font-size: 11px; fill: #5f6368; font-style: italic; }
+      .flow-line  { font-size: 11.5px; fill: #3c4043; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="10" markerHeight="7"
+            markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 3.5 L 0 7 z" fill="#5f6368"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="10" markerHeight="7"
+            markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 3.5 L 0 7 z" fill="#d93025"/>
+    </marker>
+  </defs>
+
+  <!-- canvas -->
+  <rect x="0" y="0" width="1200" height="1440" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="48" y="52" class="title">condash — Electron architecture</text>
+  <text x="48" y="78" class="subtitle">Electron · Node + Solid + esbuild · one typed CondashApi IPC contract · no backend, no DB — the conception Markdown tree is the database</text>
+
+  <!-- ==================== ENTRY POINTS ==================== -->
+  <text x="48" y="104" class="section">ENTRY POINTS</text>
+
+  <!-- Renderer -->
+  <rect x="48" y="116" width="352" height="72" rx="10" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.6"/>
+  <text x="224" y="141" text-anchor="middle" class="box-title">Renderer — Solid SPA</text>
+  <text x="224" y="162" text-anchor="middle" class="box-sub">Solid + signals · Vite</text>
+  <text x="224" y="180" text-anchor="middle" class="box-sub">panes · modals · terminal · search</text>
+
+  <!-- CLI -->
+  <rect x="424" y="116" width="352" height="72" rx="10" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.6"/>
+  <text x="600" y="141" text-anchor="middle" class="box-title">CLI — condash verbs</text>
+  <text x="600" y="162" text-anchor="middle" class="box-sub">lazy-dispatch per noun</text>
+  <text x="600" y="180" text-anchor="middle" class="box-sub">ELECTRON_RUN_AS_NODE · same engine</text>
+
+  <!-- External editors -->
+  <rect x="800" y="116" width="352" height="72" rx="10" fill="#fce8e6" stroke="#d93025" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text x="976" y="141" text-anchor="middle" class="box-title">External editors</text>
+  <text x="976" y="162" text-anchor="middle" class="box-sub">IDE · also writes the tree</text>
+  <text x="976" y="180" text-anchor="middle" class="box-sub">drift-check trigger</text>
+
+  <!-- ==================== IPC BOUNDARY ==================== -->
+  <text x="48" y="224" class="section">IPC BOUNDARY</text>
+
+  <!-- Preload -->
+  <rect x="48" y="236" width="352" height="72" rx="10" fill="#e6f4ea" stroke="#188038" stroke-width="1.6"/>
+  <text x="224" y="261" text-anchor="middle" class="box-title">Preload — contextBridge</text>
+  <text x="224" y="282" text-anchor="middle" class="box-sub">one line per CondashApi verb</text>
+  <text x="224" y="300" text-anchor="middle" class="box-sub">CJS · sandbox-compatible</text>
+
+  <!-- Contract -->
+  <rect x="620" y="236" width="532" height="72" rx="10" fill="#fff4e5" stroke="#e8710a" stroke-width="1.6"/>
+  <text x="886" y="261" text-anchor="middle" class="box-title">IPC contract — CondashApi (shared)</text>
+  <text x="886" y="282" text-anchor="middle" class="box-sub">typed functions · invoke / handle</text>
+  <text x="886" y="300" text-anchor="middle" class="box-sub">EVENT_CHANNELS · shared/types</text>
+
+  <!-- ==================== MAIN PROCESS ==================== -->
+  <rect x="40" y="332" width="1120" height="370" rx="14" fill="#fafbfc" stroke="#5f6368" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="64" y="358" class="section">MAIN PROCESS</text>
+  <text x="1140" y="358" text-anchor="end" class="section-r">Node + Electron · single CJS bundle (esbuild)</text>
+
+  <!-- Row 1 -->
+  <rect x="64" y="374" width="341" height="100" rx="10" fill="#fff4e5" stroke="#e8710a" stroke-width="1.6"/>
+  <text x="234.5" y="402" text-anchor="middle" class="box-title">IPC — 12 domain handlers</text>
+  <text x="234.5" y="425" text-anchor="middle" class="box-sub">registerIpc · shared decoders</text>
+  <text x="234.5" y="443" text-anchor="middle" class="box-sub">requireMainWindowSender</text>
+
+  <rect x="429" y="374" width="341" height="100" rx="10" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.6"/>
+  <text x="599.5" y="402" text-anchor="middle" class="box-title">Watcher + classifier</text>
+  <text x="599.5" y="425" text-anchor="middle" class="box-sub">chokidar · 250 ms debounce</text>
+  <text x="599.5" y="443" text-anchor="middle" class="box-sub">minimal-reload event classes</text>
+
+  <rect x="794" y="374" width="341" height="100" rx="10" fill="#fff4e5" stroke="#e8710a" stroke-width="1.6"/>
+  <text x="964.5" y="402" text-anchor="middle" class="box-title">Terminals (pty)</text>
+  <text x="964.5" y="425" text-anchor="middle" class="box-sub">node-pty · kill pipeline</text>
+  <text x="964.5" y="443" text-anchor="middle" class="box-sub">systemd-run scopes · logs</text>
+
+  <!-- Row 2 -->
+  <rect x="64" y="498" width="341" height="100" rx="10" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.6"/>
+  <text x="234.5" y="526" text-anchor="middle" class="box-title">Mutation pipeline</text>
+  <text x="234.5" y="549" text-anchor="middle" class="box-sub">drift-checked writes</text>
+  <text x="234.5" y="567" text-anchor="middle" class="box-sub">per-file queue · tmp → rename</text>
+
+  <rect x="429" y="498" width="341" height="100" rx="10" fill="#e0f7fa" stroke="#00838f" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text x="599.5" y="526" text-anchor="middle" class="box-title">Caches + search index</text>
+  <text x="599.5" y="549" text-anchor="middle" class="box-sub">parse-memo · in-RAM</text>
+  <text x="599.5" y="567" text-anchor="middle" class="box-sub">mtime-keyed · one patch/event</text>
+
+  <rect x="794" y="498" width="341" height="100" rx="10" fill="#e0f7fa" stroke="#00838f" stroke-width="1.6"/>
+  <text x="964.5" y="526" text-anchor="middle" class="box-title">Config (effective)</text>
+  <text x="964.5" y="549" text-anchor="middle" class="box-sub">disjoint scope rule</text>
+  <text x="964.5" y="567" text-anchor="middle" class="box-sub">one-shot migrations</text>
+
+  <!-- Row 3 -->
+  <rect x="64" y="622" width="341" height="64" rx="10" fill="#f3e8fd" stroke="#9334e6" stroke-width="1.6"/>
+  <text x="234.5" y="648" text-anchor="middle" class="box-title">Agents · Tasks · Dashboard</text>
+  <text x="234.5" y="667" text-anchor="middle" class="box-sub">launchers · LLM tab summaries</text>
+
+  <rect x="429" y="622" width="341" height="64" rx="10" fill="#feefc3" stroke="#f9ab00" stroke-width="1.6"/>
+  <text x="599.5" y="648" text-anchor="middle" class="box-title">Sync sweeper</text>
+  <text x="599.5" y="667" text-anchor="middle" class="box-sub">auto-commit + push · 90 s quiet</text>
+
+  <rect x="794" y="622" width="341" height="64" rx="10" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.6"/>
+  <text x="964.5" y="648" text-anchor="middle" class="box-title">Boot + resilience</text>
+  <text x="964.5" y="667" text-anchor="middle" class="box-sub">prewarm · safeSend · crash guards</text>
+
+  <!-- ==================== STORAGE ==================== -->
+  <text x="48" y="734" class="section">STORAGE</text>
+
+  <rect x="72" y="746" width="728" height="96" rx="10" fill="#e0f7fa" stroke="#00838f" stroke-width="1.6"/>
+  <text x="436" y="774" text-anchor="middle" class="box-title">Conception tree (Markdown)</text>
+  <text x="436" y="797" text-anchor="middle" class="box-sub">projects/ · knowledge/ · resources/</text>
+  <text x="436" y="815" text-anchor="middle" class="box-sub">.agents/skills/ · .condash/ (settings · logs)</text>
+
+  <rect x="824" y="746" width="328" height="96" rx="10" fill="#e0f7fa" stroke="#00838f" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text x="988" y="774" text-anchor="middle" class="box-title">Git worktrees</text>
+  <text x="988" y="797" text-anchor="middle" class="box-sub">dirty counts · branches</text>
+  <text x="988" y="815" text-anchor="middle" class="box-sub">derived · 12 s TTL cache</text>
+
+  <!-- ==================== KEY FLOWS ==================== -->
+  <rect x="40" y="874" width="1120" height="150" rx="14" fill="#fafbfc" stroke="#5f6368" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="64" y="900" class="section">KEY FLOWS</text>
+  <text x="64" y="924" class="flow-line">1 · Boot — prewarm parse-memo + git fan-out in parallel, then createWindow; the first listRepos awaits the same boot promise.</text>
+  <text x="64" y="950" class="flow-line">2 · Edit — writeNote drift-checks → per-file queue → tmp / fsync / rename; the watcher then patches one card, not the whole dashboard.</text>
+  <text x="64" y="976" class="flow-line">3 · Terminal — pty in its own systemd-run scope; active tab is a DOM xterm, hidden ones parse in a Web Worker; kill = SIGTERM → force_stop → SIGKILL.</text>
+  <text x="64" y="1002" class="flow-line">4 · Reload — chokidar event → watch-classify: a note edit patches its card, an index.md regen is ignored, unknown forces the full fan-out.</text>
+
+  <!-- ==================== ARROWS ==================== -->
+  <!-- Renderer <-> Preload (invoke / on) -->
+  <line x1="224" y1="188" x2="224" y2="236" stroke="#5f6368" stroke-width="1.4"
+        marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="240" y="212" class="flow-label">invoke() / on()</text>
+
+  <!-- Preload -> IPC handlers -->
+  <line x1="234" y1="308" x2="234" y2="374" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- CLI -> main engine (same bundle, no IPC) -->
+  <line x1="600" y1="188" x2="600" y2="332" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="584" y="262" text-anchor="end" class="flow-label">same engine · no IPC</text>
+
+  <!-- Mutations -> tree (read / write) -->
+  <path d="M 405 548 L 417 548 L 417 746" fill="none" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- Watcher -> tree (watch events) -->
+  <path d="M 770 424 L 786 424 L 786 746" fill="none" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- Sync sweeper -> tree (commits) -->
+  <line x1="599.5" y1="686" x2="599.5" y2="746" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- External editors -> tree (concurrent writes) -->
+  <path d="M 1152 152 L 1180 152 L 1180 860 L 700 860 L 700 842" fill="none" stroke="#d93025" stroke-width="1.4"
+        stroke-dasharray="5 4" marker-end="url(#arrowRed)"/>
+
+  <!-- ==================== LOAD-BEARING DETAILS ==================== -->
+  <text x="48" y="1056" class="section">LOAD-BEARING DETAILS</text>
+
+  <!-- 1: Drift-checked mutations (blue) -->
+  <rect x="48" y="1070" width="352" height="152" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.4"/>
+  <rect x="48" y="1070" width="8" height="152" rx="4" fill="#1a73e8"/>
+  <text x="72" y="1096" class="card-title">Drift-checked mutations</text>
+  <text x="72" y="1120" class="card-body">Every write carries the expected state of</text>
+  <text x="72" y="1140" class="card-body">the region it changes — writeNote, toggleStep,</text>
+  <text x="72" y="1160" class="card-body">setStatus refuse on mismatch. The user edits</text>
+  <text x="72" y="1180" class="card-body">the same tree in their IDE, so condash never</text>
+  <text x="72" y="1200" class="card-body">assumes it is the only writer.</text>
+
+  <!-- 2: Bounded git fan-out (teal) -->
+  <rect x="424" y="1070" width="352" height="152" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.4"/>
+  <rect x="424" y="1070" width="8" height="152" rx="4" fill="#00838f"/>
+  <text x="448" y="1096" class="card-title">Bounded git fan-out</text>
+  <text x="448" y="1120" class="card-body">withGitSlot caps read-only git spawns at 6</text>
+  <text x="448" y="1140" class="card-body">in flight. The bounded cost is the fork of a</text>
+  <text x="448" y="1160" class="card-body">~450 MB Electron main, not git's runtime —</text>
+  <text x="448" y="1180" class="card-body">never add an ungated git call on that path.</text>
+
+  <!-- 3: Memory containment (orange) -->
+  <rect x="800" y="1070" width="352" height="152" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.4"/>
+  <rect x="800" y="1070" width="8" height="152" rx="4" fill="#e8710a"/>
+  <text x="824" y="1096" class="card-title">Memory containment</text>
+  <text x="824" y="1120" class="card-body">Each terminal pty spawns in its own transient</text>
+  <text x="824" y="1140" class="card-body">systemd-run scope (MemoryHigh/Max). A runaway</text>
+  <text x="824" y="1160" class="card-body">agent tab trips its own cgroup OOM and dies</text>
+  <text x="824" y="1180" class="card-body">alone; the app scope is capped as a backstop.</text>
+
+  <!-- 4: Config scope rule (teal) -->
+  <rect x="48" y="1246" width="352" height="152" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.4"/>
+  <rect x="48" y="1246" width="8" height="152" rx="4" fill="#00838f"/>
+  <text x="72" y="1272" class="card-title">Config scope rule</text>
+  <text x="72" y="1296" class="card-body">Two files, disjoint key sets: per-machine</text>
+  <text x="72" y="1316" class="card-body">settings.json vs per-conception .condash/</text>
+  <text x="72" y="1336" class="card-body">settings.json. Every key has exactly one</text>
+  <text x="72" y="1356" class="card-body">home; mis-homed keys migrate on open.</text>
+
+  <!-- 5: Single watcher contract (green) -->
+  <rect x="424" y="1246" width="352" height="152" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.4"/>
+  <rect x="424" y="1246" width="8" height="152" rx="4" fill="#188038"/>
+  <text x="448" y="1272" class="card-title">Single watcher contract</text>
+  <text x="448" y="1296" class="card-body">One chokidar rooted at the conception,</text>
+  <text x="448" y="1316" class="card-body">250 ms debounce. watch-classify maps each</text>
+  <text x="448" y="1336" class="card-body">event to the smallest reload; only unknown</text>
+  <text x="448" y="1356" class="card-body">falls to the whole-dashboard fan-out.</text>
+</svg>

@@ -14,6 +14,12 @@ That folder is a **conception**: a plain directory — usually a git repo — wh
 - Ships a built-in terminal and a knowledge-tree browser alongside the project pane.
 - No server, no database, no account — your `.md` files stay yours.
 
+## Architecture
+
+Electron on the outside, Node + Solid + esbuild on the inside, with one typed `CondashApi` IPC contract across the preload boundary — no backend, no database, the Markdown tree is the database. The narrative behind the map: [Internals](https://condash.vcoeur.com/explanation/internals/).
+
+![condash architecture diagram](docs/assets/architecture.svg)
+
 ## Documentation
 
 Everything lives at **[condash.vcoeur.com](https://condash.vcoeur.com)**:
