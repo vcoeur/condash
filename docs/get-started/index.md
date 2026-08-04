@@ -129,7 +129,7 @@ Click it — or use **File → Open…** (`Ctrl+O`) — and pick any directory. 
 If the folder you picked is missing `projects/` or a config file, condash offers to seed it:
 
 > **Initialise from template?**
-> This folder is missing projects/ and condash.json.
+> This folder is missing projects/ and a condash config file.
 >
 > Initialise it from the bundled conception template? Skill files, seed indexes, and example config will be laid down. Existing files are left alone.
 >

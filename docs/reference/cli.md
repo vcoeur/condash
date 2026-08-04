@@ -38,7 +38,7 @@ projects   knowledge   search   repos   applications   worktrees   audit   dirty
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
 
-`plans` is accepted as a **deprecated alias** for [`mdx`](#mdx) — it prints `warning: condash plans was renamed — use condash mdx` on stderr and forwards to the same handler. It was renamed in v4.81.0 and will be removed after one release; use `mdx`.
+`plans` is accepted as a **deprecated alias** for [`mdx`](#mdx) — it prints `warning: condash plans was renamed — use condash mdx` on stderr and forwards to the same handler. It was renamed in v4.81.0; kept as a deprecated forwarding alias.
 
 `code` is **not** a CLI noun: `condash code` reports `Unknown noun: code` and exits 2. The Code pane is GUI-only — the CLI equivalent is [`worktrees`](#worktrees) (`setup`, `check`, `mismatch`, `remove`), [`repos list`](#repos), and `audit --include worktrees` for the same lifecycle checks. And `condash --list` does not exist either: `--list` is not a valid flag, so there is no way to ask the CLI to enumerate its nouns — `condash help` prints them.
 
@@ -98,7 +98,7 @@ Item lifecycle and reads.
 | `activity [--begin <YYYY-MM-DD>] [--end <YYYY-MM-DD>] [--format md]` | Generic project-tree activity over a date range (default: last 7 days): every `## Timeline` beat parsed into items + dated events + day/week/month/app indices. `--json` is the reusable data layer for digest tooling and dashboards; plain output is a one-look summary; `--format md` emits a no-frills markdown digest |
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
-| `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
+| `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one specific README (must be inside `<conception>/projects/`) |
 | `status get <slug>` / `status set <slug> <new-status>` | Read or change the `status` field; a done-edge appends the same `Closed.` / `Reopened.` timeline entry as the verbs below, annotated with `--summary <text>` when given |
 | `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry, annotated with `--summary <text>` when given. `--no-touch-dirty` skips touching `projects/.index-dirty`, for a caller that regenerates the indexes itself |
 | `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry, annotated with `--summary <text>` when given |

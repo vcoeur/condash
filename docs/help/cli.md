@@ -33,7 +33,7 @@ condash <noun> <verb> [args] [--flags]
 | `sync` | `run` (default), `commit <item> --message "…"` — the single-writer git sweeper for a checkout shared by parallel sessions: fetches first, fast-forwards an ahead-only remote, and refuses to push (never to commit) on divergence. Backs the Settings → Auto-commit timer. |
 | `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
 | `skills` | `list`, `install`, `status`, `validate` |
-| `mdx` | `check <path>`, `blocks`. `condash plans` is a **deprecated alias** for `mdx` — renamed in v4.81.0, prints `warning: condash plans was renamed — use condash mdx` on stderr, and will be removed after one release. Use `mdx`. |
+| `mdx` | `check <path>`, `blocks`. `condash plans` is a **deprecated alias** for `mdx` — renamed in v4.81.0, prints `warning: condash plans was renamed — use condash mdx` on stderr; kept as a deprecated forwarding alias. |
 | `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 

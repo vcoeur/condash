@@ -63,7 +63,7 @@ The Settings modal does not: it holds its baseline for as long as it is open, so
 
 Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned), `[!]` (blocked). The dashboard cycle order through the toggle button is `open → progress → done → abandoned → open` (`CLICK_CYCLE` in [`src/renderer/panes/projects-parts/data.ts`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects-parts/data.ts), re-exported through `projects.tsx`); `[!]` is reachable by editing the README directly and round-trips through every layer (parser, counter, writer, renderer badge).
 
-All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate.ts:withFileQueue`) serialises concurrent writes to the same path.
+All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate-shared.ts:withFileQueue`) serialises concurrent writes to the same path.
 
 ## Repos + runners
 
@@ -77,7 +77,7 @@ All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate
 | `pullBranch(path)` | Fast-forward a worktree to its upstream (`git pull --ff-only`) — the per-branch **Pull branch** menu action. Refuses on a dirty tree and returns `updated` / `up-to-date` / `diverged` / `dirty` so the caller can toast the outcome; throws on an unexpected git failure (no upstream, network, not a repo). |
 | `lookupPullRequest(path, branch)` | Resolve the open GitHub PR whose head is `branch` (`gh pr list --head`, run in the worktree at `path`) — backs the per-branch **Open PR** menu item. Returns the PR (`number` / `url` / `title` / `isDraft`) or `null` when there's no open PR or `gh` can't run (unauthenticated, no GitHub remote); never throws, so the menu simply omits the row. TTL-cached by `(path, branch)`. |
 | `listOpenPullRequests(app)` | List every open GitHub PR (with its `headRefName`) for the repo the `apps:` token `app` resolves to — `gh pr list --state open`, one call per repo. Backs the **Projects-pane card badges**: the renderer indexes the results by head branch so each project card matches its own branch without a per-card call. `app` is resolved to the configured repo via the name / `#handle` / alias map (never a renderer-supplied path). Returns `[]` for an unknown app or a lookup that can't run. TTL-cached by repo path. |
-| `listOpenWith()` | Return `open_with` slots from `<conception>/.condash/settings.json` (with legacy `condash.json` / `configuration.json` as read fallbacks). Slots resolve through the conception ⊕ global precedence; the global `settings.json` provides defaults. |
+| `listOpenWith()` | Return the `open_with` launch slots (a global-only key) from the effective config — `getEffectiveConceptionConfig`, the merged view of `settings.json`; no built-in defaults. |
 | `launchOpenWith(slot, path)` | Spawn the configured editor against `path`. |
 | `openInEditor(path)` | Resolve the user's preferred editor and open the file. |
 | `openConceptionDirectory()` | Reveal the conception root in the OS file manager. |
@@ -289,7 +289,7 @@ Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Appli
 ## See also
 
 - [`src/shared/api.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/api.ts) — the IPC contract, source of truth.
-- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — drift checks + atomic write + per-file queue, all in one file.
+- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — re-export barrel over the split mutation modules: `mutate-steps.ts` (checklist edits), `mutate-status.ts` (status + timeline), `write-config.ts` (note/config writes), `mutate-shared.ts` (EOL detection + per-file queue).
 - [`src/main/terminals.ts`](https://github.com/vcoeur/condash/blob/main/src/main/terminals.ts) — pty lifecycle + the kill pipeline.
 - [`src/main/git-status-cache.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-status-cache.ts) — the TTL cache.
 - [`src/main/git-concurrency.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-concurrency.ts) — the read-only git-lookup cap.

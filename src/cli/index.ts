@@ -174,7 +174,7 @@ async function dispatch(
     }
     case 'plans': {
       // Back-compat: the `plans` noun was renamed to `mdx` in v4.81.0. Warn
-      // and forward for one release, then remove this alias.
+      // and forward; kept as a deprecated forwarding alias.
       if (!ctx.quiet) {
         process.stderr.write('warning: `condash plans` was renamed — use `condash mdx`\n');
       }
