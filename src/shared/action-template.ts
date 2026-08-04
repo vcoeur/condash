@@ -94,7 +94,10 @@ export const MARKER_RE =
  *  still resolve, and `{KEY:default}` (previously left verbatim) now resolves. */
 export function substitute(template: string, ctx: Record<string, string>): string {
   return template.replace(MARKER_RE, (match, name: string, def: string | undefined) => {
-    if (name in ctx) return ctx[name];
+    // Own-property check only: `{toString}` / `{constructor}` / `{__proto__}`
+    // in a prompt (e.g. JS snippets) must stay verbatim, not resolve to
+    // inherited `Object.prototype` members.
+    if (Object.hasOwn(ctx, name)) return ctx[name];
     if (def !== undefined) return def;
     return match;
   });

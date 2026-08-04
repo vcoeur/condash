@@ -7,11 +7,17 @@
 import type { Agent, Project, RunMode } from '@shared/types';
 import type { TaskDef } from '@shared/tasks';
 
-/** One app the `{APP}` picker can select. `alias` is the `#<name>` form. */
+/** One app the `{APP}` picker can select. `alias` is the `#<handle>` form
+ *  (canonical app identity, e.g. `#kasten` for `notes.vcoeur.com`); `handle` is
+ *  the same value without the leading `#`; `name` is the bare repo directory
+ *  name. */
 export interface AppOption {
   alias: string;
   name: string;
   path: string;
+  /** Canonical `#handle` (no leading `#`) — feeds `appContext` so `{APP}`
+   *  resolves to the Apps-table handle, not the directory name. */
+  handle: string;
 }
 
 /** Editor draft. `editingSlug` is null when creating, the prior slug when

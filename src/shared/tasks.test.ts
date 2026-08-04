@@ -85,11 +85,21 @@ describe('substitute with the provided tab vars', () => {
 });
 
 describe('appContext', () => {
-  it('builds the {APP_*} family with the #alias as the bare value', () => {
-    expect(appContext({ name: 'condash', path: '/home/alice/src/vcoeur/condash' })).toEqual({
+  it('builds the {APP_*} family with the canonical #handle as the bare value', () => {
+    expect(
+      appContext({ name: 'condash', path: '/home/alice/src/vcoeur/condash', handle: 'condash' }),
+    ).toEqual({
       APP: '#condash',
       APP_NAME: 'condash',
       APP_PATH: '/home/alice/src/vcoeur/condash',
+    });
+  });
+
+  it('resolves {APP} to the canonical handle, not the directory name', () => {
+    expect(appContext({ name: 'notes.vcoeur.com', path: '/x', handle: 'kasten' })).toEqual({
+      APP: '#kasten',
+      APP_NAME: 'notes.vcoeur.com',
+      APP_PATH: '/x',
     });
   });
 
@@ -130,7 +140,7 @@ describe('projectTokenContext', () => {
 describe('end-to-end substitution', () => {
   it('fills a prompt from app + project + plain fields, defaulting the rest', () => {
     const ctx = {
-      ...appContext({ name: 'condash', path: '/home/alice/src/vcoeur/condash' }),
+      ...appContext({ name: 'condash', path: '/home/alice/src/vcoeur/condash', handle: 'condash' }),
       ...projectTokenContext(
         {
           slug: '2026-05-23-x',
