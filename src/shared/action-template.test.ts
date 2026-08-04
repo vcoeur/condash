@@ -97,6 +97,14 @@ describe('substitute', () => {
     expect(substitute('{slgu}', { slug: 'foo' })).toBe('{slgu}');
   });
 
+  it('leaves Object.prototype-named tokens verbatim (own-property check)', () => {
+    expect(substitute('{toString} and {constructor}', {})).toBe('{toString} and {constructor}');
+  });
+
+  it('still resolves real keys from the context', () => {
+    expect(substitute('{foo} {toString}', { foo: 'bar' })).toBe('bar {toString}');
+  });
+
   it('substitutes the empty string for known-but-missing tokens', () => {
     expect(substitute('{empty}', { empty: '' })).toBe('');
   });

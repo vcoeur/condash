@@ -103,23 +103,27 @@ export function extractMarkers(prompt: string): Marker[] {
 }
 
 /** Minimal app shape the `{APP_*}` context builder needs. `name` is the repo
- *  directory name (e.g. `condash`); `path` its absolute checkout path. */
+ *  directory name (e.g. `condash`); `path` its absolute checkout path. `handle`
+ *  is the canonical `#handle` (no leading `#`) from `RepoEntry.handle` /
+ *  `appHandle()` — the app's one public identity, which may differ from the
+ *  directory name (e.g. `kasten` for `notes.vcoeur.com`). */
 export interface AppLike {
   name: string;
   path: string;
+  handle: string;
 }
 
 /**
  * Build the `{APP_*}` substitution family for a chosen app. The bare `{APP}`
- * resolves to the `#alias` (e.g. `#condash`), matching the conception Apps-table
- * convention; `{APP_NAME}` is the bare repo name and `{APP_PATH}` its absolute
- * path. Returns an empty bag when no app is chosen so unfilled tokens stay
- * verbatim.
+ * resolves to the canonical `#handle` (e.g. `#kasten` for `notes.vcoeur.com`),
+ * matching the conception Apps-table convention; `{APP_NAME}` is the bare repo
+ * name and `{APP_PATH}` its absolute path. Returns an empty bag when no app is
+ * chosen so unfilled tokens stay verbatim.
  */
 export function appContext(app: AppLike | null): Record<string, string> {
   if (!app) return {};
   return {
-    APP: `#${app.name}`,
+    APP: `#${app.handle}`,
     APP_NAME: app.name,
     APP_PATH: app.path,
   };

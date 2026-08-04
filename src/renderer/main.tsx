@@ -264,10 +264,12 @@ function App() {
   const [logsRefreshTick, setLogsRefreshTick] = createSignal(0);
 
   // App options for the Tasks fill form's `{APP}` picker — every configured
-  // repo as `{ alias: '#<name>', name, path }`. Reads the repos store, so it
-  // re-derives when the repo list changes.
+  // repo as `{ alias: '#<handle>', name, path, handle }`, using the canonical
+  // `RepoEntry.handle` so an explicit `handle:` (e.g. `kasten` for
+  // `notes.vcoeur.com`) wins over the directory name. Reads the repos store,
+  // so it re-derives when the repo list changes.
   const appOptions = createMemo(() =>
-    repos.map((r) => ({ alias: `#${r.name}`, name: r.name, path: r.path })),
+    repos.map((r) => ({ alias: `#${r.handle}`, name: r.name, path: r.path, handle: r.handle })),
   );
 
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
