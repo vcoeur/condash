@@ -111,12 +111,7 @@ describe('PerfLog', () => {
     // running, and real delay lands on the tail, so a p99 bound fails under load
     // while testing nothing extra. The exact arithmetic is pinned deterministically
     // by the `loopDelayMs` cases below.
-    // The + 5 ms headroom is for residual machine contention under the serial-fork
-    // isolation this file now runs in — NOT for masking a broken subtraction: a
-    // raw un-subtracted reading is pinned at its ≥ ~10 ms floor, so a subtracted
-    // near-idle p50 still clears 15 ms, while a loaded loop with the subtraction
-    // broken would exceed it.
-    expect(loop!.p50).toBeLessThan(LOOP_RESOLUTION_MS + 5);
+    expect(loop!.p50).toBeLessThan(LOOP_RESOLUTION_MS);
     // `loopDelayMs` floors at 0, so asserting >= 0 would be a tautology dressed
     // as coverage. The arithmetic is pinned deterministically below instead.
   });

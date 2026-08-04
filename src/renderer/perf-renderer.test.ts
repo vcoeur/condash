@@ -105,11 +105,8 @@ describe('RendererPerf', () => {
     const loop = perf.takeReport()?.loop;
     expect(loop?.max).toBeGreaterThan(40);
     // An unstalled probe fires close enough to schedule that the median stays
-    // near zero — the number would be useless if every tick read as delay. The
-    // 50 ms bound tolerates residual machine contention under the serial-fork
-    // isolation this file now runs in while staying far below the deliberate
-    // 80 ms stall, so the median still cannot read the stall as constant delay.
-    expect(loop?.p50).toBeLessThan(50);
+    // near zero — the number would be useless if every tick read as delay.
+    expect(loop?.p50).toBeLessThan(20);
   });
 
   it('reports a zeroed loop when no sample was taken', () => {
