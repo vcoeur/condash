@@ -10,8 +10,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exec } from './exec';
+import { GIT_SLOT_LIMIT, withGitSlot } from './git-concurrency';
 import { getDirtyDetails, parseNumstat, parsePorcelain } from './git-details';
 import { getDirtyCount, invalidateAll, stripStatusPrefix } from './git-status-cache';
+
+interface Deferred {
+  promise: Promise<string>;
+  resolve: (value: string) => void;
+}
+
+function deferred(): Deferred {
+  let resolve!: (value: string) => void;
+  const promise = new Promise<string>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 describe('parsePorcelain', () => {
   it('splits the two-char code from the path, preserving whitespace', () => {
@@ -120,5 +134,22 @@ describe('subtree-scoped lookups against a real repo', () => {
     expect(details).not.toBeNull();
     const paths = details!.files.map((f) => f.path).sort();
     expect(paths).toEqual(['root-tracked.txt', 'sub/full.txt', 'sub/tracked.txt']);
+  });
+
+  it('getDirtyDetails spawns honor the shared git slot cap', async () => {
+    const blocker = deferred();
+    const held = Array.from({ length: GIT_SLOT_LIMIT }, () => withGitSlot(() => blocker.promise));
+    let completed = false;
+    const detailsPromise = getDirtyDetails(repo).then((d) => {
+      completed = true;
+      return d;
+    });
+    // If any spawn were ungated it would finish while every slot is held.
+    await new Promise((r) => setTimeout(r, 250));
+    expect(completed).toBe(false);
+    blocker.resolve('ok');
+    await Promise.all(held);
+    const details = await detailsPromise;
+    expect(details).not.toBeNull();
   });
 });
