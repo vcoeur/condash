@@ -11,6 +11,7 @@
 // the same round-trip as the dirty-file list.
 
 import type { UnpushedCommit, UpstreamStatus } from '../shared/types';
+import { withGitSlot } from './git-concurrency';
 import {
   getUpstreamStatus,
   isZeroByteUntracked,
@@ -158,7 +159,7 @@ async function computeDirtyDetails(
     // queried directory and the porcelain ↔ numstat join keys agree.
     const prefix = await statusPathPrefix(git, opts.scopeToSubtree === true);
 
-    const statusOut = await git.raw(statusArgs);
+    const statusOut = await withGitSlot(() => git.raw(statusArgs));
     const porcelain: ParsedPorcelain[] = [];
     for (const line of statusOut.split('\n')) {
       if (line.length === 0) continue;
@@ -173,7 +174,7 @@ async function computeDirtyDetails(
     // root-relative too — re-key through the same prefix strip.
     let numstat = new Map<string, NumstatRow>();
     try {
-      const numstatOut = await git.raw(numstatArgs);
+      const numstatOut = await withGitSlot(() => git.raw(numstatArgs));
       for (const [rootRel, row] of parseNumstat(numstatOut)) {
         numstat.set(stripStatusPrefix(rootRel, prefix), row);
       }
@@ -213,12 +214,9 @@ async function computeDirtyDetails(
     let unpushedTruncated = false;
     if (upstream && upstream.ahead > 0) {
       try {
-        const out = await git.raw([
-          'log',
-          `--max-count=${UNPUSHED_LIMIT + 1}`,
-          '--pretty=%h%x09%s',
-          '@{u}..HEAD',
-        ]);
+        const out = await withGitSlot(() =>
+          git.raw(['log', `--max-count=${UNPUSHED_LIMIT + 1}`, '--pretty=%h%x09%s', '@{u}..HEAD']),
+        );
         const lines = out.split('\n').filter((l) => l.length > 0);
         unpushedTruncated = lines.length > UNPUSHED_LIMIT;
         const slice = unpushedTruncated ? lines.slice(0, UNPUSHED_LIMIT) : lines;

@@ -73,7 +73,7 @@ export function registerReposIpc(): void {
   });
 
   // Click-to-inspect on the per-branch dirty badge. Returns the parsed
-  // `git status` line set + a `git diff --stat HEAD` snippet so the user
+  // `git status` line set + a `git diff --numstat HEAD` snippet so the user
   // can see what's dirty without dropping into a shell. Bound to the
   // workspace + worktrees roots so a compromised renderer can't drive a
   // shell-out `git status` against an arbitrary directory on disk.
