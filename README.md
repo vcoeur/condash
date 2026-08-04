@@ -8,7 +8,7 @@ That folder is a **conception**: a plain directory — usually a git repo — wh
 
 ## What it does
 
-- Lists every project in your tree, grouped by status (Backlog → Next → Current → Done).
+- Lists every project in your tree, grouped by status (now, review, later, backlog, done).
 - Renders each project's README, notes, deliverables, and embedded PDFs in-place.
 - Tracks the git state of any repos you've linked to a project, with one-click run / stop / open.
 - Ships a built-in terminal and a knowledge-tree browser alongside the project pane.

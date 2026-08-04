@@ -90,7 +90,7 @@ export function useConception(deps: UseConceptionDeps): UseConception {
     if (prior === picked) void reloadAll();
 
     // Surface the bundled-template init when the picked folder lacks the
-    // conception markers (projects/ + condash.json). Init never overwrites
+    // conception markers (projects/ + a condash config file). Init never overwrites
     // — existing files stay put. The ConfirmModal replaces window.confirm
     // so the dialog stays inside the renderer (no native chrome flash,
     // keyboard handling matches the rest of the app).
@@ -99,7 +99,7 @@ export function useConception(deps: UseConceptionDeps): UseConception {
       if (state.pathExists && !state.looksInitialised) {
         const missing: string[] = [];
         if (!state.hasProjects) missing.push('projects/');
-        if (!state.hasConfiguration) missing.push('condash.json');
+        if (!state.hasConfiguration) missing.push('a condash config file');
         deps.setInitConfirmState({ path: picked, missing });
       }
     } catch (err) {
