@@ -366,7 +366,7 @@ Read or change condash configuration.
 
 `--global` / `--effective` remain real target selectors on `list` and `get`, which only read.
 
-The value is parsed as JSON when it starts with an optionally-negative digit, `"`, `[`, or `{`, and treated as a literal string otherwise — so `condash config set terminal.shell /bin/zsh` needs no quoting. Array-index segments (`repositories[0].path`) are **read-only**: set the whole array as one JSON value instead.
+The value is parsed as JSON when it starts with an optionally-negative digit, `"`, `[`, or `{`, or is the bare token `true` / `false` / `null` (so `condash config set dashboard.enabled true` writes a real boolean), and treated as a literal string otherwise — so `condash config set terminal.shell /bin/zsh` needs no quoting. Quote the value (`condash config set key '"true"'`) to force the literal string. Array-index segments (`repositories[0].path`) are **read-only**: set the whole array as one JSON value instead.
 
 `config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
 

@@ -134,14 +134,17 @@ export async function runConfig(
       throw new CliError(ExitCodes.USAGE, 'Usage: condash config set <key> <value> [--global]');
     }
     // Parse value as JSON only when it looks unambiguously JSON-shaped:
-    // a number, a quoted string, an array, or an object. Bare `true` /
-    // `false` / `null` are common string values (branch names, flag-named
-    // configuration paths) — treat those as plain strings to avoid eating
-    // a legitimate string assignment. Callers that genuinely want a
-    // boolean / null can write `--json` (TODO) or quote it: `"true"`.
+    // a number, a quoted string, an array, an object, or the bare tokens
+    // `true` / `false` / `null`. The bare tokens must become real
+    // booleans/null — writing the string "true" for a boolean key like
+    // `dashboard.enabled` poisons the next GUI Settings save. A caller
+    // who genuinely wants the literal string keeps quoting it
+    // (`condash config set key '"true"'` → string `'true'`).
     let parsedValue: unknown = value;
     const trimmed = value.trim();
-    if (/^(-?\d|"|\[|\{)/.test(trimmed)) {
+    if (trimmed === 'true' || trimmed === 'false' || trimmed === 'null') {
+      parsedValue = JSON.parse(trimmed);
+    } else if (/^(-?\d|"|\[|\{)/.test(trimmed)) {
       try {
         parsedValue = JSON.parse(trimmed);
       } catch {
@@ -318,7 +321,8 @@ function printHelp(verb: string | null): void {
         renderHelp([
           'condash config set <key> <value>',
           '',
-          'Write one config key. Value is parsed as JSON when it looks like one,',
+          'Write one config key. Value is parsed as JSON when it looks like one',
+          '(numbers, quoted strings, arrays, objects, or bare true/false/null),',
           'otherwise treated as a literal string.',
           '',
           'The target file is chosen automatically by the key: personal settings',

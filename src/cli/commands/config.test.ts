@@ -390,6 +390,53 @@ describe('config set', () => {
       fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it('writes a real boolean for the bare token true (global key, no warning)', async () => {
+    const { stdout, threw } = await captureStdout(() =>
+      runConfig(
+        'set',
+        { noun: 'config', verb: 'set', positional: ['dashboard.enabled', 'true'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const written = JSON.parse(await fs.readFile(join(xdgTmp, 'condash', 'settings.json'), 'utf8'));
+    expect(written.dashboard.enabled).toBe(true);
+    expect(typeof written.dashboard.enabled).toBe('boolean');
+    expect(parseJsonEnvelope(stdout).warnings).toEqual([]);
+  });
+
+  it('writes a real null for the bare token null', async () => {
+    await captureStdout(() =>
+      runConfig(
+        'set',
+        { noun: 'config', verb: 'set', positional: ['someKey', 'null'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const written = JSON.parse(
+      await fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    );
+    expect(written.someKey).toBeNull();
+  });
+
+  it('keeps a quoted value as the literal string', async () => {
+    await captureStdout(() =>
+      runConfig(
+        'set',
+        { noun: 'config', verb: 'set', positional: ['someKey', '"true"'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const written = JSON.parse(
+      await fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    );
+    expect(written.someKey).toBe('true');
+    expect(typeof written.someKey).toBe('string');
+  });
 });
 
 describe('config migrate', () => {
