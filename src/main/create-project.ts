@@ -23,6 +23,10 @@ import { pathExists } from './fs-helpers';
 export const ITEM_KINDS = ['project', 'incident', 'document'] as const;
 export const SEVERITIES = ['low', 'medium', 'high'] as const;
 export const ENVIRONMENTS = ['PROD', 'STAGING', 'DEV'] as const;
+// Statuses accepted at create time. `done` is deliberately excluded —
+// closing requires a Timeline entry + leftover-branch probe that only
+// `condash projects close` writes.
+export const CREATE_STATUSES = ['now', 'review', 'later', 'backlog'] as const;
 export const SLUG_TAIL_RE = /^[a-z0-9-]+$/;
 
 export interface CreateProjectInput {
@@ -114,9 +118,13 @@ export async function createProjectCore(
   }
 
   // Default to 'now' for callers (e.g. the GUI's quick-create form) that
-  // omit the field. The CLI's createCommand has already validated against
-  // the 4-status enum and rejected 'done'.
+  // omit the field. Enforce the shared enum here too: the CLI's
+  // createCommand pre-validates and rejects 'done', but the GUI's
+  // createProject IPC must not let the renderer's raw status through.
   const status = (input.status ?? '').trim() || 'now';
+  if (!(CREATE_STATUSES as readonly string[]).includes(status)) {
+    validation(`--status must be one of {${CREATE_STATUSES.join(', ')}}; got '${status}'`);
+  }
 
   const readmeBody = renderTemplate({
     kind: kind as (typeof ITEM_KINDS)[number],
@@ -200,6 +208,8 @@ function renderTemplate(input: TemplateInputs): string {
   const fmLines: string[] = ['---'];
   fmLines.push(`date: ${input.date}`);
   fmLines.push(`kind: ${input.kind}`);
+  // Safe unquoted — status is enum-validated against CREATE_STATUSES above,
+  // so it is one of four plain scalar values with no YAML metacharacters.
   fmLines.push(`status: ${input.status}`);
   if (input.apps.length === 0) {
     fmLines.push('apps: []');
