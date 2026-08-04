@@ -15,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   promises as fsPromises,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -105,11 +106,27 @@ function writeSession(
   return txtPath;
 }
 
+/** Whether the host can create symlinks, probed once at module load so the
+ *  decision is visible to `it.skipIf` at test-collection time (a condition
+ *  evaluated inside a `beforeEach`/test body would be too late — the `it`
+ *  call has already been registered by then). Windows typically lacks the
+ *  symlink privilege; some CI mounts refuse symlinks outright. */
+const canCreateSymlinks = (() => {
+  const probe = join(tmpdir(), `condash-logs-symlink-probe-${process.pid}-${Date.now()}`);
+  try {
+    symlinkSync(`${probe}-target`, probe);
+    rmSync(probe, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 /** Create `<logsRoot>/YYYY/MM/DD/escape.txt` as a symlink pointing at
  *  `<conception>/outside-secret.txt` — a target inside the conception but
  *  outside the logs root — and write the target. Returns the symlink path,
- *  or `null` when the host can't create symlinks (the rejection is then
- *  untestable and the caller skips). */
+ *  or `null` when the host can't create symlinks. Callers gate the test
+ *  with `it.skipIf(!canCreateSymlinks)`, so a `null` here is unexpected. */
 function createEscapingSymlink(day: string): string | null {
   const [y, m, d] = day.split('-');
   const dir = join(condashLogsRoot(tmp), y, m, d);
@@ -297,33 +314,48 @@ describe('logsReadSession', () => {
     await expect(handlers.logsReadSession(trustedEvent, jsonl)).rejects.toThrow();
   });
 
-  it('operates on the bounded realpath', async () => {
+  it.skipIf(!canCreateSymlinks)('operates on the bounded realpath', async () => {
     // A symlink INSIDE the logs root pointing OUTSIDE it: the bounds check
     // realpaths the request, so the escape resolves outside the root and is
-    // rejected before any read — pin that the realpath is what downstream
-    // code runs on (a regression to the raw renderer path would silently
-    // read the secret target).
-    const link = createEscapingSymlink('2026-08-04');
-    if (!link) return; // host can't create symlinks — happy path covered below
+    // rejected before any read. This pins the static case — a symlink that
+    // already exists when the request arrives. The TOCTOU window the fix
+    // closes (a link swapped between check and use) is a race no pre-existing
+    // symlink can reproduce; 'reads content through the resolved realpath'
+    // below pins that the read runs on the canonical path.
+    const link = createEscapingSymlink('2026-08-04')!;
     await expect(handlers.logsReadSession(trustedEvent, link)).rejects.toThrow(
       /path is outside the conception tree/,
     );
   });
 
-  it('reads content through the resolved realpath', async () => {
-    const file = writeSession('2026-08-04', '120000', 't-abc', 'rendered transcript body', {
+  it.skipIf(!canCreateSymlinks)('reads content through the resolved realpath', async () => {
+    // An in-root symlink whose NAME differs from its TARGET: the bounds check
+    // resolves the link to the canonical target, and the read must run on
+    // that canonical path — not the raw link path. Spy the readFile call to
+    // pin the plumbing end to end: a regression that passed the raw renderer
+    // path downstream would invoke readFile with the link path and this
+    // assertion fails.
+    const target = writeSession('2026-08-04', '120000', 't-abc', 'rendered transcript body', {
       side: 'my',
       cmd: '/bin/sh',
       argv: [],
       cwd: '/tmp',
     });
-    const res = (await handlers.logsReadSession(trustedEvent, file)) as {
-      text: string;
-      meta: { sid: string; cmd: string } | null;
-    };
-    expect(res.text).toBe('rendered transcript body');
-    expect(res.meta?.sid).toBe('t-abc');
-    expect(res.meta?.cmd).toBe('/bin/sh');
+    const link = join(join(condashLogsRoot(tmp), '2026', '08', '04'), 'link-abc.txt');
+    symlinkSync(target, link);
+    const readFileSpy = vi.spyOn(fsPromises, 'readFile');
+    try {
+      const res = (await handlers.logsReadSession(trustedEvent, link)) as {
+        text: string;
+        meta: { sid: string; cmd: string } | null;
+      };
+      expect(res.text).toBe('rendered transcript body');
+      expect(res.meta?.sid).toBe('t-abc');
+      expect(res.meta?.cmd).toBe('/bin/sh');
+      expect(readFileSpy).toHaveBeenCalledWith(realpathSync(target), 'utf8');
+    } finally {
+      readFileSpy.mockRestore();
+    }
   });
 
   it('returns an empty body only for a missing file, and rethrows other read errors', async () => {
@@ -392,9 +424,8 @@ describe('logsDeleteSession', () => {
     await expect(handlers.logsDeleteSession(trustedEvent, jsonl)).rejects.toThrow();
   });
 
-  it('refuses a symlink escaping the logs root', async () => {
-    const link = createEscapingSymlink('2026-08-04');
-    if (!link) return; // host can't create symlinks
+  it.skipIf(!canCreateSymlinks)('refuses a symlink escaping the logs root', async () => {
+    const link = createEscapingSymlink('2026-08-04')!;
     await expect(handlers.logsDeleteSession(trustedEvent, link)).rejects.toThrow(
       /path is outside the conception tree/,
     );
