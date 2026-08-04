@@ -9,6 +9,17 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
     reporters: ['default'],
+    // The perf loop-delay tests measure real event-loop timing against a busy
+    // machine: under the default threaded pool, other test files' deliberate
+    // busy-waits inflate the p50 and the timing assertions flake. Run them in
+    // their own single-fork child so nothing else competes with their loop.
+    poolMatchGlobs: [
+      ['src/main/perf-log.test.ts', 'forks'],
+      ['src/renderer/perf-renderer.test.ts', 'forks'],
+    ],
+    poolOptions: {
+      forks: { singleFork: true },
+    },
   },
   resolve: {
     alias: [
