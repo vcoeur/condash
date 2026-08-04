@@ -67,7 +67,7 @@ Task _definitions_ are **not** a config key — they live on disk at `<conceptio
 
 ## Config keys — shapes and ownership
 
-The subsections below document the **shape** of each config key. Which file a key lives in is the **Scope** column in [All config keys](#all-config-keys): `conception` keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`) live in `.condash/settings.json`; everything else is `global` and lives in `settings.json`. A few blocks documented here for convenience — `terminal` (and its `logging` / `projectActions` / `newProjectActions` / `xterm`), `dashboard`, `open_with`, `agents` — are **global** (personal/per-machine), not per-conception. No key is valid in both files.
+The subsections below document the **shape** of each config key. Which file a key lives in is the **Scope** column in [All config keys](#all-config-keys): `conception` keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`) live in `.condash/settings.json`; everything else is `global` and lives in `settings.json`. A few blocks documented here for convenience — `terminal` (and its `logging` / `projectActions` / `newProjectActions` / `xterm`), `dashboard`, `open_with`, `agents` — are **global** (personal/per-machine), not per-conception. No other key is valid in both files.
 
 ### `.condash/settings.json` (per-conception, per-host)
 
