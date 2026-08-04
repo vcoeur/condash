@@ -9,6 +9,14 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
     reporters: ['default'],
+    // The perf loop-delay tests measure real event-loop timing against the
+    // deliberate busy-waits in other test files, and the timing assertions
+    // flake when those run alongside (observed: perf-log p50, perf-renderer
+    // 24.9 > 20). vitest 2.1.9 runs pools concurrently, so a separate pool
+    // cannot isolate them; the suite therefore runs one file at a time
+    // (~40 s, well within the CI budget). Revisit when vitest gains per-pool
+    // scheduling.
+    fileParallelism: false,
   },
   resolve: {
     alias: [

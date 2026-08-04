@@ -570,9 +570,11 @@ describe('runPerfJanitor', () => {
     expect(result.remainingBytes).toBe(2 * big);
   });
 
-  it("never deletes today's file, even to get under the cap", async () => {
+  it("never deletes today's file, even to get under the cap", { timeout: 30_000 }, async () => {
     // A live recorder is appending to it: evicting today throws away the run
     // the user is in the middle of capturing.
+    // 500 MB of seeding under a loaded machine outgrew the 5 s vitest default;
+    // 30 s is generous for the write while still failing fast on a true hang.
     const huge = 500 * 1024 * 1024;
     const conception = await seed({ '2026-07-22': huge });
     const result = await runPerfJanitor(conception, NOW);
