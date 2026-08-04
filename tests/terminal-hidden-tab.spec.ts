@@ -29,10 +29,7 @@ function countOccurrences(haystack: string, needle: string): number {
 async function waitForDomTerm(window: Page, sid: string, timeoutMs = 5000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const present = await window.evaluate(
-      (id) => window.__condashXterms?.has(id) ?? false,
-      sid,
-    );
+    const present = await window.evaluate((id) => window.__condashXterms?.has(id) ?? false, sid);
     if (present) return;
     await wait(50);
   }
@@ -66,8 +63,14 @@ test('hidden terminal tab preserves output and round-trips through the worker', 
     await wait(500);
 
     // Wait for both shells to register as tabs.
-    await booted.window.waitForSelector(`[data-sid="${a.id}"]`, { state: 'attached', timeout: 5000 });
-    await booted.window.waitForSelector(`[data-sid="${b.id}"]`, { state: 'attached', timeout: 5000 });
+    await booted.window.waitForSelector(`[data-sid="${a.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await booted.window.waitForSelector(`[data-sid="${b.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
 
     // Each tab's marker must appear exactly once and stay that way across
     // repeated hide/show cycles. `toContain` would pass even if the off-thread

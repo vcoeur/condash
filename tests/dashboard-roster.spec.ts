@@ -113,7 +113,9 @@ test('Clicking a dashboard card opens that card’s terminal tab', async () => {
     },
   });
   try {
-    await booted.window.evaluate(() => window.condash.termSpawn({ side: 'my', command: 'sleep 60' }));
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 60' }),
+    );
     // Capture the second tab's session id — the card that summarizes it must
     // activate exactly this tab.
     const sid2 = await booted.window.evaluate(

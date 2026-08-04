@@ -358,10 +358,12 @@ describe('logsReadSession', () => {
     }
   });
 
-  it('returns an empty body only for a missing file, and rethrows other read errors', async () => {
+  it('empties the body when the file is deleted mid-read, and rethrows other read errors', async () => {
     // ENOENT half: the file exists when the realpath bounds-check runs but the
     // read then fails with ENOENT (the deletion race the handler tolerates) —
-    // pin that this surfaces as an empty body rather than an error.
+    // pin that this surfaces as an empty body rather than an error. This is the
+    // *only* way the handler reaches that branch; see the already-missing case
+    // below for what a genuinely absent file does.
     const gone = writeSession('2026-08-04', '120000', 't-gone', 'body', {});
     const readFileSpy = vi
       .spyOn(fsPromises, 'readFile')
@@ -384,6 +386,17 @@ describe('logsReadSession', () => {
     } finally {
       chmodSync(locked, 0o644);
     }
+  });
+
+  it('rejects a file that is already missing when the request arrives', async () => {
+    // The complement of the mid-read deletion above: `requirePathUnder`
+    // realpaths the request before anything else runs, so an absent file never
+    // reaches the ENOENT-tolerant read. It throws, and the caller
+    // (`task-running.tsx`) is the one that decides to swallow it.
+    const absent = join(condashLogsRoot(tmp), '2026', '08', '04', '120200-t-never.txt');
+    await expect(handlers.logsReadSession(trustedEvent, absent)).rejects.toThrow(
+      /path does not resolve/,
+    );
   });
 });
 

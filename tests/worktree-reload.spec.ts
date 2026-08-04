@@ -51,15 +51,7 @@ test('Code panel reflects git worktree add/remove without manual refresh', async
     // Add a feature worktree from outside the running app — exactly the
     // scenario the fix targets (CLI mutation, no IPC notification path).
     await mkdir(join(worktreeRoot, 'feature'), { recursive: true });
-    await exec('git', [
-      '-C',
-      repoDir,
-      'worktree',
-      'add',
-      '-b',
-      'feature',
-      featureWorktreeDir,
-    ]);
+    await exec('git', ['-C', repoDir, 'worktree', 'add', '-b', 'feature', featureWorktreeDir]);
 
     // Expect the new branch row to appear without any UI interaction.
     // 2 s budget covers the 250 ms structural debounce + IPC + reload.
