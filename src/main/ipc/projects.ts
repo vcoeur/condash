@@ -24,7 +24,12 @@ import { requirePathUnder } from '../path-bounds';
 import { readSettings, settingsPath } from '../settings';
 import { findProjectReadmes } from '../walk';
 import { checkBranchState } from '../worktree-ops';
-import { requireMainWindowSender, requireNonEmptyString, requireString } from './utils';
+import {
+  requireMainWindowSender,
+  requireNonEmptyString,
+  requireRecord,
+  requireString,
+} from './utils';
 
 /**
  * Defence-in-depth: every IPC handler that accepts a `path` from the
@@ -215,6 +220,11 @@ export function registerProjectsIpc(): void {
     'createProject',
     async (event, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
       requireMainWindowSender(event);
+      // Shape-guard the payload first — a null / non-object input would
+      // otherwise die on field access with a bare TypeError instead of the
+      // uniform `<channel>: expected an object` decoder error every other
+      // handler emits (utils.ts).
+      requireRecord('createProject', input);
       const { lastConceptionPath: conceptionPath } = await readSettings();
       if (!conceptionPath) throw new Error('No conception path set');
       const result = await createProjectCore(conceptionPath, {

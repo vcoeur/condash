@@ -9,6 +9,7 @@ import { projectsStrategy } from '../../main/index-projects';
 import { exec } from '../../main/exec';
 import { touchDirtyMarker } from '../../main/dirty';
 import {
+  CREATE_STATUSES,
   createProjectCore,
   type CreateProjectInput,
   type CreateProjectResult,
@@ -102,9 +103,10 @@ function relativeIfPossible(path: string, rootPath: string): string {
   return toPosix(relative(conceptionRoot, path)) || path;
 }
 
-// Statuses accepted at create time. `done` is intentionally excluded — it
-// requires a Closed Timeline entry that only `condash projects close` writes.
-const CREATE_STATUSES = ['now', 'review', 'later', 'backlog'] as const;
+// Statuses accepted at create time live in src/main/create-project.ts
+// (CREATE_STATUSES) — the shared enum createProjectCore enforces for both the
+// CLI and the GUI. `done` is excluded: closing requires a Closed Timeline
+// entry that only `condash projects close` writes.
 
 export async function createCommand(
   args: ParsedArgs,
