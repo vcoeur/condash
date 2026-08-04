@@ -12,12 +12,7 @@ const PNG_BYTES = Buffer.from(
 test('note view: ../sibling/<file> image renders via condash-file:// protocol (#85)', async () => {
   const booted = await bootApp();
   try {
-    const projectDir = join(
-      booted.conceptionDir,
-      'projects',
-      '2026-04',
-      '2026-04-26-sample',
-    );
+    const projectDir = join(booted.conceptionDir, 'projects', '2026-04', '2026-04-26-sample');
     const notesDir = join(projectDir, 'notes');
     const picturesDir = join(projectDir, 'pictures');
     await mkdir(notesDir, { recursive: true });

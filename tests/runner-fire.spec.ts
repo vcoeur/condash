@@ -119,8 +119,7 @@ test('spawning a second run for the same repo replaces the first', async () => {
     // After spawnTerminal awaits the prior Stop, only the new session remains.
     const list = await booted.window.evaluate(() => window.condash.termList());
     const codeRunsForRepo = list.filter(
-      (s: { side: string; repo?: string; exited?: number }) =>
-        s.side === 'code' && s.repo === '.',
+      (s: { side: string; repo?: string; exited?: number }) => s.side === 'code' && s.repo === '.',
     );
     expect(codeRunsForRepo.map((s) => s.id)).toEqual([second.id]);
 

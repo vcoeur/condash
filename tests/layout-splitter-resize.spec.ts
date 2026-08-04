@@ -198,8 +198,12 @@ test('a drag released before the next frame still commits where it ended', async
           clientY: 400,
         }),
       );
-      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: target, clientY: 400 }));
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: target, clientY: 400 }));
+      window.dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: target, clientY: 400 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent('mouseup', { bubbles: true, clientX: target, clientY: 400 }),
+      );
     });
 
     await expect

@@ -35,7 +35,10 @@ export default defineConfig({
       '@shared': resolve(__dirname, 'src/shared'),
       // Vite's worker bundler does not resolve @xterm/headless through its
       // package.json module field, so point it at the ESM build explicitly.
-      '@xterm/headless': resolve(__dirname, 'node_modules/@xterm/headless/lib-headless/xterm-headless.mjs'),
+      '@xterm/headless': resolve(
+        __dirname,
+        'node_modules/@xterm/headless/lib-headless/xterm-headless.mjs',
+      ),
     },
   },
 });

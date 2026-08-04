@@ -219,7 +219,11 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
     raw = await fs.readFile(realPath, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      /* missing file → empty body */
+      /* Deleted between the bounds check and this read — the log janitor and
+         a tab close both unlink while the modal may be polling. Render an
+         empty body rather than an error. A file that was already missing when
+         the request arrived never reaches here: `requirePathUnder` realpaths
+         it and throws `path does not resolve` first. */
     } else {
       throw err;
     }

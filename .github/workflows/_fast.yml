@@ -63,8 +63,11 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
+      # Both halves of the split suite: the parallel main run, then the
+      # loop-delay timing tests alone under vitest.perf.config.ts. A bare
+      # `npx vitest run` here would silently skip the second half.
       - name: Vitest unit suite
-        run: npx vitest run
+        run: npm run test:unit
 
       # Dead-code / over-export guard (knip). Per knip.json most rules are
       # graded `error` and fail the lane: dead files, unused exports/types,

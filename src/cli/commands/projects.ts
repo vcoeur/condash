@@ -206,7 +206,7 @@ function printHelp(verb: string | null): void {
         '',
         'Optional:',
         '  --all          Validate every project README.',
-        '  --path <p>     Validate one specific README (must resolve inside the conception).',
+        '  --path <p>     Validate one specific README (must resolve inside <conception>/projects/).',
         '',
         'Examples:',
         '  condash projects validate condash-cli-ux-fixes',

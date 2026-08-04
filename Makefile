@@ -54,8 +54,11 @@ typecheck:
 format:
 	npm run format
 
+# Delegates to the npm script so the glob lives in exactly one place — the
+# Makefile carrying its own copy is how tests/ and the root config files fell
+# out of coverage.
 format-check:
-	npx prettier --check "src/**/*.{ts,tsx,css,html,json}"
+	npm run format:check
 
 test:
 	npm run build
@@ -69,8 +72,10 @@ test-visible:
 	npm run build
 	CONDASH_TEST_HEADED=1 npm run test
 
+# Both halves of the split suite — a bare `vitest run` skips the loop-delay
+# timing tests, which live in vitest.perf.config.ts. See vitest.config.ts.
 test-unit:
-	npx vitest run
+	npm run test:unit
 
 # Dead-code / over-export guard. knip.json grades issue types: dead files,
 # dead/unlisted/unresolved deps, and duplicate exports are `error` (fail CI —

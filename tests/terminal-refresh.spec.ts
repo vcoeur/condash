@@ -479,9 +479,7 @@ test('auto-refresh on tab switch restores the terminal to full size', async () =
       const host = document.querySelector('.terminal-host') as HTMLElement | null;
       if (host) host.style.width = '420px';
     });
-    await expect
-      .poll(() => colsOf(booted.window, b.id), { timeout: 5000 })
-      .toBeLessThan(80);
+    await expect.poll(() => colsOf(booted.window, b.id), { timeout: 5000 }).toBeLessThan(80);
 
     // Switch to the hidden tab. The auto-refresh nudge must fire, and the
     // newly-active terminal must end up fitted to the restored host rather than
@@ -501,9 +499,7 @@ test('auto-refresh on tab switch restores the terminal to full size', async () =
       const host = document.querySelector('.terminal-host') as HTMLElement | null;
       if (host) host.style.removeProperty('width');
     });
-    await expect
-      .poll(() => colsOf(booted.window, a.id), { timeout: 5000 })
-      .toBeGreaterThan(80);
+    await expect.poll(() => colsOf(booted.window, a.id), { timeout: 5000 }).toBeGreaterThan(80);
 
     await booted.window.evaluate((id) => window.condash.termClose(id), a.id);
     await booted.window.evaluate((id) => window.condash.termClose(id), b.id);

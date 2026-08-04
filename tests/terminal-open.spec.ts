@@ -20,10 +20,7 @@ test('terminal pane opens and a My-terms shell tab spawns a session', async () =
     // write, so we poll briefly.
     let attached: { output: string; exited?: number } | null = null;
     for (let attempt = 0; attempt < 20; attempt++) {
-      attached = await booted.window.evaluate(
-        (id) => window.condash.termAttach(id),
-        session.id,
-      );
+      attached = await booted.window.evaluate((id) => window.condash.termAttach(id), session.id);
       if (attached?.output && attached.output.length > 0) break;
       await new Promise((r) => setTimeout(r, 100));
     }

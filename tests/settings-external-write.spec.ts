@@ -107,7 +107,11 @@ test('an external write to the very key being staged does not win over the user'
     await modal.locator('.theme-card[data-theme-id="console"]').click();
 
     const onDisk = JSON.parse(await readFile(globalPath, 'utf8')) as Record<string, unknown>;
-    await writeFile(globalPath, JSON.stringify({ ...onDisk, theme: 'mist' }, null, 2) + '\n', 'utf8');
+    await writeFile(
+      globalPath,
+      JSON.stringify({ ...onDisk, theme: 'mist' }, null, 2) + '\n',
+      'utf8',
+    );
 
     await modal.locator('button.settings-save').click();
 
