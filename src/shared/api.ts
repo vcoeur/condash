@@ -98,7 +98,7 @@ export interface CondashApi {
    * listRepos() runs `git status` everywhere instead of returning TTL-
    * cached values. */
   invalidateGitStatus(): Promise<void>;
-  /** Detailed `git status -s` + `git diff --stat HEAD` for a worktree path.
+  /** Detailed `git status -s` + `git diff --numstat HEAD` for a worktree path.
    * Powers the click-to-inspect popover on the per-branch `N dirty` badge.
    * Returns null when the path is missing or not a git repo. */
   getDirtyDetails(path: string, opts?: { scopeToSubtree?: boolean }): Promise<DirtyDetails | null>;
