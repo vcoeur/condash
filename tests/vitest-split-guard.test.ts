@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { configDefaults } from 'vitest/config';
 import mainConfig, { PERF_LOOP_DELAY_TESTS } from '../vitest.config';
 import perfConfig from '../vitest.perf.config';
 
@@ -29,11 +30,11 @@ describe('the split unit suite stays wired up', () => {
     }
   });
 
-  it('the main config excludes exactly the isolated files', () => {
-    const exclude = mainConfig.test?.exclude ?? [];
-    for (const rel of PERF_LOOP_DELAY_TESTS) {
-      expect(exclude, `${rel} must be excluded from the main run`).toContain(rel);
-    }
+  it('the main config excludes exactly the isolated files, and nothing else', () => {
+    // Exact, not `toContain`: an exclusion added on top (say `src/main/**`
+    // while chasing something) would drop whole swathes of the suite and the
+    // run would still report green.
+    expect(mainConfig.test?.exclude).toEqual([...configDefaults.exclude, ...PERF_LOOP_DELAY_TESTS]);
   });
 
   it('the perf config includes exactly the isolated files and runs them alone', () => {
