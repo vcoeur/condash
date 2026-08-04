@@ -5,7 +5,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   listProjects,
   readProject,
@@ -23,6 +23,7 @@ import {
   writeProjectReadme,
 } from './test-helpers';
 import { CliError } from '../output';
+import * as searchModule from '../../main/search';
 
 let conceptionPath: string;
 
@@ -319,6 +320,33 @@ describe('searchProjects', () => {
     const data = parseJsonEnvelope<{ query: string; hits: unknown[] }>(stdout).data!;
     expect(data.query).toBe('Beta');
     expect(data.hits.length).toBeGreaterThan(0);
+  });
+
+  it('restricts the backend search to the projects scope (no logs scan)', async () => {
+    await seedThreeProjects();
+    // Spy on the module export — Vite rewrites the named import in
+    // projects-read.ts to a property access on this namespace, so the spy
+    // observes the real call while the real implementation still runs.
+    const searchSpy = vi.spyOn(searchModule, 'search');
+    try {
+      const { stdout, threw } = await captureStdout(() =>
+        searchProjects(
+          { noun: 'projects', verb: 'search', positional: ['Beta'], flags: {} },
+          jsonCtx(),
+          conceptionPath,
+        ),
+      );
+      expect(threw).toBeUndefined();
+      // Backend must be told the projects scope explicitly — `undefined`
+      // means "everything" and pays the logs disk-scan on every call.
+      expect(searchSpy).toHaveBeenCalledWith(conceptionPath, 'Beta', ['projects']);
+      // The real search still ran and returned the expected hit.
+      const data = parseJsonEnvelope<{ query: string; hits: unknown[] }>(stdout).data!;
+      expect(data.query).toBe('Beta');
+      expect(data.hits.length).toBeGreaterThan(0);
+    } finally {
+      searchSpy.mockRestore();
+    }
   });
 
   it('USAGE error when query is empty', async () => {

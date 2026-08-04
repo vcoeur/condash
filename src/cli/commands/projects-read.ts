@@ -253,7 +253,12 @@ export async function searchProjects(
   const query = args.positional.join(' ');
   if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');
 
-  const results = await searchAll(conceptionPath, query);
+  // Restrict the backend to the projects scope — passing no scopes is
+  // treated as "everything" and pays the on-disk logs disk-scan on every
+  // invocation (the `condash search` verb documents this trap at
+  // commands/search.ts:42-45). The project-only filter below makes this
+  // semantically identical, just without the scan.
+  const results = await searchAll(conceptionPath, query, ['projects']);
   const projectHits = results.hits.filter((h) => h.source === 'project');
 
   // Annotate hits with the matched item's header so the skill can triage.
