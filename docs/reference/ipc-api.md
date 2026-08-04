@@ -289,7 +289,7 @@ Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Appli
 ## See also
 
 - [`src/shared/api.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/api.ts) — the IPC contract, source of truth.
-- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — drift checks + atomic write + per-file queue, all in one file.
+- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — re-export barrel over the split mutation modules: `mutate-steps.ts` (checklist edits), `mutate-status.ts` (status + timeline), `write-config.ts` (note/config writes), `mutate-shared.ts` (EOL detection + per-file queue).
 - [`src/main/terminals.ts`](https://github.com/vcoeur/condash/blob/main/src/main/terminals.ts) — pty lifecycle + the kill pipeline.
 - [`src/main/git-status-cache.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-status-cache.ts) — the TTL cache.
 - [`src/main/git-concurrency.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-concurrency.ts) — the read-only git-lookup cap.

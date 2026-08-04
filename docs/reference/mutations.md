@@ -165,4 +165,4 @@ The [shipped management skills](skill.md) drive the `condash` CLI and plain file
 
 Every write is atomic at the OS level (`.tmp` file + `rename` after `fsync`). Concurrency between the dashboard and an external editor is handled by the drift check on `toggleStep` / `editStepText` / `writeNote`: if the on-disk content doesn't match the renderer's snapshot, the write is refused and the UI surfaces a conflict banner. No merge — the user re-opens the file and redoes their edit.
 
-Concurrent writes from within condash are serialised by the per-file write queue in [`mutate.ts:withFileQueue`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — concurrent toggles on the same file never interleave, and a failure in one write doesn't poison the queue.
+Concurrent writes from within condash are serialised by the per-file write queue in [`mutate-shared.ts:withFileQueue`](https://github.com/vcoeur/condash/blob/main/src/main/mutate-shared.ts) — concurrent toggles on the same file never interleave, and a failure in one write doesn't poison the queue.
