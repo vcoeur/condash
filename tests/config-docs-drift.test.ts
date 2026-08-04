@@ -7,10 +7,12 @@
  * nothing in CI used to read the reference — a key added or renamed in
  * `config-schema.ts` could ship undocumented forever. This test derives the
  * top-level key set from the two zod schemas (`globalSettingsSchema`,
- * `conceptionConfigSchema`) and asserts each key appears (backticked) in the
- * doc's "All config keys" table, plus a scope-column agreement check against
- * `SCOPE_OF` from `config-scope.ts`. Assertions search for tokens, not whole
- * lines, so prose rewrites don't trip them.
+ * `conceptionConfigSchema`) and asserts the doc's "All config keys" table
+ * carries exactly those keys — one row per schema key, every row's key a real
+ * schema key — plus a strict scope-cell agreement check against `SCOPE_OF`
+ * from `config-scope.ts`. Rows are parsed cell-by-cell (key at split index 1,
+ * scope at split index 2), so a wrong scope word or a stale/duplicate row
+ * cannot hide behind prose or a substring match.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -52,17 +54,30 @@ describe('docs/reference/config.md keeps up with the config schemas', () => {
       tableSection,
       'docs/reference/config.md should carry an "All config keys" section',
     ).toBeTruthy();
-    // A rewrite that deletes the whole table must fail, not pass vacuously.
+    // Exact row count: one row per schema key, no more. A rewrite that deletes
+    // the whole table, drops a row, or carries an extra/duplicate row fails.
+    // `$schema_doc` has no table row.
     const rowCount = tableSection.split('\n').filter((line) => line.startsWith('| `')).length;
-    expect(rowCount).toBeGreaterThanOrEqual(schemaKeys.size - 1); // $schema_doc has no table row
+    expect(rowCount).toBe(schemaKeys.size - 1); // $schema_doc has no table row
   });
 
-  it('documents every schema key in the All-config-keys table', () => {
+  it('keeps the All-config-keys table in one-to-one agreement with the schema keys', () => {
+    // Direction 1: every schema key appears (backticked) in the doc.
     for (const key of schemaKeys) {
       expect(
         configMd,
         `docs/reference/config.md should document the schema key '${key}'`,
       ).toContain(`\`${key}\``);
+    }
+    // Direction 2: every table row's key is a real schema key — a stale row
+    // (key dropped from the schema but left documented) fails here.
+    const rows = tableSection.split('\n').filter((line) => line.startsWith('| `'));
+    for (const row of rows) {
+      const key = row.split('|')[1].trim().replace(/^`|`$/g, '');
+      expect(
+        schemaKeys.has(key),
+        `docs/reference/config.md table row '${key}' is not a schema key — remove the stale row`,
+      ).toBe(true);
     }
   });
 
@@ -82,10 +97,13 @@ describe('docs/reference/config.md keeps up with the config schemas', () => {
       ).toBeTruthy();
       const row = tableSection.split('\n').find((line) => line.startsWith(`| \`${key}\``));
       expect(row, `docs/reference/config.md should carry a table row for '${key}'`).toBeTruthy();
+      // Strict scope-CELL equality — a whole-row `toContain` could pass a wrong
+      // scope word when the description text happens to contain the right one.
+      const scopeCell = row!.split('|')[2].trim();
       expect(
-        row,
+        scopeCell,
         `docs/reference/config.md row for '${key}' should carry scope '${scope}'`,
-      ).toContain(scope);
+      ).toBe(scope);
     }
   });
 });
