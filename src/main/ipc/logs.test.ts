@@ -9,7 +9,16 @@
  * one plain-text `.txt` per spawn carrying `# condash: {...}` header /
  * footer lines — no sidecar.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  promises as fsPromises,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -94,6 +103,26 @@ function writeSession(
   const txtPath = join(dir, `${hms}-${sid}.txt`);
   writeFileSync(txtPath, composeTxt({ sid, ...header }, body, footer));
   return txtPath;
+}
+
+/** Create `<logsRoot>/YYYY/MM/DD/escape.txt` as a symlink pointing at
+ *  `<conception>/outside-secret.txt` — a target inside the conception but
+ *  outside the logs root — and write the target. Returns the symlink path,
+ *  or `null` when the host can't create symlinks (the rejection is then
+ *  untestable and the caller skips). */
+function createEscapingSymlink(day: string): string | null {
+  const [y, m, d] = day.split('-');
+  const dir = join(condashLogsRoot(tmp), y, m, d);
+  mkdirSync(dir, { recursive: true });
+  const target = join(tmp, 'outside-secret.txt');
+  writeFileSync(target, 'secret body\n');
+  const link = join(dir, 'escape.txt');
+  try {
+    symlinkSync(target, link);
+  } catch {
+    return null;
+  }
+  return link;
 }
 
 describe('logsListDays', () => {
@@ -267,6 +296,63 @@ describe('logsReadSession', () => {
     writeFileSync(jsonl, '{}\n');
     await expect(handlers.logsReadSession(trustedEvent, jsonl)).rejects.toThrow();
   });
+
+  it('operates on the bounded realpath', async () => {
+    // A symlink INSIDE the logs root pointing OUTSIDE it: the bounds check
+    // realpaths the request, so the escape resolves outside the root and is
+    // rejected before any read — pin that the realpath is what downstream
+    // code runs on (a regression to the raw renderer path would silently
+    // read the secret target).
+    const link = createEscapingSymlink('2026-08-04');
+    if (!link) return; // host can't create symlinks — happy path covered below
+    await expect(handlers.logsReadSession(trustedEvent, link)).rejects.toThrow(
+      /path is outside the conception tree/,
+    );
+  });
+
+  it('reads content through the resolved realpath', async () => {
+    const file = writeSession('2026-08-04', '120000', 't-abc', 'rendered transcript body', {
+      side: 'my',
+      cmd: '/bin/sh',
+      argv: [],
+      cwd: '/tmp',
+    });
+    const res = (await handlers.logsReadSession(trustedEvent, file)) as {
+      text: string;
+      meta: { sid: string; cmd: string } | null;
+    };
+    expect(res.text).toBe('rendered transcript body');
+    expect(res.meta?.sid).toBe('t-abc');
+    expect(res.meta?.cmd).toBe('/bin/sh');
+  });
+
+  it('returns an empty body only for a missing file, and rethrows other read errors', async () => {
+    // ENOENT half: the file exists when the realpath bounds-check runs but the
+    // read then fails with ENOENT (the deletion race the handler tolerates) —
+    // pin that this surfaces as an empty body rather than an error.
+    const gone = writeSession('2026-08-04', '120000', 't-gone', 'body', {});
+    const readFileSpy = vi
+      .spyOn(fsPromises, 'readFile')
+      .mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    try {
+      const res = (await handlers.logsReadSession(trustedEvent, gone)) as { text: string };
+      expect(res.text).toBe('');
+    } finally {
+      readFileSpy.mockRestore();
+    }
+
+    // Rethrow half: a non-ENOENT read error (EACCES via chmod 000) propagates
+    // instead of silently rendering an empty transcript. chmod 000 is
+    // ineffective for root, so the assertion only holds as a regular user.
+    if (process.getuid?.() === 0) return;
+    const locked = writeSession('2026-08-04', '120100', 't-locked', 'body', {});
+    chmodSync(locked, 0o000);
+    try {
+      await expect(handlers.logsReadSession(trustedEvent, locked)).rejects.toThrow();
+    } finally {
+      chmodSync(locked, 0o644);
+    }
+  });
 });
 
 describe('logsDeleteDay', () => {
@@ -304,5 +390,15 @@ describe('logsDeleteSession', () => {
     const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
     writeFileSync(jsonl, '{}\n');
     await expect(handlers.logsDeleteSession(trustedEvent, jsonl)).rejects.toThrow();
+  });
+
+  it('refuses a symlink escaping the logs root', async () => {
+    const link = createEscapingSymlink('2026-08-04');
+    if (!link) return; // host can't create symlinks
+    await expect(handlers.logsDeleteSession(trustedEvent, link)).rejects.toThrow(
+      /path is outside the conception tree/,
+    );
+    // The escape target must be untouched — the delete never ran.
+    expect(existsSync(join(tmp, 'outside-secret.txt'))).toBe(true);
   });
 });

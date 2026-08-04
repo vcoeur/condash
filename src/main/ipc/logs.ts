@@ -200,24 +200,33 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
   // Task-run files (capabilities 1 + 4) live under `.condash/{scheduled,
   // manual}/<slug>/`, outside the normal logs root — bound those reads to the
   // `.condash/` dir (realpath-checked, so `..` traversal is still rejected);
-  // everything else stays bounded to the logs root.
+  // everything else stays bounded to the logs root. Everything downstream —
+  // the `.txt` check, the read, the day/file-name derivation — runs on the
+  // returned realpath, so a symlink inside the root pointing outside it is
+  // rejected up front and no TOCTOU window opens between the bounds check
+  // and the file use (contract: path-bounds.ts).
+  let realPath: string;
   if (isTaskRunPath(conception, filePath)) {
-    await requirePathUnder(filePath, condashDir(conception));
+    realPath = await requirePathUnder(filePath, condashDir(conception));
   } else {
-    await requirePathUnder(filePath, condashLogsRoot(conception));
+    realPath = await requirePathUnder(filePath, condashLogsRoot(conception));
   }
-  if (!filePath.endsWith('.txt')) {
+  if (!realPath.endsWith('.txt')) {
     throw new Error('logsReadSession: only .txt files');
   }
   let raw = '';
   try {
-    raw = await fs.readFile(filePath, 'utf8');
-  } catch {
-    /* missing file → empty body */
+    raw = await fs.readFile(realPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      /* missing file → empty body */
+    } else {
+      throw err;
+    }
   }
   const { text, header, footer } = splitContent(raw);
-  const day = deriveDay(filePath);
-  const fileName = filePath.split('/').pop() ?? '';
+  const day = deriveDay(realPath);
+  const fileName = realPath.split('/').pop() ?? '';
   const sid = /^\d{6}-(.+?)\.txt$/.exec(fileName)?.[1] ?? '';
   const meta: TermLogSessionMeta | null =
     header || footer
@@ -253,12 +262,12 @@ function deriveTime(fileName: string): string {
 async function deleteSession(filePath: string): Promise<{ deleted: boolean }> {
   const conception = await activeConceptionPath();
   if (!conception) return { deleted: false };
-  await requirePathUnder(filePath, condashLogsRoot(conception));
-  if (!filePath.endsWith('.txt')) {
+  const realPath = await requirePathUnder(filePath, condashLogsRoot(conception));
+  if (!realPath.endsWith('.txt')) {
     throw new Error('logsDeleteSession: only .txt files');
   }
   try {
-    await fs.rm(filePath, { force: true });
+    await fs.rm(realPath, { force: true });
     return { deleted: true };
   } catch {
     return { deleted: false };
