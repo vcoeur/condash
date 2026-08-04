@@ -8,7 +8,7 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { exec } from './exec';
 import { GIT_SLOT_LIMIT, withGitSlot } from './git-concurrency';
 import { getDirtyDetails, parseNumstat, parsePorcelain } from './git-details';
@@ -112,6 +112,10 @@ describe('subtree-scoped lookups against a real repo', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('getDirtyCount filters the zero-byte untracked file under subtree scope', async () => {
     const count = await getDirtyCount(sub, { scopeToSubtree: true });
     // tracked.txt (modified) + full.txt (untracked, non-empty); empty.txt
@@ -137,6 +141,15 @@ describe('subtree-scoped lookups against a real repo', () => {
   });
 
   it('getDirtyDetails spawns honor the shared git slot cap', async () => {
+    // Stub the upstream lookup so this test discriminates on a cold cache:
+    // the real getUpstreamStatus queues a gated `rev-parse @{u}` behind the
+    // held slots (git-status-cache.ts), which would mask an ungated
+    // getDirtyDetails and pass the test with the wraps reverted when it runs
+    // in isolation. Vite rewrites the named import to a namespace property
+    // access, so the spy is observed at the real call site.
+    const upstreamSpy = vi
+      .spyOn(await import('./git-status-cache'), 'getUpstreamStatus')
+      .mockResolvedValue(null);
     const blocker = deferred();
     const held = Array.from({ length: GIT_SLOT_LIMIT }, () => withGitSlot(() => blocker.promise));
     let completed = false;
@@ -151,5 +164,8 @@ describe('subtree-scoped lookups against a real repo', () => {
     await Promise.all(held);
     const details = await detailsPromise;
     expect(details).not.toBeNull();
+    // The stub ran instead of the real (gated) lookup — the discriminator is
+    // alive, so this test fails when the withGitSlot wraps are reverted.
+    expect(upstreamSpy).toHaveBeenCalled();
   });
 });
