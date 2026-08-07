@@ -5,6 +5,8 @@ description: Cut a coordinated helio release across the CLI, the web dashboard, 
 
 # release-helio
 
+Fixture skill for the demo tree — for tutorials only, not a real skill.
+
 Ship the three helio repos in one coordinated pass. The order matters: the
 Homebrew tap reads the published PyPI artifact, and the docs build regenerates
 its flag reference from the tagged CLI.
