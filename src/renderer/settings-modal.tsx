@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
@@ -110,6 +110,10 @@ export function SettingsModal(props: {
   const configurationPath = (): string => readPath() ?? writePath;
 
   const [section, setSection] = createSignal<Section>(props.initialSection ?? SECTIONS[0].id);
+  // Captured at render time (NOT inside onMount): the parent clears the
+  // one-shot `settingsSection` request as soon as the modal is up, so a
+  // reactive read in onMount would see `undefined` and skip the landing.
+  const landingSection = props.initialSection;
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
@@ -188,6 +192,21 @@ export function SettingsModal(props: {
   );
   const platform = (): Platform | undefined => appInfo()?.platform;
 
+  // One-shot landing scroll for the `initialSection` request (e.g. the Code
+  // pane's empty-state CTA). The modal's data resources reflow the sections
+  // when they resolve, so wait for them before moving the scroller — the
+  // target section (Repositories, the last one) then lands at the container
+  // bottom, where its content is fully visible.
+  let landingScheduled = false;
+  createEffect(() => {
+    if (landingScheduled || landingSection === undefined) return;
+    if (content() === undefined || globalContent() === undefined || appInfo() === undefined) {
+      return;
+    }
+    landingScheduled = true;
+    setTimeout(() => scrollToSection(landingSection, 'auto'), 0);
+  });
+
   const attemptClose = (): void => {
     if (isDirty()) {
       setCloseConfirm(true);
@@ -213,10 +232,6 @@ export function SettingsModal(props: {
   let rafScheduled = false;
   onMount(() => {
     document.addEventListener('keydown', handleKeydown, true);
-    // Land on the requested section: the section signal seeds the rail, the
-    // scroll follows so the scroll-spy doesn't flip the rail back to the top
-    // of the page the moment the modal renders.
-    if (props.initialSection) scrollToSection(props.initialSection);
     // Focus the Back button on open so Tab order starts inside the modal.
     queueMicrotask(() => backButtonRef?.focus());
   });
@@ -696,10 +711,10 @@ export function SettingsModal(props: {
 
   // --- Scroll-to-section ---------------------------------------------
 
-  const scrollToSection = (id: Section): void => {
+  const scrollToSection = (id: Section, behavior: ScrollBehavior = 'smooth'): void => {
     setSection(id);
     const el = document.getElementById(`settings-section-${id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) el.scrollIntoView({ behavior, block: 'start' });
   };
 
   // --- Render --------------------------------------------------------
