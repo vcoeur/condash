@@ -80,9 +80,10 @@ A tree with **no projects and no `knowledge/` content** shows a
 **Welcome screen** first, with four cards — **Create your first
 project**, **Open my tree**, **Read the welcome doc**, **Open the
 documentation site** — plus a **Don't show this again** link that
-persists the dismissal (`welcome.dismissed`). Note that the template
-init seeds `knowledge/`, so a folder you just initialised skips the
-Welcome screen and lands straight on the dashboard.
+persists the dismissal (`welcome.dismissed`). The template init seeds
+`knowledge/`, so it marks the Welcome screen to appear once after the
+init (even though the seeded tree has knowledge entries); it does not
+reappear on later launches.
 
 The modal asks for four things, in this order:
 
