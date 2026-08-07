@@ -543,6 +543,10 @@ function App() {
             fallback={
               <div class="empty">
                 <p>Pick a conception directory to list its projects.</p>
+                <p class="empty-gloss">
+                  A conception is a folder of Markdown projects and knowledge notes that condash
+                  renders.
+                </p>
                 <button onClick={handlePick}>Choose folder…</button>
               </div>
             }

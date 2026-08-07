@@ -764,6 +764,14 @@ button:hover {
   margin: 0;
 }
 
+/* The one-line definition under the folder-picker sentence. "Conception" is
+ * jargon at first contact, so the gloss earns its keep as the quiet line. */
+.empty-gloss {
+  max-width: 420px;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
 /* Inline action button on empty-state cards — pre-2026-05 these cards
  * said "edit configuration.json via the gear" with no affordance, so
  * users had to know about the gear to recover. The CTA replaces that

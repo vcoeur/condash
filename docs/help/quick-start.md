@@ -2,6 +2,11 @@
 
 Four steps: install, open a folder, create an item, watch the file change.
 
+A **conception** is the folder condash renders: a plain directory of
+Markdown projects and knowledge notes, usually a git repo. Everything on
+this page builds one — or point condash at a Markdown folder you already
+have and it renders that.
+
 ## 1. Install
 
 Download the latest release for your OS from

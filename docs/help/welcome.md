@@ -7,6 +7,13 @@ live view on top.
 There is no database, no server, no account. Close condash and the files
 are still on disk; delete condash and the files don't move.
 
+## What a conception is
+
+A **conception** is the folder condash renders: a plain directory of
+Markdown projects and knowledge notes, usually a git repo. Everything you
+see below — the panes, the terminal, the settings — is a live view over
+that one folder.
+
 ## What you'll see
 
 An **activity rail** runs down the left edge. Its top group picks what
