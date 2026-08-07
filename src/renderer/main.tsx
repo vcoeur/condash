@@ -405,13 +405,40 @@ function App() {
   };
 
   // --- Welcome screen ---------------------------------------------------
+  // Real knowledge content for the welcome gate. The knowledge store only
+  // fetches when the Knowledge pane opens, so at boot `knowledge()` is null
+  // even for a seeded tree — the welcome would treat every tree as
+  // knowledge-less. Probe once via IPC when the tree has no projects; the
+  // store root wins once it has loaded.
+  const [knowledgeProbe, setKnowledgeProbe] = createSignal<boolean | null>(null);
+  createEffect(() => {
+    const path = conceptionPath();
+    if (!path || !projectsLoaded() || (projects() ?? []).length > 0) {
+      setKnowledgeProbe(null);
+      return;
+    }
+    void window.condash
+      .readKnowledgeTree()
+      .then((root) => {
+        if (conceptionPath() !== path) return;
+        setKnowledgeProbe(root !== null && (root.children?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        /* Probe failed — keep null, the welcome falls back to the old
+         * "unknown = empty" reading. */
+      });
+  });
   const knowledgeIsEmpty = (): boolean => {
     const k = knowledge();
-    if (k === null || k === undefined) return true;
-    if (Array.isArray((k as { children?: unknown[] }).children)) {
-      return (k as { children: unknown[] }).children.length === 0;
+    if (k !== null && k !== undefined) {
+      if (Array.isArray((k as { children?: unknown[] }).children)) {
+        return (k as { children: unknown[] }).children.length === 0;
+      }
+      return false;
     }
-    return false;
+    // Store never fetched (pane not opened) — fall back to the probe; null
+    // means "unknown yet", treated as empty to keep the first paint stable.
+    return knowledgeProbe() !== true;
   };
   const {
     shouldShowWelcome,
