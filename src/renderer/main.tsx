@@ -419,6 +419,7 @@ function App() {
     handleWelcomeTakeTour,
     handleWelcomeOpenDocs,
     handleWelcomeDismiss,
+    handleTemplateInit,
   } = useWelcome({
     conceptionPath,
     projectsLoaded,
@@ -442,6 +443,7 @@ function App() {
     reloadLogs: () => setLogsRefreshTick((n) => n + 1),
     setInitConfirmState,
     flashToast,
+    onInitSuccess: handleTemplateInit,
   });
 
   // --- Global wiring (keyboard shortcuts + native menu router) ----------

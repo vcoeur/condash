@@ -602,7 +602,15 @@ const globalOnlyFields = {
    *  `default` keeps the theme's face for that surface. See {@link UiFontPrefs}. */
   uiFonts: uiFontsSchema.optional(),
   layout: layoutSchema.optional(),
-  welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
+  welcome: z
+    .object({
+      dismissed: z.boolean().optional(),
+      // One-shot post-template-init marker: `false` = show the welcome once
+      // on the next load, `true` = already shown. See the Settings type.
+      initShown: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   cardMinWidth: cardMinWidthSchema.optional(),
   treeExpansion: treeExpansionSchema.optional(),
   selectedBranches: z.array(z.string()).optional(),

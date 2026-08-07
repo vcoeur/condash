@@ -39,8 +39,11 @@ export interface Settings {
   /** First-launch welcome screen state. The screen shows automatically when
    * the conception tree has no items and no knowledge entries; setting
    * `dismissed` hides it permanently for users who manage trees entirely
-   * outside the dashboard. */
-  welcome?: { dismissed?: boolean };
+   * outside the dashboard. `initShown` is the one-shot post-template-init
+   * marker: init sets it to `false` so the welcome shows once on the next
+   * load even though the seeded tree has knowledge entries, and the renderer
+   * persists `true` the first time the welcome actually renders. */
+  welcome?: { dismissed?: boolean; initShown?: boolean };
   /** Per-pane card grid min-width (CSS pixels). The grid uses
    * `minmax(min(<min>, 100%), 1fr)` so a row of *n* cards reflows to *n+1*
    * once the pane is wide enough to fit *n+1* cards each at this width.
@@ -108,6 +111,9 @@ export interface BootstrapData {
   layout: LayoutState;
   /** First-launch welcome dismissed flag (`getWelcomeDismissed`). */
   welcomeDismissed: boolean;
+  /** Whether the welcome was shown once after a template init
+   *  (`getWelcomeInitShown`). `false` marks a pending show-after-init. */
+  welcomeInitShown: boolean;
   /** Fully-resolved per-pane card min-widths (`getCardMinWidth`). */
   cardMinWidth: Required<CardMinWidthPrefs>;
   /** Fully-resolved per-pane tree-expansion sets (`getTreeExpansion`). */

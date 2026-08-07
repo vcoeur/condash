@@ -124,6 +124,14 @@ export function resolveWelcomeDismissed(settings: Settings): boolean {
   return settings.welcome?.dismissed === true;
 }
 
+/** Whether the welcome was shown once after a template init. `false` marks a
+ *  pending show-after-init (init writes it), so a fresh tree that init seeded
+ *  still meets the welcome once even though `knowledge/` is non-empty. Absent
+ *  means "never inited", i.e. not pending. Mirrors `getWelcomeInitShown`. */
+export function resolveWelcomeInitShown(settings: Settings): boolean {
+  return settings.welcome?.initShown ?? true;
+}
+
 /** Fully-resolved per-pane card min-widths, every key filled from the defaults.
  *  `cardMinWidth` is a global-only key (no conception override); the effective
  *  read returns the global value. Mirrors `getCardMinWidth`. */
@@ -336,6 +344,20 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     await updateSettings((cur) => ({
       ...cur,
       welcome: { ...(cur.welcome ?? {}), dismissed: value },
+    }));
+  });
+
+  ipcMain.handle('getWelcomeInitShown', async (event) => {
+    requireMainWindowSender(event);
+    return resolveWelcomeInitShown(await readSettings());
+  });
+
+  ipcMain.handle('setWelcomeInitShown', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
+    const value = requireBoolean('setWelcomeInitShown', raw);
+    await updateSettings((cur) => ({
+      ...cur,
+      welcome: { ...(cur.welcome ?? {}), initShown: value },
     }));
   });
 
