@@ -2,6 +2,7 @@ import { createSignal, type Setter } from 'solid-js';
 import type { RepoEntry, LogsOpenRequest } from '@shared/types';
 import type { ModalState } from '../modal-types';
 import type { HelpDoc } from '../help-modal';
+import type { Section } from '../settings-modal-parts/data';
 
 /**
  * Single "which singleton overlay is open" model. The menu- / keyboard-opened
@@ -57,6 +58,11 @@ export interface UseModals {
   setSearchModalOpen: (open: boolean) => void;
   settingsOpen: () => boolean;
   setSettingsOpen: (open: boolean) => void;
+  /** One-shot "open Settings at this section" request (e.g. the Code pane's
+   *  empty-state CTA). Read as the SettingsModal's initial section at mount,
+   *  then cleared — see ModalHost. */
+  settingsSection: () => Section | null;
+  setSettingsSection: Setter<Section | null>;
   newProjectOpen: () => boolean;
   setNewProjectOpen: (open: boolean) => void;
   aboutOpen: () => boolean;
@@ -98,6 +104,7 @@ export function useModals(): UseModals {
     missing: string[];
   } | null>(null);
   const [forceStopState, setForceStopState] = createSignal<RepoEntry | null>(null);
+  const [settingsSection, setSettingsSection] = createSignal<Section | null>(null);
   const [logsOpenRequest, setLogsOpenRequest] = createSignal<LogsOpenRequest | null>(null);
   let logsOpenNonce = 0;
   const nextLogsOpenNonce = (): number => ++logsOpenNonce;
@@ -165,6 +172,8 @@ export function useModals(): UseModals {
     setSearchModalOpen: (open) => setOpen('search', open),
     settingsOpen: () => isOpen('settings'),
     setSettingsOpen: (open) => setOpen('settings', open),
+    settingsSection,
+    setSettingsSection,
     newProjectOpen: () => isOpen('newProject'),
     setNewProjectOpen: (open) => setOpen('newProject', open),
     aboutOpen: () => isOpen('about'),

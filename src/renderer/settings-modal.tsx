@@ -83,6 +83,9 @@ export function SettingsModal(props: {
    *  unmount. Distinct from `onChangeTheme` so a preview never becomes the
    *  committed value the picker reads back as checked. */
   onPreviewTheme: (theme: Theme | null) => void;
+  /** One-shot landing section at open (e.g. the Code pane's empty-state CTA
+   *  opens Settings at Repositories). Falls back to the first rail section. */
+  initialSection?: Section;
   /** Resolved card-min-width prefs (every key filled). Drives the live
    *  values shown in the Appearance section. */
   cardMinWidth: Required<CardMinWidthPrefs>;
@@ -106,7 +109,7 @@ export function SettingsModal(props: {
   );
   const configurationPath = (): string => readPath() ?? writePath;
 
-  const [section, setSection] = createSignal<Section>(SECTIONS[0].id);
+  const [section, setSection] = createSignal<Section>(props.initialSection ?? SECTIONS[0].id);
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
@@ -210,6 +213,10 @@ export function SettingsModal(props: {
   let rafScheduled = false;
   onMount(() => {
     document.addEventListener('keydown', handleKeydown, true);
+    // Land on the requested section: the section signal seeds the rail, the
+    // scroll follows so the scroll-spy doesn't flip the rail back to the top
+    // of the page the moment the modal renders.
+    if (props.initialSection) scrollToSection(props.initialSection);
     // Focus the Back button on open so Tab order starts inside the modal.
     queueMicrotask(() => backButtonRef?.focus());
   });

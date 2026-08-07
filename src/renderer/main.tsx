@@ -22,7 +22,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
-import { usableActionTemplates } from './settings-modal-parts/data';
+import { usableActionTemplates, type Section } from './settings-modal-parts/data';
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
 import { createModalRouter } from './modal-router';
@@ -110,6 +110,8 @@ function App() {
     setSearchModalOpen,
     settingsOpen,
     setSettingsOpen,
+    settingsSection,
+    setSettingsSection,
     newProjectOpen,
     setNewProjectOpen,
     aboutOpen,
@@ -393,6 +395,13 @@ function App() {
   const openDeliverable = (deliverable: Deliverable): void => {
     if (deliverable.kind === 'wikilink') handleWikilink(deliverable.path);
     else handleOpenDeliverable(deliverable.path);
+  };
+
+  // Open Settings and land on a specific rail section — used by the Code
+  // pane's empty-state CTA ("+ Add repository" → Repositories).
+  const openSettingsAt = (section: Section): void => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
   // --- Welcome screen ---------------------------------------------------
@@ -736,18 +745,22 @@ function App() {
                       when={repos.length > 0}
                       fallback={
                         <Show when={reposLoaded()} fallback={<div class="empty">Loading…</div>}>
-                          <div class="empty">
-                            <p>No repositories configured.</p>
+                          <div class="empty pane-empty">
+                            <p>No repositories configured yet.</p>
                             <p>
-                              Add entries to <code>repositories</code> in <code>condash.json</code>.
+                              Add entries under Settings → Workspace & paths → Repositories, or drop
+                              them straight into <code>repositories</code> in{' '}
+                              <code>.condash/settings.json</code>.
                             </p>
-                            <button
-                              type="button"
-                              class="empty-cta"
-                              onClick={() => setSettingsOpen(true)}
-                            >
-                              + Add repository
-                            </button>
+                            <div class="empty-actions">
+                              <button
+                                type="button"
+                                class="empty-cta"
+                                onClick={() => openSettingsAt('repositories')}
+                              >
+                                + Add repository
+                              </button>
+                            </div>
                           </div>
                         </Show>
                       }
@@ -858,6 +871,8 @@ function App() {
         selectWorking={selectWorking}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
+        settingsSection={settingsSection}
+        setSettingsSection={setSettingsSection}
         conceptionPath={conceptionPath}
         theme={theme}
         handleThemeChange={handleThemeChange}
