@@ -17,6 +17,7 @@ import { runProjects } from './projects';
 import { createCommand } from './projects-maintenance';
 import type { OutputContext } from '../output';
 import { CliError } from '../output';
+import { captureStdout as captureStdoutAndStderr } from './test-helpers';
 
 let conceptionPath: string;
 
@@ -364,5 +365,99 @@ describe('--parent on create', () => {
     expect(caught).toBeInstanceOf(CliError);
     // resolveSlug throws NOT_FOUND (exit 4) for an unresolvable parent.
     expect((caught as CliError).exitCode).toBe(4);
+  });
+});
+
+describe('B4 — --apps is optional on create (D3)', () => {
+  // The nudge is gated on `!ctx.quiet`, so these tests need a loud context.
+  function loudCtx(): OutputContext {
+    return { json: false, ndjson: false, quiet: false, noColor: true };
+  }
+
+  async function readCreatedReadme(slugTail: string): Promise<string> {
+    const months = await fs.readdir(join(conceptionPath, 'projects'));
+    const month = months.find((m) => /^\d{4}-\d{2}$/.test(m))!;
+    const dir = (await fs.readdir(join(conceptionPath, 'projects', month))).find((d) =>
+      d.endsWith(`-${slugTail}`),
+    )!;
+    return fs.readFile(join(conceptionPath, 'projects', month, dir, 'README.md'), 'utf8');
+  }
+
+  it('creates with --apps omitted (defaults to [])', async () => {
+    const { stdout, threw } = await captureStdoutAndStderr(() =>
+      createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: { kind: 'project', slug: 'd3-no-apps', title: 'D3 no apps' },
+        },
+        loudCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(stdout).toMatch(/Created /);
+    // README carries the empty-apps form (the template always writes the
+    // `apps:` header; omitted --apps yields `apps: []`).
+    const readme = await readCreatedReadme('d3-no-apps');
+    expect(readme).toMatch(/apps: \[\]/);
+  });
+
+  it('nudges on stderr when --apps is omitted and the registry is empty', async () => {
+    const { stderr, threw } = await captureStdoutAndStderr(() =>
+      createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: { kind: 'project', slug: 'd3-nudge', title: 'D3 nudge' },
+        },
+        loudCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(stderr).toMatch(/no apps registered/);
+    expect(stderr).toMatch(/condash applications add/);
+  });
+
+  it('does not nudge when --apps is given', async () => {
+    const { stderr, threw } = await captureStdoutAndStderr(() =>
+      createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: { apps: 'condash', kind: 'project', slug: 'd3-apps', title: 'D3 apps' },
+        },
+        loudCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(stderr).not.toMatch(/no apps registered/);
+  });
+
+  it('does not nudge when the registry has a live app', async () => {
+    await fs.writeFile(
+      join(conceptionPath, 'condash.json'),
+      JSON.stringify({ repositories: ['condash'] }),
+      'utf8',
+    );
+    const { stderr, threw } = await captureStdoutAndStderr(() =>
+      createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: { kind: 'project', slug: 'd3-live', title: 'D3 live' },
+        },
+        loudCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(stderr).not.toMatch(/no apps registered/);
   });
 });

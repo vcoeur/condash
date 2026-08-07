@@ -15,6 +15,7 @@ import {
   type CreateProjectResult,
 } from '../../main/create-project';
 import { rewriteHeadersInTree, type RewriteHeadersReport } from '../../main/rewrite-headers';
+import { listApplications } from '../../main/applications';
 import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
@@ -116,8 +117,10 @@ export async function createCommand(
   // Pull every known flag into a local first, then delete the keys from
   // args.flags, so assertNoExtraFlags can fire on typos *before* the
   // required-arg validation below. Without this ordering, `--app foo`
-  // gets reported as "missing --apps" rather than "did you mean --apps?".
+  // gets reported as a missing required flag rather than "did you mean
+  // --apps?".
   const apps = parseCsvFlag(args.flags.apps) ?? [];
+  const appsGiven = args.flags.apps !== undefined;
   const rawStatus = typeof args.flags.status === 'string' ? args.flags.status.toLowerCase() : '';
   const parentRaw = typeof args.flags.parent === 'string' ? args.flags.parent.trim() : '';
   const input: CreateProjectInput = {
@@ -174,7 +177,15 @@ export async function createCommand(
         `(Use \`condash projects close\` for done.)`,
     );
   }
-  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+  // `--apps` is optional (defaults to [] — the GUI create modal omits the
+  // field entirely), so the first project on a fresh tree can bootstrap
+  // without inventing a #handle. Only nudge when the flag was left out AND
+  // the registry has no live apps to offer; an explicit --apps is respected
+  // as-is (the registry is not validated at create time).
+  const registryEmpty =
+    apps.length === 0 &&
+    !appsGiven &&
+    (await listApplications(conceptionPath)).every((r) => r.retired);
 
   // Resolve --parent to a real item's canonical dated slug and store that, so
   // the reference stays stable regardless of the short form the user typed.
@@ -190,6 +201,11 @@ export async function createCommand(
     const d = data as { relPath: string; readme: string };
     return `Created ${d.relPath}\n  README: ${d.readme}\n`;
   });
+  if (registryEmpty && !ctx.quiet) {
+    process.stderr.write(
+      'note: no apps registered — run `condash applications add` to register repos, or leave --apps out\n',
+    );
+  }
 }
 
 export async function scanPromotionsCommand(
