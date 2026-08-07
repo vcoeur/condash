@@ -57,6 +57,13 @@ async function main(): Promise<number> {
 
   if (!parsed.noun || parsed.noun === 'help') {
     if (parsed.noun === 'help' && parsed.verb) {
+      if (parsed.verb === 'help') {
+        // `condash help help` — the top help advertises `help <noun>`, but
+        // `help` has no noun-level dispatch case; re-dispatching would hit
+        // `Unknown noun: help`. Point it back at the top-level help.
+        process.stdout.write(TOP_HELP);
+        return ExitCodes.OK;
+      }
       // Re-dispatch into the noun's --help path so we don't keep two help
       // strings. `condash help <noun>` → noun-level help; `condash help
       // <noun> <verb>` → verb-level help (forwards the third token as the
@@ -188,7 +195,10 @@ async function dispatch(
       return ExitCodes.OK;
     }
     default:
-      throw new CliError(ExitCodes.USAGE, `Unknown noun: ${args.noun}`);
+      throw new CliError(
+        ExitCodes.USAGE,
+        `Unknown noun: ${args.noun} — run \`condash help\` for commands`,
+      );
   }
 }
 
