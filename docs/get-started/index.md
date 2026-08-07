@@ -150,7 +150,7 @@ knowledge/                    index.md, conventions.md, external/, internal/, to
 
 **Existing files are never overwritten** — running this against a folder that already has some of these leaves them exactly as they are, and only the missing files are created. A toast reports how many were written.
 
-This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt on every open because the config marker is still absent.
+This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt the next time you pick that folder — the probe runs when a folder is chosen, not on every launch.
 
 ### Already have a Markdown tree?
 
