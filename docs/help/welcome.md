@@ -44,7 +44,7 @@ Working surfaces (one at a time, on the right):
 - **Skills** (`Ctrl+L`) — the Markdown skills under `.agents/skills/`,
   read-only. Hosts the five shipped skills (`/projects`, `/knowledge`,
   `/pr`, `/applications`, `/visual`) once `condash skills install` has
-  run, and toggles to user-scope agedum sources via the Conception/User
+  run, and toggles to user-scope sources via the Conception/User
   segmented control.
 - **Logs** (`Ctrl+Shift+L`) — per-session terminal capture viewer.
   Sessions are a collapsible card grid grouped by date (last 7 days

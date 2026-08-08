@@ -39,7 +39,7 @@ Don't have a conception yet? condash ships one — [step 2 of Get started](get-s
 
 ## Start here
 
-- → **[Get started](get-started/index.md)** — install, open or initialise a tree, create an item, then watch the file change on disk. Five minutes, with a checkpoint at every step.
+- → **[Get started](get-started/index.md)** — install, open or initialise a tree, create an item, then watch the file change on disk. About ten minutes, with a checkpoint at every step.
 - → **[A day with condash](tutorials/daily-loop.md)** — the realistic loop once you have items: open one, work in its repo, run something in the embedded terminal, push a PR, close.
 - → **[Why Markdown-first](explanation/why-markdown.md)** — the argument, if you'd rather be convinced before you install.
 

@@ -83,7 +83,9 @@ not_in_nav: |
 nav:
   - Home: index.md
 
-  - Get started: get-started/index.md
+  - Get started:
+    - get-started/index.md
+    - Releases: get-started/releases.md
 
   - Tutorials:
     - tutorials/index.md
@@ -99,7 +101,7 @@ nav:
     - Applications and handles: guides/applications-and-handles.md
     - Auto-commit: guides/auto-commit.md
     - Use the embedded terminal: guides/terminal.md
-    - The Dashboard (tab summaries): guides/dashboard.md
+    - Dashboard band (tab summaries): guides/dashboard.md
     - Agent CLIs and model providers: guides/agent-clis-and-models.md
     - The Projects pane: guides/projects-pane.md
     - The Code pane: guides/code-pane.md
@@ -132,7 +134,6 @@ nav:
       - IPC API: reference/ipc-api.md
       - Environment variables: reference/env.md
       - Management skill: reference/skill.md
-      - Releases workflow: get-started/releases.md
 
   - Background:
     - explanation/index.md

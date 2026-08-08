@@ -1,13 +1,13 @@
 ---
 title: Get started · condash
-description: Install condash, open or initialise a conception tree, create your first item, and watch the file change on disk. Five minutes, with a checkpoint at every step.
+description: Install condash, open or initialise a conception tree, create your first item, and watch the file change on disk. About ten minutes, with a checkpoint at every step.
 ---
 
 # Get started
 
 > **Audience.** New user.
 
-Five minutes, four steps, a checkpoint after each one so you always know whether it worked:
+About ten minutes, four steps, a checkpoint after each one so you always know whether it worked:
 
 1. **[Install](#install)** — you have a `condash` binary.
 2. **[Open a folder](#first-launch)** — you have a conception tree.
@@ -148,6 +148,8 @@ projects/index.md             seed index
 knowledge/                    index.md, conventions.md, external/, internal/, topics/
 ```
 
+A **skill** is a Markdown instruction file for an AI coding agent — Claude Code, for example — and condash ships five (`projects`, `knowledge`, `pr`, `applications`, `visual`), installing them into your tree under `.agents/skills/`.
+
 **Existing files are never overwritten** — running this against a folder that already has some of these leaves them exactly as they are, and only the missing files are created. A toast reports how many were written.
 
 This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt the next time you pick that folder — the probe runs when a folder is chosen, not on every launch.
@@ -230,7 +232,9 @@ condash projects create --kind project --slug try-condash \
   --title "Try condash" --apps condash
 ```
 
-(The CLI's `create` is stricter than the modal: `--kind`, `--slug`, `--title`, and `--apps` are all required.)
+(The CLI's `create` is stricter than the modal: `--kind`, `--slug`, and `--title` are required; `--apps` is optional and defaults to empty.)
+
+`--apps` names the **app(s)** the item touches — an app is a registered repo identity condash tracks, referenced by its `#handle` (e.g. `#condash`); the README's `apps:` field is what links an item to those repos. See **[Applications and handles](../guides/applications-and-handles.md)**.
 
 !!! success "Checkpoint — you have a file on disk"
 
@@ -288,7 +292,7 @@ The **activity rail** down the left edge switches between four left-hand views a
 
 Not on the rail:
 
-- **Dashboard** (`Ctrl+Shift+D`) — a bottom band that shares its space with the terminal and summarises what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
+- **Dashboard** (`Ctrl+Shift+D`) — not the app itself: a bottom band that shares its space with the terminal and summarises what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
 - **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and (on request) logs. [Guide](../guides/search.md).
 - **Status-bar indicators** — the auto-commit state with a **Sync now** button, and the shipped-skills state with an **Install** button that runs `condash skills install` for you. See [Auto-commit](../guides/auto-commit.md) and [Extend the management skills](../guides/skill-extensions.md).
 

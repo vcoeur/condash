@@ -16,7 +16,7 @@ By the end, you'll have walked through the loop most people use condash for — 
 The screenshots on this page come from a demo conception tree that ships in the repo at **`tests/fixtures/conception-demo/`** — an imaginary CLI project called `helio` and its two companions. It is not in the installed app, only in a clone.
 
 - **If you cloned the repo**: copy that directory somewhere writable and open the copy (`File → Open…`). condash writes to `.condash/` on first boot, so work on a copy rather than the checkout. The Code pane will stay empty — the repos it names don't exist on your machine — but every Projects, Knowledge, and Deliverables surface is real.
-- **If you installed a binary**: follow along in your own tree. Every step below works on any item; only the names differ.
+- **If you installed a binary**: follow along in your own tree. Steps 1, 4, 6, 7, and 8 work on any item; steps 2, 3, and 5 need a configured repo and an incident with notes — substitute your own where the demo names its own.
 
 ## The scenario
 
@@ -46,7 +46,7 @@ Switch to the **Code** pane. Five cards render in declaration order — `helio`,
 ![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-light.png#only-light)
 ![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-dark.png#only-dark)
 
-A repo is a **card** with a header (its `#handle` pill, its path, a **Repo actions** menu) and one row per worktree. The actions live on each *branch row*, and there are three of them:
+A repo is a **card** with a header (its `#handle` pill — the repo's registered app identity — its path, a **Repo actions** menu) and one row per worktree. The actions live on each *branch row*, and there are three of them:
 
 1. **Run** / **Stop** — only when that repo has a `run:` command configured.
 2. **Open a shell here** — spawns a condash terminal tab with its cwd in that worktree.
@@ -72,6 +72,8 @@ cargo build --release
 ```
 
 The process dies with `Killed` — confirmed reproducible. Paste the evidence into the item: open `notes/stack-trace.md` from the item modal, drop the new trace at the bottom, and hit **Save** (`Ctrl+S`). If you try to close the note with unsaved edits still in the buffer, condash asks before discarding.
+
+In your own tree `~/src/helio` won't exist — run the repro from your own incident's notes instead. A missing path here is the expected outcome, not an error.
 
 Two terminal features worth knowing on day one:
 
