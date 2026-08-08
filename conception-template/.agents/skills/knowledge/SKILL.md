@@ -71,7 +71,7 @@ Three yeses → `/knowledge update`, stamping the origin paragraph `**Transferre
 
 ### Promotion check (signalled by `projects`)
 
-`condash projects check-knowledge <slug>` and `condash audit --include knowledge-check` only **signal** that a done project may still hold un-promoted findings — they are read-only and never write the marker. Resolving the signal is this skill's job: run `condash projects scan-promotions <slug>`, walk each candidate through the three-yes test, and **create the actual knowledge** with `/knowledge update` (stamping the origin paragraph as above). Only once the real promotion is done — or every candidate is genuinely dropped — does the project record `- YYYY-MM-DD — Checked knowledge promotion` as its last timeline entry. The marker attests that this work happened; never append it as a substitute for doing it.
+`condash projects check-knowledge <slug>` and `condash audit --include check-knowledge` only **signal** that a done project may still hold un-promoted findings — they are read-only and never write the marker. Resolving the signal is this skill's job: run `condash projects scan-promotions <slug>`, walk each candidate through the three-yes test, and **create the actual knowledge** with `/knowledge update` (stamping the origin paragraph as above). Only once the real promotion is done — or every candidate is genuinely dropped — does the project record `- YYYY-MM-DD — Checked knowledge promotion` as its last timeline entry. The marker attests that this work happened; never append it as a substitute for doing it.
 
 ### Deferred re-evaluation
 
@@ -79,7 +79,7 @@ A finding that passes conditions 1 and 2 but fails only condition 3 — because 
 
 1. Write an open `[knowledge-recheck:pending]` timeline marker in the project README.
 2. After the PR merges, re-run the three-yes test; on a pass, promote via `/knowledge update` and update the marker to `[knowledge-recheck:done]`.
-3. `condash audit --include knowledge-recheck` surfaces any unmatched open marker across all projects (closed ones included), so the deferral can't be buried.
+3. `condash audit --include check-knowledge-deferred` surfaces any unmatched open marker across all projects (closed ones included), so the deferral can't be buried.
 
 ## Index tree contract
 

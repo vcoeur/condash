@@ -24,10 +24,13 @@
  *                   `condash knowledge verify`, so the GUI audit pane surfaces
  *                   stale stamps too. Never auto-fixed — a stale stamp means a
  *                   human must reread the source, not bump the date.
- *  - `knowledge-recheck` — projects with a deferred knowledge promotion
+ *  - `check-knowledge-deferred` — projects with a deferred knowledge promotion
  *                   (a `[knowledge-recheck:pending]` timeline marker) that
  *                   was never resolved by a later `[knowledge-recheck:done]`.
  *                   Checked across all statuses, `done` included.
+ *  - `check-knowledge` — `done` projects whose last timeline entry isn't
+ *                   `Checked knowledge promotion` — the promotion review is
+ *                   missing or stale.
  *
  * Pure read-only. Returns `{summary, issues[]}` so the CLI can either pretty-
  * print it or hand it to the skill verbatim.
@@ -41,8 +44,8 @@
 import { checkBinaries } from './audit/binaries';
 import { checkCrossRepo } from './audit/cross-repo';
 import { checkIndex } from './audit/index-check';
-import { checkKnowledgeCheck } from './audit/knowledge-check';
-import { checkKnowledgeRecheck } from './audit/knowledge-recheck';
+import { checkKnowledgeCheck } from './audit/check-knowledge';
+import { checkKnowledgeRecheck } from './audit/check-knowledge-deferred';
 import { checkLfs } from './audit/lfs';
 import { checkStaleIndex } from './audit/stale-index';
 import { checkStaleVerification } from './audit/stale-verification';
@@ -80,11 +83,11 @@ export async function runAudit(
         case 'stale-verification':
           issues.push(...(await checkStaleVerification(conceptionPath)));
           break;
-        case 'knowledge-recheck':
-          issues.push(...(await checkKnowledgeRecheck(conceptionPath)));
-          break;
-        case 'knowledge-check':
+        case 'check-knowledge':
           issues.push(...(await checkKnowledgeCheck(conceptionPath)));
+          break;
+        case 'check-knowledge-deferred':
+          issues.push(...(await checkKnowledgeRecheck(conceptionPath)));
           break;
         default:
           issues.push({

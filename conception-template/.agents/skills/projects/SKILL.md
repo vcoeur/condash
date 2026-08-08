@@ -59,7 +59,7 @@ Status meanings:
 - `review` — code shipped or proposal drafted; awaiting an external signal (PR merge, deploy, stakeholder ack) before close. Closes on signal, reverts to `now` if negative.
 - `later` — queued; will be picked up.
 - `backlog` — acknowledged but not scheduled.
-- `done` — finished. Folder does not move. The last timeline entry must be `Checked knowledge promotion`; anything appended after it invalidates the check and will be surfaced by `condash audit --include knowledge-check`.
+- `done` — finished. Folder does not move. The last timeline entry must be `Checked knowledge promotion`; anything appended after it invalidates the check and will be surfaced by `condash audit --include check-knowledge`.
 
 Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `severity: <low/medium/high — impact>`.
 

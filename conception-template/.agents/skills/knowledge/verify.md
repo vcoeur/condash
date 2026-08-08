@@ -17,7 +17,7 @@ Trigger: `/knowledge verify`.
 
    Stamps are owned by `condash knowledge verify` (returns `data.stale[]`, `data.fresh`, `data.unstamped[]`, `data.maxAge`). Everything else lives under `condash audit` (returns `{summary, issues[]}` with one entry per finding). Both are pure read-only.
 
-   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,knowledge-recheck,knowledge-check`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
+   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,check-knowledge-deferred,check-knowledge`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
 
 2. **Triage by check and severity.**
 
@@ -69,7 +69,7 @@ Items declaring an active `branch` field but no on-disk worktree. Offer `/projec
 
 `knowledge/**/index.md` orphans (body files not listed in their parent index) and danglers (entries pointing at missing files). Both are fixed by `/knowledge index` (which calls `condash knowledge index`). Suggest running it.
 
-### `knowledge-check` (editorial; mechanical recording)
+### `check-knowledge` (editorial; mechanical recording)
 
 A `status: done` project whose **last timeline entry isn't `Checked knowledge promotion`** — its promotion review is missing or stale. There is no one-shot auto-fix: the review is editorial. For each flagged project:
 
@@ -78,7 +78,7 @@ A `status: done` project whose **last timeline entry isn't `Checked knowledge pr
 
 The check may light up a **large historical backlog** (legacy done projects that predate the rule). There is deliberately no mass/backfill writer: stamping `Checked knowledge promotion` on a project nobody reviewed would make the marker lie. Work the backlog down the honest way — a real review per project (step 1–2), oldest or most-likely-to-have-promotions first — or leave the rest flagged as the genuine "not yet reviewed" TODO it is.
 
-### `knowledge-recheck` (editorial)
+### `check-knowledge-deferred` (editorial)
 
 A deferred promotion (`[knowledge-recheck:pending]`) whose blocking PR may now have merged. Re-run the three-question test; promote via `/knowledge update` or drop, then close the loop with a `[knowledge-recheck:done]` timeline marker. Never auto-promote.
 
@@ -92,5 +92,5 @@ A deferred promotion (`[knowledge-recheck:pending]`) whose blocking PR may now h
 
 - `/knowledge update` — what the user runs after re-reading an app's current state to refresh a stale claim.
 - `/knowledge index` — regenerates `knowledge/**/index.md` trees. Fixes `index` audit findings.
-- `condash projects check-knowledge <slug> --record` — record the knowledge-promotion marker mechanically (consistent date), after a real review. Resolves a `knowledge-check` finding for that project.
+- `condash projects check-knowledge <slug> --record` — record the knowledge-promotion marker mechanically (consistent date), after a real review. Resolves a `check-knowledge` finding for that project.
 - `/projects worktree status` — surfaces the `worktrees` mismatch findings on the projects side.

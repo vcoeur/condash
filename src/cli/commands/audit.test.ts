@@ -66,12 +66,19 @@ describe('runAuditCommand', () => {
     );
     const checks = parseJsonEnvelope<{ summary: { checksRun: string[] } }>(stdout).data!.summary
       .checksRun;
-    for (const c of ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index', 'knowledge-recheck']) {
+    for (const c of [
+      'lfs',
+      'binaries',
+      'cross-repo',
+      'worktrees',
+      'index',
+      'check-knowledge-deferred',
+    ]) {
       expect(checks).toContain(c);
     }
   });
 
-  it('flags an unresolved knowledge-recheck marker, even on a done project', async () => {
+  it('flags an unresolved deferred-promotion marker, even on a done project', async () => {
     await writeProjectReadme(conceptionPath, 'deferred-thing', {
       date: '2026-05-22',
       kind: 'project',
@@ -86,19 +93,19 @@ describe('runAuditCommand', () => {
     });
     const { stdout } = await captureStdout(() =>
       runAuditCommand(
-        { noun: 'audit', verb: '', positional: [], flags: { include: 'knowledge-recheck' } },
+        { noun: 'audit', verb: '', positional: [], flags: { include: 'check-knowledge-deferred' } },
         jsonCtx(),
         conceptionPath,
       ),
     );
     const issues = parseJsonEnvelope<{ issues: AuditIssue[] }>(stdout).data!.issues;
-    const recheck = issues.filter((i) => i.check === 'knowledge-recheck');
+    const recheck = issues.filter((i) => i.check === 'check-knowledge-deferred');
     expect(recheck).toHaveLength(1);
     expect(recheck[0].severity).toBe('warn');
     expect(recheck[0].message).toContain('field rename');
   });
 
-  it('does not flag a knowledge-recheck that was later resolved', async () => {
+  it('does not flag a deferred promotion that was later resolved', async () => {
     await writeProjectReadme(conceptionPath, 'resolved-thing', {
       date: '2026-05-22',
       kind: 'project',
@@ -113,13 +120,13 @@ describe('runAuditCommand', () => {
     });
     const { stdout } = await captureStdout(() =>
       runAuditCommand(
-        { noun: 'audit', verb: '', positional: [], flags: { include: 'knowledge-recheck' } },
+        { noun: 'audit', verb: '', positional: [], flags: { include: 'check-knowledge-deferred' } },
         jsonCtx(),
         conceptionPath,
       ),
     );
     const issues = parseJsonEnvelope<{ issues: AuditIssue[] }>(stdout).data!.issues;
-    expect(issues.filter((i) => i.check === 'knowledge-recheck')).toHaveLength(0);
+    expect(issues.filter((i) => i.check === 'check-knowledge-deferred')).toHaveLength(0);
   });
 
   it('rejects an unknown --include check with USAGE', async () => {

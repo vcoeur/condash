@@ -1,10 +1,10 @@
 /**
- * Tests for the `knowledge-recheck` audit check — the balanced-bracket
+ * Tests for the `check-knowledge-deferred` audit check — the balanced-bracket
  * matching of `[knowledge-recheck:pending]` against later
  * `[knowledge-recheck:done]` timeline markers.
  */
 import { describe, expect, it } from 'vitest';
-import { unresolvedRechecks } from './knowledge-recheck';
+import { unresolvedRechecks } from './check-knowledge-deferred';
 
 /** Build a timeline entry whose text carries the given marker token. */
 function entry(

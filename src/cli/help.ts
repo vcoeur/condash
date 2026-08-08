@@ -38,7 +38,7 @@ Daily:
   applications list, add, set, rename, sync-docs, validate (the #handle registry)
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
-               index,stale-index,stale-verification,knowledge-recheck,knowledge-check)
+               index,stale-index,stale-verification,check-knowledge-deferred,check-knowledge)
   sync         run, commit <item> --message "…"
                bare \`condash sync\` is a dry-run; \`sync run\` executes
                (single-writer git for a checkout shared by parallel sessions)

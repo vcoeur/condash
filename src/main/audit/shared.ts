@@ -20,12 +20,12 @@ export type AuditCheckName =
   | 'index'
   | 'stale-index'
   | 'stale-verification'
-  | 'knowledge-recheck'
-  | 'knowledge-check';
+  | 'check-knowledge'
+  | 'check-knowledge-deferred';
 
 /**
  * Timeline tokens for the deferred-knowledge-promotion state machine
- * (the `knowledge-recheck` check). An entry carrying the *pending* token
+ * (the `check-knowledge-deferred` check). An entry carrying the *pending* token
  * records a finding that passed the three-yes durability test except that
  * its truth depended on a not-yet-merged PR; the *done* token, in a later
  * entry, records that the deferral was resolved after merge (promoted or
