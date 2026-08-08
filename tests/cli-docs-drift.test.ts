@@ -7,9 +7,9 @@
  * undocumented forever. This test derives each noun's actual verbs from the
  * CLI itself (the `Verbs:` block of its overview help, the same mechanism
  * `src/cli/top-help.test.ts` uses) and asserts `reference/cli.md` documents
- * them. It also guards the in-app `docs/help/cli.md` against presenting the
- * deprecated `plans` alias as a current command. Assertions search for
- * tokens, not whole lines, so prose rewrites don't trip them.
+ * them. It also pins the in-app `docs/help/cli.md` to never mention the
+ * removed `plans` alias. Assertions search for tokens, not whole lines, so
+ * prose rewrites don't trip them.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -144,15 +144,13 @@ describe('docs/reference/cli.md keeps up with the CLI surface', () => {
   }
 });
 
-describe('docs/help/cli.md does not present plans as current', () => {
-  it('marks plans deprecated wherever it is mentioned', () => {
+describe('docs/help/cli.md never mentions the removed plans alias', () => {
+  it('the alias is gone from the in-app CLI help', () => {
     const body = readDoc('help/cli.md');
     const mentions = body.split('\n').filter((line) => line.includes('plans'));
-    for (const line of mentions) {
-      expect(
-        line,
-        `docs/help/cli.md line mentioning 'plans' must mark it deprecated or renamed`,
-      ).toMatch(/deprecated|renamed/i);
-    }
+    expect(
+      mentions,
+      `docs/help/cli.md must not mention the removed 'plans' alias`,
+    ).toEqual([]);
   });
 });
