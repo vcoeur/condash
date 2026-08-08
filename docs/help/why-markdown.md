@@ -61,7 +61,7 @@ Every piece earns its keep:
 - Engineering logbook — dated READMEs that outlive sprints and
   employers.
 - A workspace shared with an AI agent that already speaks files
-  (Claude Code, etc.).
+  (Claude Code, for example).
 - Post-mortem tracker for incidents with timelines and links.
 
 ## More

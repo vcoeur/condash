@@ -107,7 +107,7 @@ This is cheap writing. A SaaS with a rich editor and a separate comments section
 
 ### Shared-with-AI-agent workspace
 
-A Claude Code session can read, write, and edit Markdown files natively. No API, no webhook, no permissions model — the agent just edits files, you review in `git diff`, the dashboard picks up the change on the next poll.
+An AI agent session can read, write, and edit Markdown files natively. No API, no webhook, no permissions model — the agent just edits files, you review in `git diff`, the dashboard picks up the change on the next poll.
 
 The five [shipped skills](../reference/skill.md) — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — do exactly this. You say "create a project called add dark mode, Kind project, Status later, Apps notes.vcoeur.com" and `/projects` writes `projects/2026-04/2026-04-18-add-dark-mode/README.md` with the right template. No integration layer. No OAuth. Just file I/O. They ship inside condash and land in your tree with `condash skills install`.
 

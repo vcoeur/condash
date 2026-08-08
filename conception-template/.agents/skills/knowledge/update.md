@@ -9,7 +9,7 @@ Trigger: `/knowledge update [path]` — path is optional; if omitted, the skill 
 Use `/knowledge update` when the fact being recorded is:
 
 - **Durable** — true beyond the current project, incident, or conversation.
-- **Load-bearing** — a future Claude session should find it when asked about the topic.
+- **Load-bearing** — a future AI agent session should find it when asked about the topic.
 - **Not already** in an app's `CLAUDE.md` (for app internals, write there instead).
 
 If the fact is in-flight project work or a point-in-time finding, it goes under the item's `notes/` via `/projects update`.

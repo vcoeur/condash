@@ -1,6 +1,6 @@
 ---
 title: Management skills · condash reference
-description: Reference for the five shipped Claude Code skills — /projects, /knowledge, /pr, /applications, /visual — and how they shell out to the condash CLI.
+description: Reference for the five shipped skills for AI coding agents — /projects, /knowledge, /pr, /applications, /visual — and how they shell out to the condash CLI.
 ---
 
 # Management skills
@@ -9,7 +9,7 @@ description: Reference for the five shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the [harness launcher](#the-harness-launcher-agedum) renders them per agent at run time.
+condash ships five skills for AI coding agents, in the [Claude Code](https://docs.claude.com/en/docs/claude-code/) SKILL.md format. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the [harness launcher](#the-harness-launcher-agedum) renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
