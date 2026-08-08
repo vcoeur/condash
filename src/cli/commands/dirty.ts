@@ -116,7 +116,6 @@ async function readMarker(path: string): Promise<MarkerInfo> {
 function printHelp(verb: string | null): void {
   switch (verb) {
     case 'list':
-    case null:
       process.stdout.write(
         renderHelp([
           'condash dirty list',

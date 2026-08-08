@@ -104,7 +104,7 @@ Item lifecycle and reads.
 | `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry, annotated with `--summary <text>` when given |
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
-| `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [flags]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. `--date <YYYY-MM-DD>` overrides today (it picks both the `YYYY-MM/` bucket and the folder's date prefix), `--branch <name>` and `--base <ref>` seed the matching header fields, and `--parent <slug>` records the plan this item spins off from — the slug is resolved against the tree and stored in its canonical dated form, so a short form works and an unknown one exits 4 / 6. Incidents add `--severity` + `--severity-impact` + `--environment` |
+| `create --kind <k> --slug <s> --title "<t>" [--apps "<a>"] [flags]` | Create a new project / incident / document folder + README from the canonical template. `--apps` is optional (defaults to `[]` — the GUI create modal omits the field; a fresh tree with an empty registry gets a one-line stderr nudge pointing at `condash applications add`). `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. `--date <YYYY-MM-DD>` overrides today (it picks both the `YYYY-MM/` bucket and the folder's date prefix), `--branch <name>` and `--base <ref>` seed the matching header fields, and `--parent <slug>` records the plan this item spins off from — the slug is resolved against the tree and stored in its canonical dated form, so a short form works and an unknown one exits 4 / 6. Incidents add `--severity` + `--severity-impact` + `--environment` |
 | `scan-promotions <slug>` | Walk a closed item's notes for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
 | `check-knowledge <slug> [--record]` | Signal whether a `done` project still needs a knowledge-promotion check (read-only). `--record` appends the dated `Checked knowledge promotion` marker after a real review (the mechanical recorder the `/knowledge` skill calls — never hand-typed). No mass/backfill writer: the marker is only ever written for a project that was actually reviewed |
 | `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
@@ -372,13 +372,13 @@ The value is parsed as JSON when it starts with an optionally-negative digit, `"
 
 ### `help`
 
-`condash help` prints the top-level help. `condash help <noun>` re-dispatches to the noun's `--help` path so there's only one source of help text per noun. `condash <noun> help <verb>` is the per-verb alias — equivalent to `condash <noun> <verb> --help`.
+`condash help` prints the top-level help. `condash help <noun>` re-dispatches to the noun's `--help` path so there's only one source of help text per noun — every noun shows its full `Verbs:` overview, `condash help help` points back at the top-level help, and `condash help <noun> <verb>` is the per-verb alias — equivalent to `condash <noun> <verb> --help`.
 
 Per-verb help is always printable: `condash <noun> <verb> --help` short-circuits before any required-flag or positional check, so you can read the usage without filling in arguments.
 
 ### Unknown-flag suggestions
 
-When you mistype a flag, condash reports `Unknown flag: --foo (did you mean --bar?)` if a valid flag for the same noun is within Levenshtein distance ≤ 2. The suggestion pool is the union of every flag known to the noun (across its verbs), so a typo of a sibling-verb flag still gets surfaced. The check runs **before** required-flag validation — so `condash projects create --app foo` reports the typo of `--apps`, not "missing --apps".
+When you mistype a flag, condash reports `Unknown flag: --foo (did you mean --bar?)` if a valid flag for the same noun is within Levenshtein distance ≤ 2. The suggestion pool is the union of every flag known to the noun (across its verbs), so a typo of a sibling-verb flag still gets surfaced. The check runs **before** required-flag validation — so `condash projects create --app foo` reports the typo of `--apps` before any other check. (An unknown noun reports `Unknown noun: X — run \`condash help\` for commands`.)
 
 ## Output modes
 

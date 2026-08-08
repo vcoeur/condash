@@ -68,11 +68,11 @@ function verbsFromOverview(helpText: string): string[] {
 }
 
 // Every printHelp prints the noun overview (the `Verbs:` block) on either
-// a null verb (projects, knowledge, applications, worktrees, logs) or its
-// default/unknown-verb case (repos, dirty, skills, config — which map null
-// to their primary verb's help). Both paths short-circuit via universalHelp
-// before any verb validation, so probe each and keep the one that carries
-// the `Verbs:` block.
+// a null verb (projects, knowledge, applications, worktrees, logs, repos,
+// dirty — the D4 fix made the null case uniform) or its default/unknown-verb
+// case (skills, config — which map null to their primary verb's help). Both
+// paths short-circuit via universalHelp before any verb validation, so probe
+// each and keep the one that carries the `Verbs:` block.
 const OVERVIEW_SENTINEL = '__overview__';
 
 const NOUN_RUNNERS: Record<string, (verb: string | null) => Promise<void> | void> = {
@@ -122,5 +122,36 @@ describe('TOP_HELP verb lists', () => {
     for (const check of ALL_AUDIT_CHECKS) {
       expect(text, `TOP_HELP 'audit' line should mention check '${check}'`).toContain(check);
     }
+  });
+});
+
+describe('noun-level help shows the full Verbs overview (D4)', () => {
+  it('`condash help repos` (null verb) shows the overview, not just `list` help', async () => {
+    const { stdout, threw } = await captureStdout(() =>
+      runRepos(null, emptyArgs('repos'), humanCtx(), '', true),
+    );
+    expect(threw).toBeUndefined();
+    expect(stdout).toContain('Verbs:');
+    expect(stdout).toMatch(/condash repos <verb>/);
+  });
+
+  it('`condash help dirty` (null verb) shows the overview with every verb', async () => {
+    const { stdout, threw } = await captureStdout(() =>
+      runDirty(null, emptyArgs('dirty'), humanCtx(), '', true),
+    );
+    expect(threw).toBeUndefined();
+    expect(stdout).toContain('Verbs:');
+    expect(stdout).toMatch(/list/);
+    expect(stdout).toMatch(/touch/);
+    expect(stdout).toMatch(/clear/);
+  });
+
+  it('`condash repos list --help` still shows the per-verb `list` help', async () => {
+    const { stdout, threw } = await captureStdout(() =>
+      runRepos('list', emptyArgs('repos'), humanCtx(), '', true),
+    );
+    expect(threw).toBeUndefined();
+    expect(stdout).toMatch(/condash repos list/);
+    expect(stdout).not.toContain('Verbs:');
   });
 });

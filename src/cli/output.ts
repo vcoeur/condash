@@ -81,7 +81,11 @@ export function validation(message: string, details: Record<string, unknown> = {
 }
 
 export function noConception(triedSources: string[]): never {
-  throw new CliError(ExitCodes.NO_CONCEPTION, 'No conception path resolved', { triedSources });
+  throw new CliError(
+    ExitCodes.NO_CONCEPTION,
+    'No conception path resolved — set `condash config set lastConceptionPath <path>` or launch the GUI once to pick a folder',
+    { triedSources },
+  );
 }
 
 /**

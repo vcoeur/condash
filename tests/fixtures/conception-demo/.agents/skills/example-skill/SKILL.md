@@ -5,10 +5,11 @@ description: Demonstrates a typical skill layout — instructions for Claude Cod
 
 # example-skill
 
-This skill shows how the dashboard renders a `SKILL.md` file under the
-configured `skills_path`. The Skills pane lists every directory containing
-a `SKILL.md`, with the file shown as an `[INDEX]` badge in the section
-header.
+Fixture skill for the demo tree — for tutorials only, not a real skill.
+
+This skill shows how the dashboard renders a `SKILL.md` file. The Skills
+pane lists every directory containing a `SKILL.md` under `.agents/skills/`,
+with the file shown as a `SKILL` badge in the section header.
 
 ## Usage
 
