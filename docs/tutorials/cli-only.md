@@ -29,7 +29,7 @@ If you installed a binary instead, run every command below in your own tree and 
 
 ## 1. Create an item
 
-The CLI's `create` is stricter than the dashboard modal: `--kind`, `--slug`, `--title`, and `--apps` are all required.
+The CLI's `create` is stricter than the dashboard modal: `--kind`, `--slug`, and `--title` are required; `--apps` is optional and defaults to empty.
 
 ```bash
 condash projects create --kind project --slug cli-tour \

@@ -232,7 +232,7 @@ condash projects create --kind project --slug try-condash \
   --title "Try condash" --apps condash
 ```
 
-(The CLI's `create` is stricter than the modal: `--kind`, `--slug`, `--title`, and `--apps` are all required.)
+(The CLI's `create` is stricter than the modal: `--kind`, `--slug`, and `--title` are required; `--apps` is optional and defaults to empty.)
 
 `--apps` names the **app(s)** the item touches — an app is a registered repo identity condash tracks, referenced by its `#handle` (e.g. `#condash`); the README's `apps:` field is what links an item to those repos. See **[Applications and handles](../guides/applications-and-handles.md)**.
 
