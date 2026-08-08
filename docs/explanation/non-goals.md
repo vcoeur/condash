@@ -20,7 +20,7 @@ condash is a Markdown reader/editor and a project dashboard. Source files (`.ts`
 The xterm pane has two roles, and only two:
 
 1. **Log view** for dev apps started by the Run button — see the output of `make dev` without context-switching.
-2. **Project-scoped shell** so the user can interact with Claude / scripts in the right cwd without leaving condash.
+2. **Project-scoped shell** so the user can interact with an AI agent or scripts in the right cwd without leaving condash.
 
 Features that would push it toward "competing with your real terminal" — **nested splits** (beyond the 2-column dock), advanced multiplexing, **shell-history *text* search**, theme picker, GPU-acceleration tuning — are out of scope. The user already has Konsole / iTerm / Wezterm / etc. configured via `open_with.terminal`.
 

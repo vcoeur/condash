@@ -448,11 +448,11 @@ condash projects list --json | jq '.data[] | select(.kind == "incident")'
 
 - **Headless GUI mode.** The CLI never opens a window. There's no embedded HTTP server and no browser-friendly URL to point Playwright at.
 - **A daemon / background watcher.** The CLI is one-shot per invocation. The chokidar watcher runs only when the GUI is open.
-- **Step toggles and note edits.** Status changes (`status set`, `close`, `reopen`), creation (`create`), and timeline backfills (`backfill-closed`) are wired into the CLI. Step toggles, note bodies, and config-file edits stay GUI-only — use the [`/projects` skill](skill.md) from a Claude Code session for anything richer.
+- **Step toggles and note edits.** Status changes (`status set`, `close`, `reopen`), creation (`create`), and timeline backfills (`backfill-closed`) are wired into the CLI. Step toggles, note bodies, and config-file edits stay GUI-only — use the [`/projects` skill](skill.md) from an AI agent session for anything richer.
 - **A server mode.** condash is local on purpose — no server, no accounts; collaboration works through git, each collaborator on their own checkout — see [Non-goals](../explanation/non-goals.md).
 
 ## See also
 
 - [Configuration files](config.md) — the JSON schemas the CLI shares with the GUI.
 - [Environment variables](env.md) — what the binary reads from the environment.
-- [Management skill](skill.md) — Claude Code skills that wrap the CLI.
+- [Management skill](skill.md) — skills for AI coding agents that wrap the CLI.

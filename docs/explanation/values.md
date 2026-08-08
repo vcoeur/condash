@@ -84,7 +84,7 @@ The exception: when a standard doesn't exist (the Status field syntax, the direc
 
 ## 7. The dashboard is a thin write surface
 
-Of every action a user performs, only a small handful translate to file writes from the dashboard. The rest belong to the user's editor or to a Claude Code session via the management skills.
+Of every action a user performs, only a small handful translate to file writes from the dashboard. The rest belong to the user's editor or to an AI agent session via the management skills.
 
 The full list of writes lives in [Mutation model](../reference/mutations.md). It is short on purpose.
 
@@ -98,13 +98,13 @@ When in doubt, do less from the dashboard, more from the editor.
 
 ## 8. Skills are first-class
 
-condash ships **five** Claude Code skills — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — and is designed to coexist with them. Anything the dashboard does, the user can also do from a Claude Code session via plain file I/O: no IPC bridge, no API surface, no integration layer.
+condash ships **five** skills for AI coding agents — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — and is designed to coexist with them. Anything the dashboard does, the user can also do from an AI agent session via plain file I/O: no IPC bridge, no API surface, no integration layer.
 
 Practical consequences:
 
-- **No feature that requires the dashboard to be running** to make sense. Items can be created, edited, and closed entirely from the shell or from a Claude session — the dashboard catches up via the chokidar watcher.
+- **No feature that requires the dashboard to be running** to make sense. Items can be created, edited, and closed entirely from the shell or from an AI agent session — the dashboard catches up via the chokidar watcher.
 - **No feature that requires bespoke "AI integration".** condash doesn't talk to any LLM directly. The skills do, on the user's terms.
-- **The skill content is shipped from condash itself.** `condash skills install` copies the canonical skill files into the user's tree. New skill verbs land in condash, the user re-runs `condash skills install`, and they're available in Claude Code.
+- **The skill content is shipped from condash itself.** `condash skills install` copies the canonical skill files into the user's tree. New skill verbs land in condash, the user re-runs `condash skills install`, and they're available to any AI coding agent.
 
 ## How to use this page
 

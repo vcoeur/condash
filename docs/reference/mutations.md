@@ -159,7 +159,7 @@ The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the sa
 
 ## Skill-invoked edits
 
-The [shipped management skills](skill.md) drive the `condash` CLI and plain file operations from a Claude Code session — they never call an IPC verb. Their mutations are therefore out of scope of this page; treat them as "edits made in your editor, from the outside". The chokidar watcher picks up the changes either way and the renderer re-renders the affected items.
+The [shipped management skills](skill.md) drive the `condash` CLI and plain file operations from an AI agent session — they never call an IPC verb. Their mutations are therefore out of scope of this page; treat them as "edits made in your editor, from the outside". The chokidar watcher picks up the changes either way and the renderer re-renders the affected items.
 
 ## Concurrency
 

@@ -16,7 +16,7 @@ Trigger: `/projects close <slug>`.
 
    **Exception — intentional deferrals.** Treat as silently complete any step whose text carries `(outside this item)`, `(out of scope)`, `(follow-up)`, or `(tracked in <slug>)`.
 
-4. **Knowledge promotion review.** Editorial step — Claude reads, the CLI is a backstop.
+4. **Knowledge promotion review.** Editorial step — the agent reads, the CLI is a backstop.
 
    a. **Read the README and every `notes/*.md` or `notes/*.mdx` body** returned by step 2's `read --with-notes`, and apply the three-question durability test (canonical definition in the `/knowledge` skill) to each candidate paragraph:
 
