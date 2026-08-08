@@ -80,7 +80,11 @@ async function collectPriorArt(
   if (wanted.size > 0) {
     for (const readme of await findProjectReadmes(conceptionPath)) {
       const relPath = toPosix(relative(conceptionPath, readme));
-      if (relPath.startsWith(createdRelPath)) continue;
+      // Exact match, not a prefix: `startsWith` also hid every sibling whose
+      // slug merely begins with the new one, so creating `web-ux` dropped
+      // `web-ux-actions` from its own prior art — the nearest-named neighbour
+      // being exactly the one worth surfacing.
+      if (relPath === `${createdRelPath}/README.md`) continue;
       const header = parseHeader(await fs.readFile(readme, 'utf8').catch(() => ''));
       const shared = [...new Set(header.apps.map(topLevelApp))].filter((a) => wanted.has(a));
       if (shared.length === 0) continue;

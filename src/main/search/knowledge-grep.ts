@@ -9,7 +9,15 @@ export interface KnowledgeGrepMatch {
   relPath: string;
   line: number;
   snippet: string;
-  /** Distinct query tokens on this line, plus a bonus when the whole phrase is present. */
+  /**
+   * Relevance: each matched token weighted by how rare it is across the tree,
+   * summed, plus a bonus when the whole phrase is on the line.
+   *
+   * Not a count of tokens — a line carrying one distinctive term outranks one
+   * carrying two that appear everywhere, which is the whole point of the
+   * weighting. Comparable within one query's results and meaningless between
+   * queries.
+   */
   score: number;
 }
 

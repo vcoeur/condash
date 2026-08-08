@@ -150,6 +150,14 @@ describe('prior art on create', () => {
     expect(stdout).not.toMatch(/only-one — The first thing/);
   });
 
+  it('still lists a sibling whose slug starts with the new one', async () => {
+    // A prefix test hid exactly the nearest-named neighbour — the one most
+    // likely to be the prior art worth reading.
+    await create('web-ux-actions', 'Earlier related work', 'nodum');
+    const stdout = await create('web-ux', 'The new thing', 'nodum');
+    expect(stdout).toMatch(/web-ux-actions/);
+  });
+
   it('stays silent when nothing matches', async () => {
     const stdout = await create('lonely', 'Nothing like this before', 'nodum');
     expect(stdout).not.toMatch(/Prior art/);
