@@ -137,12 +137,12 @@ describe('runSync run against a real repo', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('defaults to the run verb and emits a report envelope', async () => {
+  it('bare `sync` is a dry-run: reports the plan and writes no git state', async () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     const hourAgo = new Date(Date.now() - 3_600_000);
     await fs.utimes(readme, hourAgo, hourAgo);
 
-    // verb === null on the dispatch path means `run`.
+    // verb === null on the dispatch path means the dry-run default.
     const { stdout, threw } = await captureStdout(() =>
       runSync(null, args(null, [], { 'no-push': true }), jsonCtx(), root),
     );
@@ -150,8 +150,44 @@ describe('runSync run against a real repo', () => {
 
     const report = parseJsonEnvelope<SyncReport>(stdout).data as SyncReport;
     expect(report.locked).toBe(false);
+    expect(report.dryRun).toBe(true);
     expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
-    expect(report.pushed).toBe(false);
+    expect(report.commits[0].sha).toBeNull();
+
+    // The dry-run wrote no git state: no commit landed on the branch.
+    const log = await exec('git', ['log', '--format=%s'], { cwd: root });
+    expect(log.stdout.trim().split('\n')).toEqual(['init']);
+  });
+
+  it('bare `sync` in human mode says what it would commit', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    await fs.utimes(readme, hourAgo, hourAgo);
+
+    const { stdout, threw } = await captureStdout(() =>
+      runSync(null, args(null), humanCtx(), root),
+    );
+    expect(threw).toBeUndefined();
+    expect(stdout).toContain('would commit 2026-07-10-alpha: sync');
+  });
+
+  it('`sync run` executes the sweep and commits settled changes', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    await fs.utimes(readme, hourAgo, hourAgo);
+
+    const { stdout, threw } = await captureStdout(() =>
+      runSync('run', args('run', [], { 'no-push': true }), jsonCtx(), root),
+    );
+    expect(threw).toBeUndefined();
+
+    const report = parseJsonEnvelope<SyncReport>(stdout).data as SyncReport;
+    expect(report.dryRun).toBe(false);
+    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+    expect(report.commits[0].sha).not.toBeNull();
+
+    const log = await exec('git', ['log', '--format=%s'], { cwd: root });
+    expect(log.stdout.trim().split('\n')).toEqual(['2026-07-10-alpha: sync', 'init']);
   });
 
   it('says so in human mode when there is nothing to sync', async () => {

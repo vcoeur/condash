@@ -39,7 +39,8 @@ Daily:
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
                index,stale-index,stale-verification,knowledge-recheck,knowledge-check)
-  sync         run (default), commit <item> --message "…"
+  sync         run, commit <item> --message "…"
+               bare \`condash sync\` is a dry-run; \`sync run\` executes
                (single-writer git for a checkout shared by parallel sessions)
   logs         days (default), list [<day>], read <sid|path>, tail (session logs)
   skills       list shipped artefacts; install [<name-or-path>...]; status; validate
