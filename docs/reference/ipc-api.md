@@ -283,7 +283,7 @@ Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Appli
 
 - **No HTTP fallback.** No clipboard endpoint, no asset routes, no embedded server. Copy writes the clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API; paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), since `navigator.clipboard.readText()` is permission-gated in the renderer.
 - **No vendored CDN bundles.** Electron ships Chromium directly; assets are bundled into the asar at package time.
-- **No auth layer.** condash is single-user, local-only.
+- **No auth layer.** condash is local-only, with no accounts or identity — collaboration goes through git.
 - **No `step set`-style verbs.** Step markers cycle only through `toggleStep`; there is no "set marker to X" verb. Use the cycle.
 
 ## See also

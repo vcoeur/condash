@@ -48,7 +48,7 @@ Every piece earns its keep. The YAML frontmatter parses straight into the metada
 
 ## What condash deliberately doesn't do
 
-- **No multi-user collaboration.** Single-user, local-only.
+- **No real-time multi-user collaboration.** Local-only; collaboration happens through git — each collaborator on their own checkout of one shared remote.
 - **No web UI / HTTP server.** End-to-end IPC.
 - **No code editing.** Source files open in your IDE via configurable launcher slots.
 - **No telemetry.** Nothing leaves your machine, period.

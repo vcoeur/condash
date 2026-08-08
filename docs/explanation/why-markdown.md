@@ -80,12 +80,12 @@ Concretely:
 - No database. The Markdown files are the state, parsed straight from disk.
 - No stale cache. A README parse is memoised by file mtime (and dropped by the file watcher on change/unlink), so an unchanged tree re-parses nothing — yet editing a README, in condash or your own editor, changes its mtime and the next refresh always shows the change.
 - No sync server. condash binds to nothing at all — there is no HTTP server, no port, no socket. The renderer talks to the main process over Electron IPC end to end. If you want multi-machine, you `git pull`.
-- No auth, because there is nothing to authenticate against. Single-user, one process, one tree.
+- No auth, because there is nothing to authenticate against. Local-only: one process, one tree.
 - No signup. Download a release, launch `condash`.
 
 What you gain from the view layer is what a view layer is for: visual grouping, quick edits, cross-linking, and the class of features that aren't worth writing by hand (a kanban drag-drop, a history search with snippets, an embedded PDF viewer).
 
-What you give up: everything multi-user, everything web-hosted, everything that requires a backend. If that's what you need, `condash` is the wrong tool — use something else, happily.
+What you give up: real-time multi-user collaboration, everything web-hosted, everything that requires a backend. If that's what you need, `condash` is the wrong tool — use something else, happily.
 
 ## Four scenarios where this shape is the right one
 
@@ -134,6 +134,6 @@ Listing these keeps everyone honest:
 - The dashboard is a view — edit the files however you want.
 - The write surface is small, auditable, and reversible by `sed`.
 - Four good-fit scenarios: solo dev across apps, engineering logbook, AI-agent workspace, post-mortem tracker.
-- Not a fit when you need multi-user, web-hosted, or a proper project-management product.
+- Not a fit when you need real-time multi-user collaboration, web-hosted, or a proper project-management product.
 
 If that sounds right, start with [First run](../get-started/index.md).
