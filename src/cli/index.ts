@@ -105,6 +105,16 @@ async function dispatch(
     return ExitCodes.OK;
   }
 
+  // `init` creates a conception rather than resolving one, so it must not
+  // require an existing path either — handled here like `config
+  // conception-path`. The universal `--conception <path>` is forwarded as
+  // the target when `--path` is absent.
+  if (args.noun === 'init') {
+    const { runInit } = await import('./commands/init');
+    await runInit(args, ctx, universal.conceptionPath, universal.help);
+    return ExitCodes.OK;
+  }
+
   // `condash help <noun>` (and `--help` on any verb) must not require an
   // initialised conception. The runNoun help paths short-circuit before
   // touching the resolved path, so handing them an empty string is safe.

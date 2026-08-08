@@ -26,6 +26,7 @@ condash <noun> <verb> [args] [--flags]
 
 | Noun | Common verbs |
 |---|---|
+| `init` | `condash init [--path <dir>]` — bootstrap a conception tree from the bundled template (existing files are never overwritten; re-running exits 0) |
 | `projects` | `list`, `read`, `activity`, `search`, `validate`, `status get/set`, `close`, `check-knowledge`, `reopen`, `index`, `create` |
 | `knowledge` | `tree`, `verify`, `retrieve`, `stamp`, `index` |
 | `search` | `condash search "<query>" [--scope all\|projects\|knowledge\|resources\|skills\|logs]` |

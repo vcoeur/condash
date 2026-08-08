@@ -33,7 +33,7 @@ One binary, one launcher: the `condash` entry on PATH inspects its argv. With no
 CLI nouns (Daily):
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   sync   logs   skills   mdx   config   help
+init   projects   knowledge   search   repos   applications   worktrees   audit   sync   logs   skills   mdx   config   help
 ```
 
 Maintenance — hidden from the top-level help's Daily list, fully functional:
@@ -89,9 +89,22 @@ The CLI honours the same chain as the GUI, minus the folder picker:
 5. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
 6. Hard error (exit 5).
 
-`condash config conception-path` prints the currently resolved conception path. To change it, use `condash config set lastConceptionPath <path>`.
+`condash config conception-path` prints the currently resolved conception path. To change it, use `condash config set lastConceptionPath <path>`. `condash init` needs no resolved path either — it creates the tree instead.
 
 ## Nouns
+
+### `init`
+
+Bootstrap a conception tree from the bundled template — the CLI equivalent of the GUI's first-launch init dialog ([Get started — first launch](../get-started/index.md#let-condash-build-the-tree-for-you)).
+
+```bash
+condash init              # initialise the current directory
+condash init --path <dir> # initialise <dir> (created if missing)
+```
+
+`init` lays down the whole template: `AGENTS.md` (with the `{{ conception_name }}` / `{{ description }}` tokens filled from the target directory name), the shipped skills under `.agents/skills/`, `knowledge/`, `projects/`, and a `.condash/settings.json` materialised from the shipped `.example`.
+
+Existing files are **never overwritten** — the same guarantee as the GUI init. Re-running `init` on an already-initialised tree creates nothing, reports the paths that were created (none) and that existing files were left untouched, and exits 0. The verb is the CLI cold-start fix: it is the one way to create a conception without launching the GUI.
 
 ### `projects`
 
@@ -374,7 +387,7 @@ Read or change condash configuration.
 
 The value is parsed as JSON when it starts with an optionally-negative digit, `"`, `[`, or `{`, or is the bare token `true` / `false` / `null` (so `condash config set dashboard.enabled true` writes a real boolean), and treated as a literal string otherwise — so `condash config set terminal.shell /bin/zsh` needs no quoting. Quote the value (`condash config set key '"true"'`) to force the literal string. Array-index segments (`repositories[0].path`) are **read-only**: set the whole array as one JSON value instead.
 
-`config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
+`config conception-path` and `init` are the only verbs that do not need an existing conception path — the first prints the resolved one, the second creates one.
 
 ### `help`
 
