@@ -11,7 +11,7 @@ Trigger: `/knowledge verify`.
 1. **Run the verification + audit in two calls:**
 
    ```bash
-   condash knowledge verify --max-age 30 --json
+   condash knowledge verify --max-age 90 --json
    condash audit --include all --json
    ```
 

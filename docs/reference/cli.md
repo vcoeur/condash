@@ -137,7 +137,7 @@ Knowledge-tree operations.
 | Verb | What it does |
 |---|---|
 | `tree` | Render the knowledge index as a tree, depth-limited via `--depth` (default: unlimited) |
-| `verify [--max-age <days>]` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report any older than `--max-age` days (default 30) |
+| `verify [--max-age <days>]` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report any older than `--max-age` days (default 90) |
 | `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`triage`, `grep`, `both`; default `both`) |
 | `stamp <path> --where <text>` | Add or refresh a verification stamp on a knowledge file. **`--where` is required** — it is the provenance string written into the stamp (e.g. `"condash@abc1234 on main"`). `--date <iso>` overrides today; `--insert-after "<heading>"` names the heading to insert below when the file carries no stamp yet. `<path>` must resolve inside the conception tree |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `knowledge/**/index.md` from the on-disk tree; clear `knowledge/.index-dirty` |
@@ -215,7 +215,7 @@ condash audit --include lfs,binaries
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
 | `stale-index` | `index.md` files under `projects/` or `knowledge/` whose content has drifted from the tree (a regen would rewrite them); autofix re-runs `condash <tree> index` |
-| `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 30 days). Shares its engine with `condash knowledge verify`, so the two agree on what counts as stale. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
+| `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 90 days). Shares its engine with `condash knowledge verify`, so the two agree on what counts as stale. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
 | `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 | `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 

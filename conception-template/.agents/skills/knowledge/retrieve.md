@@ -15,7 +15,7 @@ condash knowledge retrieve "<query>" --mode both --json
 
 The CLI walks `knowledge/index.md` and the matching subdir indexes, scoring each entry's keyword tags + description against the query, and falls through to a body-file grep when triage returns zero matches. Returns:
 
-- `data.triageMatches[]` — `{path, title, description, keywords, matchedKeywords, verifiedAt, verifiedStale}` per matching index entry. `verifiedStale` is `true` when the body file's `**Verified:**` stamp is older than 30 days — surface that to the user when quoting.
+- `data.triageMatches[]` — `{path, title, description, keywords, matchedKeywords, verifiedAt, verifiedStale}` per matching index entry. `verifiedStale` is `true` when the body file's `**Verified:**` stamp is older than 90 days — surface that to the user when quoting.
 - `data.grepMatches[]` — `{path, line, snippet, section}` per body-file hit (only populated when triage came back empty).
 
 Then **open the body file** of the strongest match and **quote** the relevant passage back to the user with a `file:line` reference.
@@ -46,5 +46,5 @@ Skips the index walk and goes straight to a body-file grep (excluding `index.md`
 ## Rules
 
 - **Don't repeat what's in the body file** — quote verbatim with a source reference, so the user can verify.
-- **Respect stamps.** If a fact is stamped `**Verified:** YYYY-MM-DD <where>` and the date is older than a month, note the staleness when quoting — and suggest `/knowledge verify` if several stale stamps are relevant.
+- **Respect stamps.** If a fact is stamped `**Verified:** YYYY-MM-DD <where>` and the date is older than 90 days, note the staleness when quoting — and suggest `/knowledge verify` if several stale stamps are relevant.
 - **Cross-link.** If the body file references an item under `projects/`, mention it; the user may want to read the item too.
