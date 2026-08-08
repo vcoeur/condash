@@ -121,6 +121,67 @@ describe('B1 — `--help` always wins', () => {
   });
 });
 
+describe('prior art on create', () => {
+  async function create(slug: string, title: string, apps: string): Promise<string> {
+    const { stdout } = await captureStdout(() =>
+      createCommand(
+        {
+          noun: 'projects',
+          verb: 'create',
+          positional: [],
+          flags: { kind: 'project', slug, title, apps },
+        },
+        { json: false, ndjson: false, quiet: true, noColor: true },
+        conceptionPath,
+      ),
+    );
+    return stdout;
+  }
+
+  it('surfaces the most recent item sharing an app', async () => {
+    await create('peek-card', 'Hover preview card', 'nodum');
+    const stdout = await create('context-menu', 'Contextual actions', 'nodum');
+    expect(stdout).toMatch(/Prior art/);
+    expect(stdout).toMatch(/peek-card/);
+  });
+
+  it('does not list the item it just created', async () => {
+    const stdout = await create('only-one', 'The first thing', 'nodum');
+    expect(stdout).not.toMatch(/only-one — The first thing/);
+  });
+
+  it('still lists a sibling whose slug starts with the new one', async () => {
+    // A prefix test hid exactly the nearest-named neighbour — the one most
+    // likely to be the prior art worth reading.
+    await create('web-ux-actions', 'Earlier related work', 'nodum');
+    const stdout = await create('web-ux', 'The new thing', 'nodum');
+    expect(stdout).toMatch(/web-ux-actions/);
+  });
+
+  it('stays silent when nothing matches', async () => {
+    const stdout = await create('lonely', 'Nothing like this before', 'nodum');
+    expect(stdout).not.toMatch(/Prior art/);
+  });
+
+  it('ignores items whose apps do not overlap', async () => {
+    await create('other-app', 'Unrelated work', 'condash');
+    const stdout = await create('mine', 'My work', 'nodum');
+    expect(stdout).not.toMatch(/other-app/);
+  });
+
+  it('quotes a knowledge line matching the title', async () => {
+    const knowledgeDir = join(conceptionPath, 'knowledge', 'topics');
+    await fs.mkdir(knowledgeDir, { recursive: true });
+    await fs.writeFile(
+      join(knowledgeDir, 'overlays.md'),
+      '# Overlays\n\nA focusin watcher cannot see focus falling back to body.\n',
+      'utf8',
+    );
+    const stdout = await create('watcher', 'focusin watcher', 'nodum');
+    expect(stdout).toMatch(/knowledge\/topics\/overlays\.md:\d+/);
+  });
+});
+
 describe('B2 — typo-first validation', () => {
   it('rejects --app (typo of --apps) with a suggestion BEFORE missing-required', async () => {
     let caught: unknown;

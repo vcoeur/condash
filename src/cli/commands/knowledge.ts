@@ -5,7 +5,8 @@ import { readKnowledgeTree } from '../../main/knowledge';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { knowledgeStrategy } from '../../main/index-knowledge';
 import { atomicWrite } from '../../main/atomic-write';
-import { collectKnowledgeBodyFiles, collectKnowledgeIndexFiles } from '../../main/search/walk';
+import { collectKnowledgeIndexFiles } from '../../main/search/walk';
+import { grepKnowledgeBodies, type KnowledgeGrepMatch } from '../../main/search/knowledge-grep';
 import { VERIFIED_PREFIX_RE } from '../../main/knowledge-stamps';
 import {
   DEFAULT_STALE_MAX_AGE_DAYS,
@@ -219,12 +220,7 @@ interface TriageMatch {
   source: 'index';
 }
 
-interface GrepMatch {
-  path: string;
-  relPath: string;
-  line: number;
-  snippet: string;
-}
+type GrepMatch = KnowledgeGrepMatch;
 
 async function retrieveCommand(
   args: ParsedArgs,
@@ -260,23 +256,10 @@ async function retrieveCommand(
     }
   }
 
-  if (mode === 'grep' || (mode === 'both' && triage.length === 0)) {
-    const files = await collectKnowledgeBodyFiles(knowledgeRoot);
-    const re = new RegExp(escapeRegex(query), 'i');
-    for (const path of files) {
-      const content = await fs.readFile(path, 'utf8');
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        if (re.test(lines[i])) {
-          grep.push({
-            path,
-            relPath: toPosix(relative(conceptionPath, path)),
-            line: i + 1,
-            snippet: lines[i].slice(0, 200),
-          });
-        }
-      }
-    }
+  // Both layers always run in `both` mode. Gating grep on an empty triage let a
+  // single spurious keyword match suppress the layer that would have answered.
+  if (mode === 'grep' || mode === 'both') {
+    grep.push(...(await grepKnowledgeBodies(knowledgeRoot, conceptionPath, query)));
   }
 
   const result: RetrieveResult = { triageMatches: triage, grepMatches: grep, warnings: [] };
@@ -448,10 +431,6 @@ async function stampCommand(
     (d) =>
       `${(d as { replaced: boolean }).replaced ? 'Replaced' : 'Inserted'} stamp in ${(d as { path: string }).path}\n`,
   );
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function isAbsoluteLike(p: string): boolean {
