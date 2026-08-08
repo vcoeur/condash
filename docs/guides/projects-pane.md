@@ -54,7 +54,7 @@ The modal asks for four things, in this order:
 
 Picking **Kind = incident** reveals three more fields: **Environment**, **Severity**, and **Severity impact**. There is **no Apps field** — apps, branch, and base are things you add later, by editing the README or from the item's popup.
 
-condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` from the canonical template and creates an empty `notes/` beside it. The CLI can do the same from a shell — `condash projects create --kind project --slug <slug> --title "<title>" --apps <app>` (the CLI is stricter: `--kind`, `--slug`, `--title`, and `--apps` are all required, and `--status` rejects `done`). See [CLI → projects](../reference/cli.md#projects).
+condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` from the canonical template and creates an empty `notes/` beside it. The CLI can do the same from a shell — `condash projects create --kind project --slug <slug> --title "<title>" --apps <app>` (the CLI is stricter: `--kind`, `--slug`, and `--title` are required (`--apps` optional, defaulting to empty), and `--status` rejects `done`). See [CLI → projects](../reference/cli.md#projects).
 
 ## Close and reopen
 

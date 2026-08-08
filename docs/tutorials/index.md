@@ -7,7 +7,7 @@ description: Learn condash by doing. A realistic walkthrough takes you from an o
 
 > **Audience.** New user.
 
-Start with **[Get started](../get-started/index.md)** — install, open or initialise a tree, create an item, and see the file change on disk. It is a linear five-minute path with a checkpoint at every step.
+Start with **[Get started](../get-started/index.md)** — install, open or initialise a tree, create an item, and see the file change on disk. It is a linear path of about ten minutes with a checkpoint at every step.
 
 Then come back here:
 
