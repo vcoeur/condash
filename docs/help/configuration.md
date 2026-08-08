@@ -98,25 +98,15 @@ its own form control). The left rail groups the sections under two scope
 headers, one per file, and each section carries a **scope chip** naming
 the file it writes.
 
-**Personal · this machine** (writes `settings.json`), in rail order:
+For the section-by-section breakdown — which section sits under which
+scope header and which keys it edits — see **The Settings modal** guide:
+**https://condash.vcoeur.com/guides/settings-modal/**
 
-- **Recent conceptions** — manage the recents list backing
-  **File → Open Recent**.
-- **Appearance** — theme; project-card title font; per-pane card-grid min-widths.
-- **Terminal** — embedded terminal preferences.
-- **Launchers** — the `agents` list.
-- **Open with** — slot labels and commands.
-- **Dashboard** — live tab-summarization config (incl. the secret `apiKey`).
-- **Auto-commit** — the `autoSync` timer that makes condash the single git
-  writer for this conception checkout: on/off, interval, quiet period,
-  push, plus a **Commit & push now** button and a live status line. The
-  same state shows as a pill in the status bar.
-
+In short: **Personal · this machine** (writes `settings.json`) holds
+Appearance, Terminal, Launchers, Open with, Dashboard, and Auto-commit;
 **This conception** (writes `.condash/settings.json`; the legacy
-`condash.json` and `configuration.json` are read but never written to):
-
-- **Workspace & paths** — `workspace_path`, `worktrees_path`, `long_lived_branches`.
-- **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
+`condash.json` and `configuration.json` are read but never written to)
+holds Workspace & paths and Repositories.
 
 Because every setting has exactly one home, there are no inheritance
 badges, no override state, and no **Reset to global** buttons — that

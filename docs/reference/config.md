@@ -893,22 +893,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 ## Editing from the dashboard
 
-**File → Settings** (`Ctrl+,`) opens a full-viewport modal — one scrolling surface, no tabs and no in-modal JSON editor; each persisted preference has its own form control. The left rail groups the sections under two scope headers, one per file:
-
-**Personal · this machine** — writes `settings.json`:
-
-- **Recent conceptions** — manage the recents list backing **File → Open Recent**.
-- **Appearance** — theme (preset cards with swatches; selecting one previews it live); per-category UI fonts (with a live preview); per-pane card-grid min-widths.
-- **Terminal** — embedded terminal preferences (`terminal`, including `xterm`, `logging`, and the project-action templates).
-- **Launchers** — the `agents` list.
-- **Open with** — the three IDE/terminal launch slots.
-- **Dashboard** — live tab-summarization config (incl. the secret `apiKey`).
-- **Auto-commit** — the `autoSync` block, plus **Commit & push now** and a live status line. See [Auto-commit](#auto-commit).
-
-**This conception** — writes `.condash/settings.json` (the legacy `condash.json` / `configuration.json` are read but never written to):
-
-- **Workspace & paths** — `workspace_path`, `worktrees_path`, `long_lived_branches`.
-- **Repositories** — the ordered repo list, per-repo `run` / `force_stop`.
+**File → Settings** (`Ctrl+,`) opens a full-viewport modal — one scrolling surface, no tabs and no in-modal JSON editor; each persisted preference has its own form control. The left rail groups the sections under two scope headers, one per file: **Personal · this machine** (writes `settings.json`) and **This conception** (writes `.condash/settings.json` — the legacy `condash.json` / `configuration.json` are read but never written to). The section-by-section breakdown — which section sits under which header and which keys it edits — is in [The Settings modal guide](../guides/settings-modal.md); the details below are the ones that page doesn't carry.
 
 Each section carries a **scope chip** naming the file it writes (`settings.json` or `.condash/settings.json`). Because every setting has exactly one home, there are **no** inheritance badges, no override state, and no Reset-to-global controls — the old two-tab + badge machinery was removed with the scope-partition revamp. Edits stage as drafts (a per-section dirty pip flags unsaved changes); **Save** flushes them and **Discard** drops them. Each draft round-trips through atomic CAS — `settings.json` via `patchSettings` / `writeGlobalSettings`, `.condash/settings.json` via `patchConfig` / `writeNote` — schema-validated by the [strict zod schemas](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) (`globalSettingsSchema` and `conceptionConfigSchema`, now **disjoint**) before the bytes hit disk.
 
