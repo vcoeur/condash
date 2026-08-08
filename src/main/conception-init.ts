@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { conceptionConfigCandidates } from './condash-dir';
@@ -7,13 +6,42 @@ import { pathExists } from './fs-helpers';
 import type { ConceptionInitState } from '../shared/types';
 
 /**
- * Path to the bundled conception-template/ tree. Resolved from the app's
- * source root in dev (`app.getAppPath()`), and from the asar archive in
- * packaged builds (electron-builder copies `conception-template/**` per
- * `electron-builder.yml`).
+ * Path to the bundled conception-template/ tree.
+ *
+ * Three resolutions, in order:
+ *   1. `CONDASH_TEMPLATE_ROOT` env override (same escape hatch
+ *      `locateShippedSkillsRoot` honours, so tests and installs point at a
+ *      non-default template).
+ *   2. Electron main process: `app.getAppPath()` — the repo root in dev and
+ *      the asar root in packaged builds (electron-builder copies
+ *      `conception-template/**` per `electron-builder.yml`). Resolved through
+ *      a lazy dynamic import instead of a top-level `import { app }` so the
+ *      CLI bundle — which keeps `electron` external and must never touch it —
+ *      never evaluates the module at load (mirrors user-data-dir.ts).
+ *   3. `__dirname`-relative fallback for the CLI bundle — `dist-cli/condash.cjs`
+ *      (and the packaged, asar-unpacked copy) sits one directory above the
+ *      repo's conception-template/, exactly like `locateShippedSkillsRoot`.
  */
-function templateRoot(): string {
-  return join(app.getAppPath(), 'conception-template');
+async function templateRoot(): Promise<string> {
+  const override = process.env.CONDASH_TEMPLATE_ROOT;
+  if (override) return override;
+  try {
+    const candidate: unknown = await import('electron');
+    if (
+      candidate !== null &&
+      typeof candidate === 'object' &&
+      'app' in candidate &&
+      typeof (candidate as { app?: { getAppPath?: unknown } }).app?.getAppPath === 'function'
+    ) {
+      return join(
+        (candidate as { app: { getAppPath(): string } }).app.getAppPath(),
+        'conception-template',
+      );
+    }
+  } catch {
+    // import('electron') fails outside the Electron runtime — fall through.
+  }
+  return join(__dirname, '..', 'conception-template');
 }
 
 /** Probe a candidate workspace path for the conception markers. */
@@ -66,7 +94,7 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
  * Returns the list of paths that were created (relative to `targetPath`).
  */
 export async function initConception(targetPath: string): Promise<string[]> {
-  const src = templateRoot();
+  const src = await templateRoot();
   await ensureDir(targetPath);
   const created: string[] = [];
   const tokens: TemplateTokens = {
