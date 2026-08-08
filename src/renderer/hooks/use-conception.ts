@@ -19,6 +19,8 @@ export interface UseConceptionDeps {
   reloadLogs: () => void;
   setInitConfirmState: (next: { path: string; missing: string[] } | null) => void;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
+  /** Called after a successful template init (welcome one-shot marker). */
+  onInitSuccess: () => void;
 }
 
 export interface UseConception {
@@ -73,6 +75,9 @@ export function useConception(deps: UseConceptionDeps): UseConception {
         `Initialised conception template — ${created.length} files created.`,
         'success',
       );
+      // The seeded tree has knowledge/, so the welcome screen would never
+      // fire on its own — mark it to show once (D7).
+      deps.onInitSuccess();
       void reloadAll();
     } catch (err) {
       deps.flashToast(`Init failed: ${(err as Error).message}`, 'error');

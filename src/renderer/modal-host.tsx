@@ -6,7 +6,7 @@
 // (signal accessor, setter, handler, or sub-controller object) passed straight
 // through from App, so the modals render exactly when and how they did inline.
 
-import { Show } from 'solid-js';
+import { createEffect, Show } from 'solid-js';
 import type { ActionTemplate, Deliverable, Project } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
@@ -96,6 +96,8 @@ export interface ModalHostProps {
   // --- Settings modal ---
   settingsOpen: UseModals['settingsOpen'];
   setSettingsOpen: UseModals['setSettingsOpen'];
+  settingsSection: UseModals['settingsSection'];
+  setSettingsSection: UseModals['setSettingsSection'];
   conceptionPath: () => string | null;
   theme: UseTheme['theme'];
   handleThemeChange: UseTheme['handleThemeChange'];
@@ -178,6 +180,8 @@ export function ModalHost(props: ModalHostProps) {
     selectWorking,
     settingsOpen,
     setSettingsOpen,
+    settingsSection,
+    setSettingsSection,
     conceptionPath,
     theme,
     handleThemeChange,
@@ -202,6 +206,13 @@ export function ModalHost(props: ModalHostProps) {
     runInit,
     toast,
   } = props;
+
+  // Consume the one-shot "open Settings at this section" request as soon as
+  // the modal is up — the SettingsModal reads it as its initial section at
+  // mount, and leaving it set would re-land there on a later plain open.
+  createEffect(() => {
+    if (settingsOpen()) setSettingsSection(null);
+  });
 
   return (
     <>
@@ -330,6 +341,7 @@ export function ModalHost(props: ModalHostProps) {
       <Show when={settingsOpen() && conceptionPath()}>
         <SettingsModal
           conceptionPath={conceptionPath()!}
+          initialSection={settingsSection() ?? undefined}
           theme={theme()}
           onChangeTheme={handleThemeChange}
           onPreviewTheme={previewTheme}

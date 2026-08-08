@@ -150,7 +150,7 @@ knowledge/                    index.md, conventions.md, external/, internal/, to
 
 **Existing files are never overwritten** — running this against a folder that already has some of these leaves them exactly as they are, and only the missing files are created. A toast reports how many were written.
 
-This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt on every open because the config marker is still absent.
+This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt the next time you pick that folder — the probe runs when a folder is chosen, not on every launch.
 
 ### Already have a Markdown tree?
 
@@ -177,7 +177,7 @@ The Projects pane is showing five empty sections — `NOW`, `REVIEW`, `LATER`, `
 
     On a tree that has **no projects and no `knowledge/` content**, condash shows a **Welcome screen** with four cards — **Create your first project**, **Open my tree**, **Read the welcome doc**, **Open the documentation site** — plus the tree path with an inline **edit** button that jumps to Settings, and a **Don't show this again** link.
 
-    Note the consequence of the second condition: **the template init seeds `knowledge/`, so a folder you just initialised skips the Welcome screen entirely** and lands you on the normal dashboard. You'll see the Welcome screen if you point condash at a bare directory and decline the init, or open a tree you manage entirely from your editor.
+    The template init seeds `knowledge/`, so a folder you just initialised shows the Welcome screen once anyway — the init marks it to appear a single time — and it does not reappear on later launches. You'll also see the Welcome screen if you point condash at a bare directory and decline the init, or open a tree you manage entirely from your editor.
 
 The modal is titled **New project** and asks for four things, in this order:
 

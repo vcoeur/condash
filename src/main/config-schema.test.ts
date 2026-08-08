@@ -690,8 +690,8 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       terminal: true,
       projectsSplit: 0.32,
     },
-    // setWelcomeDismissed
-    welcome: { dismissed: true },
+    // setWelcomeDismissed / setWelcomeInitShown
+    welcome: { dismissed: true, initShown: true },
     // setCardMinWidth — every pane key
     cardMinWidth: Object.fromEntries(CARD_MIN_WIDTH_KEYS.map((key) => [key, 500])),
     // setTreeExpansion — every tree key

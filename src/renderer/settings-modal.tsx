@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
@@ -83,6 +83,9 @@ export function SettingsModal(props: {
    *  unmount. Distinct from `onChangeTheme` so a preview never becomes the
    *  committed value the picker reads back as checked. */
   onPreviewTheme: (theme: Theme | null) => void;
+  /** One-shot landing section at open (e.g. the Code pane's empty-state CTA
+   *  opens Settings at Repositories). Falls back to the first rail section. */
+  initialSection?: Section;
   /** Resolved card-min-width prefs (every key filled). Drives the live
    *  values shown in the Appearance section. */
   cardMinWidth: Required<CardMinWidthPrefs>;
@@ -106,7 +109,11 @@ export function SettingsModal(props: {
   );
   const configurationPath = (): string => readPath() ?? writePath;
 
-  const [section, setSection] = createSignal<Section>(SECTIONS[0].id);
+  const [section, setSection] = createSignal<Section>(props.initialSection ?? SECTIONS[0].id);
+  // Captured at render time (NOT inside onMount): the parent clears the
+  // one-shot `settingsSection` request as soon as the modal is up, so a
+  // reactive read in onMount would see `undefined` and skip the landing.
+  const landingSection = props.initialSection;
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
@@ -184,6 +191,21 @@ export function SettingsModal(props: {
     () => window.condash.getAppInfo(),
   );
   const platform = (): Platform | undefined => appInfo()?.platform;
+
+  // One-shot landing scroll for the `initialSection` request (e.g. the Code
+  // pane's empty-state CTA). The modal's data resources reflow the sections
+  // when they resolve, so wait for them before moving the scroller — the
+  // target section (Repositories, the last one) then lands at the container
+  // bottom, where its content is fully visible.
+  let landingScheduled = false;
+  createEffect(() => {
+    if (landingScheduled || landingSection === undefined) return;
+    if (content() === undefined || globalContent() === undefined || appInfo() === undefined) {
+      return;
+    }
+    landingScheduled = true;
+    setTimeout(() => scrollToSection(landingSection, 'auto'), 0);
+  });
 
   const attemptClose = (): void => {
     if (isDirty()) {
@@ -689,10 +711,10 @@ export function SettingsModal(props: {
 
   // --- Scroll-to-section ---------------------------------------------
 
-  const scrollToSection = (id: Section): void => {
+  const scrollToSection = (id: Section, behavior: ScrollBehavior = 'smooth'): void => {
     setSection(id);
     const el = document.getElementById(`settings-section-${id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) el.scrollIntoView({ behavior, block: 'start' });
   };
 
   // --- Render --------------------------------------------------------

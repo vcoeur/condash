@@ -75,7 +75,7 @@ describe('bootstrap IPC', () => {
       terminal: false,
       projectsSplit: 0.4,
     },
-    welcome: { dismissed: true },
+    welcome: { dismissed: true, initShown: false },
     cardMinWidth: { projects: 700 },
     treeExpansion: { knowledge: ['a/b'], skillsUser: ['x'] },
     selectedBranches: ['feat-1', 'feat-1', 'feat-2'],
@@ -92,6 +92,7 @@ describe('bootstrap IPC', () => {
     expect(boot.theme).toEqual(await handlers.getTheme(trustedEvent));
     expect(boot.layout).toEqual(await handlers.getLayout(trustedEvent));
     expect(boot.welcomeDismissed).toEqual(await handlers.getWelcomeDismissed(trustedEvent));
+    expect(boot.welcomeInitShown).toEqual(await handlers.getWelcomeInitShown(trustedEvent));
     expect(boot.cardMinWidth).toEqual(await handlers.getCardMinWidth(trustedEvent));
     expect(boot.treeExpansion).toEqual(await handlers.getTreeExpansion(trustedEvent));
     expect(boot.selectedBranches).toEqual(await handlers.getSelectedBranches(trustedEvent));
@@ -130,6 +131,7 @@ describe('bootstrap IPC', () => {
     expect(boot.theme).toEqual(await handlers.getTheme(trustedEvent));
     expect(boot.layout).toEqual(await handlers.getLayout(trustedEvent));
     expect(boot.welcomeDismissed).toEqual(await handlers.getWelcomeDismissed(trustedEvent));
+    expect(boot.welcomeInitShown).toEqual(await handlers.getWelcomeInitShown(trustedEvent));
     expect(boot.cardMinWidth).toEqual(await handlers.getCardMinWidth(trustedEvent));
     expect(boot.treeExpansion).toEqual(await handlers.getTreeExpansion(trustedEvent));
     expect(boot.selectedBranches).toEqual(await handlers.getSelectedBranches(trustedEvent));
@@ -157,6 +159,7 @@ describe('bootstrap IPC', () => {
         'treeExpansion',
         'uiFonts',
         'welcomeDismissed',
+        'welcomeInitShown',
       ].sort(),
     );
     // uiFonts is fully resolved — every category present, and every field

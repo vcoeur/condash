@@ -22,7 +22,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
-import { usableActionTemplates } from './settings-modal-parts/data';
+import { usableActionTemplates, type Section } from './settings-modal-parts/data';
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
 import { createModalRouter } from './modal-router';
@@ -110,6 +110,8 @@ function App() {
     setSearchModalOpen,
     settingsOpen,
     setSettingsOpen,
+    settingsSection,
+    setSettingsSection,
     newProjectOpen,
     setNewProjectOpen,
     aboutOpen,
@@ -395,14 +397,48 @@ function App() {
     else handleOpenDeliverable(deliverable.path);
   };
 
+  // Open Settings and land on a specific rail section — used by the Code
+  // pane's empty-state CTA ("+ Add repository" → Repositories).
+  const openSettingsAt = (section: Section): void => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  };
+
   // --- Welcome screen ---------------------------------------------------
+  // Real knowledge content for the welcome gate. The knowledge store only
+  // fetches when the Knowledge pane opens, so at boot `knowledge()` is null
+  // even for a seeded tree — the welcome would treat every tree as
+  // knowledge-less. Probe once via IPC when the tree has no projects; the
+  // store root wins once it has loaded.
+  const [knowledgeProbe, setKnowledgeProbe] = createSignal<boolean | null>(null);
+  createEffect(() => {
+    const path = conceptionPath();
+    if (!path || !projectsLoaded() || (projects() ?? []).length > 0) {
+      setKnowledgeProbe(null);
+      return;
+    }
+    void window.condash
+      .readKnowledgeTree()
+      .then((root) => {
+        if (conceptionPath() !== path) return;
+        setKnowledgeProbe(root !== null && (root.children?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        /* Probe failed — keep null, the welcome falls back to the old
+         * "unknown = empty" reading. */
+      });
+  });
   const knowledgeIsEmpty = (): boolean => {
     const k = knowledge();
-    if (k === null || k === undefined) return true;
-    if (Array.isArray((k as { children?: unknown[] }).children)) {
-      return (k as { children: unknown[] }).children.length === 0;
+    if (k !== null && k !== undefined) {
+      if (Array.isArray((k as { children?: unknown[] }).children)) {
+        return (k as { children: unknown[] }).children.length === 0;
+      }
+      return false;
     }
-    return false;
+    // Store never fetched (pane not opened) — fall back to the probe; null
+    // means "unknown yet", treated as empty to keep the first paint stable.
+    return knowledgeProbe() !== true;
   };
   const {
     shouldShowWelcome,
@@ -410,6 +446,7 @@ function App() {
     handleWelcomeTakeTour,
     handleWelcomeOpenDocs,
     handleWelcomeDismiss,
+    handleTemplateInit,
   } = useWelcome({
     conceptionPath,
     projectsLoaded,
@@ -433,6 +470,7 @@ function App() {
     reloadLogs: () => setLogsRefreshTick((n) => n + 1),
     setInitConfirmState,
     flashToast,
+    onInitSuccess: handleTemplateInit,
   });
 
   // --- Global wiring (keyboard shortcuts + native menu router) ----------
@@ -543,6 +581,10 @@ function App() {
             fallback={
               <div class="empty">
                 <p>Pick a conception directory to list its projects.</p>
+                <p class="empty-gloss">
+                  A conception is a folder of Markdown projects and knowledge notes that condash
+                  renders.
+                </p>
                 <button onClick={handlePick}>Choose folder…</button>
               </div>
             }
@@ -732,18 +774,22 @@ function App() {
                       when={repos.length > 0}
                       fallback={
                         <Show when={reposLoaded()} fallback={<div class="empty">Loading…</div>}>
-                          <div class="empty">
-                            <p>No repositories configured.</p>
+                          <div class="empty pane-empty">
+                            <p>No repositories configured yet.</p>
                             <p>
-                              Add entries to <code>repositories</code> in <code>condash.json</code>.
+                              Add entries under Settings → Workspace & paths → Repositories, or drop
+                              them straight into <code>repositories</code> in{' '}
+                              <code>.condash/settings.json</code>.
                             </p>
-                            <button
-                              type="button"
-                              class="empty-cta"
-                              onClick={() => setSettingsOpen(true)}
-                            >
-                              + Add repository
-                            </button>
+                            <div class="empty-actions">
+                              <button
+                                type="button"
+                                class="empty-cta"
+                                onClick={() => openSettingsAt('repositories')}
+                              >
+                                + Add repository
+                              </button>
+                            </div>
                           </div>
                         </Show>
                       }
@@ -854,6 +900,8 @@ function App() {
         selectWorking={selectWorking}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
+        settingsSection={settingsSection}
+        setSettingsSection={setSettingsSection}
         conceptionPath={conceptionPath}
         theme={theme}
         handleThemeChange={handleThemeChange}

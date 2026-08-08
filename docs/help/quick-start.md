@@ -2,6 +2,11 @@
 
 Four steps: install, open a folder, create an item, watch the file change.
 
+A **conception** is the folder condash renders: a plain directory of
+Markdown projects and knowledge notes, usually a git repo. Everything on
+this page builds one — or point condash at a Markdown folder you already
+have and it renders that.
+
 ## 1. Install
 
 Download the latest release for your OS from
@@ -75,9 +80,10 @@ A tree with **no projects and no `knowledge/` content** shows a
 **Welcome screen** first, with four cards — **Create your first
 project**, **Open my tree**, **Read the welcome doc**, **Open the
 documentation site** — plus a **Don't show this again** link that
-persists the dismissal (`welcome.dismissed`). Note that the template
-init seeds `knowledge/`, so a folder you just initialised skips the
-Welcome screen and lands straight on the dashboard.
+persists the dismissal (`welcome.dismissed`). The template init seeds
+`knowledge/`, so it marks the Welcome screen to appear once after the
+init (even though the seeded tree has knowledge entries); it does not
+reappear on later launches.
 
 The modal asks for four things, in this order:
 

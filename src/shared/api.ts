@@ -158,6 +158,10 @@ export interface CondashApi {
    * Stored as `welcome.dismissed` in settings.json. */
   getWelcomeDismissed(): Promise<boolean>;
   setWelcomeDismissed(value: boolean): Promise<void>;
+  /** Whether the welcome was shown once after a template init. Stored as
+   * `welcome.initShown`; `false` marks a pending show-after-init. */
+  getWelcomeInitShown(): Promise<boolean>;
+  setWelcomeInitShown(value: boolean): Promise<void>;
   /** Per-pane card grid min-width (CSS pixels). Returned as a fully-resolved
    *  object — missing keys are filled in with `DEFAULT_CARD_MIN_WIDTH` so
    *  the renderer never has to deal with `undefined`. */

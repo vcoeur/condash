@@ -15,6 +15,7 @@ import {
   resolveTreeExpansion,
   resolveUiFonts,
   resolveWelcomeDismissed,
+  resolveWelcomeInitShown,
 } from './settings';
 
 /**
@@ -52,6 +53,7 @@ export function registerBootstrapIpc(): void {
       uiFonts,
       layout: resolveLayout(settings),
       welcomeDismissed: resolveWelcomeDismissed(settings),
+      welcomeInitShown: resolveWelcomeInitShown(settings),
       cardMinWidth,
       treeExpansion: resolveTreeExpansion(settings),
       selectedBranches: resolveSelectedBranches(settings),
