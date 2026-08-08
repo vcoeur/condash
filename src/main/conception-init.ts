@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { conceptionConfigCandidates } from './condash-dir';
 import { pathExists } from './fs-helpers';
 
@@ -58,14 +58,41 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
  * it without touching the user-owned `## Specifics` section.
  * Existing files are preserved — the init never overwrites.
  *
+ * The `{{ conception_name }}` / `{{ description }}` tokens the template's
+ * AGENTS.md opens with are filled in (audit D1) — the CLI install path
+ * already substitutes them per-conception; init used to copy bytes
+ * verbatim, so every fresh tree opened with literal placeholders.
+ *
  * Returns the list of paths that were created (relative to `targetPath`).
  */
 export async function initConception(targetPath: string): Promise<string[]> {
   const src = templateRoot();
   await ensureDir(targetPath);
   const created: string[] = [];
-  await copyTreeRespecting(src, targetPath, '', created);
+  const tokens: TemplateTokens = {
+    name: basename(targetPath),
+    description: `Conception at ${targetPath} — projects and knowledge managed by condash.`,
+  };
+  await copyTreeRespecting(src, targetPath, '', created, tokens);
   return created;
+}
+
+/** Per-conception values for the `{{ token }}` substitutions in AGENTS.md. */
+interface TemplateTokens {
+  name: string;
+  description: string;
+}
+
+/**
+ * Fill the `{{ conception_name }}` and `{{ description }}` tokens the
+ * bundled template's AGENTS.md ships with: the conception's name and a
+ * default description line. Any other `{{ token }}` occurrences are left
+ * untouched.
+ */
+export function substituteTemplateTokens(text: string, name: string, description: string): string {
+  return text
+    .replaceAll('{{ conception_name }}', name)
+    .replaceAll('{{ description }}', description);
 }
 
 async function copyTreeRespecting(
@@ -73,6 +100,7 @@ async function copyTreeRespecting(
   dstRoot: string,
   rel: string,
   created: string[],
+  tokens: TemplateTokens,
 ): Promise<void> {
   const srcDir = join(srcRoot, rel);
   const entries = await fs.readdir(srcDir, { withFileTypes: true });
@@ -83,12 +111,21 @@ async function copyTreeRespecting(
     const dstAbs = join(dstRoot, dstRel);
     if (entry.isDirectory()) {
       await ensureDir(dstAbs);
-      await copyTreeRespecting(srcRoot, dstRoot, srcRel, created);
+      await copyTreeRespecting(srcRoot, dstRoot, srcRel, created, tokens);
       continue;
     }
     if (await pathExists(dstAbs)) continue;
     await ensureDir(dirname(dstAbs));
-    await fs.copyFile(srcAbs, dstAbs);
+    if (srcRel === 'AGENTS.md') {
+      const text = await fs.readFile(srcAbs, 'utf8');
+      await fs.writeFile(
+        dstAbs,
+        substituteTemplateTokens(text, tokens.name, tokens.description),
+        'utf8',
+      );
+    } else {
+      await fs.copyFile(srcAbs, dstAbs);
+    }
     if (entry.name.endsWith('.sh')) {
       await fs.chmod(dstAbs, 0o755);
     }

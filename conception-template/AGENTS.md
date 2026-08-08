@@ -11,7 +11,7 @@ A conception is a Markdown tree condash manages: durable reference material unde
 ### Layout
 
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
-- Skills — drive each kind of work through its slash command: `/projects` (project / incident / document mutations), `/knowledge` (durable reference material), `/pr` (pull requests), `/applications` (app registry). Invoking it loads the skill — don't open the file to use it.
+- Skills — drive each kind of work through its slash command: `/projects` (project / incident / document mutations), `/knowledge` (durable reference material), `/pr` (pull requests), `/applications` (app registry), `/visual` (visual notes — plans, wireframes, diagrams as MDX blocks). Invoking it loads the skill — don't open the file to use it.
 - [`.condash/settings.json`](.condash/settings.json) — per-conception config overrides. Read paths with `condash config get workspace_path` / `worktrees_path`; never hardcode `~/src/...`.
 
 ### Workflow
@@ -34,7 +34,7 @@ The **sweeper** — timer-driven `condash sync run` — is the conception's **on
 
 ### Generated layers — never hand-edit
 
-- **Skills** under `.agents/skills/` ship from condash and are refreshed by `condash skills install` (`projects`, `knowledge`, `pr`, `applications`). To change one, edit it in condash. A conception may add its own skills; condash leaves those alone.
+- **Skills** under `.agents/skills/` ship from condash and are refreshed by `condash skills install` (`projects`, `knowledge`, `pr`, `applications`, `visual`). To change one, edit it in condash. A conception may add its own skills; condash leaves those alone.
 - **Harness views** (`CLAUDE.md`, `.kimi/AGENTS.md`, …) are compiled from `AGENTS.md` at launch. Edit `AGENTS.md`; the views follow. Durable rules go in versioned files (`knowledge/` or `## Specifics`), never agent auto-memory.
 
 <!-- end condash agents -->
