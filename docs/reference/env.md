@@ -115,7 +115,7 @@ Both are CLI-only.
 Override hatches, primarily for tests. Nothing in normal use needs them.
 
 - **`CONDASH_TEMPLATE_ROOT`** replaces the bundled `conception-template/` root that the **CLI** ships skills and marker regions from ([`condash skills install`](cli.md#skills)). Point it at a checkout to test skill sources without rebuilding the bundle. The GUI resolves its own copy from `app.getAppPath()` and ignores this variable.
-- **`CONDASH_USER_SKILLS_ROOT`** and **`CONDASH_USER_AGENTS_MD`** relocate the two paths the Skills pane reads in its **user** scope — by default `~/.config/agents/skills/` and `~/.config/agents/AGENTS.md`, the agedum sources. The pane is read-only in that scope either way.
+- **`CONDASH_USER_SKILLS_ROOT`** and **`CONDASH_USER_AGENTS_MD`** relocate the two paths the Skills pane reads in its **user** scope — by default `~/.config/agents/skills/` and `~/.config/agents/AGENTS.md`, the [agedum](skill.md#the-harness-launcher-agedum) sources. The pane is read-only in that scope either way.
 
 ## Not read from the environment
 

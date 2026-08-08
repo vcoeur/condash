@@ -18,7 +18,7 @@ A thin layer above the conception convention. It reads the live `<conception>/pr
 
 Search is a global modal (`Ctrl+Shift+F` / `Ctrl+K`), not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).
 
-condash reads **agedum sources only** — `<conception>/.agents/skills/` and `~/.config/agents/skills/`. It never reads the compiled harness views (`~/.claude/`, `<conception>/.claude/`, …), and the Skills pane is read-only in both scopes.
+condash reads **[agedum](../reference/skill.md#the-harness-launcher-agedum) sources only** — `<conception>/.agents/skills/` and `~/.config/agents/skills/`. It never reads the compiled harness views (`~/.claude/`, `<conception>/.claude/`, …), and the Skills pane is read-only in both scopes.
 
 There is no backend, no database, and no message bus. Every feature is a filesystem walk + a Markdown parse, with chokidar pushing change notifications.
 

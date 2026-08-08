@@ -9,7 +9,7 @@ description: Browse the markdown skills condash ships — the conception's .agen
 
 **When to read this.** You want to see which management skills are installed in this conception (or globally on your machine), and whether any have drifted from what condash shipped.
 
-The Skills pane sits alongside **Code**, **Knowledge**, **Resources**, and **Logs** in the right working-surface slot (`Ctrl+L` to switch in, or the activity rail). It is **read-only**: it surfaces skills for browsing. The source of truth is your agedum config, edited through its own flow — condash places the sources and never compiles or rewrites them.
+The Skills pane sits alongside **Code**, **Knowledge**, **Resources**, and **Logs** in the right working-surface slot (`Ctrl+L` to switch in, or the activity rail). It is **read-only**: it surfaces skills for browsing. The source of truth is your [agedum](../reference/skill.md#the-harness-launcher-agedum) config, edited through its own flow — condash places the sources and never compiles or rewrites them.
 
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)
@@ -23,7 +23,7 @@ The header carries a segmented control with two scopes (and a **refresh** button
 | **Conception** (default) | `<conception>/AGENTS.md` | `<conception>/.agents/skills/` |
 | **User** | `~/.config/agents/AGENTS.md` | `~/.config/agents/skills/` |
 
-Both are **agedum sources**. condash never reads the compiled per-harness outputs (`.claude/`, `.kimi/`, `.opencode/`, …) — only the agent-neutral source tree. Each scope pins its `AGENTS.md` as a read-only callout at the top of the tree, then lists the skills below.
+Both are **[agedum](../reference/skill.md#the-harness-launcher-agedum) sources**. condash never reads the compiled per-harness outputs (`.claude/`, `.kimi/`, `.opencode/`, …) — only the agent-neutral source tree. Each scope pins its `AGENTS.md` as a read-only callout at the top of the tree, then lists the skills below.
 
 The selected scope is remembered per-machine in `settings.json` (`skillsActiveScope`) and each scope keeps its own scroll position. The **refresh** button re-reads the active scope on demand — useful for the User scope, whose paths aren't watched the way the conception tree is.
 
@@ -34,7 +34,7 @@ Each subdirectory under `.agents/skills/` is a skill:
 - Its `SKILL.md` (minimal `name` + `description` frontmatter plus the skill body) renders as a badged callout at the top of the expanded skill.
 - Task `.md` files (`create.md`, `close.md`, …) and any `SKILL.<harness>.md` overlay render as cards underneath. The walker recurses to any depth; a card's title comes from the first H1, falling back to the filename.
 
-These sources are placed verbatim by `condash skills install`; condash does not compile them. Your harness launcher (agedum, shipped separately) reads the source and renders each skill per agent at run time.
+These sources are placed verbatim by `condash skills install`; condash does not compile them. Your harness launcher ([agedum](../reference/skill.md#the-harness-launcher-agedum), shipped separately) reads the source and renders each skill per agent at run time.
 
 If a scope has no skills yet, the pane shows an empty state:
 

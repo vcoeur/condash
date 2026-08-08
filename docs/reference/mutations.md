@@ -110,7 +110,7 @@ See [Config files](config.md) for the full key schema and which file owns which 
 | Write a task | `writeTask(slug, def, previousSlug?)` | Creates or updates `<conception>/tasks/<slug>/` (`task.json` + `prompt.md`). A differing `previousSlug` removes the old directory — the rename path. |
 | Delete a task | `deleteTask(slug)` | Removes a task directory. |
 
-All three `tree*` verbs normalise `dirRelPath` and then re-check the joined result is still under the pane's root, so a `..` segment or an absolute path from the renderer cannot escape it. **`root === 'skills'` is rejected outright** — the Skills pane is read-only, because agedum owns that source of truth.
+All three `tree*` verbs normalise `dirRelPath` and then re-check the joined result is still under the pane's root, so a `..` segment or an absolute path from the renderer cannot escape it. **`root === 'skills'` is rejected outright** — the Skills pane is read-only, because [agedum](skill.md#the-harness-launcher-agedum) owns that source of truth.
 
 ## Machine-generated state
 
@@ -152,7 +152,7 @@ The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the sa
 | Anything outside the resolved conception path | Path validation rejects escapes. |
 | Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
 | Existing files under `knowledge/` or `resources/` | The tree panes **create** files and folders and **import** files (above), but never rewrite an existing one — every create refuses an occupied target. Editing a knowledge body is your editor's job, or the `/knowledge` skill's. |
-| Anything under `.agents/skills/` | The Skills pane is read-only in both scopes; agedum owns those sources. `condash skills install` (a CLI verb, not a dashboard action) is the only writer. |
+| Anything under `.agents/skills/` | The Skills pane is read-only in both scopes; [agedum](skill.md#the-harness-launcher-agedum) owns those sources. `condash skills install` (a CLI verb, not a dashboard action) is the only writer. |
 | Lock files | Concurrent edits are detected via the drift check on `toggleStep` / `editStepText` / `writeNote`; there's no advisory lock. |
 
 **Caches are a partial exception.** Three are memory-only and read-side: the mtime-keyed `parseReadme` memo (`src/main/parse-cache.ts`), the in-memory search index (both kept fresh by chokidar, invalidated on change / unlink), and an mtime+size-keyed `settings.json` read memo (`src/main/settings.ts`), invalidated on every write through the settings queue. The CLI's `.condash/cache/readme-parse.json` is the one that touches disk — see [Machine-generated state](#machine-generated-state). Content writes always hit disk regardless; nothing is buffered behind a cache.
