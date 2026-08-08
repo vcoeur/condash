@@ -148,9 +148,6 @@ describe('docs/help/cli.md never mentions the removed plans alias', () => {
   it('the alias is gone from the in-app CLI help', () => {
     const body = readDoc('help/cli.md');
     const mentions = body.split('\n').filter((line) => line.includes('plans'));
-    expect(
-      mentions,
-      `docs/help/cli.md must not mention the removed 'plans' alias`,
-    ).toEqual([]);
+    expect(mentions, `docs/help/cli.md must not mention the removed 'plans' alias`).toEqual([]);
   });
 });
