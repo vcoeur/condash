@@ -7,9 +7,9 @@ description: Live desktop dashboard for a folder of Markdown projects, incidents
 
 <p class="tagline">A dashboard for the Markdown you already write.</p>
 
-`condash` is a **single-user desktop app** that renders a live view of one folder of plain Markdown files — your **projects**, **incidents**, and **documents**. No database, no sync server, no account. The files are the source of truth; condash is the view on top, and the handful of edits it makes are lines you could have typed by hand.
+`condash` is a **local desktop app** that renders a live view of one folder of plain Markdown files — your **projects**, **incidents**, and **documents**. No database, no sync server, no account. The files are the source of truth; condash is the view on top, and the handful of edits it makes are lines you could have typed by hand. Collaboration happens through git: each collaborator on their own checkout, all pushing to one shared remote ([Values](explanation/values.md)).
 
-It exists for one person tracking work across several codebases: a solo maintainer, an engineering logbook, a workspace shared with an AI coding agent. If you already keep work notes in a git repo, condash is the front end that was missing.
+It exists for one person tracking work across several codebases — a solo maintainer, an engineering logbook, a workspace shared with an AI coding agent — or a small team, each on their own checkout of one shared git repo. If you already keep work notes in a git repo, condash is the front end that was missing.
 
 ![The condash dashboard: a Projects pane grouping items under NOW, REVIEW and LATER, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-light.png#only-light)
 ![The condash dashboard: a Projects pane grouping items under NOW, REVIEW and LATER, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-dark.png#only-dark)

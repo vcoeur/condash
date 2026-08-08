@@ -21,9 +21,9 @@ Practical consequences:
 
 If a feature needs a *database* — something that holds state the files do not — it belongs somewhere other than condash. An index is a different thing: an index that is rebuildable from the tree and invalidated by the watcher is a legitimate performance move, and search is exactly that (see [Internals — The search index](internals.md#search-index)). The test is not "does it cache?" but "if I delete it, does anything become unrecoverable?".
 
-## 2. Single user, local only
+## 2. Local, not single-user
 
-condash binds to nothing public. It speaks IPC to one renderer and `fs` to one tree. There is no auth, no multi-user mode, no remote control surface, no opt-in telemetry.
+condash binds to nothing public. It speaks IPC to one renderer and `fs` to one tree. There is no auth, no server mode, no remote control surface, no opt-in telemetry.
 
 Practical consequences:
 

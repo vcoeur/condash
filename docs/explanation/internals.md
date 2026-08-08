@@ -488,7 +488,7 @@ The renderer bundle ships in the asar at `dist/`. The dev server (`vite`) listen
 
 - **Log search index.** The Markdown sources are indexed in RAM ([above](#search-index)), but logs stay scanned on disk — and only when the **Logs** filter is selected (the default All query is index-only) — because they're the bulk of the bytes and rarely searched.
 - **Worker isolation.** Mutations and parses run on the main-process event loop. The largest file is a project README (kilobytes); the parse is microseconds.
-- **Authentication / authorisation.** condash is single-user, local-only. There is no user model.
+- **Authentication / authorisation.** condash is local-only: there is no user model, no account, no identity. Collaboration is git's job — each collaborator on their own checkout of one shared remote.
 - **Cross-process diagnostic logging.** Main and renderer write to their own console streams; there is no aggregator and no *diagnostic* log file. condash does write other files under `.condash/` — terminal-session transcripts (`terminal-logger.ts`, opt-in under `terminal.logging.enabled`) and perf counters (`perf-log.ts` → `.condash/perf/YYYY-MM-DD.jsonl`, opt-in under `terminal.perf.enabled`) — but those record the *child processes*, not condash's own diagnostics. A main-process stack trace still only exists on stderr.
 
 ## See also

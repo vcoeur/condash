@@ -46,8 +46,9 @@ Every piece earns its keep:
 
 ## What you give up
 
-- No multi-user collaboration. Git handles conflicts like any other
-  text file.
+- No real-time multi-user collaboration. A small team works on one
+  shared tree — each on their own checkout, one shared remote — and
+  git handles conflicts like any other text file.
 - No web sharing — generate a PDF or publish a static site.
 - No time tracking, invoicing, or dependency graphs. Use a real PM
   product if you need those.
