@@ -37,7 +37,7 @@ condash <noun> <verb> [args] [--flags]
 | `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
 | `skills` | `list`, `install`, `status`, `validate` |
 | `mdx` | `check <path>`, `blocks` |
-| `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
+| `config` | `conception-path` (prints the resolved path — set it with `set lastConceptionPath <path>`), `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 
 ### Maintenance

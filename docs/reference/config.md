@@ -302,77 +302,6 @@ instrumentation is inert, so an ordinary run pays nothing.
 | --------- | ------- | ----------------------------------------------------------------------- |
 | `enabled` | `false` | Record counters to `<conception>/.condash/perf/YYYY-MM-DD.jsonl`.        |
 
-When enabled, condash appends one JSON record per sampling window (2.5 s — the same tick that drives
-the per-tab memory meter; recording adds no timer of its own). Each record carries event-loop delay
-percentiles for the main process and, per session, bytes and chunks read off the pty, time spent in
-the OSC transcript scan, time spent in the disk logger's ANSI parse, grid-render time, the disk
-log's flush cost with its compose / encode breakdown, coalesced IPC batches, backpressure pauses, and
-the un-acked in-flight high-water mark.
-
-**Cost and elapsed are different fields, and only one of them is a cost.** `syncFlushMs` is the time
-a flush actually held the main thread — its synchronous stretches, summed — and is the field to weigh
-against `loop.max`. It contains `gridRenderMs` (which still covers `GridBodyRenderer.render()` and
-nothing else), `composeMs` (the file-text join) and `encodeMs` (the bookkeeping's second UTF-8
-encode of the same text). `flushMs` and `writeMs` are **elapsed** across the xterm drain and five
-libuv round trips, so they absorb whatever else the event loop is doing: the same 1 MB write measures
-2 ms on an idle loop and 209 ms behind an unrelated 26 ms-per-turn block, which is roughly the
-production median grid render. Use them for "how far behind the buffer did the log fall", never as
-main-thread cost, and never subtract them from `loop.max` — a session's flush elapsed can be
-dominated by a *different* session's work.
-
-Two blocks beyond the terminal byte path ride the same record:
-
-- **`main`** — spans for work outside the byte path (`dashRecentText`, `dashProvenance`,
-  `transcriptRead`, `repoRecompute`, `gitStatus`, `gitUpstream`, `gitDetails`), `ipcMain.handle`
-  dispatch time bucketed by channel, and GC pauses. **Only `transcriptRead` and `dashRecentText` are
-  synchronous end to end**; every other span is elapsed wall time, mostly subprocess or network wait
-  during which main is free, so read them as "this was in flight", not as delay to subtract. The
-  spans also **nest** — `repoRecompute` contains `gitStatus` and `gitUpstream`, `dashRecentText`
-  contains `transcriptRead` — and concurrent same-name spans overlap, so summing them double-counts.
-  `ipc.*.ms` is elapsed too, attributed to the window the handler *finished* in, and may exceed
-  `windowMs` (an LLM-backed handler is seconds long); the instrument's own `perfRendererReport`
-  channel is deliberately not timed. GC is reported as `{n, ms, maxMs}` **whenever the runtime can
-  observe it** — an absent `gc` block means unobservable, `n: 0` means no collection.
-- **`renderer`** — the renderer's own event-loop delay (computed by the same shared function main
-  uses, so the two are comparable), animation-frame counts including long frames, spans for the
-  visible tab's `term.write`, the tab-switch replay burst, the demote `serialize()`, the worker RPC
-  round trip and the mount, counters for demotes / promotes / RPC failures / writes into a collapsed
-  Code-pane row, and peaks (`maxima`) such as the transition buffer's depth. The write spans close on
-  xterm's completion callback, since `term.write` only queues the parse — they are elapsed until
-  processed, an upper bound on block time. The renderer drains on its own 2.5 s timer and sends **one
-  message per drain, and nothing at all for an empty window** — never per frame. `reports` says how
-  many drains merged into the window; counters sum, peaks take the max, and the loop percentiles are
-  the worst of them, never an average.
-
-**Renderer loop delay excludes hidden time.** Chromium throttles renderer timers to about 1 Hz while
-the window is occluded or minimised (`backgroundThrottling` is on), which would otherwise fill the
-file with ~990 ms "stalls" that never happened for as long as you look at another window. Samples
-taken while the page is hidden are discarded; `renderer.hiddenMs` says how much of the window was
-unmeasured for that reason, and `renderer.samples` says how many probe samples the percentiles rest
-on (~250 for a fully visible window). A window with a large `hiddenMs` is partly unmeasured, not
-quiet.
-
-**Which windows are recorded.** Every window with anything to report: a session that moved bytes, a
-timed span, an IPC dispatch, an observed GC, a renderer report carrying real activity, or an
-event-loop delay of 5 ms or more. Only a window idle on all of those is dropped, which is what keeps
-an idle app from writing a record every 2.5 s forever — the same 5 ms threshold governs the
-renderer's decision to send at all, because if it reported unconditionally the main-side gate could
-never fire. Until schema 3 the rule was "some session moved bytes", which discarded every stall that
-had no terminal work in it — 20 % of the ≥ 100 ms stalls in the 2026-07 baseline. **Records from
-before that change are not comparable**: a percentile taken over a schema-2 file is conditioned on a
-tab having been busy. The `schema` field discriminates, and `scripts/perf-load.mjs` refuses to
-aggregate across it.
-
-The event-loop delay is the most directly useful figure: main is a single thread shared by every
-terminal tab as well as git status, file watching, and all IPC, so its delay under load is the
-clearest measure of UI stalls. It is reported as delay **in excess of the sampler's own 10 ms
-interval**: `monitorEventLoopDelay` records the gap between its own timer firings rather than the
-excess over the expected gap, so a raw reading has a floor equal to its resolution — an idle process
-measures p99 ≈ 10.3 ms. Reporting that raw put a fixed ~10 ms on the headline figure for an idle app,
-which is both the symptom under investigation and a plausible magnitude for it. Subtracting the
-resolution is what makes an idle app read ~0. Delays genuinely below 10 ms are not resolvable and
-read as 0.
-
 Two toggles flip recording, both writing `terminal.perf.enabled` and applying immediately: the
 Settings modal's **Terminal → Performance recording** checkbox, and the **Performance** pane's
 Record button. The pane also shows the live values; per-tab memory, growth rate, and throttle state
@@ -392,138 +321,9 @@ burst has pushed the directory over the cap, copy the JSONL somewhere else. `.co
 in full **in conceptions whose `.gitignore` carries that rule**; a conception created from the
 bundled template does not yet ship one.
 
-To reproduce load deliberately rather than waiting for it, `scripts/perf-load.mjs` drives N tabs at a
-controlled byte rate and reports the counters back — including an A/B of disk logging on versus off,
-which isolates the cost of the logger's duplicate ANSI parse on the main thread.
-
-`--profile` selects the **shape** of that load, which matters more than the rate. The disk logger
-renders its grid body out of a headless xterm holding at most **5050 rows** and flushes every **5 s**,
-reusing the previous flush's frozen prefix — so the figure that decides what a run can measure is
-*new rows per flush against 5050*:
-
-| `--profile` | Default rate | Rows per 5 s flush | Regime |
-|---|---|---|---|
-| `flood` (default) | `512k` | ~17 600 | **3.5× full buffer turnover** — worst-case saturation |
-| `realistic` | `16k` | ~806 | **16 % of the buffer**, 84 % retained and reusable |
-
-`flood` is unchanged and stays the right tool for stressing the byte path, but it emits one
-10 924-character line per chunk, which wraps at 200 columns to 55 rows. At 64 chunks/s that replaces
-the whole buffer three and a half times per flush, so nothing is ever retained — which makes any
-optimisation that depends on retained rows invisible to it *by construction*. Measured 2026-07-23,
-the v4.97.1 incremental grid render scores exactly zero improvement under `flood` and 1.4–1.6× under
-`realistic`.
-
-`realistic` emits 80–119-character lines (one grid row each) in bursts separated by idle gaps, from a
-fixed seed so both arms of an `--ab` run see byte-identical input. Its default rate is deliberately
-**not** the flood's: short lines at 512k would land ~25 795 rows per flush — 5.1× turnover, deeper
-into saturation than the flood itself. It also forks about 100× less — the lines are literals and
-`printf` is a shell builtin, so only the per-burst `sleep` forks, against the flood's ~2000 process
-creations/second — which is why absolute constants read off `flood` are upper bounds rather than
-measurements of the byte path alone.
-
-Every rows-per-flush figure above is keyed to the rate you **request**, which is what the harness
-computes and prints. The flood's post-base64 output is about a third higher (699 200 B/s at `512k`),
-and the same arithmetic against *that* gives 34 401 rows and 6.8× — a different quantity, and one
-this page quoted in place of the other until 2026-07-23.
-
-#### Reading the ms-per-render figure
-
-A grid render costs O(retained buffer size), so a render taken while the buffer is still filling is
-not the same measurement as one taken after it is full. The profiles fill at very different speeds —
-about 1.4 s for `flood`, about 31 s for `realistic` at 16k — so averaging across that boundary is a
-systematic bias, and it runs in favour of whichever profile saturates first.
-
-The harness therefore drops every pre-saturation window and reports **`gridRenderMsPerRenderSteady`**
-as the headline, alongside the sample count it rests on. Below three post-saturation windows or four
-renders it refuses to report one at all and says so loudly, rather than publishing a mean of two
-samples. The unfiltered whole-run mean is kept beside it as `gridRenderMsPerRenderAllWindows`, named
-for what it is. A `realistic` run therefore needs to outlast ~31 s by several flushes: 60 s is the
-practical minimum, 120 s gives a comfortable series.
-
-Measured 2026-07-23 on one tab, matched pairs at 60 s and 120 s:
-
-| Profile | Steady ms/render | Whole-run ms/render | Delivered vs nominal |
-|---|---|---|---|
-| `flood` @ `512k` | 53.5 / 54.0 | 49.1 / 51.7 | 84 % |
-| `realistic` @ `16k` | 11.7 / 10.8 | 8.7 / 9.6 | 99 % / 100 % |
-
-That is **4.6–5.0× at steady state**, where the unfiltered means would have read 5.7× and 5.4×.
-
-**The ratio is not decomposed here, and should not be.** The two profiles differ in at least four
-ways at once — rate (32×), rows per line (55×), fork rate (114×), and steady versus bursty output —
-and a control run cannot vary them independently, because `floodCommand` derives its chunk size from
-the rate, tying line width to turnover. The observed ratio is the combined effect of all of them.
-
-#### What `realistic` does and does not represent
-
-It is a **floor** on the grid renderer's cost for a **non-cooperating** tab, not a portrait of a
-typical one:
-
-- Neither profile emits anything but printable ASCII and newlines — no alternate screen, no `RIS`,
-  no `\r` progress bars, no `CSI L`. So `GridBodyRenderer.invalidate()` and the marker-anomaly path
-  are never exercised and the frozen prefix is never dropped mid-run. Real tabs run TUIs and spinners
-  that do exactly that, and pay more than this.
-- `SessionLogger.flushNow` writes the **transcript** body whenever the session has one, and falls
-  back to the grid only otherwise. Cooperating agent tabs emit their transcript in-band over OSC and
-  so never reach `GridBodyRenderer` at all. The grid path serves non-cooperating tabs, and that is
-  the population these figures describe.
-
-The per-tab byte rate the harness prints is a **nominal ceiling** — after base64 expansion for the
-flood, before delivery — not a measurement of what reached the app. Emitting output takes wall-clock
-the fixed `sleep` never subtracts, so the loop always runs slower than its own arithmetic: a flood
-run printing 682.8 KB/s delivered 566 KB/s, which is the documented fork overhead. The summary
-reports what actually arrived as a percentage of that ceiling and warns outside 70–105 %, so a
-one-liner that silently failed to run cannot exit 0 behind a plausible-looking summary.
-
-The harness runs against a **throwaway user-data dir and conception** under `/tmp`, and asserts that
-isolation in the main process before applying any load — so it never touches your real
-`settings.json`, never floods your conception's log store, and never shares a perf JSONL with a
-running instance. It also refuses to start a run larger than 12 tabs, or one whose estimated working
-set exceeds available memory, unless `--force` is given — per-tab caps are per tab, and the
-documented field failure is whole-machine pressure, which they do not prevent.
-
-Every other precondition is asserted at runtime too, and none of the assertions is ceremony. A
-harness that measures other software turns an unverified assumption into plausible **false data**
-rather than a crash, so each one has already caught a real defect: the isolation check caught
-`--user-data-dir` being silently overridden by the dev-mode `userData` redirect; the renderer check
-caught the app booting against a Vite dev server nobody had started, which left a dead renderer and a
-run that exited 0 with numbers off by up to 9×; and the GC-record count caught `--trace-gc` output
-going to **stdout** while only stderr was captured, so `gc.log` had never held a single GC record.
-Requires a current `npm run build` — both the main bundle and the renderer bundle.
-
-#### Renderer CPU profile { #renderer-cpu-profile }
-
-Every counter above lives in the **main** process. `--renderer-profile` adds the one measurement the
-line never had — a CPU trace of the **renderer main thread** under the flood — by attaching a CDP
-`Profiler` to the renderer page (`page.context().newCDPSession(page)`, then `Profiler.enable` /
-`setSamplingInterval` / `start` … `stop`) around the flood window and writing a `.cpuprofile` beside
-`perf.jsonl`. It is a flag, not a sibling script, on purpose: the one property the harness exists to
-guarantee is isolation, so the renderer trace reuses the same sandbox, launch env, runtime assertions,
-memory guard and tab ceiling literally in place rather than re-deriving them. Opt-in and incompatible
-with `--ab` (a profile is a single trace); `--profiler-interval` sets the sampling interval in
-microseconds (default 250, finer than V8's 1000 so the OSC/clone/parse split resolves).
-
-The trace is **asserted real** before it is trusted — a profile with no samples, or one whose samples
-are all synthetic `(idle)`/`(program)`, means the profiler never attached to a busy renderer, and the
-run fails loudly rather than reporting a clean-looking empty trace (the exact hole `--trace-gc` hid).
-It also asserts the hidden-tab path is actually engaged: in the sandbox the terminal pane opens on the
-terminal view, so spawning N tabs leaves **one** visible DOM Terminal and demotes the other N-1 into
-the shared worker — and a demote **removes** the tab's DOM element, so `.xterm` collapsing to 1 is the
-runtime proof that the F7/F8 double-copy path is live. Rank a written profile with
-`node scripts/analyze-cpuprofile.mjs <file.cpuprofile>`, which aggregates self-time by function.
-
-What it reaches: **F7/F8** (the hidden-tab worker feed and the F8 IPC-deserialize-then-postMessage
-double copy, both on the renderer main thread). What it does not: **F6**, whose Code-pane run rows need
-a code-side session from a repo's Run button that the all-`my`-side flood cannot stage — scoped out
-rather than faked. The Profiler sees the page main thread only; the worker thread's own parse of the
-hidden tabs is a separate context, which is fine, because F8's claim is about the **main-thread** copy
-cost specifically. Measured 2026-07-23 under an 8-tab flood at machine load ~7.5 (a sampling profile is
-proportional, so self-time **shares** stay interpretable even though absolute ms are inflated by OS
-descheduling): among named renderer JS work, xterm ANSI parse/render of the single visible tab is
-~5.7 s and the F8 structured-clone/postMessage path is ~0.2 s — a ~28× gap. **F8 is real in the code
-but negligible in cost** (a data-transfer bound puts the two copies of 160 MB at tens of ms of memcpy),
-so it is refuted as a bottleneck; the worker offload the architecture pays for is precisely what keeps
-the main thread parsing one tab instead of eight.
+What each record carries, how the counters are meant to be read, and the `scripts/perf-load.mjs`
+harness for reproducing load deliberately are dissected in
+[Internals → Terminal performance recording](../explanation/internals.md#terminal-performance-recording).
 
 ### Terminal memory { #terminal-memory }
 
@@ -882,33 +682,20 @@ The embedded terminal's own canvas font is set separately in **Settings → Term
 
 `uiFonts` supersedes the earlier single `projectCardTitleFont` scalar (v4.86.0). A saved `projectCardTitleFont` value is folded into `uiFonts.cardTitle.family` and the legacy key dropped on the next read (see [config migration](#scope-partition-migrator)).
 
-Resolution order for the conception path, checked in sequence:
+### Conception path
 
-1. `CONDASH_CONCEPTION_PATH` env var (session-scoped override; doesn't touch `settings.json`).
-2. `lastConceptionPath` in `settings.json`.
-3. The first-launch folder picker. On selection, the picker writes the chosen path to `lastConceptionPath` and prepends it to `recentConceptionPaths` (cap 5) so the next launch picks it up automatically.
-4. **File → Open Recent** lets the user switch between recent paths without a folder dialog. Picking a recent promotes it to the head of the list and swaps the active conception immediately.
+condash resolves the conception path through a chain that shares its two configuration sources with the CLI — `CONDASH_CONCEPTION_PATH` (session-scoped override; doesn't touch `settings.json`) first, then `lastConceptionPath` in `settings.json` — with the GUI's interactive entry points standing in for the CLI-only sources (the `--conception` flag, `CLAUDE_PROJECT_DIR`, and the cwd walk-up). The full chain, with every source in order, is [CLI → Conception-path resolution](cli.md#conception-path-resolution).
 
-The file is created on demand: the first-launch folder picker writes it; you can also create it by hand.
+What the GUI adds on top of those two sources:
+
+- **First-launch folder picker** — when neither source yields a path, condash opens a native folder picker. On selection it writes the chosen path to `lastConceptionPath` and prepends it to `recentConceptionPaths` (cap 5) so the next launch picks it up automatically.
+- **File → Open Recent** — switches between saved paths without a folder dialog; picking a recent promotes it to the head of the list and swaps the active conception immediately. **File → Open…** runs after startup and triggers the same picker on demand.
+
+The file is created on demand: the first-launch folder picker writes it; you can also create it by hand. See [Configure the conception path](../guides/configure-conception-path.md) for the GUI walkthrough.
 
 ## Editing from the dashboard
 
-**File → Settings** (`Ctrl+,`) opens a full-viewport modal — one scrolling surface, no tabs and no in-modal JSON editor; each persisted preference has its own form control. The left rail groups the sections under two scope headers, one per file:
-
-**Personal · this machine** — writes `settings.json`:
-
-- **Recent conceptions** — manage the recents list backing **File → Open Recent**.
-- **Appearance** — theme (preset cards with swatches; selecting one previews it live); per-category UI fonts (with a live preview); per-pane card-grid min-widths.
-- **Terminal** — embedded terminal preferences (`terminal`, including `xterm`, `logging`, and the project-action templates).
-- **Launchers** — the `agents` list.
-- **Open with** — the three IDE/terminal launch slots.
-- **Dashboard** — live tab-summarization config (incl. the secret `apiKey`).
-- **Auto-commit** — the `autoSync` block, plus **Commit & push now** and a live status line. See [Auto-commit](#auto-commit).
-
-**This conception** — writes `.condash/settings.json` (the legacy `condash.json` / `configuration.json` are read but never written to):
-
-- **Workspace & paths** — `workspace_path`, `worktrees_path`, `long_lived_branches`.
-- **Repositories** — the ordered repo list, per-repo `run` / `force_stop`.
+**File → Settings** (`Ctrl+,`) opens a full-viewport modal — one scrolling surface, no tabs and no in-modal JSON editor; each persisted preference has its own form control. The left rail groups the sections under two scope headers, one per file: **Personal · this machine** (writes `settings.json`) and **This conception** (writes `.condash/settings.json` — the legacy `condash.json` / `configuration.json` are read but never written to). The section-by-section breakdown — which section sits under which header and which keys it edits — is in [The Settings modal guide](../guides/settings-modal.md); the details below are the ones that page doesn't carry.
 
 Each section carries a **scope chip** naming the file it writes (`settings.json` or `.condash/settings.json`). Because every setting has exactly one home, there are **no** inheritance badges, no override state, and no Reset-to-global controls — the old two-tab + badge machinery was removed with the scope-partition revamp. Edits stage as drafts (a per-section dirty pip flags unsaved changes); **Save** flushes them and **Discard** drops them. Each draft round-trips through atomic CAS — `settings.json` via `patchSettings` / `writeGlobalSettings`, `.condash/settings.json` via `patchConfig` / `writeNote` — schema-validated by the [strict zod schemas](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) (`globalSettingsSchema` and `conceptionConfigSchema`, now **disjoint**) before the bytes hit disk.
 

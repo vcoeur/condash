@@ -96,7 +96,7 @@ A knowledge file can carry a **verification date** — the last time somebody ch
 | 90 days – 1 year | stale |
 | over a year | old |
 
-That grading is the whole point of the mechanism: a knowledge tree with no freshness signal quietly rots, and a year-old runbook that *looks* the same as yesterday's is worse than no runbook. `condash audit` carries a stale-verification check that reports the same thing from the CLI.
+That grading is the whole point of the mechanism: a knowledge tree with no freshness signal quietly rots, and a year-old runbook that *looks* the same as yesterday's is worse than no runbook. The CLI applies a **stricter bar than the chip**: `condash knowledge verify` (and the `stale-verification` audit check, which shares its engine) flags any stamp older than the freshness threshold of **30 days** (`--max-age` on verify). So a 45-day-old stamp reads *fresh* on the chip but is flagged *stale* by verify — the chip is a coarse glance for browsing, verify is the enforcement point. The two thresholds are not aligned by design; reconciling them is a product decision tracked separately, and this statement is the interim record until it lands.
 
 ### Creating files in place
 

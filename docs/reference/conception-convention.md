@@ -119,28 +119,30 @@ The parser preserves source order. Drag-and-drop reorder rewrites the affected s
 
 ## Deliverables
 
-PDF outputs an item produces — technical reports, executive summaries, audits. Declared in a section literally named `## Deliverables`:
+The outputs an item produces — reports, executables, deployed pages, links — surfaced on the project card and in the **Deliverables** pane. Declared in a section literally named `## Deliverables`:
 
 ```markdown
 ## Deliverables
 
 - [Technical report](rapport-technique.pdf) — full analysis with code references
-- [Executive summary](summary.pdf) — one-page version for stakeholders
+- [Executive summary](summary.md) — one-page version for stakeholders
+- [Latest wireframes](https://figma.com/file/…/mockups)
+- [[2026-04-10-auth-rewrite]] — the audit this spin-off implements
 ```
 
-Strict syntax:
+Each line is a markdown link or a wikilink, with an optional trailing comment:
 
 | Piece | Rule |
 |---|---|
-| Line start | `- [` |
+| Line start | `- [` (markdown link) or `- [[` (wikilink) |
 | Label | any text until the next `]` |
-| Path | Markdown link target ending in `.pdf`, relative to the item directory |
-| Separator | optional em-dash (`—`), en-dash (`–`), or hyphen (`-`) |
-| Description | optional free text after the separator |
+| Target | a file relative to the item directory — **any extension** (pdf, md, html, image, …); an `http(s)://` URL, kept verbatim; or a `[[slug]]` wikilink to another conception item |
+| Separator | optional em-dash (`—`), hyphen (`-`), or colon (`:`) |
+| Comment | optional free text after the separator, shown beside the label |
 
-The parser ([`src/main/parse.ts`](https://github.com/vcoeur/condash/blob/main/src/main/parse.ts)) stops at the next `##` heading. Lines that do not match the pattern are silently skipped — a typo means your PDF disappears from the card, no error.
+`mailto:` and in-page `#anchor` targets are ignored. The parser ([`src/main/parse.ts`](https://github.com/vcoeur/condash/blob/main/src/main/parse.ts)) stops at the next `##` heading; lines that match none of the forms are silently skipped — a typo means the deliverable disappears from the card, no error.
 
-See [Deliverables and PDFs](../guides/deliverables.md) for the viewer config, the download route, and how the built-in PDF.js previewer kicks in.
+See [Deliverables and PDFs](../guides/deliverables.md) for how each item opens (in-app viewers, external browser, OS default app), the download route, and the built-in PDF viewer.
 
 ## Timeline
 

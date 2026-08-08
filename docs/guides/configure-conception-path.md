@@ -58,6 +58,8 @@ On startup condash checks, in order:
 3. First-launch folder picker. Writes the choice back to `settings.json`.
 4. Hard error — condash refuses to start.
 
+Those are the GUI's steps. The CLI resolves through a longer chain — a `--conception` flag, `CLAUDE_PROJECT_DIR`, and a cwd walk-up all take precedence over `lastConceptionPath` — see [CLI → Conception-path resolution](../reference/cli.md#conception-path-resolution) for the full picture.
+
 **File → Open…** doesn't fit this list because it runs after startup: it triggers the same picker as step 3 on demand, then stores its result the same way.
 
 ## When to use a scratch tree

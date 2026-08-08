@@ -72,13 +72,12 @@ markdown_extensions:
 
 # The six `docs/help/*.md` bodies are the *in-app* Help menu pages: `src/main/help.ts`
 # reads them out of the packaged asar through a filename allowlist, so they must stay
-# in `docs/` and must keep their names. They are published (their absolute
-# condash.vcoeur.com links have to resolve, and the app's "Open documentation site"
-# entry lands on the same host) but deliberately kept out of the nav, where they would
-# duplicate `get-started/`. Declaring them here is what stops every build reporting
-# them as accidental orphans.
-not_in_nav: |
-  /help/*.md
+# in `docs/` and must keep their names. They are published on the site under the
+# "In-app help" section below — one source serves both the Help modal and the site,
+# and the app's "Open documentation site" entry lands on the same host — so a site
+# visitor can browse exactly what a first-run user sees in-app, including the only
+# copy of the config quick-reference. Keep the section labelled as in-app help so
+# nobody mistakes these short pages for the full Get started / Reference treatment.
 
 nav:
   - Home: index.md
@@ -86,6 +85,14 @@ nav:
   - Get started:
     - get-started/index.md
     - Releases: get-started/releases.md
+
+  - In-app help:
+    - Welcome: help/welcome.md
+    - Quick start: help/quick-start.md
+    - CLI overview: help/cli.md
+    - Configuration (in-app): help/configuration.md
+    - Keyboard shortcuts: help/shortcuts.md
+    - Why Markdown-first: help/why-markdown.md
 
   - Tutorials:
     - tutorials/index.md
