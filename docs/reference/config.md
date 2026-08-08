@@ -682,14 +682,16 @@ The embedded terminal's own canvas font is set separately in **Settings → Term
 
 `uiFonts` supersedes the earlier single `projectCardTitleFont` scalar (v4.86.0). A saved `projectCardTitleFont` value is folded into `uiFonts.cardTitle.family` and the legacy key dropped on the next read (see [config migration](#scope-partition-migrator)).
 
-Resolution order for the conception path, checked in sequence:
+### Conception path
 
-1. `CONDASH_CONCEPTION_PATH` env var (session-scoped override; doesn't touch `settings.json`).
-2. `lastConceptionPath` in `settings.json`.
-3. The first-launch folder picker. On selection, the picker writes the chosen path to `lastConceptionPath` and prepends it to `recentConceptionPaths` (cap 5) so the next launch picks it up automatically.
-4. **File → Open Recent** lets the user switch between recent paths without a folder dialog. Picking a recent promotes it to the head of the list and swaps the active conception immediately.
+condash resolves the conception path through a chain that shares its two configuration sources with the CLI — `CONDASH_CONCEPTION_PATH` (session-scoped override; doesn't touch `settings.json`) first, then `lastConceptionPath` in `settings.json` — with the GUI's interactive entry points standing in for the CLI-only sources (the `--conception` flag, `CLAUDE_PROJECT_DIR`, and the cwd walk-up). The full chain, with every source in order, is [CLI → Conception-path resolution](cli.md#conception-path-resolution).
 
-The file is created on demand: the first-launch folder picker writes it; you can also create it by hand.
+What the GUI adds on top of those two sources:
+
+- **First-launch folder picker** — when neither source yields a path, condash opens a native folder picker. On selection it writes the chosen path to `lastConceptionPath` and prepends it to `recentConceptionPaths` (cap 5) so the next launch picks it up automatically.
+- **File → Open Recent** — switches between saved paths without a folder dialog; picking a recent promotes it to the head of the list and swaps the active conception immediately. **File → Open…** runs after startup and triggers the same picker on demand.
+
+The file is created on demand: the first-launch folder picker writes it; you can also create it by hand. See [Configure the conception path](../guides/configure-conception-path.md) for the GUI walkthrough.
 
 ## Editing from the dashboard
 
