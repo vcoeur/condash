@@ -247,8 +247,10 @@ A conception has one author — or a small team, each on their own checkout, all
 
 | Verb | What it does |
 |---|---|
-| `run [--dry-run] [--no-push] [--quiet-period <secs>]` | The sweeper. The default verb — bare `condash sync` runs it |
+| `run [--dry-run] [--no-push] [--quiet-period <secs>]` | The sweeper — commit settled changes and push. `sync run` executes; bare `condash sync` is a dry-run |
 | `commit <item> --message "<subject>" [--dry-run] [--no-push]` | Manual milestone commit for one item, under the same lock |
+
+**Bare `condash sync` (no verb) is a dry-run**: it reports exactly what a sweep would commit and push — the `would commit …` lines, the would-be index regenerations, the skipped paths — and writes no git state. That is the safe default: a bare invocation can never commit-and-push a tree by accident. Use `sync run` when you mean to execute; the sweeper and the auto-commit engine already call `sync run` explicitly. `--dry-run` keeps working on `run` for an explicit plan.
 
 `run`, in order:
 

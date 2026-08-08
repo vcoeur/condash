@@ -67,7 +67,7 @@ The line is still on `4`, and by the scheme above that means nothing since 4.0.0
 |---|---|
 | The activity rail | The left icon rail, plus the Tasks, Deliverables, and Performance views behind it. |
 | The [Dashboard band](../guides/dashboard.md) | LLM summaries of what each terminal tab is doing. Off by default; needs an API key. |
-| [Auto-commit](../guides/auto-commit.md) + `condash sync` | condash as the single git writer for a shared conception checkout. |
+| [Auto-commit](../guides/auto-commit.md) + `condash sync run` | condash as the single git writer for a shared conception checkout. |
 | The RAM search index | Search stopped re-walking the tree per query. Logs stay on-disk-scanned. |
 | `parent:` / subprojects | Link a spin-off item to the plan it derives from — see [README format](../reference/readme-format.md#parent-subprojects). |
 | `#handle` app registry | Stable app identity across items and repos — see [Applications and handles](../guides/applications-and-handles.md). |

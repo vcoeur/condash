@@ -46,7 +46,7 @@ git -C <conception-path> lfs track <path>
 git -C <conception-path> add <path>
 ```
 
-Do **not** commit — `condash sync` is the conception's only committer.
+Do **not** commit — `condash sync run` (the sweeper) is the conception's only committer.
 
 ### `binaries` (informational)
 
