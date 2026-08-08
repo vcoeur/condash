@@ -30,15 +30,21 @@ For running condash from a source clone (`make install`, `make dev`, `make packa
 
 One binary, one launcher: the `condash` entry on PATH inspects its argv. With no positional argument (or with the literal `gui` first), it boots the Electron GUI. **Anything else** runs the bundled CLI script in plain-Node mode (no Chromium, no window) — the dispatcher is deliberately not noun-aware (`src/main/dispatch.ts`), so it is the CLI itself that reports an unknown noun and exits with code 2 (usage).
 
-CLI nouns:
+CLI nouns (Daily):
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   dirty   sync   logs   skills   mdx   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   sync   logs   skills   mdx   config   help
 ```
+
+Maintenance — hidden from the top-level help's Daily list, fully functional:
+
+```
+dirty
+```
+
+`projects backfill-closed`, `projects rewrite-headers`, and `projects scan-promotions` are one-shot migrations marked `[internal]` in the top-level help; the invocations are unchanged.
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
-
-`plans` is accepted as a **deprecated alias** for [`mdx`](#mdx) — it prints `warning: condash plans was renamed — use condash mdx` on stderr and forwards to the same handler. It was renamed in v4.81.0; kept as a deprecated forwarding alias.
 
 `code` is **not** a CLI noun: `condash code` reports `Unknown noun: code` and exits 2. The Code pane is GUI-only — the CLI equivalent is [`worktrees`](#worktrees) (`setup`, `check`, `mismatch`, `remove`), [`repos list`](#repos), and `audit --include worktrees` for the same lifecycle checks. And `condash --list` does not exist either: `--list` is not a valid flag, so there is no way to ask the CLI to enumerate its nouns — `condash help` prints them.
 
@@ -185,14 +191,12 @@ Worktree-centric operations on top of the conception's configured repositories (
 | `list` | Print every worktree, grouped by primary, with branch + dirty status. An alias for [`repos list --include-worktrees`](#repos) — same payload, no extra flags of its own |
 | `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
 | `mismatch` | Report worktrees referenced by an item's `branch` field that don't exist on disk (or vice versa) |
-| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` is the legacy opportunistic `.env` / `.env.local` copy for repos with no `env:` block; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook (which runs by default); `--base <ref>` overrides the base. With no `--base`, the base comes from the declaring items' `base:` header fields (which must agree); with no base at all, each repo branches from its own default-branch tip — `origin/HEAD`, else local `main` / `master`, else the primary checkout's HEAD. No fetch is run, so a base ref trailing its upstream only earns a **warning**. Re-running setup on an already-present worktree backfills only the declared env files that worktree is missing — an existing copy is never overwritten, and `install:` does not re-run; `--no-env` suppresses that backfill too. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch, missing base ref) are expected outcomes reported under `blocked` and do **not** affect the exit code |
+| `setup <branch> [--repo <r>...] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook (which runs by default); `--base <ref>` overrides the base. With no `--base`, the base comes from the declaring items' `base:` header fields (which must agree); with no base at all, each repo branches from its own default-branch tip — `origin/HEAD`, else local `main` / `master`, else the primary checkout's HEAD. No fetch is run, so a base ref trailing its upstream only earns a **warning**. Re-running setup on an already-present worktree backfills only the declared env files that worktree is missing — an existing copy is never overwritten, and `install:` does not re-run; `--no-env` suppresses that backfill too. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch, missing base ref) are expected outcomes reported under `blocked` and do **not** affect the exit code |
 | `remove <branch> [--repo <r>...] [--force] [--force-rm]` | Tear down `<branch>` worktrees and (if safe) the local branch. `--force` passes through to `git worktree remove --force` (deletes even if dirty); `--force-rm` implies `--force` and `rm -rf`'s the leftover dir if git deregistered the worktree but left files behind (typical with `node_modules`). Without `--force-rm`, half-removed entries are reported under `partiallyRemoved[]` so the caller can distinguish them from genuinely protected repos |
 
 A declaring item's `apps:` tokens and explicit `--repo` values resolve to a repo by its `#handle`, its directory name, or a configured alias — so a repo whose handle differs from its directory (e.g. `#vcoeur` → `vcoeur.com`) is matched either way. The worktree directory is always named after the canonical directory name, so every spelling lands on the same `<worktrees_path>/<branch>/<dir>/`.
 
 `remove` refuses outright when `<branch>` matches [`long_lived_branches`](config.md#workspace-keys) (default `main` + `master`, glob patterns accepted): every requested repo comes back under `protected[]` with a "remove manually if really intended" reason, and nothing is deleted — `--force` does not override it.
-
-`setup` also accepts a bare `--install` for back-compat. It is **deprecated and does nothing**: running the per-repo `install:` hook has been the default since it was introduced, so the flag only prints a `[deprecated]` notice pointing at `--no-install`.
 
 ### `audit`
 

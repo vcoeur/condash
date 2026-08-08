@@ -30,23 +30,30 @@ function emptyArgs(noun: string): ParsedArgs {
   return { noun, verb: null, positional: [], flags: {} };
 }
 
-/** Parse TOP_HELP's `Nouns:` block into noun -> joined description text. */
+/**
+ * Parse TOP_HELP's noun blocks into noun -> joined description text. The
+ * surface is tiered into a `Daily:` section and a `Maintenance:` section;
+ * both carry noun lines in the same shape, so each is parsed so a
+ * Maintenance noun (e.g. `dirty`) cannot hide from the drift check.
+ */
 function topHelpNounBlocks(): Map<string, string> {
   const lines = TOP_HELP.split('\n');
-  const start = lines.findIndex((line) => line === 'Nouns:');
-  expect(start).toBeGreaterThan(-1);
   const blocks = new Map<string, string>();
-  let current: string | null = null;
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim() === '') break;
-    const head = /^ {2}(\S+) +(\S.*)$/.exec(line);
-    if (head) {
-      current = head[1];
-      blocks.set(current, head[2]);
-    } else if (current) {
-      // Continuation line (deeper indent) — join onto the noun's text.
-      blocks.set(current, `${blocks.get(current)} ${line.trim()}`);
+  for (const header of ['Daily:', 'Maintenance:']) {
+    const start = lines.findIndex((line) => line === header);
+    expect(start, `TOP_HELP should carry a '${header}' section`).toBeGreaterThan(-1);
+    let current: string | null = null;
+    for (let i = start + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === '') break;
+      const head = /^ {2}(\S+) +(\S.*)$/.exec(line);
+      if (head) {
+        current = head[1];
+        blocks.set(current, head[2]);
+      } else if (current) {
+        // Continuation line (deeper indent) — join onto the noun's text.
+        blocks.set(current, `${blocks.get(current)} ${line.trim()}`);
+      }
     }
   }
   return blocks;

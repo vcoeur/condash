@@ -27,10 +27,11 @@ GUI: (packaged binary only — the \`bin\` CLI bundle prints this help and has n
   condash gui [chromium-switch] Launch with Chromium switches (debugging).
   The same binary is a dashboard with no arguments and a CLI otherwise.
 
-Nouns:
+Daily:
   projects     list, read, activity, resolve, search, validate, status get|set,
-               close, check-knowledge, reopen, backfill-closed, index, create,
-               scan-promotions, rewrite-headers
+               close, check-knowledge, reopen, index, create,
+               backfill-closed [internal], scan-promotions [internal],
+               rewrite-headers [internal]
   knowledge    tree, verify, retrieve, stamp, index
   search       cross-tree search (--scope all|projects|knowledge|resources|skills|logs)
   repos        list configured repositories
@@ -38,7 +39,6 @@ Nouns:
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
                index,stale-index,stale-verification,knowledge-recheck,knowledge-check)
-  dirty        list, touch <tree>, clear <tree|all>
   sync         run (default), commit <item> --message "…"
                (single-writer git for a checkout shared by parallel sessions)
   logs         days (default), list [<day>], read <sid|path>, tail (session logs)
@@ -48,6 +48,9 @@ Nouns:
                get <key> [--effective|--global], set <key> <value> [--global],
                migrate (legacy condash.json → .condash/settings.json)
   help         this message; or 'condash help <noun>' for verbs
+
+Maintenance:
+  dirty        list, touch <tree>, clear <tree|all> (index-marker internals)
 
 Universal flags:
   --conception <path>   Override conception root.

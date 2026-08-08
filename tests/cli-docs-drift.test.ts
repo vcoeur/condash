@@ -7,9 +7,9 @@
  * undocumented forever. This test derives each noun's actual verbs from the
  * CLI itself (the `Verbs:` block of its overview help, the same mechanism
  * `src/cli/top-help.test.ts` uses) and asserts `reference/cli.md` documents
- * them. It also guards the in-app `docs/help/cli.md` against presenting the
- * deprecated `plans` alias as a current command. Assertions search for
- * tokens, not whole lines, so prose rewrites don't trip them.
+ * them. It also pins the in-app `docs/help/cli.md` to never mention the
+ * removed `plans` alias. Assertions search for tokens, not whole lines, so
+ * prose rewrites don't trip them.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,23 +35,30 @@ function emptyArgs(noun: string): ParsedArgs {
   return { noun, verb: null, positional: [], flags: {} };
 }
 
-/** Parse TOP_HELP's `Nouns:` block into noun -> joined description text. */
+/**
+ * Parse TOP_HELP's noun blocks into noun -> joined description text. The
+ * surface is tiered into a `Daily:` section and a `Maintenance:` section;
+ * both carry noun lines in the same shape, so each is parsed so a
+ * Maintenance noun (e.g. `dirty`) cannot hide from the drift check.
+ */
 function topHelpNounBlocks(): Map<string, string> {
   const lines = TOP_HELP.split('\n');
-  const start = lines.findIndex((line) => line === 'Nouns:');
-  expect(start).toBeGreaterThan(-1);
   const blocks = new Map<string, string>();
-  let current: string | null = null;
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim() === '') break;
-    const head = /^ {2}(\S+) +(\S.*)$/.exec(line);
-    if (head) {
-      current = head[1];
-      blocks.set(current, head[2]);
-    } else if (current) {
-      // Continuation line (deeper indent) — join onto the noun's text.
-      blocks.set(current, `${blocks.get(current)} ${line.trim()}`);
+  for (const header of ['Daily:', 'Maintenance:']) {
+    const start = lines.findIndex((line) => line === header);
+    expect(start, `TOP_HELP should carry a '${header}' section`).toBeGreaterThan(-1);
+    let current: string | null = null;
+    for (let i = start + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === '') break;
+      const head = /^ {2}(\S+) +(\S.*)$/.exec(line);
+      if (head) {
+        current = head[1];
+        blocks.set(current, head[2]);
+      } else if (current) {
+        // Continuation line (deeper indent) — join onto the noun's text.
+        blocks.set(current, `${blocks.get(current)} ${line.trim()}`);
+      }
     }
   }
   return blocks;
@@ -137,15 +144,10 @@ describe('docs/reference/cli.md keeps up with the CLI surface', () => {
   }
 });
 
-describe('docs/help/cli.md does not present plans as current', () => {
-  it('marks plans deprecated wherever it is mentioned', () => {
+describe('docs/help/cli.md never mentions the removed plans alias', () => {
+  it('the alias is gone from the in-app CLI help', () => {
     const body = readDoc('help/cli.md');
     const mentions = body.split('\n').filter((line) => line.includes('plans'));
-    for (const line of mentions) {
-      expect(
-        line,
-        `docs/help/cli.md line mentioning 'plans' must mark it deprecated or renamed`,
-      ).toMatch(/deprecated|renamed/i);
-    }
+    expect(mentions, `docs/help/cli.md must not mention the removed 'plans' alias`).toEqual([]);
   });
 });

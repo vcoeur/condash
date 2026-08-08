@@ -179,16 +179,6 @@ async function dispatch(
       await runMdx(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     }
-    case 'plans': {
-      // Back-compat: the `plans` noun was renamed to `mdx` in v4.81.0. Warn
-      // and forward; kept as a deprecated forwarding alias.
-      if (!ctx.quiet) {
-        process.stderr.write('warning: `condash plans` was renamed — use `condash mdx`\n');
-      }
-      const { runMdx } = await import('./commands/mdx');
-      await runMdx(args.verb, args, ctx, conceptionPath, help);
-      return ExitCodes.OK;
-    }
     case 'config': {
       const { runConfig } = await import('./commands/config');
       await runConfig(args.verb, args, ctx, conceptionPath, help);

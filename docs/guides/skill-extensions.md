@@ -105,7 +105,7 @@ The flags a wrapper author actually needs:
 | `--no-install` | Skip the per-repo `install:` command. |
 | `--no-env` | Skip the per-repo `env:` file copy. |
 
-`--copy-env` still parses but is **legacy** — an opportunistic `.env` / `.env.local` copy for repos that declare no `env:` key. New configuration should declare `env: [...]` on the repo entry instead; it applies unconditionally and is explicit about what gets copied. See [Repositories and open-with launchers](repositories-and-open-with.md#other-keys-a-repository-entry-accepts).
+`--copy-env` no longer exists — a repo without an `env:` key gets no env-file copy. Declare `env: [...]` on the repo entry instead; it applies unconditionally and is explicit about what gets copied. See [Repositories and open-with launchers](repositories-and-open-with.md#other-keys-a-repository-entry-accepts).
 
 ### Deliverable generation on close
 
