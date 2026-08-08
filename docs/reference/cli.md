@@ -216,8 +216,8 @@ condash audit --include lfs,binaries
 | `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
 | `stale-index` | `index.md` files under `projects/` or `knowledge/` whose content has drifted from the tree (a regen would rewrite them); autofix re-runs `condash <tree> index` |
 | `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 90 days). Shares its engine with `condash knowledge verify`, so the two agree on what counts as stale. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
-| `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
-| `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
+| `check-knowledge-deferred` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
+| `check-knowledge` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 
 `--include <list>` restricts to a comma-separated subset (or `all`).
 

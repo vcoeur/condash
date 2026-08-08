@@ -42,7 +42,7 @@ Trigger: `/projects close <slug>`.
 
    Zero candidates from both reading and scan → say so and move on. Don't synthesise a prompt to fish for one.
 
-    d. **Deferred promotions.** A candidate that fails *only* #3 (durable and cross-cutting, but its truth is established by this not-yet-merged PR) is not a drop — record it exactly as `/projects update` does: append a `[knowledge-recheck:pending]` `## Timeline` marker naming the fact, the blocking PR, and the candidate `knowledge/` path. The `knowledge-recheck` audit (`/knowledge verify`) re-surfaces it after the PR merges — **including in `done` projects**, so deferring at close never buries it. Marker format and the closing `[knowledge-recheck:done]` step live in [update.md](update.md) — use that form, not a prose checklist, or the audit can't see it.
+    d. **Deferred promotions.** A candidate that fails *only* #3 (durable and cross-cutting, but its truth is established by this not-yet-merged PR) is not a drop — record it exactly as `/projects update` does: append a `[knowledge-recheck:pending]` `## Timeline` marker naming the fact, the blocking PR, and the candidate `knowledge/` path. The `check-knowledge-deferred` audit (`/knowledge verify`) re-surfaces it after the PR merges — **including in `done` projects**, so deferring at close never buries it. Marker format and the closing `[knowledge-recheck:done]` step live in [update.md](update.md) — use that form, not a prose checklist, or the audit can't see it.
 
 5. **Worktree + branch cleanup.** If the item has a `branch` field:
 
