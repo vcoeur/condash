@@ -57,7 +57,7 @@ The button in the pane header toggles `terminal.perf.enabled` — a personal set
 
 Records land in `<conception>/.condash/perf/YYYY-MM-DD.jsonl`, one file per day. A janitor keeps 14 days and caps the whole directory at 200 MB, evicting oldest-first; today's file is never a victim, so a live recording is never pulled out from under you. Recording costs roughly 10 MB/day with two active tabs and ~80 MB/day with twenty.
 
-The record schema — every counter, every field — is in [Config files → Terminal perf](../reference/config.md#terminal-perf).
+The record schema — every counter, every field, and how to read it — is dissected in [Internals → Terminal performance recording](../explanation/internals.md#terminal-performance-recording).
 
 ## A working method
 
@@ -70,4 +70,4 @@ The record schema — every counter, every field — is in [Config files → Ter
 
 - **[Troubleshooting](troubleshooting.md#embedded-terminal-is-laggy-under-load)** — the symptom-first version of this page, including the death verdicts.
 - **[The embedded terminal](terminal.md)** — where the tabs being measured come from.
-- **[Config files → Terminal perf](../reference/config.md#terminal-perf)** — the `terminal.perf` key and the on-disk record schema.
+- **[Config files → Terminal perf](../reference/config.md#terminal-perf)** — the `terminal.perf` key, the recording toggles, and the retention caps; the record schema is dissected in [Internals → Terminal performance recording](../explanation/internals.md#terminal-performance-recording).
