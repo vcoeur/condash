@@ -142,9 +142,7 @@ Each line is a markdown link or a wikilink, with an optional trailing comment:
 
 `mailto:` and in-page `#anchor` targets are ignored. The parser ([`src/main/parse.ts`](https://github.com/vcoeur/condash/blob/main/src/main/parse.ts)) stops at the next `##` heading; lines that match none of the forms are silently skipped — a typo means the deliverable disappears from the card, no error.
 
-See [Deliverables and PDFs](../guides/deliverables.md) for how each item opens (in-app viewers, external browser, OS default app), the download route, and the PDF.js previewer.
-
-See [Deliverables and PDFs](../guides/deliverables.md) for the viewer config, the download route, and how the built-in PDF.js previewer kicks in.
+See [Deliverables and PDFs](../guides/deliverables.md) for how each item opens (in-app viewers, external browser, OS default app), the download route, and the built-in PDF viewer.
 
 ## Timeline
 
