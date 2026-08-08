@@ -17,8 +17,10 @@ import { collectKnowledgeBodyFiles } from '../search/walk';
 import { parseVerifiedStamp, stampAgeDays } from '../knowledge-stamps';
 import type { AuditIssue } from './shared';
 
-/** Default freshness window in days. Matches the historical CLI default. */
-export const DEFAULT_STALE_MAX_AGE_DAYS = 30;
+/** Default freshness window in days. Matches the pane chip's "stale" tier
+ * (`renderer/panes/knowledge.tsx`), so verify, the audit check, and the pane
+ * all agree on what "stale" means. */
+export const DEFAULT_STALE_MAX_AGE_DAYS = 90;
 
 /** One scanned stamp: its file, date, provenance, line, and age in days. */
 export interface StampScanEntry {
@@ -53,7 +55,7 @@ export interface StampScanResult {
  * against `maxAgeDays`. Pure read-only.
  *
  * @param conceptionPath absolute conception root
- * @param maxAgeDays freshness window (default 30)
+ * @param maxAgeDays freshness window (default 90)
  * @param today reference date for age (defaults to now — injectable for tests)
  */
 export async function scanStaleStamps(
