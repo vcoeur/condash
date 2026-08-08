@@ -129,7 +129,15 @@ The item moves from the `NOW` section to `REVIEW`. The Projects pane is one scro
 ![Projects pane with the NOW, REVIEW, LATER, BACKLOG, DONE and unknown-status sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-light.png#only-light)
 ![Projects pane with the NOW, REVIEW, LATER, BACKLOG, DONE and unknown-status sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-dark.png#only-dark)
 
-If you use Claude Code, the shipped **`/pr` skill** builds the PR body from the item's README for you. It ships inside condash and lands in your tree when you run `condash skills install` (or click **Install** on the status bar's skills indicator) — see [Extend the management skills](../guides/skill-extensions.md).
+Prefer a skill over the shell? In an agent session with the skills installed, this step is one command:
+
+```text
+/projects read search-crash-large-logs
+```
+
+The skill resolves the item, shells out to `condash projects read`, and hands you the README's parsed state — the same canonical view the dashboard renders. From there `/projects update search-crash-large-logs` moves a step marker or flips `status:` to `review` in the same breath as the PR, and the shipped **`/pr` skill** builds the PR body from the item's README for you.
+
+Both need a harness with the skills installed: the five skills ship inside condash and land in your tree when you run `condash skills install` (or click **Install** on the status bar's skills indicator), and your harness launcher renders them into slash commands at session start. See [Extend the management skills](../guides/skill-extensions.md) and [The Skills pane](../guides/skills-pane.md).
 
 ## 7. Close on merge
 

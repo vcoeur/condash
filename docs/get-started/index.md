@@ -150,6 +150,8 @@ knowledge/                    index.md, conventions.md, external/, internal/, to
 
 A **skill** is a Markdown instruction file for an AI coding agent — Claude Code, for example — and condash ships five (`projects`, `knowledge`, `pr`, `applications`, `visual`), installing them into your tree under `.agents/skills/`.
 
+Each is invocable as a slash command — `/projects`, `/knowledge`, `/pr`, `/applications`, `/visual` — in an agent session whose harness has the skills installed. Which skill handles which task, and what each wraps in the CLI: **[Management skills](../reference/skill.md)**.
+
 **Existing files are never overwritten** — running this against a folder that already has some of these leaves them exactly as they are, and only the missing files are created. A toast reports how many were written.
 
 This is strictly better than making the directories yourself: a bare `mkdir projects/` gives you no config, no seed indexes, and no skills, and condash will re-offer the init prompt the next time you pick that folder — the probe runs when a folder is chosen, not on every launch.
