@@ -30,11 +30,19 @@ For running condash from a source clone (`make install`, `make dev`, `make packa
 
 One binary, one launcher: the `condash` entry on PATH inspects its argv. With no positional argument (or with the literal `gui` first), it boots the Electron GUI. **Anything else** runs the bundled CLI script in plain-Node mode (no Chromium, no window) — the dispatcher is deliberately not noun-aware (`src/main/dispatch.ts`), so it is the CLI itself that reports an unknown noun and exits with code 2 (usage).
 
-CLI nouns:
+CLI nouns (Daily):
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   dirty   sync   logs   skills   mdx   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   sync   logs   skills   mdx   config   help
 ```
+
+Maintenance — hidden from the top-level help's Daily list, fully functional:
+
+```
+dirty
+```
+
+`projects backfill-closed`, `projects rewrite-headers`, and `projects scan-promotions` are one-shot migrations marked `[internal]` in the top-level help; the invocations are unchanged.
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
 
