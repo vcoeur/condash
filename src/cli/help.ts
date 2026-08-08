@@ -22,9 +22,10 @@ export const UNIVERSAL_FOOTER =
  */
 export const TOP_HELP = `condash <noun> <verb> [args] [--flags]
 
-GUI:
+GUI: (packaged binary only — the \`bin\` CLI bundle prints this help and has no \`gui\` verb)
   condash                       Launch the dashboard.
   condash gui [chromium-switch] Launch with Chromium switches (debugging).
+  The same binary is a dashboard with no arguments and a CLI otherwise.
 
 Nouns:
   projects     list, read, activity, resolve, search, validate, status get|set,

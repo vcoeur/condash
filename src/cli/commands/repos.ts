@@ -46,7 +46,7 @@ export async function runRepos(
 }
 
 function printHelp(verb: string | null): void {
-  if (verb === 'list' || verb === null) {
+  if (verb === 'list') {
     process.stdout.write(
       renderHelp([
         'condash repos list [--include-worktrees]',

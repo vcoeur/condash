@@ -292,7 +292,7 @@ function printHelp(verb: string | null): void {
       return;
     case 'create':
       writeBlock([
-        'condash projects create --kind <kind> --slug <slug> --title <text> --apps <a,b> [flags]',
+        'condash projects create --kind <kind> --slug <slug> --title <text> [--apps <a,b>] [flags]',
         '',
         'Create a new item under projects/YYYY-MM/<slug>/.',
         '',
@@ -300,9 +300,9 @@ function printHelp(verb: string | null): void {
         '  --kind     project | incident | document',
         '  --slug     lowercase letters, digits, hyphens',
         '  --title    free text',
-        '  --apps     comma-separated app list (e.g. condash,knoten)',
         '',
         'Optional:',
+        '  --apps                comma-separated app list (e.g. condash,knoten)',
         '  --branch              git branch name',
         '  --base                base branch for PRs (default: main)',
         '  --parent              slug of the parent plan this spins off from',
@@ -315,6 +315,7 @@ function printHelp(verb: string | null): void {
         'Examples:',
         '  condash projects create --kind project --slug fix-x --title "Fix X" --apps condash',
         '  condash projects create --kind project --slug y --title "Y" --apps a,b --status later',
+        '  condash projects create --kind document --slug z --title "Z"',
       ]);
       return;
     case 'check-knowledge':

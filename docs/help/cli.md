@@ -11,6 +11,8 @@ condash <noun> <verb> [args] [--flags]
 
 ## Top-level
 
+> The GUI rows below describe the **packaged Electron binary**. The `npm`/`bin` CLI bundle prints this same help but has no `gui` verb — the same binary is a dashboard with no arguments and a CLI otherwise.
+
 | Invocation                          | What it does                                        |
 |-------------------------------------|-----------------------------------------------------|
 | `condash`                           | Launch the dashboard.                               |
