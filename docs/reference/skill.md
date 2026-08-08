@@ -9,7 +9,7 @@ description: Reference for the five shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
+condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the [harness launcher](#the-harness-launcher-agedum) renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
@@ -24,6 +24,40 @@ The skills are **editorial only**. Every mechanical step shells out to `condash`
 The pre-reframe `/tidy` and `/skills` skills were dropped: tidy's audits are now reachable from `/knowledge verify` (which wraps `condash audit` + `condash knowledge verify`), and `/skills` was a thin wrapper over `condash skills install` — call the CLI directly.
 
 `condash skills list`, `status`, and `install` track only the five shipped skills. A conception-local skill — a hand-written `.agents/skills/<name>/SKILL.md` that condash doesn't ship — is not tracked and never appears in `skills list` / `status`; it still works as a slash-command skill and shows in the Skills pane.
+
+## How the pieces fit
+
+A new user's first question is usually "I installed the skills — how do I actually use `/projects` in my agent?" The answer is one end-to-end chain, and every link has its own page:
+
+- The **app** — the dashboard — *renders* the tree. It reads the Markdown on disk and shows it as cards and panes; its write surface is deliberately tiny ([mutation model](mutations.md)).
+- The **`condash` CLI** *mutates* the tree — every create, update, close, index, and sync is a command against the same files ([CLI](cli.md)).
+- The five **skills** are agent-facing wrappers over the CLI. Each is "editorial only": it decides what the agent should do and shells out to `condash` for every mechanical step, so the app, the CLI, and the skills always see the same canonical view ([extend them](../guides/skill-extensions.md)).
+- The **harness launcher** turns each skill's source into a slash-command in an agent session — [the harness launcher (agedum)](#the-harness-launcher-agedum) below.
+- The **sweeper** (`condash sync run`) is the only git writer: one process commits settled changes and pushes, so parallel agent sessions never race the shared index ([values](../explanation/values.md) · [auto-commit](../guides/auto-commit.md)).
+
+```
+              ┌───────────────┐
+              │   the tree    │   the Markdown: projects/, knowledge/, …
+              └───────┬───────┘
+                      │  rendered by the app (dashboard) — reads only
+                      │  mutated by the condash CLI — every mechanical step
+              ┌───────┴───────┐
+              │  five skills  │   agent-facing wrappers over the CLI
+              └───────┬───────┘
+                      │  rendered as slash-commands by
+              ┌───────┴───────┐
+              │  harness      │
+              │  launcher     │
+              │  (agedum)     │
+              └───────────────┘
+
+The sweeper (`condash sync run`) is the only git writer — it commits
+and pushes the tree; every other piece leaves git alone.
+```
+
+### The harness launcher (agedum)
+
+**agedum** is the harness launcher: the separate tool — shipped independently of condash, never part of its bundle — that compiles each app's skills into agent-specific slash-commands at launch. condash only surfaces agedum's sources (the `.agents/skills/` and `~/.config/agents/skills/` trees it installs and the Skills pane displays read-only); it never compiles or rewrites them. If you don't use an AI coding agent, you don't need agedum at all — the app and the CLI stand alone.
 
 ## Which skill should I use?
 
@@ -98,13 +132,13 @@ condash skills install
 condash skills install
 ```
 
-The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, all five become available in a session.
+The skill sources land at `<conception>/.agents/skills/`. With a [harness launcher](#the-harness-launcher-agedum) set up to render them, all five become available in a session.
 
 `condash skills install` writes one file at a time and is **non-interactive** — there is no prompt and no yes/no. When local content differs from the shipped version it **refuses** that file and exits **3** with `N item(s) refused (locally edited). Re-run with --force to overwrite or --diff to inspect.`, so your customisations don't get clobbered silently. It records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace retained for legacy entries; condash ≤ 4.0.1 shipped a region-delimited `.gitignore` and no longer ships any top-level file). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
 
 ### The skill source is committed; nothing is compiled
 
-The `.agents/skills/` source tree is the committed, canonical copy of each skill. condash no longer produces any per-harness compiled output and no compiled instruction files. The harness launcher (shipped separately) reads the verbatim source and renders it per agent at run time. condash's only generated top-level artefact is the `AGENTS.md` marker region (head regenerated, `## Specifics` tail preserved).
+The `.agents/skills/` source tree is the committed, canonical copy of each skill. condash no longer produces any per-harness compiled output and no compiled instruction files. The [harness launcher](#the-harness-launcher-agedum) (shipped separately) reads the verbatim source and renders it per agent at run time. condash's only generated top-level artefact is the `AGENTS.md` marker region (head regenerated, `## Specifics` tail preserved).
 
 ## Conception-path resolution
 
