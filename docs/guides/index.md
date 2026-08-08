@@ -42,6 +42,7 @@ The left activity rail switches four **left-band** views and five **right-slot**
 
 **Extending**
 
+- **[Management skills](../reference/skill.md)** — the five shipped skills as slash commands: which one to pick for a task, and what each wraps in the CLI.
 - **[Extend the management skills](skill-extensions.md)** — fork or wrap the five shipped skills without losing upstream updates.
 - **[Dev launch](dev-launch.md)** — run condash from a clone with hot reload, and the test targets that guard it.
 

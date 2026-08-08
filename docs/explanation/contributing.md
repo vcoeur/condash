@@ -172,4 +172,4 @@ Before starting on anything large, open an issue with the proposed approach and 
 - [Values](values.md) — the principles a contribution should serve.
 - [Non-goals](non-goals.md) — things contributions should not try to be.
 - [Internals](internals.md) — load-bearing invariants worth understanding before touching the main process.
-- [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md) — the developer-instructions file checked into the repo (CLAUDE.md is the agedum-rendered view, gitignored).
+- [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md) — the developer-instructions file checked into the repo (CLAUDE.md is the [agedum](../reference/skill.md#the-harness-launcher-agedum)-rendered view, gitignored).

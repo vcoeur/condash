@@ -39,7 +39,7 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `listProjectFiles(path)` | `ProjectFileEntry[]` | List a project directory's contents recursively — files *and* directories (`kind: 'file' \| 'dir'`), dot-entries skipped. Directory entries are emitted too so the preview's file tree can render structure, including empty dirs. |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
 | `readResourcesTree()` | `ResourceNode \| null` | Walk `<conception>/resources/` (hard-coded, not configurable), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
-| `readSkillsTree(scope)` | `SkillNode \| null` | Walk one skills scope. `SkillScope` is `'conception' \| 'user'`: `conception` reads `<conception>/AGENTS.md` + `<conception>/.agents/skills/`; `user` reads `~/.config/agents/AGENTS.md` + `~/.config/agents/skills/`. Both are agedum **sources** — condash never reads a per-harness compiled output (`~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (shipped SHAs come from `.condash-skills.json` when present). `null` when neither the skills directory nor the `AGENTS.md` exists. |
+| `readSkillsTree(scope)` | `SkillNode \| null` | Walk one skills scope. `SkillScope` is `'conception' \| 'user'`: `conception` reads `<conception>/AGENTS.md` + `<conception>/.agents/skills/`; `user` reads `~/.config/agents/AGENTS.md` + `~/.config/agents/skills/`. Both are [agedum](skill.md#the-harness-launcher-agedum) **sources** — condash never reads a per-harness compiled output (`~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (shipped SHAs come from `.condash-skills.json` when present). `null` when neither the skills directory nor the `AGENTS.md` exists. |
 | `readSkillFile(path)` | `string` | Read-only content fetch for a Skills-pane file. Like `readNote` but also permits the user-scope skill locations (the global scope lives outside the conception); rejects anything else. |
 | `search(query, scopes?)` | `SearchResults` | Full-text search across projects, knowledge, resources, skills, and logs. Markdown sources are served from an in-memory index; logs are scanned on disk, and only when in scope (see [Internals — The search index](../explanation/internals.md#search-index)). |
 
@@ -177,7 +177,7 @@ The two **writable** tree panes — Knowledge and Resources — and the project 
 
 !!! warning "The Skills pane is read-only"
 
-    `root === 'skills'` is **rejected** by all three `tree*` verbs (`Skills tree is read-only`). Post-reframe, agedum owns the skills source of truth and condash only surfaces it — see [`readSkillsTree`](#tree-reads). There is no `skillTab` parameter on any verb; earlier drafts of this page listed one, and it never shipped.
+    `root === 'skills'` is **rejected** by all three `tree*` verbs (`Skills tree is read-only`). Post-reframe, [agedum](skill.md#the-harness-launcher-agedum) owns the skills source of truth and condash only surfaces it — see [`readSkillsTree`](#tree-reads). There is no `skillTab` parameter on any verb; earlier drafts of this page listed one, and it never shipped.
 
 | Verb | What it does |
 |---|---|
@@ -241,7 +241,7 @@ Per-path tree events for projects + knowledge + resources + skills + logs + conf
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
 - `resources` — any file under `<conception>/resources/`. Coarse.
-- `skills` — any file under `<conception>/.agents/skills/`, the agedum source tree the Skills pane reads. Coarse.
+- `skills` — any file under `<conception>/.agents/skills/`, the [agedum](skill.md#the-harness-launcher-agedum) source tree the Skills pane reads. Coarse.
 - `logs` — any session file under `.condash/logs/`. Drives the Logs pane's live refresh.
 - `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
 - `unknown` — any classification failure. Forces a full re-render.
