@@ -68,7 +68,7 @@ The status bar carries the same engine, condensed:
 
 ## When a sweep can't run
 
-- **The lock is already held** (a CLI `condash sync` is mid-sweep): the tick exits quietly and tries again next interval.
+- **The lock is already held** (a CLI `condash sync run` is mid-sweep): the tick exits quietly and tries again next interval.
 - **The repo refuses** — mid-merge, a conflict, anything `syncRun` won't touch: the error is recorded, shown in both the Settings status line and the status-bar pill, and retried on the next interval. A failure is treated as a completed attempt so it can never hot-loop.
 - **The tree has diverged from the remote** (commits on both sides): the sweep still commits local work but refuses to push — the status shows *Integration needed*. Run `git pull --rebase` (or `git merge origin/main`) once your work is settled, and the next sweep pushes. Never `git reset --hard` — it discards the local commits.
 
@@ -81,11 +81,15 @@ Each collaborator keeps their own checkout and pushes to the one shared remote. 
 The same sweep, from a terminal:
 
 ```bash
-condash sync                      # sweep now (alias for `sync run`)
+condash sync                      # dry-run: report what a sweep would commit; write nothing
+condash sync run                  # sweep now (executes)
 condash sync run --dry-run        # report what would be committed; write nothing
 condash sync run --no-push        # commit but stay ahead of upstream
 condash sync run --quiet-period 300
 ```
+
+Bare `condash sync` never writes git state — it prints the plan. The sweep itself
+is `condash sync run`.
 
 And a manual milestone commit for one item, taking the same lock:
 

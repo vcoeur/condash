@@ -5,11 +5,15 @@
  *  racing pushes. A conception has one author and no CI, so making exactly one
  *  process the committer dissolves all three.
  *
- *    run     the sweeper (default verb) — commit settled changes, one commit
- *            per item (with a synthesized `Close <item>. …` subject when the
- *            sweep introduces the item's close), regenerate stale indexes, push
+ *    run     the sweeper — commit settled changes, one commit per item (with a
+ *            synthesized `Close <item>. …` subject when the sweep introduces
+ *            the item's close), regenerate stale indexes, push
  *    commit  a manual milestone commit for one item, under the same lock —
  *            a human escape hatch; agents never run sync verbs
+ *
+ *  Bare `condash sync` (no verb) is a dry-run: it prints what a sweep would
+ *  commit and writes no git state, so a first touch can never surprise. The
+ *  sweeper and the auto-commit engine call `sync run` explicitly.
  *
  *  There is no scheduler here. `run` is meant to be driven by a `systemd --user`
  *  timer, a launchd agent, or cron — condash stays a CLI with no daemon. */
@@ -43,15 +47,18 @@ export async function runSync(
   conceptionPath: string,
   universalHelp = false,
 ): Promise<void> {
-  // Bare `condash sync` runs the sweeper. The default applies only on the
-  // dispatch path — `condash sync --help` still prints the noun overview.
-  const effectiveVerb = verb === null && !universalHelp ? 'run' : verb;
+  // Bare `condash sync` is a dry-run: it reports what a sweep would commit and
+  // writes no git state. The default applies only on the dispatch path —
+  // `condash sync --help` still prints the noun overview. The sweeper and the
+  // auto-commit engine call `sync run` explicitly when they mean to execute.
+  const bare = verb === null && !universalHelp;
+  const effectiveVerb = bare ? 'run' : verb;
   await runNoun(
     'sync',
     effectiveVerb,
     args,
     {
-      run: () => runRun(args, ctx, conceptionPath),
+      run: () => runRun(args, ctx, conceptionPath, bare),
       commit: () => runCommit(args, ctx, conceptionPath),
     },
     printHelp,
@@ -59,8 +66,14 @@ export async function runSync(
   );
 }
 
-async function runRun(args: ParsedArgs, ctx: OutputContext, conceptionPath: string): Promise<void> {
-  const dryRun = takeBoolFlag(args, 'dry-run');
+async function runRun(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+  forceDryRun = false,
+): Promise<void> {
+  // A bare `sync` forces the dry-run regardless of flags.
+  const dryRun = forceDryRun || takeBoolFlag(args, 'dry-run');
   const noPush = takeBoolFlag(args, 'no-push');
   const quietPeriod = takeIntFlag(args, 'quiet-period', true);
   assertNoExtraFlags(args, NOUN_FLAGS);
@@ -216,13 +229,17 @@ function printHelp(verb: string | null): void {
           'settled, then sync again — never `git reset --hard`. The fetch-first',
           "behaviour is off when `autoSync.integration` is `'off'`.",
           '',
+          'Bare `condash sync` (no verb) is a dry-run: it prints what a sweep',
+          'would commit and writes no git state. Use `sync run` when you mean',
+          'to execute.',
+          '',
           'Flags:',
           '  --dry-run              Report what would be committed; write nothing.',
           '  --no-push              Commit but leave the branch ahead of upstream.',
           '  --quiet-period <secs>  Skip paths modified more recently (default 90; 0 disables).',
           '',
           'Examples:',
-          '  condash sync',
+          '  condash sync run',
           '  condash sync run --dry-run',
           '  condash sync run --quiet-period 300 --no-push',
         ]),
@@ -265,9 +282,11 @@ function printSubHelp(): void {
       'condash sync <verb> [args]',
       '',
       'Single-writer commit surface for a conception shared by parallel sessions.',
+      'Bare `condash sync` is a dry-run — it prints what a sweep would commit and',
+      'writes no git state; `sync run` executes.',
       '',
       'Verbs:',
-      '  run     Sweep and commit settled changes, one commit per item (default).',
+      '  run     Sweep and commit settled changes, one commit per item.',
       '  commit  Manual milestone commit for one item, under the same lock.',
     ]),
   );
