@@ -12,8 +12,8 @@ export const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'index',
   'stale-index',
   'stale-verification',
-  'knowledge-recheck',
-  'knowledge-check',
+  'check-knowledge',
+  'check-knowledge-deferred',
 ];
 
 const KNOWN_FLAGS_AUDIT = ['include'] as const;
@@ -70,7 +70,7 @@ function printHelp(): void {
       'Optional:',
       `  --include    Comma-separated subset of {${ALL_AUDIT_CHECKS.join(', ')}}, or 'all' (default).`,
       '',
-      'Knowledge-promotion checks: stale-verification, knowledge-recheck, knowledge-check —',
+      'Knowledge-promotion checks: stale-verification, check-knowledge-deferred, check-knowledge —',
       'see `condash projects check-knowledge` for the promotion workflow.',
       '',
       'Examples:',

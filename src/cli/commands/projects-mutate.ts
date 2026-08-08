@@ -7,7 +7,7 @@ import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { readHeader } from '../../main/header-io';
 import { parseHeader } from '../../shared/header';
-import { KNOWLEDGE_CHECK_TEXT } from '../../main/audit/knowledge-check';
+import { KNOWLEDGE_CHECK_TEXT } from '../../main/audit/check-knowledge';
 import { assertNoExtraFlags, takeBoolFlag, type ParsedArgs } from '../parser';
 import { NOUN_FLAGS } from './projects';
 

@@ -1,5 +1,5 @@
 /**
- * `knowledge-check` audit check — projects that reached `status: done` without
+ * `check-knowledge` audit check — projects that reached `status: done` without
  * a "Checked knowledge promotion" timeline entry as the last item.
  *
  * The invariant is simple: for any done project, the last timeline entry must
@@ -31,7 +31,7 @@ export async function checkKnowledgeCheck(conceptionPath: string): Promise<Audit
     const entries = parseTimelineEntries(raw);
     if (entries.length === 0) {
       issues.push({
-        check: 'knowledge-check',
+        check: 'check-knowledge',
         severity: 'warn',
         file: relative(conceptionPath, readme),
         line: null,
@@ -44,7 +44,7 @@ export async function checkKnowledgeCheck(conceptionPath: string): Promise<Audit
     const last = entries[entries.length - 1];
     if (!last.text.includes(KNOWLEDGE_CHECK_TEXT)) {
       issues.push({
-        check: 'knowledge-check',
+        check: 'check-knowledge',
         severity: 'warn',
         file: relative(conceptionPath, readme),
         line: null,

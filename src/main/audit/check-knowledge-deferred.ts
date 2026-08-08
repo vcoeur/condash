@@ -1,5 +1,5 @@
 /**
- * `knowledge-recheck` audit check — projects that deferred a knowledge
+ * `check-knowledge-deferred` audit check — projects that deferred a knowledge
  * promotion and never re-ran the durability test after merge.
  *
  * The three-yes test (`knowledge/conventions.md`) promotes a finding to
@@ -57,7 +57,7 @@ export async function checkKnowledgeRecheck(conceptionPath: string): Promise<Aud
     if (raw === null) continue;
     for (const open of unresolvedRechecks(parseTimelineEntries(raw))) {
       issues.push({
-        check: 'knowledge-recheck',
+        check: 'check-knowledge-deferred',
         severity: 'warn',
         file: relative(conceptionPath, readme),
         line: null,
