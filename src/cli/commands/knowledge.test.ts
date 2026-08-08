@@ -146,6 +146,40 @@ describe('knowledge retrieve', () => {
     expect(data.grepMatches[0].snippet).toMatch(/banana/);
   });
 
+  it('both mode still greps when triage matched — a keyword hit must not suppress it', async () => {
+    // The regression: grep only ran when triage came back empty, so one
+    // incidental keyword match hid the layer that had the answer.
+    await writeKnowledgeFile(
+      conceptionPath,
+      'topics/animals.md',
+      '# Animals\n\nA banana is yellow.\n',
+    );
+    await writeKnowledgeFile(
+      conceptionPath,
+      'index.md',
+      '# Knowledge\n\n- [`Animals`](topics/animals.md) — *Yellow fruit.* `[banana, fruit]`\n',
+    );
+    const { stdout } = await captureStdout(() =>
+      runKnowledge(
+        'retrieve',
+        {
+          noun: 'knowledge',
+          verb: 'retrieve',
+          positional: ['banana'],
+          flags: { mode: 'both' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const data = parseJsonEnvelope<{
+      triageMatches: unknown[];
+      grepMatches: Array<{ snippet: string }>;
+    }>(stdout).data!;
+    expect(data.triageMatches.length).toBeGreaterThan(0);
+    expect(data.grepMatches.length).toBeGreaterThan(0);
+  });
+
   it('USAGE error when query is empty', async () => {
     const { threw } = await captureStdout(() =>
       runKnowledge(

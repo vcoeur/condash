@@ -16,6 +16,7 @@ import {
 } from '../../main/create-project';
 import { rewriteHeadersInTree, type RewriteHeadersReport } from '../../main/rewrite-headers';
 import { listApplications } from '../../main/applications';
+import { grepKnowledgeBodies } from '../../main/search/knowledge-grep';
 import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
@@ -31,6 +32,101 @@ export { isValidSlugTail };
 
 const PROMOTION_RE =
   /(^|\b)(always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects))\b/i;
+
+/** Most recent items sharing an app, and knowledge lines matching the title. */
+interface PriorArt {
+  items: Array<{
+    slug: string;
+    relPath: string;
+    date: string | null;
+    status: string | null;
+    title: string | null;
+    sharedApps: string[];
+  }>;
+  knowledge: Array<{ relPath: string; line: number; snippet: string }>;
+}
+
+/** Items shown; two is what fits before the reader stops reading. */
+const PRIOR_ART_ITEM_LIMIT = 2;
+
+/** Knowledge lines shown. */
+const PRIOR_ART_KNOWLEDGE_LIMIT = 5;
+
+/** An `apps` entry may be `repo/sub-path`; prior art matches on the repo. */
+function topLevelApp(app: string): string {
+  return app.split('/')[0].trim().toLowerCase();
+}
+
+/**
+ * Gather what the tree already knows about this item's subject.
+ *
+ * Emitted by `create` rather than left for the author to go and look up. A rule
+ * telling somebody to retrieve is only read by somebody who already decided to;
+ * output arrives whether or not they thought of it, which is the whole point.
+ *
+ * @param conceptionPath Absolute path to the conception root.
+ * @param input The item being created — its apps and title drive both lookups.
+ * @param createdRelPath Relative path of the new item, excluded from the results.
+ * @returns Recent sibling items and matching knowledge lines; empty when nothing matches.
+ */
+async function collectPriorArt(
+  conceptionPath: string,
+  input: CreateProjectInput,
+  createdRelPath: string,
+): Promise<PriorArt> {
+  const wanted = new Set(input.apps.map(topLevelApp).filter(Boolean));
+  const items: PriorArt['items'] = [];
+
+  if (wanted.size > 0) {
+    for (const readme of await findProjectReadmes(conceptionPath)) {
+      const relPath = toPosix(relative(conceptionPath, readme));
+      if (relPath.startsWith(createdRelPath)) continue;
+      const header = parseHeader(await fs.readFile(readme, 'utf8').catch(() => ''));
+      const shared = [...new Set(header.apps.map(topLevelApp))].filter((a) => wanted.has(a));
+      if (shared.length === 0) continue;
+      items.push({
+        slug: relPath.split('/')[2] ?? relPath,
+        relPath,
+        date: header.date,
+        status: header.status,
+        title: header.title,
+        sharedApps: shared,
+      });
+    }
+    // Newest first: the item finished last week is the one worth reading.
+    items.sort(
+      (a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.relPath.localeCompare(a.relPath),
+    );
+    items.length = Math.min(items.length, PRIOR_ART_ITEM_LIMIT);
+  }
+
+  const knowledge = (
+    await grepKnowledgeBodies(
+      join(conceptionPath, 'knowledge'),
+      conceptionPath,
+      input.title,
+      PRIOR_ART_KNOWLEDGE_LIMIT,
+    )
+  ).map(({ relPath, line, snippet }) => ({ relPath, line, snippet }));
+
+  return { items, knowledge };
+}
+
+function formatPriorArt(priorArt: PriorArt): string {
+  if (priorArt.items.length === 0 && priorArt.knowledge.length === 0) return '';
+  const lines = ['', 'Prior art — read before you write:'];
+  for (const item of priorArt.items) {
+    const status = item.status ? ` [${item.status}]` : '';
+    lines.push(
+      `  ${item.date ?? '????-??-??'}${status} ${item.slug} — ${item.title ?? '(untitled)'}`,
+    );
+    lines.push(`    ${item.relPath}`);
+  }
+  for (const hit of priorArt.knowledge) {
+    lines.push(`  ${hit.relPath}:${hit.line}: ${hit.snippet.slice(0, 120)}`);
+  }
+  return lines.join('\n') + '\n';
+}
 
 export async function indexCommand(
   args: ParsedArgs,
@@ -197,9 +293,10 @@ export async function createCommand(
   }
 
   const result = await createProjectCore(conceptionPath, input);
-  emit(ctx, result, (data) => {
-    const d = data as { relPath: string; readme: string };
-    return `Created ${d.relPath}\n  README: ${d.readme}\n`;
+  const priorArt = await collectPriorArt(conceptionPath, input, result.relPath);
+  emit(ctx, { ...result, priorArt }, (data) => {
+    const d = data as { relPath: string; readme: string; priorArt: PriorArt };
+    return `Created ${d.relPath}\n  README: ${d.readme}\n` + formatPriorArt(d.priorArt);
   });
   if (registryEmpty && !ctx.quiet) {
     process.stderr.write(
