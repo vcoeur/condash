@@ -300,7 +300,7 @@ Not on the rail:
 
 ### The CLI you already installed
 
-The same binary is a command-line tool against the same tree. Nothing extra to install — these six cover a normal day:
+CLI-first users can bootstrap a fresh tree headlessly with `condash init [--path <dir>]` — the same bundled template the first-launch dialog lays down. The same binary is a command-line tool against the same tree. Nothing extra to install — these six cover a normal day:
 
 ```bash
 # What's active right now?
