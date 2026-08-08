@@ -21,7 +21,7 @@ import { runRepos } from './repos';
 const KNOWN_FLAGS_LIST = ['include-worktrees'] as const;
 const KNOWN_FLAGS_CHECK: readonly string[] = [];
 const KNOWN_FLAGS_MISMATCH: readonly string[] = [];
-const KNOWN_FLAGS_SETUP = ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base'] as const;
+const KNOWN_FLAGS_SETUP = ['repo', 'no-env', 'no-install', 'base'] as const;
 const KNOWN_FLAGS_REMOVE = ['repo', 'force', 'force-rm'] as const;
 
 const NOUN_FLAGS: readonly string[] = [
@@ -137,28 +137,20 @@ async function worktreeSetup(
   conceptionPath: string,
 ): Promise<void> {
   const repos = parseCsvFlag(takeStringFlag(args, 'repo') ?? undefined) ?? undefined;
-  const copyEnv = takeBoolFlag(args, 'copy-env');
   const skipEnv = takeBoolFlag(args, 'no-env');
   const skipInstall = takeBoolFlag(args, 'no-install');
-  const installDeprecated = takeBoolFlag(args, 'install');
   const baseFlag = takeStringFlag(args, 'base');
   const base = baseFlag !== null && baseFlag.length > 0 ? baseFlag : undefined;
   assertNoExtraFlags(args, NOUN_FLAGS);
-  if (installDeprecated && !ctx.quiet) {
-    process.stderr.write(
-      '[deprecated] --install is now the default for repos that declare install: in .condash/settings.json. Use --no-install to skip.\n',
-    );
-  }
   const branch = args.positional[0];
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
+      'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--base <ref>]',
     );
   }
   const result = await setupBranchWorktrees(conceptionPath, branch, {
     repos,
-    copyEnv,
     skipEnv,
     skipInstall,
     base,
@@ -312,7 +304,7 @@ function printHelp(verb: string | null): void {
     case 'setup':
       process.stdout.write(
         renderHelp([
-          'condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
+          'condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--base <ref>]',
           '',
           'Create worktrees for every repo in the union of **Apps** declaring this branch.',
           '',
@@ -320,7 +312,6 @@ function printHelp(verb: string | null): void {
           '  --repo         Restrict to specific repos (comma-separated).',
           '  --no-env       Skip the per-repo env-file copy declared in .condash/settings.json.',
           '  --no-install   Skip the per-repo install command declared in .condash/settings.json.',
-          '  --copy-env     Legacy: opportunistic .env / .env.local copy for repos without `env:`.',
           '  --base         Base ref. Defaults to **Base** from declaring item READMEs (must agree);',
           '                 with no base at all, each repo branches from its default-branch tip',
           '                 (origin/HEAD, else local main/master, else the primary checkout HEAD).',

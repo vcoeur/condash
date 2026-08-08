@@ -42,8 +42,6 @@ export const BOOL_FLAGS: ReadonlySet<string> = new Set([
   'force-rm',
   'diff',
   'no-touch-dirty',
-  'copy-env',
-  'install',
   'no-env',
   'no-install',
   'effective',

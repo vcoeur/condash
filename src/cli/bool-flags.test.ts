@@ -87,8 +87,8 @@ describe('argv-level boolean-flag smoke tests (real parseArgs per noun)', () => 
     { argv: ['repos', 'list', '--include-worktrees'], boolFlags: ['include-worktrees'] },
     { argv: ['applications', 'validate', '--fix'], boolFlags: ['fix'] },
     {
-      argv: ['worktrees', 'setup', 'branch-x', '--copy-env', '--no-install'],
-      boolFlags: ['copy-env', 'no-install'],
+      argv: ['worktrees', 'setup', 'branch-x', '--no-env', '--no-install'],
+      boolFlags: ['no-env', 'no-install'],
     },
     {
       argv: ['worktrees', 'remove', 'branch-x', '--force', '--force-rm'],

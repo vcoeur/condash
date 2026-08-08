@@ -27,11 +27,6 @@ import {
 export interface SetupOptions {
   /** Optional explicit repo allow-list (overrides Apps-derivation). */
   repos?: string[];
-  /** Legacy opportunistic copy of `.env` / `.env.local` from the primary
-   *  into the new worktree. Repos with `env:` declared in
-   *  `condash.json` always have those files copied; this flag only
-   *  affects repos *without* an `env:` declaration. */
-  copyEnv?: boolean;
   /** Skip env-file copy for repos that declare `env:` in condash.json —
    *  both on creation and on the already-present backfill. Per-repo `env:`
    *  is otherwise applied unconditionally. Closes #87, #450. */
@@ -319,12 +314,11 @@ export function resolveBase(
  * `env: [...]` is the canonical source and applies unconditionally so a
  * forgotten flag no longer leaves a Vite SPA reading `import.meta.env.VITE_*`
  * as undefined (#82, #87); `--no-env` skips it. Repos without `env:` declared
- * can still opt into the legacy `.env` / `.env.local` blanket copy via
- * `--copy-env`.
+ * get nothing copied.
  */
 function declaredEnvFiles(lookup: RepoLookupExtended, options: SetupOptions): readonly string[] {
   if (options.skipEnv) return [];
-  return lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []);
+  return lookup.env ?? [];
 }
 
 /**
