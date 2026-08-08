@@ -33,12 +33,26 @@ describe('scanStaleStamps', () => {
     await writeKnowledge('topics/fresh.md', '# Fresh\n\n**Verified:** 2026-01-20 new@cafef00d\n');
     await writeKnowledge('topics/none.md', '# None\n\nNo stamp.\n');
 
-    const result = await scanStaleStamps(conceptionPath, 30, today);
+    const result = await scanStaleStamps(conceptionPath, 90, today);
     expect(result.stale.map((s) => s.relPath)).toEqual(['knowledge/topics/stale.md']);
     expect(result.fresh.map((f) => f.relPath)).toEqual(['knowledge/topics/fresh.md']);
     expect(result.unstamped).toEqual(['knowledge/topics/none.md']);
-    expect(result.maxAgeDays).toBe(30);
-    expect(result.stale[0].ageDays).toBeGreaterThan(30);
+    expect(result.maxAgeDays).toBe(90);
+    expect(result.stale[0].ageDays).toBeGreaterThan(90);
+  });
+
+  it('defaults to the 90-day freshness window', async () => {
+    // A 60-day-old stamp is stale against the old 30-day window but fresh
+    // against the 90-day default — pins the default, not just a parameter.
+    await writeKnowledge('topics/sixty.md', '# Sixty\n\n**Verified:** 2025-12-03 x\n');
+    const result = await scanStaleStamps(
+      conceptionPath,
+      undefined,
+      new Date('2026-02-01T00:00:00Z'),
+    );
+    expect(result.maxAgeDays).toBe(90);
+    expect(result.stale).toEqual([]);
+    expect(result.fresh.map((f) => f.relPath)).toEqual(['knowledge/topics/sixty.md']);
   });
 
   it('excludes auto-generated index.md from the scan', async () => {
@@ -47,7 +61,7 @@ describe('scanStaleStamps', () => {
     await writeKnowledge('topics/index.md', '# topics\n');
     await writeKnowledge('topics/a.md', '# A\n\n**Verified:** 2026-01-20 x\n');
 
-    const result = await scanStaleStamps(conceptionPath, 30, new Date('2026-02-01T00:00:00Z'));
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
     const allPaths = [
       ...result.stale.map((s) => s.relPath),
       ...result.fresh.map((f) => f.relPath),
@@ -61,7 +75,7 @@ describe('scanStaleStamps', () => {
 describe('staleStampsToIssues', () => {
   it('emits warn issues that are never auto-fixed, with the given check label', async () => {
     await writeKnowledge('topics/stale.md', '# Stale\n\n**Verified:** 2020-01-01 old@deadbeef\n');
-    const result = await scanStaleStamps(conceptionPath, 30, new Date('2026-02-01T00:00:00Z'));
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
     const issues = staleStampsToIssues(result, 'stale_verification');
     expect(issues).toHaveLength(1);
     expect(issues[0].check).toBe('stale_verification');
@@ -72,16 +86,17 @@ describe('staleStampsToIssues', () => {
 
   it('defaults the check label to the canonical hyphenated audit name', async () => {
     await writeKnowledge('topics/stale.md', '# Stale\n\n**Verified:** 2020-01-01 x\n');
-    const result = await scanStaleStamps(conceptionPath, 30, new Date('2026-02-01T00:00:00Z'));
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
     expect(staleStampsToIssues(result)[0].check).toBe('stale-verification');
   });
 });
 
 describe('checkStaleVerification', () => {
   it('returns only stale issues at the default threshold', async () => {
-    // A 1-day-old stamp is fresh against the 30-day default → no issue.
+    // A 60-day-old stamp is stale against 30 days but fresh against the
+    // 90-day default → no issue at the default threshold.
     const recent = new Date();
-    recent.setUTCDate(recent.getUTCDate() - 1);
+    recent.setUTCDate(recent.getUTCDate() - 60);
     const recentIso = recent.toISOString().slice(0, 10);
     await writeKnowledge('topics/fresh.md', `# Fresh\n\n**Verified:** ${recentIso} x\n`);
     await writeKnowledge('topics/ancient.md', '# Ancient\n\n**Verified:** 2000-01-01 x\n');

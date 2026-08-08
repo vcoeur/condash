@@ -101,7 +101,7 @@ describe('knowledge verify', () => {
     const { stdout } = await captureStdout(() =>
       runKnowledge(
         'verify',
-        { noun: 'knowledge', verb: 'verify', positional: [], flags: { 'max-age': '30' } },
+        { noun: 'knowledge', verb: 'verify', positional: [], flags: { 'max-age': '90' } },
         jsonCtx(),
         conceptionPath,
       ),

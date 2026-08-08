@@ -557,7 +557,7 @@ function printSubHelp(): void {
       '',
       'Verbs:',
       '  tree        Hierarchical view of knowledge/ (with --depth N).',
-      '  verify      Audit **Verified:** stamps older than --max-age (default 30).',
+      `  verify      Audit **Verified:** stamps older than --max-age (default ${DEFAULT_STALE_MAX_AGE_DAYS}).`,
       '  retrieve    Match a query against index.md keywords; falls back to grep.',
       '  stamp       Idempotently write a **Verified:** line into a file.',
       '  index       Regenerate every knowledge/**/index.md.',

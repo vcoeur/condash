@@ -19,7 +19,7 @@
  *                   rewrite them). Covers freshness where `index` covers
  *                   structure, and covers `projects/` too.
  *  - `stale-verification` — knowledge body files whose `**Verified:**` stamp
- *                   is older than the freshness threshold (default 30 days).
+ *                   is older than the freshness threshold (default 90 days).
  *                   The engine (`audit/stale-verification.ts`) is shared with
  *                   `condash knowledge verify`, so the GUI audit pane surfaces
  *                   stale stamps too. Never auto-fixed — a stale stamp means a
