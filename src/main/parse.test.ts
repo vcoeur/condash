@@ -215,6 +215,41 @@ apps: []
   });
 });
 
+describe('summary parsing', () => {
+  it('preserves every paragraph in the complete first H2 section', async () => {
+    const firstParagraph = `Opening marker ${'complete source text '.repeat(20)}first paragraph marker.`;
+    const finalParagraph = 'Final paragraph marker.';
+    const goal = `${firstParagraph}\n\n${finalParagraph}`;
+    const body = `---
+date: 2026-08-12
+kind: project
+status: now
+apps: []
+---
+
+# Long goal
+
+## Goal
+
+${firstParagraph}
+
+
+${finalParagraph}
+
+## Steps
+
+- [ ] Later section marker must not enter the summary
+`;
+    const path = await writeReadme('2026-08-12-long-goal', body);
+    const project = await parseReadme(path);
+
+    expect(goal.length).toBeGreaterThan(300);
+    expect(project.summary).toBe(goal);
+    expect(project.summary).toContain(finalParagraph);
+    expect(project.summary).not.toContain('Later section marker');
+  });
+});
+
 describe('[!] step marker', () => {
   it('parses and counts blocked steps', async () => {
     const body = `---

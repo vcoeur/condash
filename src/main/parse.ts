@@ -25,7 +25,6 @@ const DELIVERABLE_SKIP = /^(mailto:|#)/i;
 // conception item, with an optional trailing comment. Checked before the
 // markdown-link form (which can't match `[[…]]` anyway).
 const DELIVERABLE_WIKILINK = /^\s*-\s\[\[([^\]|]+)(?:\|([^\]]+))?\]\](?:\s*[—\-:]\s*(.*))?\s*$/;
-const SUMMARY_MAX = 300;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
@@ -119,31 +118,32 @@ function extractClosedAt(lines: readonly string[]): string | null {
 
 function extractSummary(lines: readonly string[]): string | undefined {
   let inFirstSection = false;
-  let buffer: string[] = [];
+  const buffer: string[] = [];
 
   // Fence-aware (like extractSteps / extractClosedAt): a `## Heading` or prose
   // inside a fenced code block must not truncate or pollute the summary.
   for (const { line } of iterUnfencedLines(lines)) {
     if (HEADING2.test(line)) {
-      if (inFirstSection && buffer.length > 0) break;
+      if (inFirstSection) break;
       inFirstSection = true;
-      buffer = [];
       continue;
     }
     if (!inFirstSection) continue;
 
     const trimmed = line.trim();
     if (!trimmed) {
-      if (buffer.length > 0) break;
+      if (buffer.length > 0 && buffer.at(-1) !== '') buffer.push('');
       continue;
     }
     buffer.push(trimmed);
   }
 
-  if (buffer.length === 0) return undefined;
-  const text = buffer.join(' ').replace(/\s+/g, ' ').trim();
-  if (text.length <= SUMMARY_MAX) return text;
-  return text.slice(0, SUMMARY_MAX - 1).trimEnd() + '…';
+  const paragraphs = buffer
+    .join('\n')
+    .split(/\n+/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return paragraphs.length > 0 ? paragraphs.join('\n\n') : undefined;
 }
 
 function extractSteps(lines: readonly string[]): Step[] {
