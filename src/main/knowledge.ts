@@ -36,6 +36,7 @@ async function walk(
       kind: 'file',
       summary: meta.summary,
       verifiedAt: meta.verifiedAt,
+      lines: meta.lines,
     };
   }
 
@@ -94,6 +95,28 @@ interface FileMeta {
   title: string;
   summary?: string;
   verifiedAt?: string;
+  lines?: number;
+}
+
+/**
+ * Line count with `wc -l` semantics: the number of `\n` characters in the
+ * file (a trailing newline counts; a one-line file without a trailing
+ * newline reports 0). Best-effort — any read failure returns undefined,
+ * same spirit as `readFileHead`'s catch-null. Reads the whole file because
+ * the head used by `parseHead` is capped at 8 KB and a correct count needs
+ * every line.
+ */
+async function countLines(path: string): Promise<number | undefined> {
+  try {
+    const raw = await fs.readFile(path, 'utf8');
+    let lines = 0;
+    for (let i = 0; i < raw.length; i++) {
+      if (raw.charCodeAt(i) === 10) lines += 1;
+    }
+    return lines;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Parse the head of a markdown file for the card view: title (first h1),
@@ -105,7 +128,7 @@ interface FileMeta {
 async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
   const head = await readFileHead(path);
   if (head === null) return { title: fallback };
-  return parseHead(head, fallback);
+  return { ...parseHead(head, fallback), lines: await countLines(path) };
 }
 
 export function parseHead(head: string, fallback: string): FileMeta {

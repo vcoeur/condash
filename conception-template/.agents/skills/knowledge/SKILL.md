@@ -1,6 +1,6 @@
 ---
 name: knowledge
-description: "Manage the conception knowledge/ tree — durable reference material for this workspace. Actions: retrieve (search + triage walk), update (add/edit a body file with citation + stamp rules), index (regenerate every knowledge/**/index.md), verify (audit stale verification stamps + tree audits). Every mechanical step shells out to `condash`. Invoke as /knowledge <action>."
+description: "Manage the conception knowledge/ tree — durable reference material for this workspace. Actions: retrieve (search + triage walk), update (add/edit a body file with citation + stamp rules), index (regenerate every knowledge/**/index.md), verify (audit stale verification stamps + tree audits), garden (whole-tree audit for improvement opportunities with approved apply batches). Every mechanical step shells out to `condash`. Invoke as /knowledge <action>."
 ---
 
 # /knowledge — conception `knowledge/` tree
@@ -21,6 +21,7 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `update`    | `/knowledge update [path]`           | [update.md](update.md)     |
 | `index`     | `/knowledge index`                   | [index.md](index.md)       |
 | `verify`    | `/knowledge verify`                  | [verify.md](verify.md)     |
+| `garden`    | `/knowledge garden`                  | [garden.md](garden.md)     |
 
 For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly. The `condash knowledge stamp` verb (described under "Verification stamps" below) is also callable on its own when refreshing a single fact's `**Verified:**` line.
 

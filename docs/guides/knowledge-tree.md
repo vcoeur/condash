@@ -117,6 +117,12 @@ Three conventions that make the knowledge pane usable at scale:
 
 Use `index.md` files as signposts, not walls of prose. Two lines of "what's here, pick the right subtree" is worth more than a comprehensive TOC — the explorer already shows the TOC visually.
 
+## Gardening the tree
+
+A tree that only ever grows quietly rots: duplicates accumulate, files outlive their purpose, and single-app notes drift in disguised as topics. `/knowledge garden` is the whole-tree improvement pass — it audits every body file for duplicates, app-docs-in-disguise, oversized or stub files, index/keyword quality, and stale or broken references, then proposes a ranked report of changes.
+
+`garden` does not run anything new — it orchestrates the existing CLI verbs (`condash knowledge tree` / `verify`, `condash audit --include all`, `condash applications list`) plus a full read-pass of every file, and it applies only the batches you approve. Want the mechanical sweep alone — stamps, LFS, orphaned index entries, dangling links? That is `/knowledge verify`; `garden` subsumes its signals as the floor and adds the content-level read on top.
+
 ## Optional tree
 
 The `knowledge/` directory is optional. When it's missing the rail item stays where it is and the pane renders an empty state — *"No knowledge/ directory under the selected conception path."* There's no setup step to "enable knowledge mode"; the directory's presence is the signal.

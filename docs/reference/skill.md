@@ -14,7 +14,7 @@ condash ships five skills for AI coding agents, in the [Claude Code](https://doc
 | Skill | Scope | What it does |
 |---|---|---|
 | **`/projects`** | items + worktrees | Create / read / update / close projects, incidents, and documents. Manage worktrees per branch. |
-| **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. Audits (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, stale stamps) flow through `verify`. |
+| **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. Audits (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, stale stamps) flow through `verify`; the whole-tree improvement pass is `garden`. |
 | **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
 | **`/applications`** | app registry | Manage the `#handle` app registry (list / add / set / rename / sync-docs / validate) — the single source of truth for how apps are referenced across the tree. |
 | **`/visual`** | visual notes (`.mdx`) | Author MDX documents of typed blocks — wireframes, diagrams, data models, API contracts, annotated diffs, question forms — that render in the in-app viewer. One skill, four postures set by frontmatter `kind`: **design**, **plan**, **review**, **note**. Owns the block vocabulary and wraps [`condash mdx`](cli.md#mdx). |
@@ -101,8 +101,9 @@ Manage durable reference material in `<conception>/knowledge/`.
 | `update` | `/knowledge update <path>` — add or edit a body file with citation + verification stamp | direct file edits + `condash knowledge stamp` |
 | `index` | `/knowledge index` — regenerate every `knowledge/**/index.md` | `condash knowledge index` |
 | `verify` | `/knowledge verify` — the conception-wide sweep: stamp freshness + every audit (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, deferred + missing knowledge-promotion checks) | `condash knowledge verify` + `condash audit --include all` |
+| `garden` | `/knowledge garden` — the whole-tree improvement pass: content-level audit for duplicates, app-docs-in-disguise, oversized/stub files, index/keyword quality, stale or broken references; proposes a ranked report and applies only user-approved batches | `condash knowledge tree` / `verify`, `condash audit --include all`, `condash applications list` + a full read-pass |
 
-Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold and surfaces tree-wide audit findings in the same punch-list.
+Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold and surfaces tree-wide audit findings in the same punch-list. `verify` is the mechanical sweep; `garden` is the content-level counterpart — it runs the same verbs plus a full read-pass of every body file and proposes ranked improvement changes for approval.
 
 ## `/pr`
 
