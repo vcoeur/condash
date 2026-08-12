@@ -95,6 +95,43 @@ test('clicking the card body (not the title) opens that project preview', async 
   }
 });
 
+test('project preview renders the complete Goal widget immediately above Activity', async () => {
+  const goal = `Opening marker ${'complete source text '.repeat(20)}closing marker.`;
+  const booted = await bootApp({
+    prepare: async (conceptionDir) => {
+      const projectDir = join(conceptionDir, 'projects', '2026-08', '2026-08-12-long-goal');
+      await mkdir(projectDir, { recursive: true });
+      await writeFile(
+        join(projectDir, 'README.md'),
+        `---\ndate: 2026-08-12\nkind: project\nstatus: now\n---\n\n# Long goal\n\n## Goal\n\n${goal}\n\n## Timeline\n\n- 2026-08-12 — Project created.\n`,
+        'utf8',
+      );
+    },
+  });
+  try {
+    const win = booted.window;
+    await win.locator('article.row', { hasText: 'Long goal' }).click();
+
+    const widgets = win.locator('.modal.project-preview .revamped-main > .widget');
+    const goalWidget = widgets.filter({ has: win.locator('.widget-title', { hasText: /^Goal$/ }) });
+    const activityWidget = widgets.filter({
+      has: win.locator('.widget-title', { hasText: /^Activity$/ }),
+    });
+    await expect(goalWidget).toHaveText(`Goal${goal}`);
+    await expect(goalWidget).not.toHaveClass(/revamped-goal/);
+    expect(
+      await goalWidget.evaluate(
+        (goalElement, activityElement) => {
+          return goalElement.nextElementSibling === activityElement;
+        },
+        await activityWidget.elementHandle(),
+      ),
+    ).toBe(true);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('switching projects via the preview banner drops a half-typed step draft', async () => {
   // Both projects are stepless so the add-step input is exposed on each —
   // the exact shape of the pre-#453 leak: text typed on the child survived

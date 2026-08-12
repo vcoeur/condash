@@ -515,13 +515,6 @@ export function ProjectPreview(props: {
             </header>
 
             <div class="preview-body revamped">
-              <Show when={project().summary}>
-                <div class="revamped-goal">
-                  <div class="eyebrow">Goal</div>
-                  <p>{project().summary}</p>
-                </div>
-              </Show>
-
               <div class="revamped-meta">
                 <div class="revamped-meta-pills">
                   <Show when={apps().length > 0}>
@@ -724,6 +717,13 @@ export function ProjectPreview(props: {
                         )}
                       </For>
                     </ul>
+                  </section>
+                </Show>
+
+                <Show when={project().summary}>
+                  <section class="widget widget-goal">
+                    <h3 class="widget-title">Goal</h3>
+                    <p>{project().summary}</p>
                   </section>
                 </Show>
 

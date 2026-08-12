@@ -215,6 +215,33 @@ apps: []
   });
 });
 
+describe('summary parsing', () => {
+  it('preserves complete Goal prose beyond 300 characters', async () => {
+    const goal = `Opening marker ${'complete source text '.repeat(20)}closing marker.`;
+    const body = `---
+date: 2026-08-12
+kind: project
+status: now
+apps: []
+---
+
+# Long goal
+
+## Goal
+
+${goal}
+
+## Steps
+`;
+    const path = await writeReadme('2026-08-12-long-goal', body);
+    const project = await parseReadme(path);
+
+    expect(goal.length).toBeGreaterThan(300);
+    expect(project.summary).toBe(goal);
+    expect(project.summary).toContain('closing marker.');
+  });
+});
+
 describe('[!] step marker', () => {
   it('parses and counts blocked steps', async () => {
     const body = `---

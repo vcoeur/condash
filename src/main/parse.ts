@@ -25,7 +25,6 @@ const DELIVERABLE_SKIP = /^(mailto:|#)/i;
 // conception item, with an optional trailing comment. Checked before the
 // markdown-link form (which can't match `[[…]]` anyway).
 const DELIVERABLE_WIKILINK = /^\s*-\s\[\[([^\]|]+)(?:\|([^\]]+))?\]\](?:\s*[—\-:]\s*(.*))?\s*$/;
-const SUMMARY_MAX = 300;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
@@ -141,9 +140,7 @@ function extractSummary(lines: readonly string[]): string | undefined {
   }
 
   if (buffer.length === 0) return undefined;
-  const text = buffer.join(' ').replace(/\s+/g, ' ').trim();
-  if (text.length <= SUMMARY_MAX) return text;
-  return text.slice(0, SUMMARY_MAX - 1).trimEnd() + '…';
+  return buffer.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function extractSteps(lines: readonly string[]): Step[] {
