@@ -40,6 +40,11 @@ export interface KnowledgeNode {
   summary?: string;
   /** ISO date (YYYY-MM-DD) extracted from a `**Verified:**` line, when present. Files only. */
   verifiedAt?: string;
+  /** Line count with `wc -l` semantics — the number of `\n` characters in
+   *  the file (a trailing newline counts; a one-line file without a
+   *  trailing newline reports 0). Best-effort: undefined when the read
+   *  fails. Files only. */
+  lines?: number;
 }
 
 /**

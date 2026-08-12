@@ -29,7 +29,7 @@ afterEach(async () => {
 describe('knowledge tree', () => {
   it('renders the knowledge/ tree with file + directory children', async () => {
     await writeKnowledgeFile(conceptionPath, 'topics/alpha.md', '# Alpha\n\nBody.\n');
-    await writeKnowledgeFile(conceptionPath, 'topics/beta.md', '# Beta\n\nBody.\n');
+    await writeKnowledgeFile(conceptionPath, 'topics/beta.md', '# Beta');
     await writeKnowledgeFile(conceptionPath, 'internal/condash.md', '# condash\n\nBody.\n');
 
     const { stdout, threw } = await captureStdout(() =>
@@ -44,12 +44,23 @@ describe('knowledge tree', () => {
     const node = parseJsonEnvelope<{
       name: string;
       kind: string;
-      children?: Array<{ name: string; kind: string }>;
+      children?: Array<{
+        name: string;
+        kind: string;
+        children?: Array<{ name: string; kind: string; lines?: number }>;
+      }>;
     }>(stdout).data!;
     expect(node.kind).toBe('directory');
     const dirNames = node.children!.filter((c) => c.kind === 'directory').map((c) => c.name);
     expect(dirNames).toContain('topics');
     expect(dirNames).toContain('internal');
+    // File nodes carry `lines` with wc -l semantics: the `\n` count (a
+    // trailing newline counts; a one-line file without one reports 0).
+    const topics = node.children!.find((c) => c.name === 'topics')!;
+    const alpha = topics.children!.find((c) => c.name === 'alpha.md')!;
+    expect(alpha.lines).toBe(3);
+    const beta = topics.children!.find((c) => c.name === 'beta.md')!;
+    expect(beta.lines).toBe(0);
   });
 
   it('--depth 1 trims grandchildren', async () => {
