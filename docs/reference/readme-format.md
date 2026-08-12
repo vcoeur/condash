@@ -78,7 +78,9 @@ Both shapes feed the same parser output ([`src/main/parse.ts`](https://github.co
 
 - `title` — the H1 (frontmatter form: H1 below the closing `---`; bold-prose form: H1 at the top).
 - `date`, `kind`, `status` (aka `priority`), `apps`, `branch`, `base`, `parent`, `extra` (severity, environment, …) — typed fields.
-- `summary` — first paragraph after the first `##` heading, truncated to 300 chars.
+- `summary` — the complete, unbounded content of the first `##` section only. Wrapped
+  source lines within a paragraph become spaces; one or more blank lines between
+  paragraphs become a single blank line, which the project preview preserves.
 - `sections` — every `## <heading>` with checkboxes under it (see [conception convention](conception-convention.md)).
 - `deliverables` — every `## Deliverables` link to a `.pdf` (see [conception convention](conception-convention.md)).
 
@@ -102,7 +104,8 @@ base: main
 
 ## Goal
 
-One-paragraph intent. Becomes the card summary.
+Complete intent for the project. The Goal may contain multiple paragraphs; all of
+them appear in the project preview with paragraph separation preserved.
 
 ## Scope
 …
@@ -133,7 +136,8 @@ severity_impact: Login returns 500 under concurrent load
 
 ## Description
 
-First paragraph is the card summary. Keep it one sentence for the dashboard.
+The complete first H2 section is the summary shown in the project preview. It may
+contain multiple paragraphs; the next H2 heading ends it.
 
 ## Timeline
 - 2026-04-14 11:04 — Pager fires

@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
+
+const goalScreenshotDir = resolve(__dirname, 'screenshots-out', 'project-goal');
 
 /**
  * Card relations + whole-card click regression net (PR #452 / v4.95.0).
@@ -95,40 +97,56 @@ test('clicking the card body (not the title) opens that project preview', async 
   }
 });
 
-test('project preview renders the complete Goal widget immediately above Activity', async () => {
-  const goal = `Opening marker ${'complete source text '.repeat(20)}closing marker.`;
-  const booted = await bootApp({
-    prepare: async (conceptionDir) => {
-      const projectDir = join(conceptionDir, 'projects', '2026-08', '2026-08-12-long-goal');
-      await mkdir(projectDir, { recursive: true });
-      await writeFile(
-        join(projectDir, 'README.md'),
-        `---\ndate: 2026-08-12\nkind: project\nstatus: now\n---\n\n# Long goal\n\n## Goal\n\n${goal}\n\n## Timeline\n\n- 2026-08-12 — Project created.\n`,
-        'utf8',
-      );
-    },
-  });
-  try {
-    const win = booted.window;
-    await win.locator('article.row', { hasText: 'Long goal' }).click();
+test('project preview renders every Goal paragraph immediately above Activity', async () => {
+  const firstParagraph = `Opening marker ${'complete source text '.repeat(20)}first paragraph marker.`;
+  const finalParagraph = 'Final paragraph marker.';
+  const goal = `${firstParagraph}\n\n${finalParagraph}`;
+  await mkdir(goalScreenshotDir, { recursive: true });
 
-    const widgets = win.locator('.modal.project-preview .revamped-main > .widget');
-    const goalWidget = widgets.filter({ has: win.locator('.widget-title', { hasText: /^Goal$/ }) });
-    const activityWidget = widgets.filter({
-      has: win.locator('.widget-title', { hasText: /^Activity$/ }),
+  for (const theme of ['dark', 'light']) {
+    const booted = await bootApp({
+      globalConfig: { theme },
+      prepare: async (conceptionDir) => {
+        const projectDir = join(conceptionDir, 'projects', '2026-08', '2026-08-12-long-goal');
+        await mkdir(projectDir, { recursive: true });
+        await writeFile(
+          join(projectDir, 'README.md'),
+          `---\ndate: 2026-08-12\nkind: project\nstatus: now\n---\n\n# Long goal\n\n## Goal\n\n${firstParagraph}\n\n\n${finalParagraph}\n\n## Timeline\n\n- 2026-08-12 — Later section marker.\n`,
+          'utf8',
+        );
+      },
     });
-    await expect(goalWidget).toHaveText(`Goal${goal}`);
-    await expect(goalWidget).not.toHaveClass(/revamped-goal/);
-    expect(
-      await goalWidget.evaluate(
-        (goalElement, activityElement) => {
-          return goalElement.nextElementSibling === activityElement;
-        },
-        await activityWidget.elementHandle(),
-      ),
-    ).toBe(true);
-  } finally {
-    await booted.cleanup();
+    try {
+      const win = booted.window;
+      await win.locator('article.row', { hasText: 'Long goal' }).click();
+
+      const widgets = win.locator('.modal.project-preview .revamped-main > .widget');
+      const goalWidget = widgets.filter({
+        has: win.locator('.widget-title', { hasText: /^Goal$/ }),
+      });
+      const goalProse = goalWidget.locator('p');
+      const activityWidget = widgets.filter({
+        has: win.locator('.widget-title', { hasText: /^Activity$/ }),
+      });
+      expect(goal.length).toBeGreaterThan(300);
+      await expect(goalProse).toHaveText(goal);
+      expect(await goalProse.evaluate((element) => element.textContent)).toBe(goal);
+      expect(await goalProse.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe(
+        'pre-line',
+      );
+      await expect(goalWidget).not.toContainText('Later section marker');
+      expect(
+        await goalWidget.evaluate(
+          (goalElement, activityElement) => {
+            return goalElement.nextElementSibling === activityElement;
+          },
+          await activityWidget.elementHandle(),
+        ),
+      ).toBe(true);
+      await win.screenshot({ path: join(goalScreenshotDir, `goal-widget-${theme}.png`) });
+    } finally {
+      await booted.cleanup();
+    }
   }
 });
 
