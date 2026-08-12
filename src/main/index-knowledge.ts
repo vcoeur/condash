@@ -12,10 +12,14 @@
  */
 
 import { basename, join } from 'node:path';
+import { elide } from './index-elide';
 import { filterTags } from './index-tag-filter';
 import { matchVerifiedLine } from './knowledge-stamps';
 import { readFileHead } from './read-file-head';
 import type { DraftResult, IndexStrategy } from './index-tree';
+
+/** Cap on a drafted bullet description length. */
+const MAX_DESCRIPTION_LENGTH = 200;
 
 export const knowledgeStrategy: IndexStrategy = {
   treeName: 'knowledge',
@@ -111,7 +115,10 @@ function parseHead(head: string, fallback: string): HeadMeta {
         .trim()
     : undefined;
 
-  const summary = cleaned && cleaned.length > 200 ? `${cleaned.slice(0, 197).trimEnd()}…` : cleaned;
+  const summary =
+    cleaned && cleaned.length > MAX_DESCRIPTION_LENGTH
+      ? elide(cleaned, MAX_DESCRIPTION_LENGTH)
+      : cleaned;
 
   return { title: title ?? fallback, summary, verifiedAt };
 }

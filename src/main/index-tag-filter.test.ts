@@ -67,6 +67,145 @@ describe('isLowQualityTag', () => {
     }
   });
 
+  it('rejects leading/trailing-hyphen and flag-shaped tags', () => {
+    for (const w of [
+      'data-',
+      '-light',
+      '-dark',
+      '-test',
+      '--user-data-dir',
+      '--ignore-files',
+      '--exclude-dir',
+      '--run',
+      '--headed',
+      '--export-type',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('rejects dated-slug tags (ISO date plus a suffix)', () => {
+    for (const w of [
+      '2026-0405a',
+      '2026-07-22-nodum-phase0-investigations',
+      '2026-05-13-condash-terminal-logs',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('rejects numeric ranges, numeric-prefixed words, hex literals and measurements', () => {
+    for (const w of ['65-89', '53-63', '4-test', '3-test', '0x00', '66ms', '3.5gb']) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('rejects path fragments from inline path code spans', () => {
+    for (const w of [
+      'usr',
+      'bin',
+      'lib',
+      'src',
+      'tmp',
+      'venv',
+      'python3',
+      'site-packages',
+      'node_modules',
+      'proc',
+      'sys',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('rejects code keywords', () => {
+    for (const w of [
+      'undefined',
+      'false',
+      'null',
+      'true',
+      'import',
+      'export',
+      'const',
+      'let',
+      'var',
+      'return',
+      'function',
+      'async',
+      'await',
+      'void',
+      'delete',
+      'switch',
+      'case',
+      'default',
+      'this',
+      'class',
+      'throw',
+      'catch',
+      'new',
+      'extends',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('rejects English common words beyond the original stop list', () => {
+    for (const w of [
+      'comes',
+      'intent',
+      'rather',
+      'than',
+      'bites',
+      'both',
+      'allow',
+      'url',
+      'make',
+      'test',
+      'case',
+      'quietly',
+      'survives',
+      'guaranteed',
+      'installed',
+      'attribution',
+      'rendered',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(true);
+    }
+  });
+
+  it('passes through the keep-list (borderline-but-real tags)', () => {
+    for (const w of [
+      'model-viewer',
+      'django-imagekit',
+      '3d-printing',
+      'internal',
+      'testing',
+      'security',
+      'ops',
+      'frontend',
+      'process',
+      'media',
+      'topics',
+      'agedum',
+      'agentsconf',
+      'citekey',
+      'knowledge',
+      'node',
+      'npm',
+      'python',
+      'docker',
+      'systemd',
+      'sqlite',
+      'strftime',
+      'cgroup',
+      'mtime-seconds',
+      'static',
+      'paintings',
+    ]) {
+      expect(isLowQualityTag(w)).toBe(false);
+    }
+  });
+
   it('is case-insensitive on stop-words but tag identity is preserved by callers', () => {
     expect(isLowQualityTag('THE')).toBe(true);
     expect(isLowQualityTag('The')).toBe(true);

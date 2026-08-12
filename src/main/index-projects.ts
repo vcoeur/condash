@@ -22,6 +22,7 @@ import { basename, join } from 'node:path';
 import { findProjectReadmes } from './walk';
 import { iterUnfencedLines, parseHeader, validateHeader } from '../shared/header';
 import { appHandle } from '../shared/app-color';
+import { elide } from './index-elide';
 import type { ChildInfo, DraftResult, IndexStrategy, ValidationWarning } from './index-tree';
 
 const MONTH_DIR_RE = /^\d{4}-\d{2}$/;
@@ -110,12 +111,12 @@ async function draftItemEntry(child: ChildInfo): Promise<DraftResult> {
   if (tags.length === 0) tags.push('item');
   const desc =
     summary && summary.length > 10
-      ? clip(summary, 200)
+      ? summary
       : header.title
         ? header.title
         : `(describe ${child.name})`;
   return {
-    description: clip(desc, 200),
+    description: elide(desc, 200),
     keywords: tags.slice(0, 8),
   };
 }
@@ -130,7 +131,7 @@ async function draftMonthEntry(child: ChildInfo, aggregated: string[]): Promise<
   }
   const summary = extractFirstProse(raw) ?? `Items created in ${child.name}.`;
   return {
-    description: clip(summary, 200),
+    description: elide(summary, 200),
     keywords: aggregated.slice(0, 8),
   };
 }
@@ -198,9 +199,4 @@ function extractFirstProse(raw: string): string | undefined {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function clip(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1).trimEnd() + '…';
 }

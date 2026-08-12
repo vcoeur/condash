@@ -2,10 +2,14 @@ import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { elide } from './index-elide';
 import { readFileHead } from './read-file-head';
 import { matchVerifiedLine } from './knowledge-stamps';
 
 const HIDDEN_PREFIX = /^\./;
+
+/** Cap on a knowledge-card summary length (dashboard view). */
+const MAX_CARD_SUMMARY_LENGTH = 240;
 
 export async function readKnowledgeTree(conceptionPath: string): Promise<KnowledgeNode | null> {
   const root = join(conceptionPath, 'knowledge');
@@ -182,8 +186,8 @@ export function parseHead(head: string, fallback: string): FileMeta {
     : undefined;
 
   const trimmedSummary =
-    cleanSummary && cleanSummary.length > 240
-      ? `${cleanSummary.slice(0, 237).trimEnd()}…`
+    cleanSummary && cleanSummary.length > MAX_CARD_SUMMARY_LENGTH
+      ? elide(cleanSummary, MAX_CARD_SUMMARY_LENGTH)
       : cleanSummary;
 
   return {

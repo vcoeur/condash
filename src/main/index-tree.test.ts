@@ -96,6 +96,327 @@ describe('regenerateIndex (knowledge strategy)', () => {
     });
   });
 
+  describe('drafted file bullet re-derivation', () => {
+    it('re-derives a drafted file bullet when the body changes (tags AND description)', async () => {
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nInitial description text.\n\n## First heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      expect(after1).toContain('Initial description text');
+      expect(after1).toContain('first');
+      expect(after1).toContain('<!-- draft -->');
+
+      // Change the body: a new lead paragraph AND a new heading. The drafted
+      // file bullet must be re-rendered in full — new description and new
+      // tags — with the marker retained.
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nChanged description text.\n\n## Second heading\n\nBody.\n',
+      );
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+
+      expect(after2).toContain('Changed description text');
+      expect(after2).not.toContain('Initial description text');
+      expect(after2).toContain('second');
+      expect(after2).not.toContain('first');
+      expect(after2).toContain('<!-- draft -->');
+      const row2 = report2.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row2).toBeDefined();
+      expect(row2!.tagsAdded.some((t) => t.entry === 'drafting.md')).toBe(true);
+    });
+
+    it('re-renders a drafted file bullet on a description-only body change', async () => {
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nOriginal lead paragraph.\n\n## Stable heading\n\nBody.\n',
+      );
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      expect(after1).toContain('Original lead paragraph');
+
+      // Only the lead paragraph changes; the heading (and therefore the tag
+      // set) stays identical. The full-render semantics must still reach disk.
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nRewritten lead paragraph.\n\n## Stable heading\n\nBody.\n',
+      );
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+
+      expect(after2).toContain('Rewritten lead paragraph');
+      expect(after2).not.toContain('Original lead paragraph');
+      const row2 = report2.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row2).toBeDefined();
+    });
+
+    it('leaves a curated file bullet untouched even when the body changes', async () => {
+      // Curated bullet (no marker) carrying junk tags that the filter now
+      // rejects: the engine must NOT re-derive it — the marker is the whole
+      // ownership signal.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md) — *Curated description.* `[data-, 66ms]`\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nCompletely new body.\n\n## New heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(
+        '- [`drafting.md`](drafting.md) — *Curated description.* `[data-, 66ms]`',
+      );
+      expect(index).not.toContain('<!-- draft -->');
+    });
+
+    it('produces no churn when an unchanged drafted file bullet is regenerated', async () => {
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nStable description text.\n\n## Stable heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+
+      expect(after2).toBe(after1);
+      expect(report2.updated).toEqual([]);
+    });
+
+    it('leaves a curated row carrying a trailing annotation untouched', async () => {
+      // Curated rows (no marker) are the supported home for human
+      // annotations: a `<!-- TBC -->` on a curated row must survive a regen
+      // with a changed body — comment and description intact.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md) — *Curated description.* `[curated-tag]` <!-- TBC -->\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nCompletely new body.\n\n## New heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(
+        '- [`drafting.md`](drafting.md) — *Curated description.* `[curated-tag]` <!-- TBC -->',
+      );
+      expect(index).not.toContain('<!-- draft -->');
+    });
+
+    it('drops a stray trailing comment when re-deriving a drafted row', async () => {
+      // Drafted rows are auto-managed: a stray `<!-- TBC -->` before the
+      // marker is dropped on re-derivation — the engine emits
+      // `body + tag block + marker` and owns the whole line.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md) — *Old description.* `[old-tag]` <!-- TBC --> <!-- draft -->\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nNew description text.\n\n## New heading\n\nBody.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      expect(after1).toMatch(
+        /- \[`drafting\.md`\]\(drafting\.md\) — \*New description text\.\* `\[[^\]]+\]` <!-- draft -->$/m,
+      );
+      expect(after1).not.toContain('<!-- TBC -->');
+      expect((after1.match(/<!-- draft -->/g) ?? []).length).toBe(1);
+      const row = report.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row).toBeDefined();
+
+      // Converges: re-rendering the dropped output changes nothing.
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+      expect(after2).toBe(after1);
+      expect(report2.updated).toEqual([]);
+    });
+
+    it('never touches interior HTML comments inside a curated description', async () => {
+      // Round-3 regression: interior `<!-- ... -->` runs inside a description
+      // are description text. The end-anchored parse strips cannot match
+      // them, so the curated row must survive byte-identical — no loose
+      // repair, no marker added, no rewrite.
+      const curatedLine =
+        '- [`drafting.md`](drafting.md) — *text <!-- A --> <!-- B --> more text.* `[curated-tag]`';
+      await writeFile(
+        'knowledge/topics/index.md',
+        `# Topics\n\nIntro.\n\n## Current files\n\n${curatedLine}\n`,
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nCompletely new body.\n\n## New heading\n\nBody.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(curatedLine);
+      expect(index).not.toContain('<!-- draft -->');
+      const row = report.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row).toBeUndefined();
+    });
+
+    it('leaves a curated row with an interior comment AND a trailing annotation untouched', async () => {
+      // Round-4 blocker: the parse-side strip must match ONLY the trailing
+      // `<!-- TBC -->` — never cross the interior `<!-- A -->`'s `-->` to
+      // reach it (the tempered dot stops at the first `-->`). The interior
+      // comment stays description text and the row survives byte-identical:
+      // no loose repair, no marker added.
+      const curatedLine =
+        '- [`drafting.md`](drafting.md) — *text <!-- A --> more text.* `[tag]` <!-- TBC -->';
+      await writeFile(
+        'knowledge/topics/index.md',
+        `# Topics\n\nIntro.\n\n## Current files\n\n${curatedLine}\n`,
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nCompletely new body.\n\n## New heading\n\nBody.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(curatedLine);
+      expect(index).not.toContain('<!-- draft -->');
+      const row = report.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row).toBeUndefined();
+    });
+
+    it('rolls a re-derived file bullet tag up to the parent subdir bullet on the same pass', async () => {
+      await writeFile('knowledge/index.md', '# Knowledge\n\nRoot.\n\n## Structure\n');
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nBody.\n\n## Alpha heading\n\nText.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/index.md');
+      expect(after1).toContain('alpha');
+
+      // Change the file's heading: the corrected tag must reach the root's
+      // topics/ bullet in the SAME pass (the file re-derivation mutates the
+      // file bullet's tags before the parent aggregate is built).
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nBody.\n\n## Beta heading\n\nText.\n',
+      );
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/index.md');
+      expect(after2).toContain('beta');
+      expect(after2).not.toContain('alpha');
+      const row2 = report2.updated.find((u) => u.indexPath === 'knowledge/index.md');
+      expect(row2).toBeDefined();
+    });
+
+    it('repairs a loose (malformed) file bullet via the re-derivation path', async () => {
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md)\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nRepaired description.\n\n## Some heading\n\nBody.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+
+      // The malformed line is rebuilt from a fresh draft with the marker.
+      expect(index).toMatch(
+        /- \[`drafting\.md`\]\(drafting\.md\) — \*Repaired description\.\* `\[[^\]]+\]` <!-- draft -->/,
+      );
+      expect(index).not.toContain('- [`drafting.md`](drafting.md)\n');
+      const row = report.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row).toBeDefined();
+    });
+
+    it('--rewrite-aggregated leaves a curated file bullet untouched', async () => {
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md) — *Curated description.* `[curated-tag]`\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nCompletely new body.\n\n## New heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy, { rewriteAggregated: true });
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(
+        '- [`drafting.md`](drafting.md) — *Curated description.* `[curated-tag]`',
+      );
+      expect(index).not.toContain('<!-- draft -->');
+    });
+
+    it('keeps draft ownership across body changes (three-run lifecycle)', async () => {
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nRun one description.\n\n## First heading\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      expect(after1).toContain('Run one description');
+      expect(after1).toMatch(/<!-- draft -->\s*$/m);
+
+      // Run 2 with ANOTHER body change: the drafted row re-derives again
+      // (the marker is at line end, so ownership is unambiguous).
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nRun two description.\n\n## Second heading\n\nBody.\n',
+      );
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+      expect(after2).toContain('Run two description');
+      expect(after2).toContain('second');
+      expect(after2).not.toContain('first');
+      expect((after2.match(/<!-- draft -->/g) ?? []).length).toBe(1);
+      const row2 = report2.updated.find((u) => u.indexPath === 'knowledge/topics/index.md');
+      expect(row2).toBeDefined();
+
+      // Run 3 with no change: byte-identical, no churn.
+      const report3 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after3 = await readFile('knowledge/topics/index.md');
+      expect(after3).toBe(after2);
+      expect(report3.updated).toEqual([]);
+    });
+
+    it('emits exactly one draft marker and stays stable on the canonical row', async () => {
+      // The post-drop shape (`body + tag block + marker`): re-rendering it
+      // must reproduce the identical line — no double marker, no churn.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`drafting.md`](drafting.md) — *Stable description.* `[stable, tag]` <!-- draft -->\n',
+      );
+      await writeFile(
+        'knowledge/topics/drafting.md',
+        '# Drafting\n\nStable description.\n\n## Stable tag\n\nBody.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/topics/index.md');
+      expect((after1.match(/<!-- draft -->/g) ?? []).length).toBe(1);
+      expect(after1).toMatch(/<!-- draft -->\s*$/m);
+
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/topics/index.md');
+      expect(after2).toBe(after1);
+      expect(report2.updated).toEqual([]);
+    });
+  });
+
   describe('aggregation cap + curated/drafted distinction', () => {
     it('caps drafted subdir-bullet aggregation at 8 and surfaces the surplus', async () => {
       // Build a subtree under topics/ with 12 distinct legit tags spread
@@ -212,6 +533,72 @@ describe('regenerateIndex (knowledge strategy)', () => {
       await regenerateIndex(conceptionDir, knowledgeStrategy);
       const after2 = await readFile('knowledge/index.md');
       expect(after2).not.toMatch(/\b(?:the|summary)\b/i);
+    });
+
+    it('drafted subdir row with a stray comment converges to canonical form', async () => {
+      // Round-4 blocker: replaceTagsInBullet must drop the stray `<!-- TBC -->`
+      // (marker first, then trailing comments one at a time) BEFORE replacing
+      // the tag block, so the row converges to `body + new tag block + marker`
+      // instead of embedding the comment mid-line forever.
+      await writeFile(
+        'knowledge/index.md',
+        '# Knowledge\n\nRoot.\n\n## Structure\n\n- [`topics/`](topics/index.md) — *Intro.* `[alpha]` <!-- TBC --> <!-- draft -->\n',
+      );
+      await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+      await writeFile(
+        'knowledge/topics/a-leaf.md',
+        '# A leaf\n\nBody.\n\n## Beta heading\n\nText.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/index.md');
+      expect(after1).toMatch(
+        /- \[`topics\/`\]\(topics\/index\.md\) — \*Intro\.\* `\[[^\]]+\]` <!-- draft -->$/m,
+      );
+      expect(after1).not.toContain('<!-- TBC -->');
+      expect(after1).toContain('beta');
+      expect(after1).not.toContain('alpha');
+      expect((after1.match(/<!-- draft -->/g) ?? []).length).toBe(1);
+
+      // Second regenerate: byte-identical, no churn.
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/index.md');
+      expect(after2).toBe(after1);
+      expect(report2.updated).toEqual([]);
+    });
+
+    it('omits the tag block on a drafted subdir row whose aggregate is empty (write-side parity)', async () => {
+      // Closing-pass finding: replaceTagsInBullet always emitted `` `[]` `` while
+      // formatBullet omits the block for empty keywords — divergent canonical
+      // forms and one-time churn. A date-named leaf aggregates to zero tags
+      // (its filename fallback is filtered), so the subdir row must render
+      // without any tag block and stay byte-stable.
+      await writeFile(
+        'knowledge/index.md',
+        '# Knowledge\n\nRoot.\n\n## Structure\n\n- [`topics/`](topics/index.md) — *Intro.* `[old]` <!-- draft -->\n',
+      );
+      // The leaf bullet is pre-written so the engine never adds a bucket
+      // heading (`## Current files`) to the subdir index: with no H2/H3 and no
+      // code spans in the head, the empty-aggregate fallback
+      // (`deriveSubdirKeywords`) must also yield nothing.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n- [`2026-04.md`](2026-04.md) — *Dated leaf.* <!-- draft -->\n',
+      );
+      await writeFile('knowledge/topics/2026-04.md', '# Dated leaf\n\nBody.\n');
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after1 = await readFile('knowledge/index.md');
+      expect(after1).toMatch(
+        /- \[`topics\/`\]\(topics\/index\.md\) — \*Intro\.\* <!-- draft -->$/m,
+      );
+      expect(after1).not.toContain('`[]`');
+
+      // Second regenerate: byte-identical, no churn.
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const after2 = await readFile('knowledge/index.md');
+      expect(after2).toBe(after1);
+      expect(report2.updated).toEqual([]);
     });
   });
 
@@ -516,8 +903,8 @@ describe('regenerateIndex (projects strategy)', () => {
     // duplicate was appended — unbounded, one per run.
     it("doesn't corrupt or duplicate bullets whose description gets clipped mid-`[`", async () => {
       // The repro case from the conception incident: a description over
-      // 200 chars whose tail array `["@condash"]` is split by clip(200)
-      // — the clipped desc ends with `[` and no matching `]`, which used
+      // 200 chars whose tail array `["@condash"]` is split by the 200-char
+      // cap — the clipped desc ends with `[` and no matching `]`, which used
       // to confuse the tag-block regex into eating the closing italic.
       // A status change between pass 1 and pass 2 forces a tag-block
       // rewrite (the only path that exercises replaceTagsInBullet on a
