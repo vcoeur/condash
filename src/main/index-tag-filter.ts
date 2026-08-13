@@ -7,7 +7,8 @@
  *  - End of `aggregatedKeywords` build — before the parent's pass sees descendant tags.
  *
  * The filter is deliberately conservative: we only reject mechanically detectable
- * junk (length, pure numeric, date-shaped, UUID-shaped, English stop-words). We do
+ * junk (length, pure numeric, date-shaped, UUID-shaped, leading/trailing-hyphen,
+ * numeric-hyphen shapes, hex literals, measurements, English stop-words). We do
  * NOT try to detect semantically weak tags. Borderline-but-real tags survive and
  * surface via the over-target report.
  */
@@ -20,6 +21,22 @@ const PURE_NUMERIC_RE = /^\d+$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // UUID v1-5 with or without dashes.
 const UUID_RE = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+// Leading or trailing hyphen: `-light`, `data-`, CLI flags `--run` — the
+// slugifier keeps hyphens, so `{slug}-light.png` and `data-*` braces fragments
+// surface exactly like this.
+const LEADING_TRAILING_HYPHEN_RE = /^-|-$/;
+// Date-prefixed identifier: `2026-0405a`, `2026-07-22-nodum-phase0-...`.
+// (ISO_DATE_RE already handles the pure date; this catches a suffix.)
+const DATED_SLUG_RE = /^\d{4}-\d{2,3}[-a-z0-9]*$/;
+// Numeric range: `65-89`.
+const NUMERIC_RANGE_RE = /^\d+-\d+$/;
+// Numeric-prefixed word: `4-test`. Acceptable over-rejection: `2-factor`.
+const NUMERIC_PREFIXED_WORD_RE = /^\d+-[a-z]/;
+// Hex literal: `0x00`.
+const HEX_RE = /^0x[0-9a-f]+$/;
+// Measurement: `66ms`, `3.5gb`.
+const MEASUREMENT_RE =
+  /^\d+(\.\d+)?(ms|kb|mb|gb|tb|px|pt|em|rem|vh|vw|hz|khz|mhz|ghz|dpi|ppi|fps)$/;
 
 const STOP_WORDS = new Set<string>([
   // Pronouns / determiners / common English particles likely to appear as
@@ -124,6 +141,109 @@ const STOP_WORDS = new Set<string>([
   'description',
   'details',
   'rationale',
+  // Code keywords surfacing via inline code spans mined verbatim as tags.
+  'undefined',
+  'false',
+  'null',
+  'true',
+  'import',
+  'export',
+  'const',
+  'let',
+  'var',
+  'return',
+  'function',
+  'async',
+  'await',
+  'typeof',
+  'instanceof',
+  'void',
+  'delete',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  'this',
+  'extends',
+  'new',
+  'try',
+  'catch',
+  'throw',
+  'class',
+  // Path fragments from inline path code spans (…/.venv/lib/…).
+  'usr',
+  'bin',
+  'lib',
+  'src',
+  'tmp',
+  'venv',
+  'python3',
+  'site-packages',
+  'node_modules',
+  'proc',
+  'sys',
+  // English common words observed as junk on drafted rows.
+  'comes',
+  'goes',
+  'intent',
+  'wrong',
+  'actually',
+  'catches',
+  'rather',
+  'than',
+  'which',
+  'guaranteed',
+  'installed',
+  'after',
+  'high',
+  'related',
+  'kill',
+  'bites',
+  'quietly',
+  'both',
+  'levels',
+  'guard',
+  'survives',
+  'real',
+  'examples',
+  'offers',
+  'price',
+  'templates',
+  'detail',
+  'allow',
+  'hash',
+  'min',
+  'url',
+  'img',
+  'video',
+  'web',
+  'views',
+  'make',
+  'test',
+  'shape',
+  'user',
+  'case',
+  'rule',
+  'read',
+  'edit',
+  'whole',
+  'gone',
+  'check',
+  'holds',
+  'before',
+  'worth',
+  'separate',
+  'finding',
+  'adjacent',
+  'trap',
+  'attribution',
+  'fails',
+  'applied',
+  'principle',
+  'regex',
+  'setpath',
+  'rendered',
 ]);
 
 /**
@@ -136,6 +256,12 @@ export function isLowQualityTag(tag: string): boolean {
   if (PURE_NUMERIC_RE.test(tag)) return true;
   if (ISO_DATE_RE.test(tag)) return true;
   if (UUID_RE.test(tag)) return true;
+  if (LEADING_TRAILING_HYPHEN_RE.test(tag)) return true;
+  if (DATED_SLUG_RE.test(tag)) return true;
+  if (NUMERIC_RANGE_RE.test(tag)) return true;
+  if (NUMERIC_PREFIXED_WORD_RE.test(tag)) return true;
+  if (HEX_RE.test(tag)) return true;
+  if (MEASUREMENT_RE.test(tag)) return true;
   if (STOP_WORDS.has(tag.toLowerCase())) return true;
   return false;
 }

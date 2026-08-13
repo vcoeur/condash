@@ -22,13 +22,28 @@
  *    a trailing `<!-- draft -->` HTML-comment marker. Removing the marker
  *    promotes the bullet to "curated" — the engine stops touching it. Adding
  *    or keeping the marker keeps the bullet under engine ownership: tags are
- *    re-derived from the current source on every run, junk is filtered out,
- *    and the aggregated tag list is capped at 8 (`TARGET_MAX`). Surplus
- *    candidates are reported via `overTagDropped`.
+ *    re-derived from the current source on every run (for file bullets the
+ *    description is re-derived too — the whole bullet is engine-owned), junk
+ *    is filtered out, and the aggregated tag list is capped at 8
+ *    (`TARGET_MAX`). Surplus candidates are reported via `overTagDropped`.
  *  - `--rewrite-aggregated` mode (one-shot migration): treats every existing
  *    subdir bullet as drafted for the duration of the run, then re-derives
  *    its tags from current source and adds the marker. Used to clean a tree
  *    that was polluted by the legacy "set union, no drops" aggregator.
+ *
+ * Trailing HTML comments — the engine recognises exactly ONE trailing
+ * comment on a bullet: the end-anchored `<!-- draft -->` marker:
+ *  - Re-deriving an engine-owned row (drafted or loose) emits
+ *    `body + tag block + marker`. Any other trailing comment on such a row
+ *    is dropped: the marker flags the row as auto-managed, so the engine
+ *    owns the whole line.
+ *  - Curated rows (marker absent) are never rewritten — a human annotation
+ *    like `<!-- TBC -->` on a curated row survives indefinitely and is the
+ *    supported home for annotations.
+ *  - Interior HTML comments inside a description are description text —
+ *    never parsed, never touched.
+ *  - A row whose `<!-- draft -->` token is not at line end parses as
+ *    curated and is never rewritten.
  *
  * Strategy interface plugs in the per-tree drafting heuristic (how to read a
  * new file's body and propose a description + keywords) and the optional
@@ -47,11 +62,15 @@ const TARGET_MAX = 8;
 
 /** HTML-comment marker rendered on every engine-drafted bullet. */
 const DRAFT_MARKER = '<!-- draft -->';
+/** The draft marker, end-anchored: only a marker at the very end of the line
+ * counts. A row whose marker sits elsewhere parses as curated. */
 const DRAFT_MARKER_RE = /\s+<!--\s*draft\s*-->\s*$/;
-/** Catch-all for any trailing `<!-- ... -->` HTML comment a curator might
- * have appended (e.g. `<!-- TBC -->`). Stripped before the bullet regex
- * runs so the entry still matches; preserved via `bullet.raw` on re-render. */
-const TRAILING_COMMENT_RE = /\s+<!--[^]*?-->\s*$/;
+/** One HTML comment, end-anchored. The tempered dot cannot cross an earlier
+ * `-->`, so only a true trailing comment — the one whose `-->` sits at line
+ * end — matches; an interior comment inside prose can never be reached.
+ * Stripped one at a time from the line end, parse-side only; the engine
+ * never preserves or re-emits such comments. */
+const TRAILING_COMMENT_RE = /\s+<!--(?:(?!-->).)*-->\s*$/;
 
 // ---------------------------------------------------------------------------
 // Public report shape.
@@ -264,11 +283,13 @@ function matchBullet(line: string): {
   draft: boolean;
   loose: boolean;
 } | null {
-  // Detect (and strip) a trailing `<!-- draft -->` marker before running the
-  // existing bullet regexes — keeps the regexes blissfully unaware of the
-  // marker. Any other trailing HTML comment (e.g. `<!-- TBC -->`) is also
-  // stripped so the bullet still matches; the comment lives in `bullet.raw`
-  // and survives re-render verbatim.
+  // Detect (and strip) the trailing `<!-- draft -->` marker before running
+  // the existing bullet regexes — keeps the regexes blissfully unaware of
+  // the marker. Any other trailing HTML comment (e.g. a curated
+  // `<!-- TBC -->`) is also stripped for MATCHING ONLY so the bullet still
+  // parses; both strips are end-anchored, so an interior `<!-- ... -->`
+  // inside a description can never be matched or sliced. The comments live
+  // in `bullet.raw`; the engine never rewrites them.
   const draft = DRAFT_MARKER_RE.test(line);
   let stripped = draft ? line.replace(DRAFT_MARKER_RE, '') : line;
   while (TRAILING_COMMENT_RE.test(stripped)) {
@@ -581,6 +602,47 @@ async function processDirectory(
         entry: canonical,
         dropped: ranked.dropped,
       });
+    }
+  }
+
+  // Existing drafted *file* bullets are re-derived the same way — a file row
+  // drafted once was previously never revisited, so junk that entered it
+  // (a heading renamed since draft, old-algorithm output, a source typo)
+  // ossified until a human re-drafted by hand. Files get a FULL re-render
+  // (under the draft marker both description and tags are engine-owned),
+  // mirroring the loose-bullet repair path above. `--rewrite-aggregated`
+  // stays subdir-only: curated file bullets, marker absent, are untouched.
+  // Must run before the `myAggregate` build below so corrected file tags
+  // roll upward on the same pass.
+  for (const child of children) {
+    if (child.kind !== 'file') continue;
+    const canonical = canonicalName(child);
+    const bullet = shape.bullets.get(canonical);
+    if (!bullet) continue;
+    const isEngineOwned = bullet.draft || bullet.loose;
+    if (!isEngineOwned) continue;
+
+    const draft = await strategy.draftFileEntry(dirAbsPath, child);
+    const newTags = draft.keywords;
+    const additions = newTags.filter((t) => !bullet.tags.includes(t));
+
+    const link = strategy.formatChildLink(dirAbsPath, child);
+    const willBeDraft = bullet.draft || bullet.loose;
+    // Full re-render emits `body + tag block + marker` only: the marker
+    // flags the row as auto-managed, so the engine owns the whole line and
+    // any stray trailing comment on it is dropped (curated rows are the
+    // home for human annotations, and they never reach this loop).
+    const newRaw = formatBullet(child.name, link, draft, willBeDraft);
+
+    if (newRaw !== bullet.raw) {
+      bullet.tags = newTags;
+      bullet.raw = newRaw;
+      bullet.draft = willBeDraft;
+      bullet.loose = false;
+      // Full re-render: any drift from the fresh draft — a tag change or a
+      // description-only change — must reach disk, so record unconditionally
+      // (the loose path above records `tags: []` for a shape-only repair).
+      result.tagsAdded.push({ entry: canonical, tags: additions });
     }
   }
 
@@ -1039,24 +1101,21 @@ function formatBullet(
 const TAG_BLOCK_RE = /\s*`\[[^\]]*\]`\s*$/;
 
 function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): string {
-  // Strip any trailing draft marker plus any other trailing HTML comments
-  // (e.g. a curated `<!-- TBC -->`) so the tag-block regex sees clean input.
-  // The non-draft trailing comments are preserved and re-appended after the
-  // tag block — same position relative to the bullet body.
+  // Remove the end-anchored draft marker, then drop any other trailing
+  // comments one at a time from the line end (tempered, so only true
+  // trailing comments are touched). The row is auto-managed, so stray
+  // comments are dropped, not preserved; then the tag block is replaced.
+  // Canonical output: `body + new tag block + marker`.
   let stripped = raw.replace(DRAFT_MARKER_RE, '');
-  const trailingComments: string[] = [];
-  let m: RegExpMatchArray | null;
-  while ((m = stripped.match(TRAILING_COMMENT_RE))) {
-    trailingComments.unshift(m[0].trim());
+  while (TRAILING_COMMENT_RE.test(stripped)) {
     stripped = stripped.replace(TRAILING_COMMENT_RE, '');
   }
-  const tagBlock = ` \`[${tags.join(', ')}]\``;
+  const tagBlock = tags.length > 0 ? ` \`[${tags.join(', ')}]\`` : '';
   let body: string;
   if (TAG_BLOCK_RE.test(stripped)) {
     body = stripped.replace(TAG_BLOCK_RE, '') + tagBlock;
   } else {
     body = stripped + tagBlock;
   }
-  const preservedTrail = trailingComments.length > 0 ? ' ' + trailingComments.join(' ') : '';
-  return isDraft ? `${body} ${DRAFT_MARKER}${preservedTrail}` : `${body}${preservedTrail}`;
+  return isDraft ? `${body} ${DRAFT_MARKER}` : body;
 }
