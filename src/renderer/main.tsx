@@ -33,6 +33,7 @@ import { createReposStore } from './repos-store';
 import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
 import { reloadPrIndex } from './pr-index-store';
+import { reloadStarred } from './star-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
@@ -196,6 +197,16 @@ function App() {
   // `gh`; a conception with no branch-bearing projects clears the index.
   createEffect(() => {
     void reloadPrIndex(projects());
+  });
+
+  // Load the Projects-pane starred set for the active conception. Keyed on the
+  // conception path, not the project list: the set lives in that conception's
+  // `.condash/settings.json`, so it changes on a conception switch and on a
+  // star toggle (which the store applies itself) — never on list churn. Reading
+  // with no conception set resolves to an empty set, which clears the stars.
+  createEffect(() => {
+    conceptionPath();
+    void reloadStarred();
   });
 
   const knowledgeStore = createTreeStore<KnowledgeNode>({
@@ -387,6 +398,7 @@ function App() {
     handleAddStep,
     handleWikilink,
     handleCreateProjectNote,
+    handleToggleStar,
   } = projectActions;
   const previewProject = (): Project | null => projectActions.previewProject(previewPath);
 
@@ -665,12 +677,19 @@ function App() {
                             onToggleStep={handleToggleStep}
                             onDropProject={handleDropOnColumn}
                             onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                            onToggleStar={(p) => void handleToggleStar(p)}
                             projectActions={projectActionItems()}
                             onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
                             onNewProject={() => setNewProjectOpen(true)}
                             newProjectActions={newProjectActionItems()}
                             onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
-                            onRefresh={() => void reloadProjects()}
+                            onRefresh={() => {
+                              void reloadProjects();
+                              // Also re-read the starred set so a hand-edited
+                              // `.condash/settings.json` shows up without a
+                              // conception switch or restart.
+                              void reloadStarred();
+                            }}
                           />
                         </Show>
                       </Match>

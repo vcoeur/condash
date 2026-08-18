@@ -53,3 +53,42 @@ export function countSteps(steps: readonly Step[]): StepCounts {
   }
   return counts;
 }
+
+/**
+ * Sanitise a raw `starredProjects` config value into a deduped slug list, in
+ * sorted order. Defensive because the value comes straight off disk — the
+ * effective-config read is a plain spread with no zod pass, so a hand-edited
+ * `.condash/settings.json` can carry a non-array, nested objects, or blanks
+ * (same contract as `resolveTreeExpansion`: a corrupt file must not reach the
+ * renderer). Sorted so the persisted array is stable across toggles and reads
+ * as a set rather than a history.
+ *
+ * @param value the raw `starredProjects` value, any shape
+ * @returns the slugs, deduped and sorted; empty for any unusable input
+ */
+export function normaliseStarredSlugs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const slug = entry.trim();
+    if (slug) seen.add(slug);
+  }
+  return [...seen].sort();
+}
+
+/**
+ * Add or remove one slug from a starred-slug list. Pure — the caller persists
+ * the result.
+ *
+ * @param current the existing list (any raw shape; normalised first)
+ * @param slug the project slug to star or unstar
+ * @param starred true to star, false to unstar
+ * @returns the new deduped, sorted list
+ */
+export function applyStarredSlug(current: unknown, slug: string, starred: boolean): string[] {
+  const slugs = new Set(normaliseStarredSlugs(current));
+  if (starred) slugs.add(slug);
+  else slugs.delete(slug);
+  return [...slugs].sort();
+}

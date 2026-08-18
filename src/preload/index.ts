@@ -88,6 +88,8 @@ const api: CondashApi = {
     ipcRenderer.invoke('createProjectDir', projectPath, dirRelPath, name),
   setStatus: (path, newStatus, opts) => ipcRenderer.invoke('setStatus', path, newStatus, opts),
   createProject: (input) => ipcRenderer.invoke('createProject', input),
+  getStarredProjects: () => ipcRenderer.invoke('getStarredProjects'),
+  setProjectStar: (slug, starred) => ipcRenderer.invoke('setProjectStar', slug, starred),
   readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
     ipcRenderer.invoke('writeNote', path, expectedContent, newContent),

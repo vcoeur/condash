@@ -7,8 +7,9 @@ import { projectColorClass } from '@shared/project-color';
 import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
+import { isStarred } from '../../star-store';
 import { Group, firstDate, lastDate, readCollapseMap, writeCollapseEntry } from './data';
-import { KindGlyph, StepProgress, WarnIcon } from './icons';
+import { KindGlyph, StarIcon, StepProgress, WarnIcon } from './icons';
 
 // Status lane the pointer currently hovers during a card drag (null = none).
 // Module scope so every GroupBlock highlights its lane reactively while the
@@ -69,6 +70,7 @@ export function GroupBlock(props: {
   onOpen: (project: Project) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  onToggleStar: (project: Project) => void;
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
@@ -129,6 +131,7 @@ export function GroupBlock(props: {
                     item={item}
                     onOpen={props.onOpen}
                     onWorkOn={props.onWorkOn}
+                    onToggleStar={props.onToggleStar}
                     onChangeStatus={onChangeStatus}
                     projectActions={props.projectActions}
                     onProjectAction={props.onProjectAction}
@@ -160,6 +163,7 @@ export function SubGroup(props: {
   hint?: string;
   onOpen: (project: Project) => void;
   onWorkOn: (project: Project) => void;
+  onToggleStar: (project: Project) => void;
   /** Same shape as GroupBlock.onDropProject — threaded so cards in done
    * subgroups still respond to the Cmd/Ctrl+1..N keyboard shortcut. */
   onChangeStatus?: (path: string, newStatus: string) => void;
@@ -199,6 +203,7 @@ export function SubGroup(props: {
                 item={item}
                 onOpen={props.onOpen}
                 onWorkOn={props.onWorkOn}
+                onToggleStar={props.onToggleStar}
                 onChangeStatus={props.onChangeStatus}
                 projectActions={props.projectActions}
                 onProjectAction={props.onProjectAction}
@@ -215,6 +220,9 @@ export function Card(props: {
   item: Project;
   onOpen: (project: Project) => void;
   onWorkOn: (project: Project) => void;
+  /** Flip this card's star. The starred state is read from the star store, not
+   * passed in — only the write is threaded. */
+  onToggleStar: (project: Project) => void;
   /** Keyboard alternative for the status drag: Cmd/Ctrl+1..N, where N is
    * KNOWN_STATUSES.length, sets the focused card's status. Wired only when
    * the parent group can also accept a drop (otherwise we'd let the user
@@ -231,7 +239,11 @@ export function Card(props: {
   // stays element-qualified so a dangling parent's non-clickable <div>
   // fallback still opens the card itself.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, button.parent-banner, button.child-row';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row';
+
+  // Reactive read straight from the star store — the starred set is a
+  // cross-cutting concern of every card, so it isn't threaded as a prop.
+  const starred = (): boolean => isStarred(props.item.slug);
 
   const handleCardClick = (event: MouseEvent) => {
     // A click synthesised at the end of a drag must not also open the card.
@@ -460,6 +472,23 @@ export function Card(props: {
         {/* Row 1: kind glyph + title (left, can wrap to 2 lines) and the
             work-on action pinned to the right. */}
         <div class="title-row">
+          {/* Star: first thing on the row, so the eye reads "is this one of
+              mine?" before the title. Filled when starred, dim outline when
+              not — a starred card also sorts to the top of its section. */}
+          <button
+            type="button"
+            class="star-toggle"
+            classList={{ starred: starred() }}
+            title={starred() ? 'Unstar — stop pinning to the top' : 'Star — pin to top of section'}
+            aria-label={starred() ? `Unstar ${props.item.title}` : `Star ${props.item.title}`}
+            aria-pressed={starred()}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onToggleStar(props.item);
+            }}
+          >
+            <StarIcon filled={starred()} />
+          </button>
           <h3 class="title">
             <Show when={props.item.kind !== 'unknown' && props.item.kind !== 'project'}>
               <KindGlyph kind={props.item.kind} />

@@ -87,6 +87,14 @@ export interface Settings {
    *  build — which misrouted the key into the global file — still type-checks
    *  on read until the scope-partition migrator lifts it to the conception. */
   taskConfig?: Record<string, TaskConfigEntry>;
+  /** Slugs of the starred projects (Projects-pane star flag). Conception-scoped
+   *  (`SCOPE_OF.starredProjects === 'conception'`): the writer
+   *  (`setProjectStar`) and reader (`getStarredProjects`) target
+   *  `<conception>/.condash/settings.json`, never this per-machine global file.
+   *  Declared here for the same reason as `taskConfig` above — so a global
+   *  settings.json carrying a misrouted key still type-checks on read until the
+   *  scope-partition migrator lifts it to the conception. */
+  starredProjects?: string[];
 }
 
 /**

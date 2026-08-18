@@ -2,7 +2,11 @@ import { ipcMain } from 'electron';
 import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import { parseHeader } from '../../shared/header';
-import { compareByStatusThenSlug } from '../../shared/projects';
+import {
+  applyStarredSlug,
+  compareByStatusThenSlug,
+  normaliseStarredSlugs,
+} from '../../shared/projects';
 import type {
   Project,
   ProjectCreateInput,
@@ -11,6 +15,7 @@ import type {
 } from '../../shared/types';
 import { createProjectCore } from '../create-project';
 import { touchDirtyMarker } from '../dirty';
+import { getEffectiveConceptionConfig, mutateConceptionConfig } from '../effective-config';
 import {
   createProjectEntry,
   listProjectFiles,
@@ -29,6 +34,7 @@ import {
   requireNonEmptyString,
   requireRecord,
   requireString,
+  withConception,
 } from './utils';
 
 /**
@@ -291,6 +297,38 @@ export function registerProjectsIpc(): void {
       return writeNote(settingsPath(), expectedContent, newContent);
     },
   );
+
+  // Projects-pane star flag. Both sides target the conception-owned
+  // `starredProjects` list in `<conception>/.condash/settings.json` —
+  // `starredProjects` is a conception-scoped key
+  // (`SCOPE_OF.starredProjects === 'conception'`), so it must never land in the
+  // per-machine global `settings.json`. Deliberately NOT a README field: the
+  // sweeper commits every settled README change, and starring is transient
+  // attention, not project history.
+  ipcMain.handle('getStarredProjects', (event) => {
+    requireMainWindowSender(event);
+    return withConception(async (conceptionPath) => {
+      const config = await getEffectiveConceptionConfig(conceptionPath);
+      return normaliseStarredSlugs(config.starredProjects);
+    }, []);
+  });
+
+  ipcMain.handle('setProjectStar', async (event, slug: unknown, starred: unknown) => {
+    requireMainWindowSender(event);
+    const projectSlug = requireNonEmptyString('setProjectStar', slug);
+    const isStarred = starred === true;
+    return withConception(async (conceptionPath) => {
+      let next: string[] = [];
+      await mutateConceptionConfig(conceptionPath, (config) => {
+        next = applyStarredSlug(config.starredProjects, projectSlug, isStarred);
+        // Drop the key entirely once nothing is starred, so an untouched
+        // conception's config file stays free of empty scaffolding.
+        if (next.length > 0) config.starredProjects = next;
+        else delete config.starredProjects;
+      });
+      return next;
+    }, []);
+  });
 
   ipcMain.handle('createProjectNote', async (event, projectPath: string, slug: string) => {
     requireMainWindowSender(event);

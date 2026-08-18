@@ -10,6 +10,23 @@ const CLICK_CYCLE: readonly StepMarker[] = [' ', '~', 'x', '-'];
 
 export const UNKNOWN = '?';
 
+/** Shared default for the `starred` parameter of the grouping helpers, so a
+ *  caller that doesn't care (and every test that predates the star flag) needn't
+ *  allocate an empty set per call. */
+const EMPTY_STARRED: ReadonlySet<string> = new Set<string>();
+
+/** Star-first comparator fragment: -1 / 1 when exactly one of the two is
+ *  starred, 0 when they tie so the caller's own ordering decides. Kept as a
+ *  fragment rather than a full comparator because the star is the *first* key of
+ *  two different sorts (slug-descending in a status bucket, close-date-descending
+ *  in a Done subgroup) — one rule, both places. */
+function starFirst(a: Project, b: Project, starred: ReadonlySet<string>): number {
+  const aStarred = starred.has(a.slug);
+  const bStarred = starred.has(b.slug);
+  if (aStarred === bStarred) return 0;
+  return aStarred ? -1 : 1;
+}
+
 /** Order of stacked sections on the Projects pane. `backlog` and `done`
  * render collapsed-by-default — heavy buckets the user usually skips past. */
 export const PROJECT_SECTION_ORDER = ['now', 'review', 'later', 'backlog', 'done'] as const;
@@ -115,8 +132,14 @@ export interface DoneGrouping {
 }
 
 /** Split a Done bucket into the Recent window + per-close-month subgroups.
- * `today` is injected so tests can pin time without mocking Date. */
-export function groupDone(done: readonly Project[], today: string): DoneGrouping {
+ * `today` is injected so tests can pin time without mocking Date. `starred`
+ * keeps the star as the first sort key inside every subgroup, matching the
+ * non-done sections. */
+export function groupDone(
+  done: readonly Project[],
+  today: string,
+  starred: ReadonlySet<string> = EMPTY_STARRED,
+): DoneGrouping {
   const sevenDaysAgo = (() => {
     const d = new Date(today + 'T00:00:00Z');
     d.setUTCDate(d.getUTCDate() - 7);
@@ -139,6 +162,8 @@ export function groupDone(done: readonly Project[], today: string): DoneGrouping
     bucket.push(p);
   }
   const sortDesc = (a: Project, b: Project): number => {
+    const byStar = starFirst(a, b, starred);
+    if (byStar !== 0) return byStar;
     const da = cardDate(a);
     const db = cardDate(b);
     if (da !== db) return da < db ? 1 : -1;
@@ -190,7 +215,10 @@ export function nextOpenStep(item: Project): Step | undefined {
   return item.steps.find((s) => s.marker !== 'x' && s.marker !== '-');
 }
 
-export function groupByStatus(items: Project[]): Map<string, Project[]> {
+export function groupByStatus(
+  items: Project[],
+  starred: ReadonlySet<string> = EMPTY_STARRED,
+): Map<string, Project[]> {
   const buckets = new Map<string, Project[]>();
   for (const status of KNOWN_STATUSES) buckets.set(status, []);
   buckets.set(UNKNOWN, []);
@@ -199,10 +227,12 @@ export function groupByStatus(items: Project[]): Map<string, Project[]> {
     const key = (KNOWN_STATUSES as readonly string[]).includes(item.status) ? item.status : UNKNOWN;
     buckets.get(key)!.push(item);
   }
-  // Sort each bucket most-recent-first. Slugs are `YYYY-MM-DD-…` so descending
-  // alpha sort is equivalent to descending date.
+  // Starred first, then most-recent-first. Slugs are `YYYY-MM-DD-…` so
+  // descending alpha sort is equivalent to descending date.
   for (const list of buckets.values()) {
-    list.sort((a, b) => (a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0));
+    list.sort(
+      (a, b) => starFirst(a, b, starred) || (a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0),
+    );
   }
   return buckets;
 }

@@ -356,7 +356,7 @@ function isPathUnder(child: string, parent: string): boolean {
  * The per-domain split:
  *   • projects — listProjects, getProject, step.*, listProjectFiles,
  *     setStatus, createProject, note.*, settings.read/writeRaw,
- *     createProjectNote.
+ *     createProjectNote, get/setProjectStar.
  *   • trees — read{Knowledge,Resources,Skills}Tree, tree.*, search.
  *   • repos — listRepos, listReposForPrimary, invalidateGitStatus,
  *     getDirtyDetails, listOpenWith, launchOpenWith, forceStopRepo.

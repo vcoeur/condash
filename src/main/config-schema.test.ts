@@ -765,6 +765,8 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
         gateOnUpdatedTabs: true,
       },
     },
+    // setProjectStar (Projects-pane card star)
+    starredProjects: ['2026-08-18-condash-project-star'],
   };
 
   it('round-trips every global IPC setter through the global canonicaliser', () => {

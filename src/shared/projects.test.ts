@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { compareByStatusThenSlug, countSteps, statusOrder } from './projects';
+import {
+  applyStarredSlug,
+  compareByStatusThenSlug,
+  countSteps,
+  normaliseStarredSlugs,
+  statusOrder,
+} from './projects';
 import { KNOWN_STATUSES, type Step } from './types';
 
 describe('statusOrder', () => {
@@ -65,5 +71,42 @@ describe('countSteps section filtering', () => {
   it('returns zeros when no Steps section exists', () => {
     const steps: Step[] = [step(' ', 'Notes'), step('x', 'Step details')];
     expect(countSteps(steps)).toEqual({ todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 });
+  });
+});
+
+describe('normaliseStarredSlugs', () => {
+  it('dedupes, trims, and sorts', () => {
+    expect(normaliseStarredSlugs([' b ', 'a', 'b'])).toEqual(['a', 'b']);
+  });
+
+  it('drops blanks and non-strings rather than throwing', () => {
+    // The value comes off disk through a plain spread with no zod pass, so a
+    // hand-edited config can carry anything.
+    expect(normaliseStarredSlugs(['a', '', '   ', 3, null, { x: 1 }, ['b']])).toEqual(['a']);
+  });
+
+  it('treats any non-array as empty', () => {
+    expect(normaliseStarredSlugs(undefined)).toEqual([]);
+    expect(normaliseStarredSlugs('a,b')).toEqual([]);
+    expect(normaliseStarredSlugs({ 0: 'a' })).toEqual([]);
+  });
+});
+
+describe('applyStarredSlug', () => {
+  it('adds a slug and keeps the list sorted', () => {
+    expect(applyStarredSlug(['c', 'a'], 'b', true)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is idempotent when starring an already-starred slug', () => {
+    expect(applyStarredSlug(['a'], 'a', true)).toEqual(['a']);
+  });
+
+  it('removes a slug, and unstarring an absent one is a no-op', () => {
+    expect(applyStarredSlug(['a', 'b'], 'a', false)).toEqual(['b']);
+    expect(applyStarredSlug(['b'], 'a', false)).toEqual(['b']);
+  });
+
+  it('normalises a corrupt current value before applying', () => {
+    expect(applyStarredSlug('nonsense', 'a', true)).toEqual(['a']);
   });
 });

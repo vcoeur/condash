@@ -26,6 +26,7 @@ export const CONCEPTION_ONLY_KEYS = [
   'retired_apps',
   'long_lived_branches',
   'taskConfig',
+  'starredProjects',
 ] as const;
 
 /** Keys owned by the per-machine global `settings.json` proper. Mirrors

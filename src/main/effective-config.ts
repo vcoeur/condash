@@ -53,6 +53,7 @@ export interface EffectiveConfig extends ConfigShape {
   treeExpansion?: TreeExpansionPrefs;
   agents?: Agent[];
   taskConfig?: Record<string, TaskConfigEntry>;
+  starredProjects?: string[];
   dashboard?: DashboardSettings;
   autoSync?: AutoSyncSettings;
 }

@@ -507,6 +507,53 @@ body[data-dragging='project'] .row {
   transition: opacity 120ms ease;
 }
 
+/* Star flag. Quieter than `.row-action`'s boxed chrome on purpose: it sits
+ * inline before the serif title and must not compete with it, so there is no
+ * resting fill or border — only the glyph. Gold (`--col-soon`, this app's
+ * general gold token) when starred, faint outline when not. The 2 px top nudge
+ * drops the 15 px glyph onto the title's cap height, matching how
+ * `.title-actions` nudges the work-on button on the other end of the row. */
+.row .star-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  /* Trim the row's 12 px gap down to the ~8 px the glyph wants beside the
+   * title, without touching the title↔work-on gap at the other end. */
+  margin-right: -4px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    transform 100ms ease;
+}
+
+.row .star-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+
+.row .star-toggle.starred {
+  color: var(--col-soon);
+}
+
+.row .star-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--col-soon);
+}
+
+.row .star-toggle:active {
+  transform: scale(0.9);
+}
+
 .row .title {
   margin: 0;
   display: flex;

@@ -561,6 +561,13 @@ const conceptionOnlyFields = {
         .strict(),
     )
     .optional(),
+  /** Slugs of the projects starred on the Projects pane. A starred card shows
+   *  a filled star and sorts ahead of unstarred cards inside its status
+   *  section. Conception-scoped and gitignored on purpose: starring is a
+   *  "what am I looking at now" marker, so it must not edit the item README
+   *  (which the sweeper would then commit). A slug whose item no longer
+   *  exists is inert — readers only ask for membership. */
+  starredProjects: z.array(z.string().min(1)).optional(),
 } satisfies Record<'$schema_doc' | ConceptionOnlyKey, z.ZodTypeAny>;
 
 /**
