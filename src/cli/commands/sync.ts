@@ -183,8 +183,11 @@ function formatReport(report: SyncReport): string {
     const verb = report.dryRun ? 'would regenerate' : 'regenerated';
     lines.push(`${verb} indexes: ${report.regeneratedTrees.join(', ')}`);
   }
-  if (report.indexesDeferred) {
-    lines.push('deferred index regeneration until the tree settles');
+  if (report.deferredIndexTrees.length > 0) {
+    // Name the trees: a deferral that repeats tick after tick means index
+    // changes are sitting uncommitted while the content they describe is on
+    // the remote, and a generic message made that invisible (condash#508).
+    lines.push(`deferred ${report.deferredIndexTrees.join(' + ')} indexes until that tree settles`);
   }
   for (const skip of report.skipped) {
     lines.push(`skipped ${skip.path}  (${skip.reason})`);

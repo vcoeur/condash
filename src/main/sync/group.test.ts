@@ -20,13 +20,21 @@ describe('classifyPath', () => {
       kind: 'item',
       item: '2026-07-10-foo',
     });
-    expect(classifyPath('projects/2026-07/index.md')).toEqual({ kind: 'index' });
+    expect(classifyPath('projects/2026-07/index.md')).toEqual({
+      kind: 'index',
+      tree: 'projects',
+    });
   });
 
-  it('routes every generated index to the index group', () => {
-    expect(classifyPath('projects/index.md')).toEqual({ kind: 'index' });
-    expect(classifyPath('knowledge/index.md')).toEqual({ kind: 'index' });
-    expect(classifyPath('knowledge/topics/security/index.md')).toEqual({ kind: 'index' });
+  it('routes every generated index to the index group, tagged with its tree', () => {
+    // The tree tag is what lets the sweeper defer one tree's indexes while
+    // committing the other's (condash#508).
+    expect(classifyPath('projects/index.md')).toEqual({ kind: 'index', tree: 'projects' });
+    expect(classifyPath('knowledge/index.md')).toEqual({ kind: 'index', tree: 'knowledge' });
+    expect(classifyPath('knowledge/topics/security/index.md')).toEqual({
+      kind: 'index',
+      tree: 'knowledge',
+    });
   });
 
   it('routes knowledge body files to the knowledge group', () => {

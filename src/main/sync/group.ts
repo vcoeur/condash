@@ -26,13 +26,18 @@ export const INDEX_COMMIT_SUBJECT = 'indexes: sync';
  */
 export const META_COMMIT_SUBJECT = 'meta: sync';
 
+/** The two index trees the sweeper regenerates and commits independently. */
+export type SyncTree = 'projects' | 'knowledge';
+
 export type PathKind =
   /** A file inside `projects/<month>/<item>/`; `item` is the dated folder name. */
   | { kind: 'item'; item: string }
   /** A knowledge body file (any depth) that is not a generated index. */
   | { kind: 'knowledge' }
-  /** A generated `index.md` in either tree. */
-  | { kind: 'index' }
+  /** A generated `index.md`, tagged with the tree it indexes. The tree is
+   *  what lets the sweeper defer one tree's indexes without stalling the
+   *  other's. */
+  | { kind: 'index'; tree: SyncTree }
   /** Any tracked path outside both trees — root files, config, `resources/`, `tasks/`. */
   | { kind: 'meta' }
   /** Under `projects/` or `knowledge/` but matching no known shape. */
@@ -68,20 +73,26 @@ export function classifyPath(relPath: string): PathKind {
 
   if (root === 'knowledge') {
     if (segments.length < 2) return { kind: 'unresolved' };
-    return segments[segments.length - 1] === 'index.md' ? { kind: 'index' } : { kind: 'knowledge' };
+    return segments[segments.length - 1] === 'index.md'
+      ? { kind: 'index', tree: 'knowledge' }
+      : { kind: 'knowledge' };
   }
 
   if (root !== 'projects') return { kind: 'meta' };
 
   // projects/index.md
   if (segments.length === 2) {
-    return segments[1] === 'index.md' ? { kind: 'index' } : { kind: 'unresolved' };
+    return segments[1] === 'index.md'
+      ? { kind: 'index', tree: 'projects' }
+      : { kind: 'unresolved' };
   }
   if (!MONTH_DIR.test(segments[1])) return { kind: 'unresolved' };
 
   // projects/<month>/index.md
   if (segments.length === 3) {
-    return segments[2] === 'index.md' ? { kind: 'index' } : { kind: 'unresolved' };
+    return segments[2] === 'index.md'
+      ? { kind: 'index', tree: 'projects' }
+      : { kind: 'unresolved' };
   }
 
   // projects/<month>/<item>/...
