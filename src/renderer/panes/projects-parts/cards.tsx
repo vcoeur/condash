@@ -48,6 +48,11 @@ export interface ParentInfo {
   /** Every item declaring this slug as its `parent`, status-ordered — the rows
    *  of the parent card's subprojects banner. Empty for a leaf item. */
   childrenOf: (slug: string) => ChildRow[];
+  /** The topmost item reachable from `slug` through resolving `parent:`
+   *  links — `slug` itself for a root, a standalone item, or an item whose
+   *  parent dangles. The family colour hashes this, so a whole chain shares
+   *  one hue. */
+  familyRootOf: (slug: string) => string;
 }
 
 /** Whether `status` is one of the canonical KNOWN_STATUSES (drives the
@@ -449,13 +454,15 @@ export function Card(props: {
   // parent slug keeps the dashed subproject frame (it does declare a parent)
   // but no colour: there is no second card for the hue to tie it to.
   const inFamily = (): boolean => children().length > 0 || !!parentProject();
-  // The family key hashes the parent slug only when that parent resolves —
-  // otherwise a mid-tree node whose own parent dangles would take a hue from
-  // the dead slug and stop matching its children, which hash *this* slug.
+  // The family colour hashes the family *root* — the topmost item the
+  // `parent:` chain resolves to — so root, middle nodes and leaves of one
+  // chain all wear the same hue. Hashing one hop up (the raw `parent:`)
+  // would give a middle node its grandparent's colour while its children
+  // take the middle node's, and a dangling parent would colour a node from
+  // a slug no card carries.
   const familyColorClass = (): string =>
     projectColorClass({
-      slug: props.item.slug,
-      parent: parentProject() ? props.item.parent : undefined,
+      slug: parentInfo?.().familyRootOf(props.item.slug) ?? props.item.slug,
     });
   // Open a banner-referenced project through the same path as a card click.
   const openSlug = (slug: string): void => {

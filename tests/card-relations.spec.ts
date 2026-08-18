@@ -142,22 +142,38 @@ test('only family cards carry a family colour class; every known kind shows its 
         `---\ndate: 2026-04-24\nkind: project\nstatus: now\nparent: 2026-04-23-mid-plan\n---\n\n# Mid child\n\n## Goal\n\nMid-tree child fixture.\n`,
         'utf8',
       );
+      // Third level: the grandchild's parent resolves (mid-child), which
+      // itself resolves (mid-plan). The whole chain must hash the ROOT —
+      // one hop up would give the grandchild mid-child's own slot.
+      const grandDir = join(conceptionDir, 'projects', '2026-04', '2026-04-25-mid-grandchild');
+      await mkdir(grandDir, { recursive: true });
+      await writeFile(
+        join(grandDir, 'README.md'),
+        `---\ndate: 2026-04-25\nkind: project\nstatus: now\nparent: 2026-04-24-mid-child\n---\n\n# Mid grandchild\n\n## Goal\n\nThird-level fixture.\n`,
+        'utf8',
+      );
     },
   });
   try {
     const win = booted.window;
+    // Match on the card's own title, not any text on the card — a child's
+    // "Part of" banner carries its parent's title too.
+    const cardTitled = (title: string) =>
+      win.locator('article.row', { has: win.locator('.title-text', { hasText: title }) });
 
     // The parent and its child share one `proj-family-<n>` slot; the
     // standalone sample project has none — the neutral frame is the default.
-    const parentCard = win.locator('article.row.is-parent', { hasText: 'Parent plan' });
-    const childCard = win.locator('article.row.is-subproject', { hasText: 'Child impl' });
-    const orphan = win.locator('article.row.is-subproject', { hasText: 'Orphan impl' });
-    const midPlan = win.locator('article.row.is-parent', { hasText: 'Mid plan' });
-    const midChild = win.locator('article.row.is-subproject', { hasText: 'Mid child' });
-    const standalone = win.locator('article.row', { hasText: 'Sample project' });
-    await expect(parentCard).toBeVisible();
-    await expect(orphan).toBeVisible();
-    await expect(midChild).toBeVisible();
+    const parentCard = cardTitled('Parent plan');
+    const childCard = cardTitled('Child impl');
+    const orphan = cardTitled('Orphan impl');
+    const midPlan = cardTitled('Mid plan');
+    const midChild = cardTitled('Mid child');
+    const midGrandchild = cardTitled('Mid grandchild');
+    const standalone = cardTitled('Sample project');
+    await expect(parentCard).toHaveClass(/is-parent/);
+    await expect(childCard).toHaveClass(/is-subproject/);
+    await expect(orphan).toHaveClass(/is-subproject/);
+    await expect(midGrandchild).toBeVisible();
     const familyClass = async (card: typeof parentCard): Promise<string | undefined> => {
       const classes = (await card.getAttribute('class')) ?? '';
       return classes.split(/\s+/).find((c) => c.startsWith('proj-family-'));
@@ -169,15 +185,64 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(await familyClass(orphan)).toBeUndefined();
     await expect(orphan).not.toHaveClass(/in-family/);
     await expect(childCard).toHaveClass(/in-family/);
-    // Mid-tree: coloured (it has a child), and the SAME slot as that child —
-    // hashing the dangling parent slug instead would give it a hue of its own.
+    // Mid-tree chain: mid-plan (parent dangles, has a child) is the root and
+    // is coloured; mid-child and mid-grandchild wear the SAME slot. djb2 mod 16
+    // of the fixture slugs: never-existed → 5, mid-plan → 15, mid-child → 11,
+    // mid-grandchild → 8 — so hashing the dangling parent (5) or one hop up
+    // (grandchild → 11) each break a different assertion below. Keep the slugs
+    // if you edit this test, or recompute the slots.
     const midSlot = await familyClass(midPlan);
-    expect(midSlot).toMatch(/^proj-family-\d+$/);
+    expect(midSlot).toBe('proj-family-15');
     expect(await familyClass(midChild)).toBe(midSlot);
+    expect(await familyClass(midGrandchild)).toBe(midSlot);
 
     // A plain project card shows the kind glyph too (it used to be
     // incident/document only).
     await expect(standalone.locator('.title .kind-glyph[data-kind="project"]')).toBeVisible();
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a mounted leaf that becomes a parent picks up its persisted fold state', async () => {
+  // A per-project watcher patch replaces only the changed item, and a card in
+  // an untouched section is not remounted — so the fold's stored state has to
+  // be read reactively off `children()`, not once at mount. Seed the map for
+  // the sample project (a leaf at boot, in `now`), then make a `later` item its
+  // child by editing that item's README, and expect the sample card's fold to
+  // appear already open.
+  const booted = await bootApp({
+    prepare: async (conceptionDir) => {
+      const dir = join(conceptionDir, 'projects', '2026-04', '2026-04-27-late-item');
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        join(dir, 'README.md'),
+        `---\ndate: 2026-04-27\nkind: project\nstatus: later\n---\n\n# Late item\n\n## Goal\n\nBecomes a child mid-session.\n`,
+        'utf8',
+      );
+    },
+  });
+  try {
+    const win = booted.window;
+    const sample = win.locator('article.row', { hasText: 'Sample project' });
+    await expect(sample).toBeVisible();
+    await expect(sample.locator('button.children-toggle')).toHaveCount(0);
+    await win.evaluate(() => {
+      window.localStorage.setItem(
+        'condash:projects:section-collapse',
+        JSON.stringify({ 'children.2026-04-26-sample': true }),
+      );
+    });
+
+    await writeFile(
+      join(booted.conceptionDir, 'projects', '2026-04', '2026-04-27-late-item', 'README.md'),
+      `---\ndate: 2026-04-27\nkind: project\nstatus: later\nparent: 2026-04-26-sample\n---\n\n# Late item\n\n## Goal\n\nBecomes a child mid-session.\n`,
+      'utf8',
+    );
+
+    const toggle = sample.locator('button.children-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 });
+    await expect(sample.locator('button.child-row')).toHaveCount(1);
   } finally {
     await booted.cleanup();
   }

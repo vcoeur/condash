@@ -83,9 +83,26 @@ export function ProjectsView(props: {
       }
     }
     for (const rows of childrenByParent.values()) rows.sort(compareByStatusThenSlug);
+    // Topmost item reachable by following `parent:` links that resolve. The
+    // family colour hashes this root, so every card in a chain — root, middle,
+    // leaf — wears one hue instead of each hop hashing the hop above it. A
+    // dangling link ends the walk (the last resolving item is the root); the
+    // visited set ends a cycle (`a → b → a` is not rejected by the parser).
+    const familyRootOf = (slug: string): string => {
+      const visited = new Set<string>();
+      let current = slug;
+      while (!visited.has(current)) {
+        visited.add(current);
+        const parent = projectBySlug.get(current)?.parent;
+        if (!parent || !projectBySlug.has(parent)) return current;
+        current = parent;
+      }
+      return current;
+    };
     return {
       projectOf: (slug) => projectBySlug.get(slug),
       childrenOf: (slug) => childrenByParent.get(slug) ?? [],
+      familyRootOf,
     };
   });
   return (
