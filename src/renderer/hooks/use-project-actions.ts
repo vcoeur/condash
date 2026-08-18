@@ -2,6 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
+import { starredSlugs, toggleStar } from '../star-store';
 import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../modal-types';
@@ -48,6 +49,9 @@ export interface UseProjectActions {
   /** Per-card "+ note" — interleaves a prompt with the IPC create + an
    *  immediate open of the new note in the modal editor. */
   handleCreateProjectNote: (project: Project) => Promise<void>;
+  /** Flip a project's star (Projects-pane card). Optimistic in the star store;
+   *  a failed write rolls back and toasts. */
+  handleToggleStar: (project: Project) => Promise<void>;
 }
 
 export function useProjectActions(deps: UseProjectActionsDeps): UseProjectActions {
@@ -58,8 +62,12 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
   // Memoise the per-status grouping so a tap that doesn't actually reshuffle
   // statuses (e.g. a step toggle) doesn't rebuild the four-bucket map for
   // every dependent reader. `groupByStatus` itself is pure — referential
-  // equality on `projects()` is enough.
-  const projectsTabGroups = createMemo(() => groupByStatus((deps.projects() ?? []) as Project[]));
+  // equality on `projects()` is enough. Reading `starredSlugs()` here is what
+  // makes a star toggle re-sort the affected section: the store's signal is a
+  // second dependency of this memo.
+  const projectsTabGroups = createMemo(() =>
+    groupByStatus((deps.projects() ?? []) as Project[], starredSlugs()),
+  );
 
   const activeProjectBranches = createMemo<ReadonlySet<string>>(() => {
     const out = new Set<string>();
@@ -223,6 +231,13 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     }
   };
 
+  const handleToggleStar = async (project: Project): Promise<void> => {
+    // The store owns the optimistic flip + rollback; this wrapper exists so the
+    // failure surfaces through the same toast channel as the sibling card
+    // mutations rather than dying in the console.
+    await toggleStar(project.slug, (message) => deps.flashToast(message, 'error'));
+  };
+
   const handleWikilink = (slug: string): void => {
     const matches = slugIndex().get(slug);
     if (!matches || matches.length === 0) {
@@ -251,5 +266,6 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     handleAddStep,
     handleWikilink,
     handleCreateProjectNote,
+    handleToggleStar,
   };
 }

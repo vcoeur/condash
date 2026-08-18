@@ -274,6 +274,19 @@ export interface CondashApi {
    * caller can refresh the list and auto-open the popup.
    */
   createProject(input: ProjectCreateInput): Promise<ProjectCreateResult>;
+  /**
+   * Slugs of the starred projects, from the conception-scoped
+   * `starredProjects` config key. Drives the Projects-pane card star and its
+   * starred-first ordering. Empty when nothing is starred or no conception is
+   * set.
+   */
+  getStarredProjects(): Promise<string[]>;
+  /**
+   * Star or unstar one project by slug, persisting into
+   * `<conception>/.condash/settings.json`. Returns the new full slug list so
+   * the caller can reconcile without a second read.
+   */
+  setProjectStar(slug: string, starred: boolean): Promise<string[]>;
   readNote(path: string): Promise<string>;
   /**
    * Atomically write `newContent` if disk still matches `expectedContent`.

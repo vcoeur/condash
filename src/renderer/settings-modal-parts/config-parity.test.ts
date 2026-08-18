@@ -28,6 +28,7 @@ const SCHEMA_KEYS_NOT_IN_RAWCONFIG = new Map<string, string>([
   ['selectedBranches', 'UI-state (Code-pane branch filter selection)'],
   ['branchFilterStickyAll', 'UI-state (Code-pane branch filter mode)'],
   ['skillsActiveScope', 'UI-state (Skills pane active scope)'],
+  ['starredProjects', 'UI-state (Projects-pane card stars), written by the card star'],
 ]);
 
 // RawConfig keys deliberately NOT owned by any editable Settings section.

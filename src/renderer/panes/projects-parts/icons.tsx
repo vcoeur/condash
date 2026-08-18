@@ -264,3 +264,24 @@ export function WarnIcon() {
     </svg>
   );
 }
+
+/* StarIcon — the card's star flag. One 16×16 path in both states; `filled`
+ * swaps the fill between `currentColor` and none so the CSS colour token
+ * decides the hue and the outline state stays visible on an unstarred card.
+ * Rendered from a reactive prop (not a branch evaluated at mount) so a toggle
+ * repaints in place. */
+export function StarIcon(props: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill={props.filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.9l1.85 3.9 4.15.56-3.05 2.86.77 4.18L8 11.4l-3.72 2l.77-4.18L2 6.36l4.15-.56z" />
+    </svg>
+  );
+}

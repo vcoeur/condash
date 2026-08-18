@@ -17,6 +17,7 @@ import {
   type ParentInfo,
 } from './projects-parts/cards';
 import { compareByStatusThenSlug } from '@shared/projects';
+import { starredSlugs } from '../star-store';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
 
@@ -40,6 +41,10 @@ export function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  /** Flip the card's star. The starred state itself is read straight from the
+   * star store by each Card; only the write is threaded, like every other card
+   * action. */
+  onToggleStar: (project: Project) => void;
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
   /** Open the "+ New project" modal. Rendered as a top-of-pane button when
@@ -149,7 +154,7 @@ export function ProjectsView(props: {
                     )
                   : undefined;
               if (group.status === 'done' && group.items.length > 0) {
-                const grouping = groupDone(group.items, todayIso());
+                const grouping = groupDone(group.items, todayIso(), starredSlugs());
                 return (
                   <GroupBlock
                     group={group}
@@ -157,6 +162,7 @@ export function ProjectsView(props: {
                     onOpen={props.onOpen}
                     onDropProject={props.onDropProject}
                     onWorkOn={props.onWorkOn}
+                    onToggleStar={props.onToggleStar}
                     projectActions={props.projectActions}
                     onProjectAction={props.onProjectAction}
                     headerAction={headerAction}
@@ -171,6 +177,7 @@ export function ProjectsView(props: {
                             hint="Sliding window — projects move into their close month after 7 days."
                             onOpen={props.onOpen}
                             onWorkOn={props.onWorkOn}
+                            onToggleStar={props.onToggleStar}
                             onChangeStatus={props.onDropProject}
                             projectActions={props.projectActions}
                             onProjectAction={props.onProjectAction}
@@ -185,6 +192,7 @@ export function ProjectsView(props: {
                               defaultExpanded={sub.month === grouping.defaultExpandMonth}
                               onOpen={props.onOpen}
                               onWorkOn={props.onWorkOn}
+                              onToggleStar={props.onToggleStar}
                               onChangeStatus={props.onDropProject}
                               projectActions={props.projectActions}
                               onProjectAction={props.onProjectAction}
@@ -203,6 +211,7 @@ export function ProjectsView(props: {
                   onOpen={props.onOpen}
                   onDropProject={props.onDropProject}
                   onWorkOn={props.onWorkOn}
+                  onToggleStar={props.onToggleStar}
                   projectActions={props.projectActions}
                   onProjectAction={props.onProjectAction}
                   headerAction={headerAction}

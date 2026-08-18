@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Project, Step, StepMarker, TimelineEntry } from '../../../shared/types';
-import { groupByStatus, lastDate, nextOpenStep, projectsTabGroups } from './data';
+import { groupByStatus, groupDone, lastDate, nextOpenStep, projectsTabGroups } from './data';
 
 function step(marker: StepMarker, text: string, lineIndex = 0): Step {
   return { lineIndex, marker, text, section: 'Steps' };
@@ -142,5 +142,86 @@ describe('projectsTabGroups — stable section order + identity (R2)', () => {
     expect(byStatus(second, 'now')).not.toBe(byStatus(first, 'now')); // lost the item
     expect(byStatus(second, 'review')).not.toBe(byStatus(first, 'review')); // gained it
     expect(byStatus(second, 'later')).toBe(byStatus(first, 'later')); // untouched
+  });
+});
+
+describe('star flag ordering', () => {
+  /** Done item with an explicit close date, so `groupDone` can bucket it. */
+  function doneAt(slug: string, closedAt: string): Project {
+    return { ...projectAt(slug, 'done'), closedAt } as Project;
+  }
+
+  it('floats starred items to the top of their status section', () => {
+    const items = [
+      projectAt('2026-05-01-old', 'now'),
+      projectAt('2026-05-03-newest', 'now'),
+      projectAt('2026-05-02-mid', 'now'),
+    ];
+    const starred = new Set(['2026-05-01-old']);
+    expect(
+      groupByStatus(items, starred)
+        .get('now')!
+        .map((p) => p.slug),
+    ).toEqual(['2026-05-01-old', '2026-05-03-newest', '2026-05-02-mid']);
+  });
+
+  it('keeps slug-descending order among the starred and among the rest', () => {
+    const items = [
+      projectAt('2026-05-01-a', 'now'),
+      projectAt('2026-05-02-b', 'now'),
+      projectAt('2026-05-03-c', 'now'),
+      projectAt('2026-05-04-d', 'now'),
+    ];
+    const starred = new Set(['2026-05-01-a', '2026-05-03-c']);
+    expect(
+      groupByStatus(items, starred)
+        .get('now')!
+        .map((p) => p.slug),
+    ).toEqual(['2026-05-03-c', '2026-05-01-a', '2026-05-04-d', '2026-05-02-b']);
+  });
+
+  it('leaves ordering untouched when nothing is starred', () => {
+    const items = [projectAt('2026-05-01-a', 'now'), projectAt('2026-05-02-b', 'now')];
+    const withEmptySet = groupByStatus(items, new Set<string>())
+      .get('now')!
+      .map((p) => p.slug);
+    expect(
+      groupByStatus(items)
+        .get('now')!
+        .map((p) => p.slug),
+    ).toEqual(withEmptySet);
+    expect(withEmptySet).toEqual(['2026-05-02-b', '2026-05-01-a']);
+  });
+
+  it('does not leak a star across status sections', () => {
+    const items = [projectAt('2026-05-01-a', 'now'), projectAt('2026-05-02-b', 'later')];
+    const buckets = groupByStatus(items, new Set(['2026-05-01-a']));
+    expect(buckets.get('now')!.map((p) => p.slug)).toEqual(['2026-05-01-a']);
+    expect(buckets.get('later')!.map((p) => p.slug)).toEqual(['2026-05-02-b']);
+  });
+
+  it('applies inside the Done recent window and month subgroups too', () => {
+    const done = [
+      doneAt('2026-05-01-recent-new', '2026-05-20'),
+      doneAt('2026-05-02-recent-old', '2026-05-18'),
+      doneAt('2026-04-01-month-new', '2026-04-20'),
+      doneAt('2026-04-02-month-old', '2026-04-10'),
+    ];
+    const grouping = groupDone(
+      done,
+      '2026-05-21',
+      new Set(['2026-05-02-recent-old', '2026-04-02-month-old']),
+    );
+    // Recent window: the starred (older) item leads despite the date sort.
+    expect(grouping.recent.map((p) => p.slug)).toEqual([
+      '2026-05-02-recent-old',
+      '2026-05-01-recent-new',
+    ]);
+    // Same rule one level down, inside the close-month subgroup.
+    expect(grouping.byMonth[0].month).toBe('2026-04');
+    expect(grouping.byMonth[0].projects.map((p) => p.slug)).toEqual([
+      '2026-04-02-month-old',
+      '2026-04-01-month-new',
+    ]);
   });
 });

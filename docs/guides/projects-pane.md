@@ -27,7 +27,7 @@ The status values and their meanings are defined in [Status model](../reference/
 
 ## What a card carries
 
-Title first (with the **kind glyph** ahead of it for an incident or a document), then the item's **short slug** — its directory name with the `YYYY-MM-DD-` prefix dropped, which is exactly what `condash projects <verb> <slug>` and the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) take; hover it for the full dated slug. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, the step progress, and the date of the item's last timeline entry. A card in a family also grows a **Part of ↑** banner or **Subprojects ↓** rows — see [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
+A **star** first (see [Star the items that matter](#star)), then the title (with the **kind glyph** ahead of it for an incident or a document), then the item's **short slug** — its directory name with the `YYYY-MM-DD-` prefix dropped, which is exactly what `condash projects <verb> <slug>` and the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) take; hover it for the full dated slug. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, the step progress, and the date of the item's last timeline entry. A card in a family also grows a **Part of ↑** banner or **Subprojects ↓** rows — see [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
 
 ## Change an item's status
 
@@ -38,6 +38,17 @@ Three ways, all equivalent:
 3. Click the **status pill** in the item modal's header and pick a value.
 
 All three rewrite the README's `status:` line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for the legacy bold-prose form. That one-line edit is the whole mutation: the card lands in its new section because the parser re-reads the file, not because condash keeps a record elsewhere. Every write condash is capable of is enumerated in [Mutation model](../reference/mutations.md).
+
+## Star the items that matter { #star }
+
+Each card carries a **star** at the head of its title row. Click it to pin that item to the **top of its status section**; click again to unpin. The star is the section's first sort key, so a starred item leads regardless of its date, and the usual order (newest first, or most-recently-closed first in `done`) decides the rest. It applies in every section, including the `done` band and each of its month subgroups.
+
+Starring is **local and uncommitted**, and that is the point of it:
+
+- The state lives in the conception-scoped `starredProjects` key in `.condash/settings.json` ([config reference](../reference/config.md#starredprojects)) — **not** in the item README. Nothing about your tree changes when you star something, so [auto-commit](auto-commit.md) has nothing to commit and your project history stays free of attention-management noise.
+- The flip side: the starred set is per-machine. It does not travel with the tree, and a teammate opening the same conception sees their own stars.
+
+Read the list from a shell with `condash config get starredProjects`. There is no CLI verb to set it — the card star is the way in.
 
 ## Create an item
 

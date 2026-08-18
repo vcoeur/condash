@@ -14,7 +14,7 @@ condash reads two JSON files with **disjoint** schemas — every setting key liv
 | File                     | Path                                                                                                                                                                        | Lifecycle                                 | Owns exclusively                                      |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------- |
 | `settings.json`          | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine                     | Everything personal/per-machine — appearance, `terminal`, `agents`, `open_with`, `pdf_viewer`, `dashboard`, `layout`, … plus `lastConceptionPath`, `recentConceptionPaths` (cap 5) |
-| `.condash/settings.json` | `<conception_path>/.condash/settings.json` (legacy fallbacks: `condash.json`, `configuration.json`)                                                                         | Per-conception, **per-host** (gitignored) | `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig` |
+| `.condash/settings.json` | `<conception_path>/.condash/settings.json` (legacy fallbacks: `condash.json`, `configuration.json`)                                                                         | Per-conception, **per-host** (gitignored) | `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`, `starredProjects` |
 
 The two files have **disjoint** schemas: each top-level key is valid in exactly one of them — see the [full table](#all-config-keys) below for which. There is no override, no inheritance, and no merge: a key only ever has one value, read from its owning file. Putting a key in the wrong file is a validation error on save; for files written under the old shared-schema model, the boot-time [scope-partition migrator](#scope-partition-migrator) moves each mis-homed key into its owning file automatically on first open. The only field accepted in *both* files is the `$schema_doc` documentation pointer (which is not a setting).
 
@@ -46,6 +46,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `long_lived_branches`   | conception  | array        | `["main", "master"]` | Branch glob patterns (`*` / `?`) protected from `condash worktrees remove`. Unset → `main` + `master`. [↓](#workspace-keys)                                                                                                |
 | `agents`                | global      | array        | `[]`     | Flat `{id,label,command}` terminal-launcher list shown in the tab-strip spawn dropdown. [↓](#agents)                                                                                                                       |
 | `taskConfig`            | conception  | object       | —        | Per-task `{schedule?, timeout?, runMode?, excludeFromLogs?, gateOnUpdatedTabs?}` keyed by slug — opt-in headless scheduling + run timeout + run mode (`--prompt`/`--run`) + run-log routing + activity gate. [↓](#tasks) |
+| `starredProjects`       | conception  | array        | `[]`     | Slugs starred on the Projects pane — a starred card shows a filled star and sorts to the top of its status section. Written by the card star, not by hand. [↓](#starredprojects)                                          |
 | `open_with`             | global      | object       | —        | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with)                                                                                                                           |
 | `pdf_viewer`            | global      | array        | —        | Ordered fallback chain of external PDF viewers.                                                                                                                                                                          |
 | `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, `memory` containment, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
@@ -63,11 +64,11 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `recentConceptionPaths` | global      | array        | `[]`     | Most-recently-opened paths, newest first (cap 5).                                                                                                                                                                        |
 | `skillsActiveScope`     | global      | enum         | `conception` | Active scope in the Skills pane — `conception` or `user`. UI state condash persists on every scope switch; not meant for hand-editing.                                                                                |
 
-Task _definitions_ are **not** a config key — they live on disk at `<conception>/tasks/<slug>/` (see [Tasks](#tasks)). Their per-task **scheduling / log-routing** lives in the `taskConfig` key above, keyed by slug. The UI-state rows above (`skillsActiveScope`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`) are managed by condash itself — they are listed for completeness, not because you should hand-edit them. One further key is valid in **both** files: `$schema_doc`, a documentation pointer that is not a setting. Strict-mode validation rejects any other unknown top-level key on save.
+Task _definitions_ are **not** a config key — they live on disk at `<conception>/tasks/<slug>/` (see [Tasks](#tasks)). Their per-task **scheduling / log-routing** lives in the `taskConfig` key above, keyed by slug. The UI-state rows above (`skillsActiveScope`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`, `starredProjects`) are managed by condash itself — they are listed for completeness, not because you should hand-edit them. One further key is valid in **both** files: `$schema_doc`, a documentation pointer that is not a setting. Strict-mode validation rejects any other unknown top-level key on save.
 
 ## Config keys — shapes and ownership
 
-The subsections below document the **shape** of each config key. Which file a key lives in is the **Scope** column in [All config keys](#all-config-keys): `conception` keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`) live in `.condash/settings.json`; everything else is `global` and lives in `settings.json`. A few blocks documented here for convenience — `terminal` (and its `logging` / `projectActions` / `newProjectActions` / `xterm`), `dashboard`, `open_with`, `agents` — are **global** (personal/per-machine), not per-conception. No other key is valid in both files.
+The subsections below document the **shape** of each config key. Which file a key lives in is the **Scope** column in [All config keys](#all-config-keys): `conception` keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`, `starredProjects`) live in `.condash/settings.json`; everything else is `global` and lives in `settings.json`. A few blocks documented here for convenience — `terminal` (and its `logging` / `projectActions` / `newProjectActions` / `xterm`), `dashboard`, `open_with`, `agents` — are **global** (personal/per-machine), not per-conception. No other key is valid in both files.
 
 ### `.condash/settings.json` (per-conception, per-host)
 
@@ -98,7 +99,7 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
 }
 ```
 
-Only the six tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`) are valid here; personal keys such as `open_with`, `pdf_viewer`, and `terminal` belong to the global `settings.json` and are rejected in a conception file (and lifted out by the [scope-partition migrator](#scope-partition-migrator) if found). Use absolute paths for `workspace_path` / `worktrees_path` — there is no `~` expansion for path keys. (The one place `~` works is a leading `~/` in an `open_with` _command_ token — see [Per-OS recipes](#per-os-recipes).) JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
+Only the seven conception keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`, `starredProjects`) are valid here; personal keys such as `open_with`, `pdf_viewer`, and `terminal` belong to the global `settings.json` and are rejected in a conception file (and lifted out by the [scope-partition migrator](#scope-partition-migrator) if found). Use absolute paths for `workspace_path` / `worktrees_path` — there is no `~` expansion for path keys. (The one place `~` works is a leading `~/` in an `open_with` _command_ token — see [Per-OS recipes](#per-os-recipes).) JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
 
 `terminal` is **not** a conception key — the whole block (including its `logging` sub-block) lives in the per-machine `settings.json` and is edited once in **Settings → Terminal**, which live-rewrites `settings.json`. A boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json`; the scope-partition migrator now also lifts a `terminal` block out of any `.condash/settings.json` that still carries one (e.g. a tree configured under the old shared-schema model). Both passes are idempotent.
 
@@ -232,6 +233,18 @@ Defunct app handles that closed-project READMEs still reference but whose repos 
   ]
 }
 ```
+
+### `starredProjects`
+
+Slugs of the projects starred on the Projects pane. A starred card shows a filled star and sorts to the top of its status section (the star is the first sort key; the section's usual date order is the tie-break). Written by the star button on each card — the list is deduped and sorted on every write, and the key is removed entirely once nothing is starred.
+
+```json
+{
+  "starredProjects": ["2026-08-18-condash-project-star", "2026-07-15-checkout-revamp"]
+}
+```
+
+Deliberately **not** a README field: `.condash/` is gitignored, so starring stays local and never edits the item README (which the [auto-commit](#auto-commit) sweeper would then commit as project history). The consequence is that the starred set does not follow the tree to another machine. A slug whose item has been deleted or renamed is inert — nothing resolves it, and it costs one dead string until the next unstar.
 
 ### `open_with`
 
@@ -579,7 +592,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `branchFilterStickyAll` | True ⇒ Code-pane filter is in **All (sticky)** mode: every branch is shown and new ones auto-pin. False ⇒ honour `selectedBranches` exactly (empty = main only). Defaults to true on first read when no explicit selection was ever made, false otherwise.                                                     |
 | `skillsActiveScope`     | Active scope in the Skills pane — `conception` or `user`. Defaults to `conception`. Persisted on every scope switch.                                                                                                                                                                                           |
 
-Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `dashboard`, `theme`, `uiFonts`, `layout`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`, `skillsActiveScope` — are valid **only** in `settings.json`; a conception file that carries one is rejected (and the [scope-partition migrator](#scope-partition-migrator) lifts it here on open). Conversely, the tree-shape keys `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, and `taskConfig` are conception-only and are **not** accepted in `settings.json`. `lastConceptionPath` / `recentConceptionPaths` are global-only too — a conception's file cannot set them, since those describe the tree's own location and the machine-local recents list.
+Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `dashboard`, `theme`, `uiFonts`, `layout`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`, `welcome`, `skillsActiveScope` — are valid **only** in `settings.json`; a conception file that carries one is rejected (and the [scope-partition migrator](#scope-partition-migrator) lifts it here on open). Conversely, the conception keys `workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`, and `starredProjects` are conception-only and are **not** accepted in `settings.json`. `lastConceptionPath` / `recentConceptionPaths` are global-only too — a conception's file cannot set them, since those describe the tree's own location and the machine-local recents list.
 
 ### LayoutState
 
@@ -701,7 +714,7 @@ Each section carries a **scope chip** naming the file it writes (`settings.json`
 
 The rail also carries **Open settings.json** and **Open .condash/settings.json** buttons (open the file in the OS default editor).
 
-Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag, the `welcome.initShown` one-shot — still need a hand-edit (or `condash config set`). Two more live outside it by design: `taskConfig` is written from the Tasks pane, and `retired_apps` from [`condash applications`](cli.md#applications). See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
+Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag, the `welcome.initShown` one-shot — still need a hand-edit (or `condash config set`). Three more live outside it by design: `taskConfig` is written from the Tasks pane, `starredProjects` from the Projects-pane card stars, and `retired_apps` from [`condash applications`](cli.md#applications). See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
 
 Changes that **do** need a restart:
 
