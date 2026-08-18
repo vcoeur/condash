@@ -194,6 +194,71 @@ describe('syncRun', () => {
     await expect(fs.stat(join(root, 'projects', 'index.md'))).rejects.toThrow();
   });
 
+  it('defers only the tree that is mid-write, and commits the other tree', async () => {
+    // Regression (condash#508): gating both trees on *any* unsettled path
+    // starved the index bucket. A mid-write project item must not hold back a
+    // knowledge restructure whose body files are already settled, or the
+    // remote keeps moved files with no index.md pointing at them.
+    await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' }); // fresh
+    const body = join(root, 'knowledge', 'topics', 'settled.md');
+    await fs.mkdir(join(root, 'knowledge', 'topics'), { recursive: true });
+    await fs.writeFile(body, '# Settled\n\nBody.\n');
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await fs.writeFile(join(root, 'knowledge', '.index-dirty'), '');
+    await settle(body);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.indexesDeferred).toBe(true);
+    expect(report.deferredIndexTrees).toEqual(['projects']);
+    expect(report.regeneratedTrees).toEqual(['knowledge']);
+    expect(report.commits.map((c) => c.subject)).toEqual(['knowledge: sync', 'indexes: sync']);
+
+    // The knowledge indexes landed; the projects ones did not, and their
+    // marker survives for the next tick.
+    const indexCommit = report.commits.find((c) => c.subject === 'indexes: sync');
+    expect(indexCommit?.paths).toEqual(['knowledge/index.md', 'knowledge/topics/index.md']);
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).resolves.toBeTruthy();
+    await expect(fs.stat(join(root, 'knowledge', '.index-dirty'))).rejects.toThrow();
+    const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
+    expect(tracked).not.toContain('projects/index.md');
+  });
+
+  it('holds back an already-written index.md of a deferred tree', async () => {
+    // The marker is not the only way index.md files go pending: an agent that
+    // ran `condash knowledge index` by hand rewrote them and cleared the
+    // marker. Those still belong to the deferred tree.
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await fs.mkdir(join(root, 'knowledge', 'topics'), { recursive: true });
+    const body = join(root, 'knowledge', 'topics', 'fresh.md'); // mid-write knowledge path
+    await fs.writeFile(body, '# Fresh\n');
+    const knowledgeIndex = join(root, 'knowledge', 'index.md');
+    await fs.writeFile(knowledgeIndex, '# knowledge\n\n- [`topics/`](topics/index.md)\n');
+    await settle(readme, knowledgeIndex);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.deferredIndexTrees).toEqual(['knowledge']);
+    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+    // Still uncommitted, waiting for the tick that finds knowledge/ settled.
+    expect(await git(root, 'status', '--porcelain', '-uall')).toContain('knowledge/index.md');
+    const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
+    expect(tracked).not.toContain('knowledge/index.md');
+  });
+
+  it('does not report a deferral when the mid-write tree has no index work', async () => {
+    // An unsettled item with no marker and no pending index.md is holding
+    // nothing up — reporting it as deferred would make a clean sweep look
+    // like a stalled one.
+    await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
+
+    expect(report.indexesDeferred).toBe(false);
+    expect(report.deferredIndexTrees).toEqual([]);
+    expect(report.skipped).toHaveLength(1);
+  });
+
   it('regenerates and commits indexes once the tree settles', async () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     await fs.writeFile(join(root, 'projects', '.index-dirty'), '');

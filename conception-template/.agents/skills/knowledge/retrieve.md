@@ -15,7 +15,7 @@ condash knowledge retrieve "<query>" --mode both --json
 
 The CLI walks `knowledge/index.md` and the matching subdir indexes, scoring each entry's keyword tags + description against the query, and falls through to a body-file grep when triage returns zero matches. Returns:
 
-- `data.triageMatches[]` — `{path, title, description, keywords, matchedKeywords, verifiedAt, verifiedStale}` per matching index entry. `verifiedStale` is `true` when the body file's `**Verified:**` stamp is older than 90 days — surface that to the user when quoting.
+- `data.triageMatches[]` — `{path, relPath, description, keywords, matchedKeywords, source}` per matching index entry. Freshness is not on these rows: read the body file's own `**Verified:**` stamps (or run `/knowledge verify`) before quoting a fact as current.
 - `data.grepMatches[]` — `{path, line, snippet, section}` per body-file hit (only populated when triage came back empty).
 
 Then **open the body file** of the strongest match and **quote** the relevant passage back to the user with a `file:line` reference.
