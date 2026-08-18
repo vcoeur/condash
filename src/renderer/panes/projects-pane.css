@@ -645,10 +645,12 @@ body[data-dragging='project'] .row {
  * faint mono, so a card names the thing you type into a command. Kept to one
  * line — a long slug ellipsises instead of wrapping and pushing the meta row
  * down, and the full dated slug stays in the element's tooltip. */
-/* Indent by the gutter the star claims in the title row, so an item's
- * identifier shares a left edge with its title instead of hanging out to its
- * left. The meta row below keeps the card's full width — it reads as its own
- * footer band, not as part of the title block. */
+/* Indent by the gutter the star claims in the title row — plus the kind
+ * glyph's column when the title carries one — so an item's identifier shares a
+ * left edge with its title *text* instead of hanging out to its left. The
+ * title row then reads as star | glyph | text block (title over slug). The
+ * meta row below keeps the card's full width — it reads as its own footer
+ * band, not as part of the title block. */
 .row .slug {
   margin-left: var(--star-gutter);
   font-family: var(--font-mono);
@@ -661,6 +663,13 @@ body[data-dragging='project'] .row {
   /* The .row-head gap reads as a gulf between a title and its own identifier —
    * pull the line up so the two group together, away from the meta row. */
   margin-top: -3px;
+}
+/* Glyph column: the 16 px glyph plus the title's 9 px gap. Only when the row
+ * above actually rendered a glyph — an `unknown` kind has none, and its slug
+ * still lines up with its title text at the star gutter. Keep the sum in step
+ * with `.kind-glyph` (styles.css) and `.row .title` gap. */
+.row .title-row:has(.kind-glyph) + .slug {
+  margin-left: calc(var(--star-gutter) + 25px);
 }
 
 .row .meta {

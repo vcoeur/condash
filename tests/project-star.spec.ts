@@ -91,11 +91,13 @@ test('clicking the star does not open the card preview', async () => {
 });
 
 test('the star gutter keeps the slug line aligned with its title', async () => {
-  // The star claims a left gutter at the head of the title row, which pushes the
-  // title text right. The slug line below is a sibling row, so it has to indent
-  // by the same `--star-gutter` or it hangs out to the left of its own title —
-  // exactly what the (conflict-free) merge with the slug-line feature produced.
-  // Nothing else asserts that alignment, and no marker in the diff would show it.
+  // The star claims a left gutter at the head of the title row, and the kind
+  // glyph a second column after it; both push the title text right. The slug
+  // line below is a sibling row, so it has to indent by the same amount or it
+  // hangs out to the left of its own title — exactly what the (conflict-free)
+  // merge with the slug-line feature produced, and again when the glyph landed
+  // on every card. Nothing else asserts that alignment, and no marker in the
+  // diff would show it.
   const booted = await bootApp({ prepare: prepareSibling });
   try {
     const card = booted.window.locator('article.row', { hasText: 'Alpha project' });
