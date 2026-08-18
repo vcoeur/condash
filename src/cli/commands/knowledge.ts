@@ -405,9 +405,15 @@ async function stampCommand(
     if (VERIFIED_PREFIX_RE.test(lines[i])) stampLines.push(i + 1);
   }
 
-  const requestedLine = lineFlag === undefined ? null : parseIntFlag(lineFlag, NaN);
-  if (requestedLine !== null && (!Number.isInteger(requestedLine) || requestedLine < 1)) {
-    validation(`--line must be a positive integer; got '${String(lineFlag)}'`);
+  // Validate the raw flag rather than parsing it: `parseInt('2.5')` is 2, and
+  // silently stamping line 2 because the caller typed 2.5 is exactly the kind
+  // of guess this flag exists to prevent.
+  let requestedLine: number | null = null;
+  if (lineFlag !== undefined) {
+    if (typeof lineFlag !== 'string' || !/^[1-9]\d*$/.test(lineFlag)) {
+      validation(`--line must be a positive integer; got '${String(lineFlag)}'`);
+    }
+    requestedLine = Number(lineFlag);
   }
   if (requestedLine !== null && !stampLines.includes(requestedLine)) {
     throw new CliError(

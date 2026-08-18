@@ -361,6 +361,35 @@ describe('knowledge stamp', () => {
     expect(updated).not.toContain('2026-01-01');
   });
 
+  it('rejects a non-integer --line instead of truncating it', async () => {
+    // parseInt('3.9') is 3 — stamping line 3 because the caller typed 3.9 is
+    // the guess this flag exists to prevent.
+    const path = await writeKnowledgeFile(
+      conceptionPath,
+      'topics/foo.md',
+      '**Verified:** 2026-08-14 head\n\n# Foo\n\n**Verified:** 2026-01-01 section\n',
+    );
+    const before = await fs.readFile(path, 'utf8');
+    for (const line of ['3.9', '0', '-3', 'abc']) {
+      const { threw } = await captureStdout(() =>
+        runKnowledge(
+          'stamp',
+          {
+            noun: 'knowledge',
+            verb: 'stamp',
+            positional: [path],
+            flags: { where: 'x', line },
+          },
+          jsonCtx(),
+          conceptionPath,
+        ),
+      );
+      expect(threw, `--line ${line}`).toBeInstanceOf(CliError);
+      expect((threw as CliError).exitCode, `--line ${line}`).toBe(3);
+    }
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
   it('NOT_FOUND when --line names a line that carries no stamp', async () => {
     const path = await writeKnowledgeFile(
       conceptionPath,
