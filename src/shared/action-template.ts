@@ -1,3 +1,5 @@
+import { shortSlug } from './projects';
+
 /** Context bag for project-scoped template substitution. */
 export interface ProjectActionContext {
   [key: string]: string;
@@ -40,14 +42,13 @@ export function projectContext(
   project: ProjectLike,
   conceptionPath?: string,
 ): ProjectActionContext {
-  const shortSlug = project.slug.replace(/^\d{4}-\d{2}-\d{2}-/, '');
   let relPath = project.path;
   if (conceptionPath && project.path.startsWith(conceptionPath)) {
     relPath = project.path.slice(conceptionPath.length + 1);
   }
   return {
     slug: project.slug,
-    shortSlug,
+    shortSlug: shortSlug(project.slug),
     title: project.title,
     branch: project.branch ?? '',
     base: project.base ?? '',
