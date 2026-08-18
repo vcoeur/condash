@@ -10,9 +10,10 @@ const goalScreenshotDir = resolve(__dirname, 'screenshots-out', 'project-goal');
  *
  * A card renders two relation affordances when its project family resolves:
  * the "Part of" banner (`button.parent-banner`, on a card whose README has a
- * `parent:` header) and one subproject row (`button.child-row`) per spin-off
- * child on the parent's card. Both are real buttons that open the *referenced*
- * project's preview — not the card they sit on. The same PR made the whole
+ * `parent:` header) and, on the parent's card, a subprojects fold
+ * (`button.children-toggle`, collapsed by default) that opens to one row
+ * (`button.child-row`) per spin-off child. Banner and rows are real buttons
+ * that open the *referenced* project's preview — not the card they sit on. The same PR made the whole
  * card body clickable (open preview), with an exclusion set for interactive
  * children and a 4px pointer threshold so a status drag never doubles as an
  * open. These specs pin all four behaviours end-to-end through the UI.
@@ -113,16 +114,31 @@ test('clicking a subproject row on the parent card opens the child preview', asy
 });
 
 test('only family cards carry a family colour class; every known kind shows its glyph', async () => {
-  const booted = await bootApp({ prepare: prepareFamily });
+  const booted = await bootApp({
+    prepare: async (conceptionDir) => {
+      await prepareFamily(conceptionDir);
+      // A `parent:` that resolves to nothing: dashed frame, raw-slug banner,
+      // but no colour — there is no second card for a hue to tie it to.
+      const orphanDir = join(conceptionDir, 'projects', '2026-04', '2026-04-22-orphan-impl');
+      await mkdir(orphanDir, { recursive: true });
+      await writeFile(
+        join(orphanDir, 'README.md'),
+        `---\ndate: 2026-04-22\nkind: project\nstatus: now\nparent: 2026-01-01-never-existed\n---\n\n# Orphan impl\n\n## Goal\n\nDangling-parent fixture.\n`,
+        'utf8',
+      );
+    },
+  });
   try {
     const win = booted.window;
 
     // The parent and its child share one `proj-family-<n>` slot; the
     // standalone sample project has none — the neutral frame is the default.
     const parentCard = win.locator('article.row.is-parent');
-    const childCard = win.locator('article.row.is-subproject');
+    const childCard = win.locator('article.row.is-subproject', { hasText: 'Child impl' });
+    const orphan = win.locator('article.row.is-subproject', { hasText: 'Orphan impl' });
     const standalone = win.locator('article.row', { hasText: 'Sample project' });
     await expect(parentCard).toBeVisible();
+    await expect(orphan).toBeVisible();
     const familyClass = async (card: typeof parentCard): Promise<string | undefined> => {
       const classes = (await card.getAttribute('class')) ?? '';
       return classes.split(/\s+/).find((c) => c.startsWith('proj-family-'));
@@ -131,6 +147,9 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(parentSlot).toMatch(/^proj-family-\d+$/);
     expect(await familyClass(childCard)).toBe(parentSlot);
     expect(await familyClass(standalone)).toBeUndefined();
+    expect(await familyClass(orphan)).toBeUndefined();
+    await expect(orphan).not.toHaveClass(/in-family/);
+    await expect(childCard).toHaveClass(/in-family/);
 
     // A plain project card shows the kind glyph too (it used to be
     // incident/document only).

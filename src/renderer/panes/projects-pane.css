@@ -472,10 +472,12 @@ body[data-dragging='project'] .row {
  * solid border-style wins for all four sides (both already share the thick left
  * edge). Hover/focus keep the family frame via the base .row:hover /
  * :focus-visible rules (both use --row-stripe). */
-.row.is-subproject,
-.row.is-parent {
+.row.in-family {
   /* A hint of the family colour mixed into the near-white title, so the title
-   * reads as belonging to its family. Standalone cards keep plain text ink. */
+   * reads as belonging to its family. `in-family` is set by cards.tsx alongside
+   * the .proj-family-<n> class (has children, or a parent that resolves), so
+   * tint and frame hue always move together; standalone cards — and a card
+   * whose `parent:` dangles — keep plain text ink. */
   --row-title-color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
 }
 .row.is-subproject {
@@ -536,6 +538,11 @@ body[data-dragging='project'] .row {
  * step — a change to either margin moves the title text. */
 .row {
   --star-gutter: 28px;
+  /* Width the kind glyph claims after the star: its 16 px box (`.kind-glyph`,
+   * styles.css) plus the title row's 9 px gap (`.row .title`). The slug line
+   * indents by this too when a glyph is present — keep the sum in step with
+   * both. */
+  --kind-gutter: 25px;
 }
 
 .row .star-toggle {
@@ -664,12 +671,11 @@ body[data-dragging='project'] .row {
    * pull the line up so the two group together, away from the meta row. */
   margin-top: -3px;
 }
-/* Glyph column: the 16 px glyph plus the title's 9 px gap. Only when the row
- * above actually rendered a glyph — an `unknown` kind has none, and its slug
- * still lines up with its title text at the star gutter. Keep the sum in step
- * with `.kind-glyph` (styles.css) and `.row .title` gap. */
+/* Glyph column: only when the row above actually rendered a glyph — an
+ * `unknown` kind has none, and its slug still lines up with its title text at
+ * the star gutter alone. */
 .row .title-row:has(.kind-glyph) + .slug {
-  margin-left: calc(var(--star-gutter) + 25px);
+  margin-left: calc(var(--star-gutter) + var(--kind-gutter));
 }
 
 .row .meta {

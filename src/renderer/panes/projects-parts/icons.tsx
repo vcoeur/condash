@@ -155,8 +155,8 @@ export function StepProgress(props: { counts: StepCounts }) {
  * the icons read consistently in every container.
  *
  * Kind glyphs are deliberately quiet: outline only, no duotone washes, no
- * filled cores — with the per-project card colour gone, a saturated or
- * two-tone icon would be the loudest thing on the card. Shape alone carries
+ * filled cores — with standalone cards now neutral, a saturated or two-tone
+ * icon would be the loudest thing on the card. Shape alone carries
  * the meaning (diamond / triangle / page), and the ink is the muted text
  * token (see .kind-glyph in styles.css). Each icon is hand-tuned rather than
  * a stock library glyph — see the comments above each definition. */

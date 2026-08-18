@@ -1,11 +1,13 @@
 /**
- * Deterministic per-project card colour for the Projects pane.
+ * Deterministic family colour for Projects-pane cards.
  *
- * The Projects pane colours each card by the project *family* it belongs to
- * rather than by its status: a standalone project gets a stable hue derived
- * from its slug, and a spin-off subproject inherits its parent's hue so a plan
- * and its implementation children read as one coloured group. The status is
- * carried by the section's left rail instead (see `projects-pane.css`).
+ * The Projects pane colours a card by the project *family* it belongs to,
+ * never by its status: a plan (parent) gets a stable hue derived from its
+ * slug, and a spin-off subproject inherits its parent's hue so the plan and
+ * its implementation children read as one coloured group. The card component
+ * applies the class only to cards that are in a family — a standalone card
+ * keeps a neutral frame. The status is carried by the section's left rail
+ * instead (see `projects-pane.css`).
  *
  * The slot count here must match the `.row.proj-family-<n>` palette in
  * `projects-pane.css`.

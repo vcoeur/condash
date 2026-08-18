@@ -436,6 +436,11 @@ export function Card(props: {
   // Spin-off children of this card's item, status-ordered — one row each in the
   // bottom subprojects banner. Empty for a leaf card.
   const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
+  // A card is "in a family" — and so wears the family colour — when it has
+  // children, or when its `parent:` resolves to a real item. A dangling
+  // parent slug keeps the dashed subproject frame (it does declare a parent)
+  // but no colour: there is no second card for the hue to tie it to.
+  const inFamily = (): boolean => children().length > 0 || !!parentProject();
   // Open a banner-referenced project through the same path as a card click.
   const openSlug = (slug: string): void => {
     const target = parentInfo?.().projectOf(slug);
@@ -446,10 +451,14 @@ export function Card(props: {
   // stays a normal-height card; the expanded state persists per parent in the
   // same localStorage collapse map the status sections and Done subgroups use
   // (key `children.<slug>`), so a watcher-driven list refresh — which
-  // remounts the card — doesn't snap an open list shut mid-use.
+  // remounts the card — doesn't snap an open list shut mid-use. The key is
+  // captured once: a card is only ever mounted from a reference-keyed <For>,
+  // so a slug change is a remount, never a prop update. The stored map is
+  // read only for a card that actually has children — a leaf card (the vast
+  // majority) never touches localStorage on mount.
   const childrenStorageKey = `children.${props.item.slug}`;
   const [childrenExpanded, setChildrenExpanded] = createSignal<boolean>(
-    readCollapseMap()[childrenStorageKey] === true,
+    children().length > 0 && readCollapseMap()[childrenStorageKey] === true,
   );
   const toggleChildren = (): void => {
     const next = !childrenExpanded();
@@ -467,7 +476,9 @@ export function Card(props: {
         // its subprojects, so the pair reads as one group. A standalone card
         // takes no class and keeps the neutral frame; colour on this pane
         // means "belongs together", nothing else. See project-color.ts.
-        [projectColorClass(props.item)]: children().length > 0 || !!props.item.parent,
+        // `in-family` is what the CSS keys the title tint on.
+        'in-family': inFamily(),
+        [projectColorClass(props.item)]: inFamily(),
         // Relationship decoration: a parent (has spin-off children) gets a
         // solid frame with a thick left edge, a subproject (has a `parent:`) a
         // dashed frame; a standalone card keeps the solid default frame — see
@@ -639,7 +650,7 @@ export function Card(props: {
             </Show>
           </Show>
           <Show when={children().length > 0}>
-            <div class="children-banner" classList={{ collapsed: !childrenExpanded() }}>
+            <div class="children-banner">
               {/* Fold header: caret + label + count. Collapsed by default; a
                   click only toggles the list (never opens the card — the
                   toggle is in CARD_CLICK_EXCLUDE and stops propagation). */}
