@@ -248,6 +248,41 @@ ${finalParagraph}
     expect(project.summary).toContain(finalParagraph);
     expect(project.summary).not.toContain('Later section marker');
   });
+
+  it('reflows a hard-wrapped paragraph and keeps only blank-line boundaries', async () => {
+    const body = `---
+date: 2026-08-18
+kind: project
+status: now
+apps: []
+---
+
+# Wrapped goal
+
+## Goal
+
+One sentence of prose that the author hard-wrapped at a hundred columns, the way a
+Markdown file is usually written, so the source stays readable in an editor and in a
+diff.
+
+A second paragraph, separated from the first by a blank line, so both kinds of break
+are present in the same section.
+`;
+    const path = await writeReadme('2026-08-18-wrapped-goal', body);
+    const project = await parseReadme(path);
+
+    const paragraphs = (project.summary as string).split('\n\n');
+    expect(paragraphs).toHaveLength(2);
+    // The wrap columns came from the source file, not from the reader's
+    // container — each paragraph must reflow to one newline-free run.
+    for (const paragraph of paragraphs) expect(paragraph).not.toContain('\n');
+    expect(paragraphs[0]).toBe(
+      'One sentence of prose that the author hard-wrapped at a hundred columns, the way a Markdown file is usually written, so the source stays readable in an editor and in a diff.',
+    );
+    expect(paragraphs[1]).toBe(
+      'A second paragraph, separated from the first by a blank line, so both kinds of break are present in the same section.',
+    );
+  });
 });
 
 describe('[!] step marker', () => {

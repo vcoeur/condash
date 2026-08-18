@@ -138,9 +138,15 @@ function extractSummary(lines: readonly string[]): string | undefined {
     buffer.push(trimmed);
   }
 
+  // Split on blank lines only. A hand-wrapped paragraph carries newlines of
+  // its own, and splitting on `\n+` would promote every source line to a
+  // paragraph — which `.widget-goal p`'s `white-space: pre-line` then renders
+  // as one short line per source line. The `\s+` fold below reflows the
+  // intra-paragraph newlines back into spaces, so only real blank-line
+  // boundaries survive as `\n\n`.
   const paragraphs = buffer
     .join('\n')
-    .split(/\n+/)
+    .split(/\n{2,}/)
     .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
   return paragraphs.length > 0 ? paragraphs.join('\n\n') : undefined;
