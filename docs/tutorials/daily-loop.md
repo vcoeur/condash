@@ -35,7 +35,7 @@ The incident is in the **NOW** section of the Projects pane — click its row an
 ![The search modal open over the dashboard: the query "fuzzy" matched across projects and knowledge, with per-source filter pills counting the hits and a snippet under each result](../assets/screenshots/item-fuzzy-search-light.png#only-light)
 ![The search modal open over the dashboard: the query "fuzzy" matched across projects and knowledge, with per-source filter pills counting the hits and a snippet under each result](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
 
-An incident card looks like a project card. What marks it as one is the **kind glyph** in the card head — an icon-only tinted tile, no text label; the icon and its tooltip carry the meaning. `Environment` and `Severity` are frontmatter fields you set when creating the item; they live in the README, not on the card.
+An incident card looks like a project card. What marks it as one is the **kind glyph** in the card head — every card whose kind parsed carries one, a small monochrome outline whose shape is the label (a triangle for an incident, a diamond for a project, a page for a document); the icon and its tooltip carry the meaning, there is no text. `Environment` and `Severity` are frontmatter fields you set when creating the item; they live in the README, not on the card.
 
 Read the README. The Description points at a specific test corpus, and `notes/stack-trace.md` has the traceback from the reporter.
 

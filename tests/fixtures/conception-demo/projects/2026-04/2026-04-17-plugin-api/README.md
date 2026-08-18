@@ -4,6 +4,7 @@ kind: project
 status: backlog
 apps:
   - helio
+parent: 2026-04-10-plugin-api-proposal
 ---
 
 # plugin API implementation

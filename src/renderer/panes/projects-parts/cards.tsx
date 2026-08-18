@@ -1,4 +1,12 @@
-import { createContext, createSignal, For, onCleanup, Show, useContext } from 'solid-js';
+import {
+  createContext,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  useContext,
+} from 'solid-js';
 import type { Accessor } from 'solid-js';
 import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
@@ -40,6 +48,10 @@ export interface ParentInfo {
   /** Every item declaring this slug as its `parent`, status-ordered — the rows
    *  of the parent card's subprojects banner. Empty for a leaf item. */
   childrenOf: (slug: string) => ChildRow[];
+  /** The family root for `slug` — `familyRootOf` from shared/project-color.ts
+   *  over resolving `parent:` links. The family colour hashes this, so a whole
+   *  chain (and every member of a cycle) shares one hue. */
+  familyRootOf: (slug: string) => string;
 }
 
 /** Whether `status` is one of the canonical KNOWN_STATUSES (drives the
@@ -235,12 +247,12 @@ export function Card(props: {
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
   // Interactive children keep their own click behaviour — the whole-card
-  // open must not swallow the work-on dropdown, PR badge, or the clickable
-  // relation banners (which open a *different* project). `button.parent-banner`
-  // stays element-qualified so a dangling parent's non-clickable <div>
-  // fallback still opens the card itself.
+  // open must not swallow the work-on dropdown, PR badge, the subprojects
+  // fold toggle, or the clickable relation banners (which open a *different*
+  // project). `button.parent-banner` stays element-qualified so a dangling
+  // parent's non-clickable <div> fallback still opens the card itself.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row, button.children-toggle';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.
@@ -436,10 +448,50 @@ export function Card(props: {
   // Spin-off children of this card's item, status-ordered — one row each in the
   // bottom subprojects banner. Empty for a leaf card.
   const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
+  // A card is "in a family" — and so wears the family colour — when it has
+  // children, or when its `parent:` resolves to a real item. A dangling
+  // parent slug keeps the dashed subproject frame (it does declare a parent)
+  // but no colour: there is no second card for the hue to tie it to.
+  const inFamily = (): boolean => children().length > 0 || !!parentProject();
+  // The family colour hashes the family *root* — the topmost item the
+  // `parent:` chain resolves to — so root, middle nodes and leaves of one
+  // chain all wear the same hue. Hashing one hop up (the raw `parent:`)
+  // would give a middle node its grandparent's colour while its children
+  // take the middle node's, and a dangling parent would colour a node from
+  // a slug no card carries.
+  const familyColorClass = (): string =>
+    projectColorClass(parentInfo?.().familyRootOf(props.item.slug) ?? props.item.slug);
   // Open a banner-referenced project through the same path as a card click.
   const openSlug = (slug: string): void => {
     const target = parentInfo?.().projectOf(slug);
     if (target) props.onOpen(target);
+  };
+
+  // Subprojects list fold. Collapsed by default so a plan with many spin-offs
+  // stays a normal-height card; the expanded state persists per parent in the
+  // same localStorage collapse map the status sections and Done subgroups use
+  // (key `children.<slug>`), so a watcher-driven list refresh — which
+  // remounts the card — doesn't snap an open list shut mid-use. The key is
+  // captured once: a card is only ever mounted from a reference-keyed <For>,
+  // so a slug change is a remount, never a prop update.
+  //
+  // The stored value is a memo on `children()`, not a mount-time read: a
+  // per-project watcher patch can turn a mounted leaf into a parent (someone
+  // adds `parent:` to another README) without remounting this card, and the
+  // fold must then pick up its persisted state rather than freeze on the
+  // leaf-time answer. The `&&` keeps the localStorage read off leaf cards —
+  // the vast majority — entirely. A user toggle overrides the stored value
+  // for the life of the mount and writes it back for the next one.
+  const childrenStorageKey = `children.${props.item.slug}`;
+  const storedChildrenExpanded = createMemo(
+    (): boolean => children().length > 0 && readCollapseMap()[childrenStorageKey] === true,
+  );
+  const [childrenToggled, setChildrenToggled] = createSignal<boolean | null>(null);
+  const childrenExpanded = (): boolean => childrenToggled() ?? storedChildrenExpanded();
+  const toggleChildren = (): void => {
+    const next = !childrenExpanded();
+    setChildrenToggled(next);
+    writeCollapseEntry(childrenStorageKey, next);
   };
 
   return (
@@ -447,10 +499,14 @@ export function Card(props: {
       class="row"
       classList={{
         draggable: isDraggable(),
-        // Per-project family colour class (proj-family-<n>): sets --row-stripe
-        // to a stable hue for the project's family, so a card, its parent, and
-        // its sibling subprojects all share one colour. See project-color.ts.
-        [projectColorClass(props.item)]: true,
+        // Family colour class (proj-family-<n>) — only on a card that is in a
+        // family: it sets --row-stripe to a stable hue shared by a parent and
+        // its subprojects, so the pair reads as one group. A standalone card
+        // takes no class and keeps the neutral frame; colour on this pane
+        // means "belongs together", nothing else. See project-color.ts.
+        // `in-family` is what the CSS keys the title tint on.
+        'in-family': inFamily(),
+        [familyColorClass()]: inFamily(),
         // Relationship decoration: a parent (has spin-off children) gets a
         // solid frame with a thick left edge, a subproject (has a `parent:`) a
         // dashed frame; a standalone card keeps the solid default frame — see
@@ -491,7 +547,11 @@ export function Card(props: {
             <StarIcon filled={starred()} />
           </button>
           <h3 class="title">
-            <Show when={props.item.kind !== 'unknown' && props.item.kind !== 'project'}>
+            {/* Kind glyph on every card whose kind parsed — project included,
+                so the three kinds are told apart by shape at a glance. An
+                `unknown` kind is a README the parser couldn't type; that gets
+                no icon rather than a made-up one. */}
+            <Show when={props.item.kind !== 'unknown'}>
               <KindGlyph kind={props.item.kind} />
             </Show>
             <span class="title-text">{props.item.title}</span>
@@ -619,30 +679,53 @@ export function Card(props: {
           </Show>
           <Show when={children().length > 0}>
             <div class="children-banner">
-              <For each={children()}>
-                {(child) => (
-                  <button
-                    type="button"
-                    class="child-row"
-                    classList={{
-                      warn: !isKnownStatus(child.status),
-                      [`status-${child.status}`]: isKnownStatus(child.status),
-                    }}
-                    title={`Subproject: ${child.title} (${child.status}) — click to open`}
-                    aria-label={`Open subproject: ${child.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openSlug(child.slug);
-                    }}
-                  >
-                    <span class="child-row-icon" aria-hidden="true">
-                      ↓
-                    </span>
-                    <span class="child-row-name">{child.title}</span>
-                    <span class="rel-status-pill">{child.status}</span>
-                  </button>
-                )}
-              </For>
+              {/* Fold header: caret + label + count. Collapsed by default; a
+                  click only toggles the list (never opens the card — the
+                  toggle is in CARD_CLICK_EXCLUDE and stops propagation). */}
+              <button
+                type="button"
+                class="children-toggle"
+                aria-expanded={childrenExpanded()}
+                title={
+                  childrenExpanded()
+                    ? 'Collapse subprojects'
+                    : `Expand ${children().length} subproject${children().length === 1 ? '' : 's'}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleChildren();
+                }}
+              >
+                <Caret expanded={childrenExpanded()} />
+                <span class="children-toggle-label">Subprojects</span>
+                <span class="children-toggle-count">{children().length}</span>
+              </button>
+              <Show when={childrenExpanded()}>
+                <For each={children()}>
+                  {(child) => (
+                    <button
+                      type="button"
+                      class="child-row"
+                      classList={{
+                        warn: !isKnownStatus(child.status),
+                        [`status-${child.status}`]: isKnownStatus(child.status),
+                      }}
+                      title={`Subproject: ${child.title} (${child.status}) — click to open`}
+                      aria-label={`Open subproject: ${child.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSlug(child.slug);
+                      }}
+                    >
+                      <span class="child-row-icon" aria-hidden="true">
+                        ↓
+                      </span>
+                      <span class="child-row-name">{child.title}</span>
+                      <span class="rel-status-pill">{child.status}</span>
+                    </button>
+                  )}
+                </For>
+              </Show>
             </div>
           </Show>
         </div>

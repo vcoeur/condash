@@ -17,6 +17,7 @@ import {
   type ParentInfo,
 } from './projects-parts/cards';
 import { compareByStatusThenSlug } from '@shared/projects';
+import { familyRootOf } from '@shared/project-color';
 import { starredSlugs } from '../star-store';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
@@ -83,9 +84,16 @@ export function ProjectsView(props: {
       }
     }
     for (const rows of childrenByParent.values()) rows.sort(compareByStatusThenSlug);
+    // A `parent:` link counts only when it resolves to a real item — the walk
+    // in shared/project-color.ts stops at the last resolving node.
+    const resolvedParentOf = (slug: string): string | undefined => {
+      const parent = projectBySlug.get(slug)?.parent;
+      return parent && projectBySlug.has(parent) ? parent : undefined;
+    };
     return {
       projectOf: (slug) => projectBySlug.get(slug),
       childrenOf: (slug) => childrenByParent.get(slug) ?? [],
+      familyRootOf: (slug) => familyRootOf(slug, resolvedParentOf),
     };
   });
   return (
