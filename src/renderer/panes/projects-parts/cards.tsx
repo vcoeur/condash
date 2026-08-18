@@ -1,4 +1,12 @@
-import { createContext, createSignal, For, onCleanup, Show, useContext } from 'solid-js';
+import {
+  createContext,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  useContext,
+} from 'solid-js';
 import type { Accessor } from 'solid-js';
 import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
@@ -441,6 +449,14 @@ export function Card(props: {
   // parent slug keeps the dashed subproject frame (it does declare a parent)
   // but no colour: there is no second card for the hue to tie it to.
   const inFamily = (): boolean => children().length > 0 || !!parentProject();
+  // The family key hashes the parent slug only when that parent resolves —
+  // otherwise a mid-tree node whose own parent dangles would take a hue from
+  // the dead slug and stop matching its children, which hash *this* slug.
+  const familyColorClass = (): string =>
+    projectColorClass({
+      slug: props.item.slug,
+      parent: parentProject() ? props.item.parent : undefined,
+    });
   // Open a banner-referenced project through the same path as a card click.
   const openSlug = (slug: string): void => {
     const target = parentInfo?.().projectOf(slug);
@@ -453,16 +469,24 @@ export function Card(props: {
   // (key `children.<slug>`), so a watcher-driven list refresh — which
   // remounts the card — doesn't snap an open list shut mid-use. The key is
   // captured once: a card is only ever mounted from a reference-keyed <For>,
-  // so a slug change is a remount, never a prop update. The stored map is
-  // read only for a card that actually has children — a leaf card (the vast
-  // majority) never touches localStorage on mount.
+  // so a slug change is a remount, never a prop update.
+  //
+  // The stored value is a memo on `children()`, not a mount-time read: a
+  // per-project watcher patch can turn a mounted leaf into a parent (someone
+  // adds `parent:` to another README) without remounting this card, and the
+  // fold must then pick up its persisted state rather than freeze on the
+  // leaf-time answer. The `&&` keeps the localStorage read off leaf cards —
+  // the vast majority — entirely. A user toggle overrides the stored value
+  // for the life of the mount and writes it back for the next one.
   const childrenStorageKey = `children.${props.item.slug}`;
-  const [childrenExpanded, setChildrenExpanded] = createSignal<boolean>(
-    children().length > 0 && readCollapseMap()[childrenStorageKey] === true,
+  const storedChildrenExpanded = createMemo(
+    (): boolean => children().length > 0 && readCollapseMap()[childrenStorageKey] === true,
   );
+  const [childrenToggled, setChildrenToggled] = createSignal<boolean | null>(null);
+  const childrenExpanded = (): boolean => childrenToggled() ?? storedChildrenExpanded();
   const toggleChildren = (): void => {
     const next = !childrenExpanded();
-    setChildrenExpanded(next);
+    setChildrenToggled(next);
     writeCollapseEntry(childrenStorageKey, next);
   };
 
@@ -478,7 +502,7 @@ export function Card(props: {
         // means "belongs together", nothing else. See project-color.ts.
         // `in-family` is what the CSS keys the title tint on.
         'in-family': inFamily(),
-        [projectColorClass(props.item)]: inFamily(),
+        [familyColorClass()]: inFamily(),
         // Relationship decoration: a parent (has spin-off children) gets a
         // solid frame with a thick left edge, a subproject (has a `parent:`) a
         // dashed frame; a standalone card keeps the solid default frame — see

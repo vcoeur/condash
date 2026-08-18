@@ -301,14 +301,15 @@ body[data-dragging='project'] .row {
 }
 
 .row {
-  /* Neutral frame by default. Only a card in a family — a parent or a
-   * subproject — carries a `.proj-family-<n>` class that overrides
-   * --row-stripe with the family's stable hue (shared/project-color.ts), so
-   * colour on this pane means "these belong together" and nothing else. The
-   * status is on the section rail, never on the card. */
+  /* Neutral frame by default. Only a card in a family — one with children,
+   * or whose `parent:` resolves — carries a `.proj-family-<n>` class that
+   * overrides --row-stripe with the family's stable hue
+   * (shared/project-color.ts), so colour on this pane means "these belong
+   * together" and nothing else. The status is on the section rail, never on
+   * the card. */
   --row-stripe: var(--border-strong);
   /* Title ink: plain text by default; family cards mix a hint of the frame
-   * hue in (see .row.is-parent / .row.is-subproject below). */
+   * hue in (see .row.in-family below). */
   --row-title-color: var(--text);
   position: relative;
   display: flex;
@@ -602,7 +603,7 @@ body[data-dragging='project'] .row {
   font-weight: 700;
   font-size: var(--text-xl);
   line-height: 1.25;
-  /* Plain text ink, or the family-tinted mix a parent/subproject card sets in
+  /* Plain text ink, or the family-tinted mix a .row.in-family card sets in
    * --row-title-color. currentColor carries the same tint into the
    * faux-weight stroke/shadow. */
   color: var(--row-title-color);

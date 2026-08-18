@@ -126,6 +126,22 @@ test('only family cards carry a family colour class; every known kind shows its 
         `---\ndate: 2026-04-22\nkind: project\nstatus: now\nparent: 2026-01-01-never-existed\n---\n\n# Orphan impl\n\n## Goal\n\nDangling-parent fixture.\n`,
         'utf8',
       );
+      // A mid-tree node: its own parent dangles, but it has a child. It must
+      // hash its OWN slug (not the dead one) so it and its child share a hue.
+      const midDir = join(conceptionDir, 'projects', '2026-04', '2026-04-23-mid-plan');
+      await mkdir(midDir, { recursive: true });
+      await writeFile(
+        join(midDir, 'README.md'),
+        `---\ndate: 2026-04-23\nkind: project\nstatus: now\nparent: 2026-01-01-never-existed\n---\n\n# Mid plan\n\n## Goal\n\nMid-tree fixture.\n`,
+        'utf8',
+      );
+      const midChildDir = join(conceptionDir, 'projects', '2026-04', '2026-04-24-mid-child');
+      await mkdir(midChildDir, { recursive: true });
+      await writeFile(
+        join(midChildDir, 'README.md'),
+        `---\ndate: 2026-04-24\nkind: project\nstatus: now\nparent: 2026-04-23-mid-plan\n---\n\n# Mid child\n\n## Goal\n\nMid-tree child fixture.\n`,
+        'utf8',
+      );
     },
   });
   try {
@@ -133,12 +149,15 @@ test('only family cards carry a family colour class; every known kind shows its 
 
     // The parent and its child share one `proj-family-<n>` slot; the
     // standalone sample project has none — the neutral frame is the default.
-    const parentCard = win.locator('article.row.is-parent');
+    const parentCard = win.locator('article.row.is-parent', { hasText: 'Parent plan' });
     const childCard = win.locator('article.row.is-subproject', { hasText: 'Child impl' });
     const orphan = win.locator('article.row.is-subproject', { hasText: 'Orphan impl' });
+    const midPlan = win.locator('article.row.is-parent', { hasText: 'Mid plan' });
+    const midChild = win.locator('article.row.is-subproject', { hasText: 'Mid child' });
     const standalone = win.locator('article.row', { hasText: 'Sample project' });
     await expect(parentCard).toBeVisible();
     await expect(orphan).toBeVisible();
+    await expect(midChild).toBeVisible();
     const familyClass = async (card: typeof parentCard): Promise<string | undefined> => {
       const classes = (await card.getAttribute('class')) ?? '';
       return classes.split(/\s+/).find((c) => c.startsWith('proj-family-'));
@@ -150,6 +169,11 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(await familyClass(orphan)).toBeUndefined();
     await expect(orphan).not.toHaveClass(/in-family/);
     await expect(childCard).toHaveClass(/in-family/);
+    // Mid-tree: coloured (it has a child), and the SAME slot as that child —
+    // hashing the dangling parent slug instead would give it a hue of its own.
+    const midSlot = await familyClass(midPlan);
+    expect(midSlot).toMatch(/^proj-family-\d+$/);
+    expect(await familyClass(midChild)).toBe(midSlot);
 
     // A plain project card shows the kind glyph too (it used to be
     // incident/document only).
