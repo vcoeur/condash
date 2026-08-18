@@ -4,6 +4,7 @@ import type { ActionTemplate, Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
 import { projectColorClass } from '@shared/project-color';
+import { shortSlug } from '@shared/projects';
 import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
@@ -499,7 +500,7 @@ export function Card(props: {
             <ActionDropdownButton
               trigger={<TerminalIcon />}
               triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-              defaultLabel={`Work on ${props.item.slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
+              defaultLabel={`Work on ${shortSlug(props.item.slug)}`}
               items={props.projectActions ?? []}
               onItem={(idx) => {
                 if (idx === -1) {
@@ -512,6 +513,15 @@ export function Card(props: {
               class="row-action work-on"
             />
           </div>
+        </div>
+
+        {/* Row 2: the item's own identifier, directly under the title. The
+            `YYYY-MM-DD-` prefix is dropped — it is the short form every
+            `condash projects <verb> <slug>` call and the `{shortSlug}` action
+            variable take, and the card already carries a date on the meta row.
+            The tooltip keeps the full dated slug one hover away. */}
+        <div class="slug" title={`slug: ${props.item.slug}`}>
+          {shortSlug(props.item.slug)}
         </div>
 
         {/* Single compact meta row: app pills, branch/PR/warn, a spacer,

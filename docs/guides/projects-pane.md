@@ -25,6 +25,10 @@ Two sections start collapsed:
 
 The status values and their meanings are defined in [Status model](../reference/conception-convention.md#status-model).
 
+## What a card carries
+
+A **star** first (see [Star the items that matter](#star)), then the title (with the **kind glyph** ahead of it for an incident or a document), then the item's **short slug** — its directory name with the `YYYY-MM-DD-` prefix dropped, which is exactly what `condash projects <verb> <slug>` and the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) take; hover it for the full dated slug. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, the step progress, and the date of the item's last timeline entry. A card in a family also grows a **Part of ↑** banner or **Subprojects ↓** rows — see [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
+
 ## Change an item's status
 
 Three ways, all equivalent:

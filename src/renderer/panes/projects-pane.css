@@ -513,6 +513,15 @@ body[data-dragging='project'] .row {
  * general gold token) when starred, faint outline when not. The 2 px top nudge
  * drops the 15 px glyph onto the title's cap height, matching how
  * `.title-actions` nudges the work-on button on the other end of the row. */
+/* Width the star occupies at the head of the title row: its 20 px box, less
+ * the 4 px gap trim below, plus the row's own 12 px gap. Rows under the title
+ * that belong to the title block (the slug line) indent by this so the block
+ * has one left edge. Keep the three numbers here and in `.star-toggle` in
+ * step — a change to either margin moves the title text. */
+.row {
+  --star-gutter: 28px;
+}
+
 .row .star-toggle {
   display: inline-flex;
   align-items: center;
@@ -611,6 +620,28 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Identifier line between the title and the meta row: the item's short slug in
+ * faint mono, so a card names the thing you type into a command. Kept to one
+ * line — a long slug ellipsises instead of wrapping and pushing the meta row
+ * down, and the full dated slug stays in the element's tooltip. */
+/* Indent by the gutter the star claims in the title row, so an item's
+ * identifier shares a left edge with its title instead of hanging out to its
+ * left. The meta row below keeps the card's full width — it reads as its own
+ * footer band, not as part of the title block. */
+.row .slug {
+  margin-left: var(--star-gutter);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The .row-head gap reads as a gulf between a title and its own identifier —
+   * pull the line up so the two group together, away from the meta row. */
+  margin-top: -3px;
 }
 
 .row .meta {
@@ -909,12 +940,6 @@ body[data-dragging='project'] .row {
  * colour so they read as "needs attention" wherever the marker appears. */
 .step-marker-blocked .step-toggle {
   color: var(--warn);
-}
-.row .slug {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  letter-spacing: 0.01em;
 }
 
 /* `.new-project-button` adds the `+ New project` flavour on top of the

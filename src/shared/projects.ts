@@ -34,6 +34,18 @@ export function compareByStatusThenSlug(
   return a.slug.localeCompare(b.slug);
 }
 
+/**
+ * The slug without its `YYYY-MM-DD-` prefix — the short form the CLI accepts
+ * (`condash projects read <short>`), the `{shortSlug}` action-template
+ * variable, and the identifier line on a project card. A slug carrying no
+ * date prefix comes back unchanged.
+ *
+ * @param slug full item slug (the dated directory name)
+ */
+export function shortSlug(slug: string): string {
+  return slug.replace(/^\d{4}-\d{2}-\d{2}-/, '');
+}
+
 /** Tally `[ ] / [~] / [x] / [!] / [-]` markers in the README's `## Steps`
  * section only — milestone count. Entries living under `## Step details`,
  * `## Notes`, or any other section are tracked by the parser for editing

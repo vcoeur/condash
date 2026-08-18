@@ -1,5 +1,6 @@
 import type MarkdownIt from 'markdown-it';
 import type { KnowledgeNode, Project } from '@shared/types';
+import { shortSlug } from '@shared/projects';
 
 export interface WikiTarget {
   path: string;
@@ -26,7 +27,7 @@ export function buildSlugIndex(
 
   for (const p of projects) {
     push(p.slug, { path: p.path, title: p.title });
-    const stripped = stripDatePrefix(p.slug);
+    const stripped = shortSlug(p.slug);
     if (stripped !== p.slug) push(stripped, { path: p.path, title: p.title });
   }
 
@@ -35,10 +36,6 @@ export function buildSlugIndex(
   }
 
   return idx;
-}
-
-function stripDatePrefix(slug: string): string {
-  return slug.replace(/^\d{4}-\d{2}-\d{2}-/, '');
 }
 
 function walkKnowledge(
