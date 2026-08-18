@@ -283,6 +283,50 @@ are present in the same section.
       'A second paragraph, separated from the first by a blank line, so both kinds of break are present in the same section.',
     );
   });
+
+  it('keeps bullets, table rows and quotes on their own lines', async () => {
+    // 73 of this tree's first-H2 sections carry a list, table or quote line.
+    // Folding every newline would run them together into one sentence, which
+    // is worse than the per-source-line rendering the wrap fix removed.
+    const body = `---
+date: 2026-08-18
+kind: project
+status: now
+apps: []
+---
+
+# Structured goal
+
+## Goal
+
+Lead prose that is hard-wrapped across
+two source lines.
+
+- first bullet whose text also wraps
+  onto a continuation line
+- second bullet
+
+| Column | Meaning |
+|---|---|
+
+> a quoted line
+
+## Steps
+
+- [ ] not part of the summary
+`;
+    const path = await writeReadme('2026-08-18-structured-goal', body);
+    const project = await parseReadme(path);
+
+    expect((project.summary as string).split('\n\n')).toEqual([
+      'Lead prose that is hard-wrapped across two source lines.',
+      // The continuation line folds into its bullet, the way Markdown reads it.
+      '- first bullet whose text also wraps onto a continuation line\n- second bullet',
+      '| Column | Meaning |\n|---|---|',
+      '> a quoted line',
+    ]);
+    expect(project.summary).not.toContain('not part of the summary');
+  });
 });
 
 describe('[!] step marker', () => {

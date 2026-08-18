@@ -25,6 +25,12 @@ const DELIVERABLE_SKIP = /^(mailto:|#)/i;
 // conception item, with an optional trailing comment. Checked before the
 // markdown-link form (which can't match `[[…]]` anyway).
 const DELIVERABLE_WIKILINK = /^\s*-\s\[\[([^\]|]+)(?:\|([^\]]+))?\]\](?:\s*[—\-:]\s*(.*))?\s*$/;
+/** A line that opens a Markdown block — bullet, ordered item, blockquote,
+ * table row, or sub-heading. `extractSummary` keeps such a line on its own
+ * line instead of folding it into the prose above: a bulleted or tabular
+ * section read as one run-on sentence otherwise. The bullet alternatives
+ * require a following space so `**bold**` and `*emphasis*` stay prose. */
+const BLOCK_OPENER = /^([-*+]\s|\d+[.)]\s|>|\||#{1,6}\s)/;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
@@ -138,18 +144,29 @@ function extractSummary(lines: readonly string[]): string | undefined {
     buffer.push(trimmed);
   }
 
-  // Split on blank lines only. A hand-wrapped paragraph carries newlines of
-  // its own, and splitting on `\n+` would promote every source line to a
-  // paragraph — which `.widget-goal p`'s `white-space: pre-line` then renders
-  // as one short line per source line. The `\s+` fold below reflows the
-  // intra-paragraph newlines back into spaces, so only real blank-line
-  // boundaries survive as `\n\n`.
-  const paragraphs = buffer
-    .join('\n')
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-  return paragraphs.length > 0 ? paragraphs.join('\n\n') : undefined;
+  // Blank lines separate blocks; within a block, only *prose* newlines fold.
+  // Splitting on every newline promoted each source line of a hand-wrapped
+  // paragraph to its own block, which `.widget-goal p`'s `white-space:
+  // pre-line` rendered as one short line per source line at double the line
+  // pitch. Folding every newline instead would run a bulleted or tabular
+  // section together into one line, which is worse — so a line that opens a
+  // Markdown block keeps its own line, and the lines after it fold into it
+  // the way a lazy continuation does.
+  const blocks: string[] = [];
+  let blockLines: string[] = [];
+  for (const entry of buffer) {
+    if (entry === '') {
+      if (blockLines.length > 0) blocks.push(blockLines.join('\n'));
+      blockLines = [];
+      continue;
+    }
+    const normalised = entry.replace(/\s+/g, ' ').trim();
+    if (!normalised) continue;
+    if (blockLines.length === 0 || BLOCK_OPENER.test(normalised)) blockLines.push(normalised);
+    else blockLines[blockLines.length - 1] += ` ${normalised}`;
+  }
+  if (blockLines.length > 0) blocks.push(blockLines.join('\n'));
+  return blocks.length > 0 ? blocks.join('\n\n') : undefined;
 }
 
 function extractSteps(lines: readonly string[]): Step[] {
