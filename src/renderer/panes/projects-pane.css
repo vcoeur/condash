@@ -880,6 +880,7 @@ body[data-dragging='project'] .row {
 .step-marker-blocked .step-toggle {
   color: var(--warn);
 }
+
 /* `.new-project-button` adds the `+ New project` flavour on top of the
  * shared `.action-dropdown-button` chrome (border, background, font). The
  * dropdown component is itself a single <button>, so no wrapper padding
