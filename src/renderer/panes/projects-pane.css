@@ -301,18 +301,25 @@ body[data-dragging='project'] .row {
 }
 
 .row {
-  /* Fallback only — every card carries a `.proj-family-<n>` class that sets
-   * --row-stripe to its stable per-project-family colour (shared/project-color.ts). */
-  --row-stripe: var(--col-status, var(--border-strong));
+  /* Neutral frame by default. Only a card in a family — a parent or a
+   * subproject — carries a `.proj-family-<n>` class that overrides
+   * --row-stripe with the family's stable hue (shared/project-color.ts), so
+   * colour on this pane means "these belong together" and nothing else. The
+   * status is on the section rail, never on the card. */
+  --row-stripe: var(--border-strong);
+  /* Title ink: plain text by default; family cards mix a hint of the frame
+   * hue in (see .row.is-parent / .row.is-subproject below). */
+  --row-title-color: var(--text);
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px 10px 16px;
-  /* Full family-coloured frame. The card's colour is the project family, not
-   * the status (status lives on the section's left rail). Border-style and a
-   * thicker left edge encode the relationship: solid = standalone/parent,
-   * dashed = subproject, thick left = parent (see .row.is-* below). */
+  /* Full frame in --row-stripe: neutral for a standalone card, the family
+   * colour for a parent/subproject (status lives on the section's left rail).
+   * Border-style and a thicker left edge encode the relationship: solid =
+   * standalone/parent, dashed = subproject, thick left = parent (see
+   * .row.is-* below). */
   border: 2px solid var(--row-stripe);
   /* Asymmetric card — flat left edge (carries the family frame / thick parent
    * spine) + rounded right, the vcoeur project-card silhouette. */
@@ -347,10 +354,10 @@ body[data-dragging='project'] .row {
 }
 
 /* The card's status is kept available as --col-status (used by the drag
- * chrome and the relationship pills), but no longer drives the card's frame
- * colour — that is the project-family colour (--row-stripe, set by the
- * .proj-family-<n> class below). The status colour now lives on the section's
- * left rail instead. */
+ * chrome and the relationship pills), but never drives the card's frame
+ * colour — that is neutral, or the family colour on a parent/subproject
+ * (--row-stripe, set by the .proj-family-<n> class below). The status colour
+ * lives on the section's left rail instead. */
 [data-status-card='now'] {
   --col-status: var(--col-now);
 }
@@ -370,11 +377,13 @@ body[data-dragging='project'] .row {
   --col-status: var(--col-unknown);
 }
 
-/* Per-project family colour palette for the card frame (--row-stripe). The
- * slot is a stable hash of the project family — a subproject shares its
- * parent's slot — resolved in shared/project-color.ts. 16 vivid hues stepped
- * around the wheel; mid-tone so a thin frame reads on both the light and dark
- * card background. Keep the slot count in sync with PROJECT_COLOR_SLOT_COUNT. */
+/* Family colour palette for the card frame (--row-stripe), applied only to
+ * cards that are in a family (cards.tsx adds the class when the card has a
+ * parent or has children). The slot is a stable hash of the family key — a
+ * subproject shares its parent's slot — resolved in shared/project-color.ts.
+ * 16 vivid hues stepped around the wheel; mid-tone so a thin frame reads on
+ * both the light and dark card background. Keep the slot count in sync with
+ * PROJECT_COLOR_SLOT_COUNT. */
 .row.proj-family-0 {
   --row-stripe: hsl(4 72% 57%);
 }
@@ -448,10 +457,11 @@ body[data-dragging='project'] .row {
   border-color: var(--row-stripe);
 }
 
-/* Relationship / hierarchy decoration (2026-07). Every card already wears a
- * full family-coloured frame (see .row above, --row-stripe = the project-family
- * colour); this only varies that frame to encode the parent/subproject edge:
- *   • standalone project     → solid frame (the .row default)
+/* Relationship / hierarchy decoration (2026-07). A family card wears a full
+ * family-coloured frame (see .row above, --row-stripe = the family colour set
+ * by its .proj-family-<n> class); this varies that frame to encode the
+ * parent/subproject edge and tints the title with the same hue:
+ *   • standalone project     → neutral solid frame (the .row default)
  *   • subproject (`parent:`)  → dashed top/right/bottom with the same thick
  *     solid left edge as its parent, tying the child to the family root while
  *     the dashed sides keep it reading as the child of a pair
@@ -462,6 +472,12 @@ body[data-dragging='project'] .row {
  * solid border-style wins for all four sides (both already share the thick left
  * edge). Hover/focus keep the family frame via the base .row:hover /
  * :focus-visible rules (both use --row-stripe). */
+.row.is-subproject,
+.row.is-parent {
+  /* A hint of the family colour mixed into the near-white title, so the title
+   * reads as belonging to its family. Standalone cards keep plain text ink. */
+  --row-title-color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
+}
 .row.is-subproject {
   border-style: dashed;
   /* Left edge matches the parent's thick solid spine — declared after the
@@ -579,10 +595,10 @@ body[data-dragging='project'] .row {
   font-weight: 700;
   font-size: var(--text-xl);
   line-height: 1.25;
-  /* A hint of the card's family colour (--row-stripe = the frame hue) mixed
-   * into the near-white title, so the title reads as belonging to its family.
-   * currentColor carries the same tint into the faux-weight stroke/shadow. */
-  color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
+  /* Plain text ink, or the family-tinted mix a parent/subproject card sets in
+   * --row-title-color. currentColor carries the same tint into the
+   * faux-weight stroke/shadow. */
+  color: var(--row-title-color);
   word-break: break-word;
   -webkit-text-stroke: 0.45px currentColor;
   text-shadow: 0 0 0.6px currentColor;
@@ -600,11 +616,14 @@ body[data-dragging='project'] .row {
 }
 
 .row .title .kind-glyph {
-  /* Glyph is em-sized (1.15em of the 18 px title), so its top sits
-   * naturally on the cap-height line; no margin nudge needed. The
-   * left edge aligns with the next-step-marker on the row below. */
+  /* The glyph keeps its own muted ink (not the title's tint) and none of the
+   * title's faux-weight stroke/shadow — a hairline icon must stay hairline.
+   * The 4 px top nudge centres the 16 px glyph on the star's 20 px box (its
+   * 2 px nudge + 10 px half-height = 12 px), so star, glyph and the first
+   * title line share one optical centre. */
   -webkit-text-stroke: 0;
   text-shadow: none;
+  margin-top: 4px;
 }
 
 .row .title-text {
@@ -996,14 +1015,47 @@ body[data-dragging='project'] .row {
   min-width: 0;
 }
 
-/* Subprojects banner in a parent card's relations zone: one full-width row per
- * spin-off child, mirroring the "Part of" pill on each child card. Same
- * accent tint so both read as relationship markers; the ↓ icon and status pill
- * echo the child card's ↑ icon and pill. */
+/* Subprojects banner in a parent card's relations zone: a fold header
+ * (caret + "Subprojects" + count) over one full-width row per spin-off child,
+ * mirroring the "Part of" pill on each child card. Same accent tint so both
+ * read as relationship markers; the ↓ icon and status pill echo the child
+ * card's ↑ icon and pill. Collapsed by default (cards.tsx) so a plan with many
+ * spin-offs stays a normal-height card. */
 .row .children-banner {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Fold header — quiet meta-text row, not a pill: it is chrome around the
+ * rows, not a relationship marker itself. The caret is the shared section
+ * caret so the affordance reads the same as the status sections above. */
+.row .children-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 1px 4px 1px 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.row .children-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-body);
+}
+.row .children-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.row .children-toggle-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Resolved banner rows are real <button>s that open the referenced project —

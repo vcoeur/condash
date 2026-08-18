@@ -61,7 +61,7 @@ test('clicking the parent banner on a child card opens the parent preview', asyn
   }
 });
 
-test('clicking a subproject row on the parent card opens the child preview', async () => {
+test('the subprojects list is collapsed by default and its toggle does not open the card', async () => {
   const booted = await bootApp({ prepare: prepareFamily });
   try {
     const win = booted.window;
@@ -70,10 +70,71 @@ test('clicking a subproject row on the parent card opens the child preview', asy
     // the child's `parent:` slug resolved into the parent's subproject rows.
     const parentCard = win.locator('article.row.is-parent');
     await expect(parentCard).toBeVisible();
+
+    // Collapsed by default: the fold header is there with the child count,
+    // but no child row is mounted yet.
+    const toggle = parentCard.locator('button.children-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle.locator('.children-toggle-count')).toHaveText('1');
+    await expect(parentCard.locator('button.child-row')).toHaveCount(0);
+
+    // The toggle is in the card's click-exclusion set: expanding must not
+    // also open the parent's own preview.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(parentCard.locator('button.child-row')).toHaveCount(1);
+    await win.waitForTimeout(300);
+    await expect(win.locator('.modal.project-preview')).toHaveCount(0);
+
+    // And it folds back.
+    await toggle.click();
+    await expect(parentCard.locator('button.child-row')).toHaveCount(0);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('clicking a subproject row on the parent card opens the child preview', async () => {
+  const booted = await bootApp({ prepare: prepareFamily });
+  try {
+    const win = booted.window;
+
+    const parentCard = win.locator('article.row.is-parent');
+    await expect(parentCard).toBeVisible();
+    // Rows are folded away by default — expand first, then click a row.
+    await parentCard.locator('button.children-toggle').click();
     await parentCard.locator('button.child-row').click();
 
     await win.waitForSelector('.modal.project-preview', { state: 'visible' });
     await expect(win.locator('.modal.project-preview .modal-title')).toHaveText('Child impl');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('only family cards carry a family colour class; every known kind shows its glyph', async () => {
+  const booted = await bootApp({ prepare: prepareFamily });
+  try {
+    const win = booted.window;
+
+    // The parent and its child share one `proj-family-<n>` slot; the
+    // standalone sample project has none — the neutral frame is the default.
+    const parentCard = win.locator('article.row.is-parent');
+    const childCard = win.locator('article.row.is-subproject');
+    const standalone = win.locator('article.row', { hasText: 'Sample project' });
+    await expect(parentCard).toBeVisible();
+    const familyClass = async (card: typeof parentCard): Promise<string | undefined> => {
+      const classes = (await card.getAttribute('class')) ?? '';
+      return classes.split(/\s+/).find((c) => c.startsWith('proj-family-'));
+    };
+    const parentSlot = await familyClass(parentCard);
+    expect(parentSlot).toMatch(/^proj-family-\d+$/);
+    expect(await familyClass(childCard)).toBe(parentSlot);
+    expect(await familyClass(standalone)).toBeUndefined();
+
+    // A plain project card shows the kind glyph too (it used to be
+    // incident/document only).
+    await expect(standalone.locator('.title .kind-glyph[data-kind="project"]')).toBeVisible();
   } finally {
     await booted.cleanup();
   }

@@ -150,19 +150,22 @@ export function StepProgress(props: { counts: StepCounts }) {
 
 /* Icon system — Projects pane.
  *
- * All icons share a 16×16 viewBox, currentColor stroke, round caps and joins,
- * and a duotone accent (currentColor at fill-opacity 0.16-0.22) inside the
- * stroked silhouette. Stroke weights come from CSS (.title-kind svg vs .meta
- * vs .row-action) so the icons read consistently in every container.
+ * All icons share a 16×16 viewBox, currentColor stroke, round caps and joins.
+ * Stroke weights come from CSS (.kind-glyph svg vs .meta vs .row-action) so
+ * the icons read consistently in every container.
  *
- * Each icon is hand-tuned for its meaning rather than being a stock library
- * glyph — see the comments above each definition. */
+ * Kind glyphs are deliberately quiet: outline only, no duotone washes, no
+ * filled cores — with the per-project card colour gone, a saturated or
+ * two-tone icon would be the loudest thing on the card. Shape alone carries
+ * the meaning (diamond / triangle / page), and the ink is the muted text
+ * token (see .kind-glyph in styles.css). Each icon is hand-tuned rather than
+ * a stock library glyph — see the comments above each definition. */
 
 const KIND_ICON: Record<string, () => any> = {
-  // Project — gem-cut diamond outline with a soft horizontal facet line
-  // and a small filled core. Reads as "waypoint with depth" rather than
-  // a flat rhombus. Leftmost path point at viewBox x=2.5 to align with
-  // the step icon's rect (also x=2.5) and the other kind icons.
+  // Project — gem-cut diamond outline with a single soft horizontal facet
+  // line. Reads as "waypoint with depth" rather than a flat rhombus.
+  // Leftmost path point at viewBox x=2.5 to align with the step icon's rect
+  // (also x=2.5) and the other kind icons.
   project: () => (
     <svg
       viewBox="0 0 16 16"
@@ -174,12 +177,11 @@ const KIND_ICON: Record<string, () => any> = {
     >
       <path d="M8 2.5L13.5 8 8 13.5 2.5 8z" />
       <path d="M5 8h6" stroke-opacity="0.45" />
-      <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   ),
-  // Incident — alert triangle with a soft duotone wash plus a clean
-  // exclamation glyph (line + dot). Leftmost path point at x=2.5 (base's
-  // bottom-left) to match the rest of the icon set.
+  // Incident — alert triangle outline with a clean exclamation glyph (line +
+  // dot). Leftmost path point at x=2.5 (base's bottom-left) to match the rest
+  // of the icon set.
   incident: () => (
     <svg
       viewBox="0 0 16 16"
@@ -189,15 +191,14 @@ const KIND_ICON: Record<string, () => any> = {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M8 3L13.5 13.5h-11z" fill="currentColor" fill-opacity="0.18" stroke="currentColor" />
+      <path d="M8 3L13.5 13.5h-11z" />
       <path d="M8 6.75v3" />
       <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
     </svg>
   ),
-  // Document — page outline with an elegant filled corner-fold (duotone
-  // triangle) and two text lines, the second shorter for natural text
-  // rhythm. Pretty in a literary, archival way. Leftmost path point
-  // at x=2.5, matching the rest of the icon set.
+  // Document — page outline with a corner fold and two text lines, the
+  // second shorter for natural text rhythm. Leftmost path point at x=2.5,
+  // matching the rest of the icon set.
   document: () => (
     <svg
       viewBox="0 0 16 16"
@@ -208,7 +209,7 @@ const KIND_ICON: Record<string, () => any> = {
       aria-hidden="true"
     >
       <path d="M2.5 2h6L12 5.5v9H2.5z" />
-      <path d="M8.5 2L12 5.5h-3.5z" fill="currentColor" fill-opacity="0.28" stroke="currentColor" />
+      <path d="M8.5 2L12 5.5h-3.5z" />
       <path d="M4.75 9h4.5M4.75 11.5h2.75" />
     </svg>
   ),
@@ -226,11 +227,11 @@ const KIND_LABEL: Record<string, string> = {
   document: 'Document',
 };
 
-/* Kind glyph — small tinted-tile icon that marks a card or modal with
- * its kind (project / incident / document). No text label: the icon
+/* Kind glyph — small monochrome outline icon that marks a card or modal
+ * with its kind (project / incident / document). No text label: the icon
  * carries the meaning (helped by the `aria-label` and `title` for screen
- * readers and tooltips). Sits at the start of the title in cards and
- * inline in the popup's metadata row. */
+ * readers and tooltips). Sits at the start of the title on every card whose
+ * kind is known, and inline in the popup's metadata row. */
 export function KindGlyph(props: { kind: string }) {
   if (!KIND_ICON[props.kind]) return null;
   return (

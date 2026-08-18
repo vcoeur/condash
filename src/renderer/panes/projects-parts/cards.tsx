@@ -235,12 +235,12 @@ export function Card(props: {
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
   // Interactive children keep their own click behaviour — the whole-card
-  // open must not swallow the work-on dropdown, PR badge, or the clickable
-  // relation banners (which open a *different* project). `button.parent-banner`
-  // stays element-qualified so a dangling parent's non-clickable <div>
-  // fallback still opens the card itself.
+  // open must not swallow the work-on dropdown, PR badge, the subprojects
+  // fold toggle, or the clickable relation banners (which open a *different*
+  // project). `button.parent-banner` stays element-qualified so a dangling
+  // parent's non-clickable <div> fallback still opens the card itself.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row, button.children-toggle';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.
@@ -442,15 +442,32 @@ export function Card(props: {
     if (target) props.onOpen(target);
   };
 
+  // Subprojects list fold. Collapsed by default so a plan with many spin-offs
+  // stays a normal-height card; the expanded state persists per parent in the
+  // same localStorage collapse map the status sections and Done subgroups use
+  // (key `children.<slug>`), so a watcher-driven list refresh — which
+  // remounts the card — doesn't snap an open list shut mid-use.
+  const childrenStorageKey = `children.${props.item.slug}`;
+  const [childrenExpanded, setChildrenExpanded] = createSignal<boolean>(
+    readCollapseMap()[childrenStorageKey] === true,
+  );
+  const toggleChildren = (): void => {
+    const next = !childrenExpanded();
+    setChildrenExpanded(next);
+    writeCollapseEntry(childrenStorageKey, next);
+  };
+
   return (
     <article
       class="row"
       classList={{
         draggable: isDraggable(),
-        // Per-project family colour class (proj-family-<n>): sets --row-stripe
-        // to a stable hue for the project's family, so a card, its parent, and
-        // its sibling subprojects all share one colour. See project-color.ts.
-        [projectColorClass(props.item)]: true,
+        // Family colour class (proj-family-<n>) — only on a card that is in a
+        // family: it sets --row-stripe to a stable hue shared by a parent and
+        // its subprojects, so the pair reads as one group. A standalone card
+        // takes no class and keeps the neutral frame; colour on this pane
+        // means "belongs together", nothing else. See project-color.ts.
+        [projectColorClass(props.item)]: children().length > 0 || !!props.item.parent,
         // Relationship decoration: a parent (has spin-off children) gets a
         // solid frame with a thick left edge, a subproject (has a `parent:`) a
         // dashed frame; a standalone card keeps the solid default frame — see
@@ -491,7 +508,11 @@ export function Card(props: {
             <StarIcon filled={starred()} />
           </button>
           <h3 class="title">
-            <Show when={props.item.kind !== 'unknown' && props.item.kind !== 'project'}>
+            {/* Kind glyph on every card whose kind parsed — project included,
+                so the three kinds are told apart by shape at a glance. An
+                `unknown` kind is a README the parser couldn't type; that gets
+                no icon rather than a made-up one. */}
+            <Show when={props.item.kind !== 'unknown'}>
               <KindGlyph kind={props.item.kind} />
             </Show>
             <span class="title-text">{props.item.title}</span>
@@ -618,31 +639,54 @@ export function Card(props: {
             </Show>
           </Show>
           <Show when={children().length > 0}>
-            <div class="children-banner">
-              <For each={children()}>
-                {(child) => (
-                  <button
-                    type="button"
-                    class="child-row"
-                    classList={{
-                      warn: !isKnownStatus(child.status),
-                      [`status-${child.status}`]: isKnownStatus(child.status),
-                    }}
-                    title={`Subproject: ${child.title} (${child.status}) — click to open`}
-                    aria-label={`Open subproject: ${child.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openSlug(child.slug);
-                    }}
-                  >
-                    <span class="child-row-icon" aria-hidden="true">
-                      ↓
-                    </span>
-                    <span class="child-row-name">{child.title}</span>
-                    <span class="rel-status-pill">{child.status}</span>
-                  </button>
-                )}
-              </For>
+            <div class="children-banner" classList={{ collapsed: !childrenExpanded() }}>
+              {/* Fold header: caret + label + count. Collapsed by default; a
+                  click only toggles the list (never opens the card — the
+                  toggle is in CARD_CLICK_EXCLUDE and stops propagation). */}
+              <button
+                type="button"
+                class="children-toggle"
+                aria-expanded={childrenExpanded()}
+                title={
+                  childrenExpanded()
+                    ? 'Collapse subprojects'
+                    : `Expand ${children().length} subproject${children().length === 1 ? '' : 's'}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleChildren();
+                }}
+              >
+                <Caret expanded={childrenExpanded()} />
+                <span class="children-toggle-label">Subprojects</span>
+                <span class="children-toggle-count">{children().length}</span>
+              </button>
+              <Show when={childrenExpanded()}>
+                <For each={children()}>
+                  {(child) => (
+                    <button
+                      type="button"
+                      class="child-row"
+                      classList={{
+                        warn: !isKnownStatus(child.status),
+                        [`status-${child.status}`]: isKnownStatus(child.status),
+                      }}
+                      title={`Subproject: ${child.title} (${child.status}) — click to open`}
+                      aria-label={`Open subproject: ${child.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSlug(child.slug);
+                      }}
+                    >
+                      <span class="child-row-icon" aria-hidden="true">
+                        ↓
+                      </span>
+                      <span class="child-row-name">{child.title}</span>
+                      <span class="rel-status-pill">{child.status}</span>
+                    </button>
+                  )}
+                </For>
+              </Show>
             </div>
           </Show>
         </div>

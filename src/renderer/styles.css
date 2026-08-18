@@ -583,16 +583,20 @@
   color-scheme: dark;
 }
 
-/* Kind glyph — inline coloured SVG (no tile, no chrome) used at the
- * start of a card title or inline in the popup metadata row. Fixed at
- * exactly 16 × 16 px (matching the next-step marker's pixel size) so
- * the two icons share their left edge perfectly across rows — no
- * em-derived sub-pixel drift. */
+/* Kind glyph — inline monochrome outline SVG (no tile, no chrome) at the
+ * start of every card title and inline in the popup metadata row. Muted
+ * text ink and a hairline stroke on purpose: it labels the kind without
+ * competing with the title, and stays quiet next to the family-coloured
+ * frame a parent/child card wears (the `--kind-*` hue tokens are still used
+ * by the search modal and the Settings scope pill, not here). Fixed at
+ * exactly 16 × 16 px (matching the next-step marker's pixel size) so the two
+ * icons share their left edge perfectly across rows — no em-derived
+ * sub-pixel drift. */
 .kind-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--kind-color, var(--text-muted));
+  color: var(--text-muted);
   flex-shrink: 0;
   width: 16px;
   height: 16px;
@@ -601,18 +605,8 @@
 .kind-glyph svg {
   width: 16px;
   height: 16px;
-  stroke-width: 1.5;
+  stroke-width: 1.25;
   flex-shrink: 0;
-}
-
-.kind-glyph[data-kind='project'] {
-  --kind-color: var(--kind-project);
-}
-.kind-glyph[data-kind='incident'] {
-  --kind-color: var(--kind-incident);
-}
-.kind-glyph[data-kind='document'] {
-  --kind-color: var(--kind-document);
 }
 
 ::selection {
