@@ -187,7 +187,9 @@ function formatReport(report: SyncReport): string {
     // Name the trees: a deferral that repeats tick after tick means index
     // changes are sitting uncommitted while the content they describe is on
     // the remote, and a generic message made that invisible (condash#508).
-    lines.push(`deferred ${report.deferredIndexTrees.join(' + ')} indexes until that tree settles`);
+    const trees = report.deferredIndexTrees;
+    const subject = trees.length === 1 ? 'that tree settles' : 'those trees settle';
+    lines.push(`deferred ${trees.join(' + ')} indexes until ${subject}`);
   }
   for (const skip of report.skipped) {
     lines.push(`skipped ${skip.path}  (${skip.reason})`);

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { iterUnfencedLines } from '../shared/header';
 import { elide } from './index-elide';
 import { matchVerifiedLine } from './knowledge-stamps';
 
@@ -140,21 +141,18 @@ async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
  * @param fallback title to use when the text carries no `#` heading
  */
 export function parseHead(head: string, fallback: string): FileMeta {
-  const lines = head.split(/\r?\n/);
   let title: string | null = null;
   let verifiedAt: string | undefined;
   const summaryParts: string[] = [];
   let summaryDone = false;
-  let inFence = false;
 
-  for (const raw of lines) {
+  // Fence tracking comes from the shared iterator rather than a local
+  // backtick toggle: it honours `~~~` fences and CommonMark's same-marker
+  // close rule, which is what `parseVerifiedStamps` uses. A local toggle read
+  // a stamp inside a `~~~` example as this file's own date, so `tree --json`
+  // reported a date `knowledge verify` had correctly ignored (condash#512).
+  for (const { line: raw } of iterUnfencedLines(head.split(/\r?\n/))) {
     const line = raw.trim();
-    if (line.startsWith('```')) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-
     const verifiedDate = matchVerifiedLine(line);
     if (verifiedDate) {
       // Oldest wins, not first or last: a sectioned file carries one stamp

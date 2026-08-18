@@ -52,4 +52,20 @@ describe('parseHead — verifiedAt', () => {
     ].join('\n');
     expect(parseHead(raw, 'fallback').verifiedAt).toBe('2026-08-14');
   });
+
+  it('ignores a stamp inside a tilde-fenced example too', () => {
+    // A local backtick-only toggle read this as the file's own date, so
+    // `tree --json` reported a stamp `knowledge verify` had ignored.
+    const raw = [
+      '# Title',
+      '',
+      '**Verified:** 2026-08-14 head',
+      '',
+      '~~~markdown',
+      '**Verified:** 2020-01-01 example',
+      '~~~',
+      '',
+    ].join('\n');
+    expect(parseHead(raw, 'fallback').verifiedAt).toBe('2026-08-14');
+  });
 });
