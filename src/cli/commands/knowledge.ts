@@ -23,7 +23,7 @@ import { renderHelp, runNoun } from '../help';
 const KNOWN_FLAGS_TREE = ['depth'] as const;
 const KNOWN_FLAGS_VERIFY = ['max-age'] as const;
 const KNOWN_FLAGS_RETRIEVE = ['mode'] as const;
-const KNOWN_FLAGS_STAMP = ['where', 'date', 'insert-after'] as const;
+const KNOWN_FLAGS_STAMP = ['where', 'date', 'insert-after', 'line'] as const;
 const KNOWN_FLAGS_INDEX = ['dry-run', 'rewrite-aggregated'] as const;
 
 const NOUN_FLAGS: readonly string[] = [
@@ -347,13 +347,14 @@ async function stampCommand(
   const dateFlag = args.flags.date;
   const insertAfter =
     typeof args.flags['insert-after'] === 'string' ? (args.flags['insert-after'] as string) : null;
-  for (const k of ['where', 'date', 'insert-after']) delete args.flags[k];
+  const lineFlag = args.flags.line;
+  for (const k of ['where', 'date', 'insert-after', 'line']) delete args.flags[k];
   assertNoExtraFlags(args, NOUN_FLAGS);
   const target = args.positional[0];
   if (!target) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD]',
+      'Usage: condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD] [--line N]',
     );
   }
   if (typeof where !== 'string' || !where.trim()) {
@@ -399,15 +400,40 @@ async function stampCommand(
   const raw = await fs.readFile(realTarget, 'utf8');
   const stampLine = `**Verified:** ${date} ${where.trim()}`;
   const lines = raw.split(/\r?\n/);
-  let replaced = false;
+  const stampLines: number[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (VERIFIED_PREFIX_RE.test(lines[i])) {
-      lines[i] = stampLine;
-      replaced = true;
-      break;
-    }
+    if (VERIFIED_PREFIX_RE.test(lines[i])) stampLines.push(i + 1);
   }
-  if (!replaced) {
+
+  const requestedLine = lineFlag === undefined ? null : parseIntFlag(lineFlag, NaN);
+  if (requestedLine !== null && (!Number.isInteger(requestedLine) || requestedLine < 1)) {
+    validation(`--line must be a positive integer; got '${String(lineFlag)}'`);
+  }
+  if (requestedLine !== null && !stampLines.includes(requestedLine)) {
+    throw new CliError(
+      ExitCodes.NOT_FOUND,
+      `No **Verified:** stamp on line ${requestedLine} of ${target}` +
+        (stampLines.length > 0 ? ` (stamps are on line ${stampLines.join(', ')})` : ''),
+    );
+  }
+  // A sectioned file carries one stamp per section, and `knowledge verify`
+  // flags the *oldest* of them wherever it sits. Rewriting "the first stamp"
+  // would then refresh a line nobody asked about and leave the flagged claim
+  // untouched — a stamp that lies about what was re-read. Refuse instead, and
+  // make the caller name the line verify reported (condash#512).
+  if (requestedLine === null && stampLines.length > 1) {
+    throw new CliError(
+      ExitCodes.VALIDATION,
+      `${target} carries ${stampLines.length} **Verified:** stamps (lines ${stampLines.join(', ')}) — ` +
+        'pass --line N to say which one you re-read',
+    );
+  }
+
+  const targetLine = requestedLine ?? stampLines[0] ?? null;
+  const replaced = targetLine !== null;
+  if (replaced) {
+    lines[targetLine - 1] = stampLine;
+  } else {
     if (insertAfter) {
       let inserted = false;
       for (let i = 0; i < lines.length; i++) {
@@ -436,9 +462,13 @@ async function stampCommand(
       verifiedAt: date,
       where: where.trim(),
       replaced,
+      line: targetLine,
     },
-    (d) =>
-      `${(d as { replaced: boolean }).replaced ? 'Replaced' : 'Inserted'} stamp in ${(d as { path: string }).path}\n`,
+    (d) => {
+      const r = d as { replaced: boolean; path: string; line: number | null };
+      const at = r.line === null ? '' : ` at line ${r.line}`;
+      return `${r.replaced ? 'Replaced' : 'Inserted'} stamp in ${r.path}${at}\n`;
+    },
   );
 }
 
@@ -499,7 +529,7 @@ function printHelp(verb: string | null): void {
     case 'stamp':
       process.stdout.write(
         renderHelp([
-          'condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD] [--insert-after <heading>]',
+          'condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD] [--line N] [--insert-after <heading>]',
           '',
           'Idempotently write a **Verified:** line into a file.',
           '',
@@ -508,10 +538,14 @@ function printHelp(verb: string | null): void {
           '',
           'Optional:',
           '  --date          Stamp date (default: today).',
+          '  --line          1-based line of the stamp to replace. Required when the',
+          '                  file carries more than one — `knowledge verify` reports',
+          '                  the line of the stale stamp.',
           '  --insert-after  Heading after which to insert when no stamp exists yet.',
           '',
           'Examples:',
           '  condash knowledge stamp knowledge/internal/condash.md --where "condash@abc1234 on main"',
+          '  condash knowledge stamp knowledge/topics/ops/ci.md --line 26 --where "condash@abc1234 on main"',
         ]),
       );
       return;

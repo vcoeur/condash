@@ -98,6 +98,8 @@ A knowledge file can carry a **verification date** — the last time somebody ch
 
 That grading is the whole point of the mechanism: a knowledge tree with no freshness signal quietly rots, and a year-old runbook that *looks* the same as yesterday's is worse than no runbook. The CLI applies the same bar as the chip: `condash knowledge verify` (and the `stale-verification` audit check, which shares its engine) flags any stamp older than the freshness threshold of **90 days** — the same cutoff that turns the chip *stale* (`--max-age` on verify overrides it). The chip is a coarse glance for browsing, verify is the enforcement point, and the two agree on what counts as stale: a stamp that reads *stale* on the chip is the same stamp verify flags. The chip's over-a-year "old" tier is a display-only distinction for browsing — verify treats everything past the 90-day window as one stale class.
 
+**A file may carry several stamps** — one per section is the recommended shape when sections were verified on different dates. Freshness is then judged on the **oldest** of them, so an aged claim cannot hide behind a recently re-stamped header, and every reader agrees on which date describes the file: the chip, `knowledge tree`, and `verify` all show the oldest. `verify` additionally names the newest stamp and its line, so a flagged file that *has* been partly re-verified reads as what it is — "section 4 is old", not "nothing here has been read in months".
+
 ### Creating files in place
 
 The pane is not read-only. Every directory header carries two buttons:

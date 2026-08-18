@@ -37,7 +37,7 @@ These are the contract every `/knowledge` action enforces:
   **Verified:** YYYY-MM-DD <where>
   ```
 
-  `<where>` is one of `<app>@<shortsha>` (optionally `on <branch>`), `<conception-path>`, or `<name>: <url>`. For external state without a SHA, append `HH:MM UTC` when intra-day drift matters. The CLI writes this idempotently — `condash knowledge stamp <path> --where <where>` replaces an existing stamp or inserts a new one.
+  `<where>` is one of `<app>@<shortsha>` (optionally `on <branch>`), `<conception-path>`, or `<name>: <url>`. For external state without a SHA, append `HH:MM UTC` when intra-day drift matters. The CLI writes this idempotently — `condash knowledge stamp <path> --where <where>` replaces an existing stamp or inserts a new one. A file may carry **one stamp per section** when sections were verified on different dates; freshness is then judged on the oldest of them, and `stamp` needs `--line <n>` to say which one you re-read (it refuses rather than guess).
 
 - **Cross-link.** Body files link to the `projects/` items that produced them; items link back via `## Notes`.
 - **Don't duplicate app internals.** Single-app details belong in that app's own `CLAUDE.md`. `knowledge/internal/<app>.md` carries conception-side knowledge only.

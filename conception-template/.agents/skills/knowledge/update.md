@@ -25,7 +25,7 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
    For the verification stamp, use the CLI rather than hand-templating the line — it's idempotent (replaces an existing stamp or inserts a new one):
 
    ```bash
-   condash knowledge stamp <path> --where "<app>@<sha> on <branch>" [--date YYYY-MM-DD]
+   condash knowledge stamp <path> --where "<app>@<sha> on <branch>" [--date YYYY-MM-DD] [--line N]
    ```
 
    `--date` defaults to today; pass it only when backstamping. To compute `<sha>` and `<branch>`:
