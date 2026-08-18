@@ -224,7 +224,11 @@ test('a mounted leaf that becomes a parent picks up its persisted fold state', a
   });
   try {
     const win = booted.window;
-    const sample = win.locator('article.row', { hasText: 'Sample project' });
+    // Match on the card's own title: once the late item becomes a child, its
+    // "Part of" banner carries "Sample project" too.
+    const sample = win.locator('article.row', {
+      has: win.locator('.title-text', { hasText: 'Sample project' }),
+    });
     await expect(sample).toBeVisible();
     await expect(sample.locator('button.children-toggle')).toHaveCount(0);
     await win.evaluate(() => {
@@ -242,6 +246,7 @@ test('a mounted leaf that becomes a parent picks up its persisted fold state', a
 
     const toggle = sample.locator('button.children-toggle');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 });
+    await expect(sample).toHaveClass(/is-parent/);
     await expect(sample.locator('button.child-row')).toHaveCount(1);
   } finally {
     await booted.cleanup();

@@ -48,10 +48,9 @@ export interface ParentInfo {
   /** Every item declaring this slug as its `parent`, status-ordered — the rows
    *  of the parent card's subprojects banner. Empty for a leaf item. */
   childrenOf: (slug: string) => ChildRow[];
-  /** The topmost item reachable from `slug` through resolving `parent:`
-   *  links — `slug` itself for a root, a standalone item, or an item whose
-   *  parent dangles. The family colour hashes this, so a whole chain shares
-   *  one hue. */
+  /** The family root for `slug` — `familyRootOf` from shared/project-color.ts
+   *  over resolving `parent:` links. The family colour hashes this, so a whole
+   *  chain (and every member of a cycle) shares one hue. */
   familyRootOf: (slug: string) => string;
 }
 
@@ -461,9 +460,7 @@ export function Card(props: {
   // take the middle node's, and a dangling parent would colour a node from
   // a slug no card carries.
   const familyColorClass = (): string =>
-    projectColorClass({
-      slug: parentInfo?.().familyRootOf(props.item.slug) ?? props.item.slug,
-    });
+    projectColorClass(parentInfo?.().familyRootOf(props.item.slug) ?? props.item.slug);
   // Open a banner-referenced project through the same path as a card click.
   const openSlug = (slug: string): void => {
     const target = parentInfo?.().projectOf(slug);

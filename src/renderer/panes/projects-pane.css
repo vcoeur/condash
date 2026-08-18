@@ -379,12 +379,12 @@ body[data-dragging='project'] .row {
 }
 
 /* Family colour palette for the card frame (--row-stripe), applied only to
- * cards that are in a family (cards.tsx adds the class when the card has a
- * parent or has children). The slot is a stable hash of the family key — a
- * subproject shares its parent's slot — resolved in shared/project-color.ts.
- * 16 vivid hues stepped around the wheel; mid-tone so a thin frame reads on
- * both the light and dark card background. Keep the slot count in sync with
- * PROJECT_COLOR_SLOT_COUNT. */
+ * cards that are in a family (cards.tsx adds the class when the card has
+ * children or a parent that resolves). The slot is a stable hash of the
+ * family's root slug — every card in the chain shares it — resolved in
+ * shared/project-color.ts. 16 vivid hues stepped around the wheel; mid-tone so
+ * a thin frame reads on both the light and dark card background. Keep the slot
+ * count in sync with PROJECT_COLOR_SLOT_COUNT. */
 .row.proj-family-0 {
   --row-stripe: hsl(4 72% 57%);
 }

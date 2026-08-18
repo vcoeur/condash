@@ -17,6 +17,7 @@ import {
   type ParentInfo,
 } from './projects-parts/cards';
 import { compareByStatusThenSlug } from '@shared/projects';
+import { familyRootOf } from '@shared/project-color';
 import { starredSlugs } from '../star-store';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
@@ -83,26 +84,16 @@ export function ProjectsView(props: {
       }
     }
     for (const rows of childrenByParent.values()) rows.sort(compareByStatusThenSlug);
-    // Topmost item reachable by following `parent:` links that resolve. The
-    // family colour hashes this root, so every card in a chain — root, middle,
-    // leaf — wears one hue instead of each hop hashing the hop above it. A
-    // dangling link ends the walk (the last resolving item is the root); the
-    // visited set ends a cycle (`a → b → a` is not rejected by the parser).
-    const familyRootOf = (slug: string): string => {
-      const visited = new Set<string>();
-      let current = slug;
-      while (!visited.has(current)) {
-        visited.add(current);
-        const parent = projectBySlug.get(current)?.parent;
-        if (!parent || !projectBySlug.has(parent)) return current;
-        current = parent;
-      }
-      return current;
+    // A `parent:` link counts only when it resolves to a real item — the walk
+    // in shared/project-color.ts stops at the last resolving node.
+    const resolvedParentOf = (slug: string): string | undefined => {
+      const parent = projectBySlug.get(slug)?.parent;
+      return parent && projectBySlug.has(parent) ? parent : undefined;
     };
     return {
       projectOf: (slug) => projectBySlug.get(slug),
       childrenOf: (slug) => childrenByParent.get(slug) ?? [],
-      familyRootOf,
+      familyRootOf: (slug) => familyRootOf(slug, resolvedParentOf),
     };
   });
   return (

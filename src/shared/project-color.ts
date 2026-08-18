@@ -2,15 +2,13 @@
  * Deterministic family colour for Projects-pane cards.
  *
  * The Projects pane colours a card by the project *family* it belongs to,
- * never by its status: the family's root (the topmost item the `parent:`
- * chain resolves to) gets a stable hue derived from its slug, and every
- * descendant wears the same hue so a plan and its implementation children —
- * at any depth — read as one coloured group. The card component resolves the
- * root through the list-wide parent lookup and passes it as `slug`; the
- * `parent` field here is the one-hop form for callers without that lookup.
- * The card applies the class only to cards that are in a family — a
- * standalone card keeps a neutral frame. The status is carried by the
- * section's left rail instead (see `projects-pane.css`).
+ * never by its status: the family's root — the topmost item the `parent:`
+ * chain resolves to — gets a stable hue derived from its slug, and every
+ * descendant wears the same hue so a plan and its implementation children, at
+ * any depth, read as one coloured group. The card component applies the class
+ * only to cards that are in a family (they have children, or their parent
+ * resolves); a standalone card keeps a neutral frame. The status is carried by
+ * the section's left rail instead (see `projects-pane.css`).
  *
  * The slot count here must match the `.row.proj-family-<n>` palette in
  * `projects-pane.css`.
@@ -20,21 +18,42 @@
  *  `.row.proj-family-*` palette in `projects-pane.css`. */
 export const PROJECT_COLOR_SLOT_COUNT = 16;
 
-/** The subset of a project a card needs to derive its family colour. */
-export interface ProjectColorRef {
-  slug: string;
-  parent?: string | null;
-}
-
 /**
- * The key that colours a card. A subproject shares its parent's slug so parent
- * and children land on the same slot; a root project uses its own slug.
+ * The topmost item reachable from `slug` by following `parent:` links that
+ * resolve — the key every card in the family hashes its colour from.
  *
- * @param item project slug plus optional parent slug
- * @returns the family key to hash
+ * - A root, a standalone item, or an item whose parent slug resolves to
+ *   nothing is its own root (a dangling link ends the walk at the last
+ *   resolving item, so a node with children under a dead link heads its own
+ *   family).
+ * - A cycle (`a → b → a`; the parser rejects only a self-reference, and a
+ *   hand-edited README can produce a longer loop) ends the walk, and every
+ *   member of the loop gets the same root — the smallest slug in it — so the
+ *   cards still share one hue instead of each hashing where its own walk
+ *   happened to close.
+ *
+ * @param slug the item to resolve
+ * @param parentOf the item's `parent:` slug when it resolves to a real item,
+ *   else `undefined` / `null` / `''`
+ * @returns the family root's slug
  */
-export function projectFamilyKey(item: ProjectColorRef): string {
-  return item.parent && item.parent.length > 0 ? item.parent : item.slug;
+export function familyRootOf(
+  slug: string,
+  parentOf: (slug: string) => string | null | undefined,
+): string {
+  const path: string[] = [];
+  let current = slug;
+  for (;;) {
+    const seenAt = path.indexOf(current);
+    if (seenAt !== -1) {
+      // Closed a loop: `path[seenAt..]` is the cycle. Pick one stable member.
+      return path.slice(seenAt).reduce((min, s) => (s < min ? s : min));
+    }
+    path.push(current);
+    const parent = parentOf(current);
+    if (!parent) return current;
+    current = parent;
+  }
 }
 
 /**
@@ -42,7 +61,7 @@ export function projectFamilyKey(item: ProjectColorRef): string {
  * same slot regardless of host or session — djb2 (`h = h * 33 + c`, seed 5381)
  * mod palette length, mirroring `appColorSlot` in `app-color.ts`.
  *
- * @param key the family key from {@link projectFamilyKey}
+ * @param key the family root slug from {@link familyRootOf}
  * @returns a slot in `[0, PROJECT_COLOR_SLOT_COUNT)`
  */
 export function projectColorSlot(key: string): number {
@@ -57,11 +76,11 @@ export function projectColorSlot(key: string): number {
 }
 
 /**
- * The CSS-class suffix for a project's family colour: `proj-family-0` …
+ * The CSS-class suffix for a family's colour: `proj-family-0` …
  * `proj-family-15`. Card call sites concatenate it with the base `row` class.
  *
- * @param item project slug plus optional parent slug
+ * @param familyRoot the family root slug from {@link familyRootOf}
  */
-export function projectColorClass(item: ProjectColorRef): string {
-  return `proj-family-${projectColorSlot(projectFamilyKey(item))}`;
+export function projectColorClass(familyRoot: string): string {
+  return `proj-family-${projectColorSlot(familyRoot)}`;
 }
