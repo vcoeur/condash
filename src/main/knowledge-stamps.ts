@@ -9,7 +9,16 @@
  * `stale-verification` audit check (`audit/stale-verification.ts`) gets the
  * same scan the CLI exposes — surfacing stale stamps in the GUI audit pane
  * and `condash audit` rather than only via the standalone `knowledge verify`.
+ *
+ * A file may carry **more than one** stamp: the convention recommends one per
+ * section when sections are verified on different dates. Every reader here
+ * therefore scans the whole file and reduces to a {@link VerifiedStampRange},
+ * because reading only the first stamp got staleness wrong in both directions
+ * — an old header stamp hid a freshly re-verified section, and a fresh header
+ * stamp hid a genuinely aged claim further down (condash#512).
  */
+
+import { iterUnfencedLines } from '../shared/header';
 
 /**
  * Match a `**Verified:**` stamp line, capturing the ISO date and the trailing
@@ -46,33 +55,55 @@ export function matchVerifiedLine(line: string): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Parse the first `**Verified:**` stamp out of a file's raw text.
- *
- * @param raw the whole file contents
- * @returns the stamp (date + provenance + 1-based line), or `null` when the
- *   file carries no stamp.
- */
-export function parseVerifiedStamp(raw: string): VerifiedStamp | null {
-  const lines = raw.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const match = VERIFIED_RE.exec(lines[i]);
-    if (match) {
-      return { verifiedAt: match[1], where: match[2].trim(), line: i + 1 };
-    }
-  }
-  return null;
+/** Every stamp in a file, reduced to the two that matter for staleness. */
+export interface VerifiedStampRange {
+  /** The earliest-dated stamp — the one staleness is judged on. */
+  oldest: VerifiedStamp;
+  /** The latest-dated stamp. Equals {@link oldest} in a single-stamp file. */
+  newest: VerifiedStamp;
+  /** How many stamps the file carries. */
+  count: number;
 }
 
 /**
- * Parse just the date out of the first `**Verified:**` stamp. Convenience for
- * the card/bullet readers that only need the date, not the provenance or line.
+ * Parse every `**Verified:**` stamp out of a file's raw text, in source
+ * order. Fence-aware: a stamp shown as an example inside a fenced code block
+ * documents the grammar, it does not claim a verification date.
  *
- * @param head the head of a file (the readers read a bounded prefix)
- * @returns the ISO date, or `undefined` when no stamp is present.
+ * @param raw the whole file contents
+ * @returns one entry per stamp (date + provenance + 1-based line); empty when
+ *   the file carries none.
  */
-export function parseVerifiedDate(head: string): string | undefined {
-  return parseVerifiedStamp(head)?.verifiedAt ?? undefined;
+export function parseVerifiedStamps(raw: string): VerifiedStamp[] {
+  const stamps: VerifiedStamp[] = [];
+  for (const { index, line } of iterUnfencedLines(raw.split(/\r?\n/))) {
+    const match = VERIFIED_RE.exec(line);
+    if (match) {
+      stamps.push({ verifiedAt: match[1], where: match[2].trim(), line: index + 1 });
+    }
+  }
+  return stamps;
+}
+
+/**
+ * Reduce a file's stamps to its oldest and newest. Dates are ISO, so a string
+ * compare is a chronological one; ties are broken by source order, so
+ * `oldest` is the first stamp of the earliest date and `newest` the last
+ * stamp of the latest date.
+ *
+ * @param raw the whole file contents
+ * @returns the range, or `null` when the file carries no stamp.
+ */
+export function verifiedStampRange(raw: string): VerifiedStampRange | null {
+  const stamps = parseVerifiedStamps(raw);
+  if (stamps.length === 0) return null;
+  let oldest = stamps[0];
+  let newest = stamps[0];
+  for (const stamp of stamps.slice(1)) {
+    if (stamp.verifiedAt < oldest.verifiedAt) oldest = stamp;
+    if (stamp.verifiedAt >= newest.verifiedAt) newest = stamp;
+  }
+  return { oldest, newest, count: stamps.length };
 }
 
 /**

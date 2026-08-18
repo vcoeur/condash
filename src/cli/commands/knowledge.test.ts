@@ -126,6 +126,43 @@ describe('knowledge verify', () => {
     expect(data.issues[0].check).toBe('stale_verification');
     expect(data.issues[0].severity).toBe('warn');
   });
+
+  it('flags a file on its oldest stamp and reports the newest', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    await writeKnowledgeFile(
+      conceptionPath,
+      'topics/sectioned.md',
+      `# Sectioned\n\n**Verified:** ${today} condash@fresh on main\n\n## Old bit\n\n**Verified:** 2020-01-01 ancient@deadbeef on main\n`,
+    );
+    const { stdout } = await captureStdout(() =>
+      runKnowledge(
+        'verify',
+        { noun: 'knowledge', verb: 'verify', positional: [], flags: { 'max-age': '90' } },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const data = parseJsonEnvelope<{
+      stale: Array<{
+        relPath: string;
+        verifiedAt: string;
+        line: number;
+        stampCount: number;
+        newest: { verifiedAt: string; line: number };
+      }>;
+      fresh: number;
+    }>(stdout).data!;
+    // One entry for the file, judged on the old section — not "fresh" because
+    // the header happens to be today's.
+    expect(data.fresh).toBe(0);
+    expect(data.stale).toHaveLength(1);
+    expect(data.stale[0]).toMatchObject({
+      verifiedAt: '2020-01-01',
+      line: 7,
+      stampCount: 2,
+    });
+    expect(data.stale[0].newest).toMatchObject({ verifiedAt: today, line: 3 });
+  });
 });
 
 describe('knowledge retrieve', () => {
@@ -266,6 +303,114 @@ describe('knowledge stamp', () => {
     const updated = await fs.readFile(path, 'utf8');
     expect(updated.startsWith('**Verified:** 2026-05-17 condash@new on main')).toBe(true);
     expect(updated).not.toMatch(/2026-01-01/);
+  });
+
+  it('refuses to guess which stamp to replace in a multi-stamp file', async () => {
+    // `verify` flags the oldest stamp wherever it sits, so silently rewriting
+    // the first one would refresh a line nobody re-read (condash#512).
+    const path = await writeKnowledgeFile(
+      conceptionPath,
+      'topics/foo.md',
+      '**Verified:** 2026-08-14 head\n\n# Foo\n\n## Old\n\n**Verified:** 2026-01-01 section\n',
+    );
+    const { threw } = await captureStdout(() =>
+      runKnowledge(
+        'stamp',
+        {
+          noun: 'knowledge',
+          verb: 'stamp',
+          positional: [path],
+          flags: { where: 'condash@new on main', date: '2026-08-18' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(3);
+    expect((threw as CliError).message).toContain('--line');
+    // Nothing was written.
+    expect(await fs.readFile(path, 'utf8')).toContain('**Verified:** 2026-01-01 section');
+  });
+
+  it('replaces the stamp on the line --line names', async () => {
+    const path = await writeKnowledgeFile(
+      conceptionPath,
+      'topics/foo.md',
+      '**Verified:** 2026-08-14 head\n\n# Foo\n\n## Old\n\n**Verified:** 2026-01-01 section\n',
+    );
+    const { stdout, threw } = await captureStdout(() =>
+      runKnowledge(
+        'stamp',
+        {
+          noun: 'knowledge',
+          verb: 'stamp',
+          positional: [path],
+          flags: { where: 'condash@new on main', date: '2026-08-18', line: '7' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(parseJsonEnvelope<{ line: number }>(stdout).data!.line).toBe(7);
+    const updated = await fs.readFile(path, 'utf8');
+    // The named section stamp moved; the header stamp is untouched.
+    expect(updated).toContain('**Verified:** 2026-08-18 condash@new on main');
+    expect(updated).toContain('**Verified:** 2026-08-14 head');
+    expect(updated).not.toContain('2026-01-01');
+  });
+
+  it('rejects a non-integer --line instead of truncating it', async () => {
+    // parseInt('3.9') is 3 — stamping line 3 because the caller typed 3.9 is
+    // the guess this flag exists to prevent.
+    const path = await writeKnowledgeFile(
+      conceptionPath,
+      'topics/foo.md',
+      '**Verified:** 2026-08-14 head\n\n# Foo\n\n**Verified:** 2026-01-01 section\n',
+    );
+    const before = await fs.readFile(path, 'utf8');
+    for (const line of ['3.9', '0', '-3', 'abc']) {
+      const { threw } = await captureStdout(() =>
+        runKnowledge(
+          'stamp',
+          {
+            noun: 'knowledge',
+            verb: 'stamp',
+            positional: [path],
+            flags: { where: 'x', line },
+          },
+          jsonCtx(),
+          conceptionPath,
+        ),
+      );
+      expect(threw, `--line ${line}`).toBeInstanceOf(CliError);
+      expect((threw as CliError).exitCode, `--line ${line}`).toBe(3);
+    }
+    expect(await fs.readFile(path, 'utf8')).toBe(before);
+  });
+
+  it('NOT_FOUND when --line names a line that carries no stamp', async () => {
+    const path = await writeKnowledgeFile(
+      conceptionPath,
+      'topics/foo.md',
+      '**Verified:** 2026-08-14 head\n\n# Foo\n\n**Verified:** 2026-01-01 section\n',
+    );
+    const { threw } = await captureStdout(() =>
+      runKnowledge(
+        'stamp',
+        {
+          noun: 'knowledge',
+          verb: 'stamp',
+          positional: [path],
+          flags: { where: 'x', line: '3' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(4);
   });
 
   it('VALIDATION error when --date is not YYYY-MM-DD', async () => {

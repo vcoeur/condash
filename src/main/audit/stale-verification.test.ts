@@ -55,6 +55,44 @@ describe('scanStaleStamps', () => {
     expect(result.fresh.map((f) => f.relPath)).toEqual(['knowledge/topics/sixty.md']);
   });
 
+  it('judges a multi-stamp file on its oldest stamp, both directions', async () => {
+    const today = new Date('2026-08-18T00:00:00Z');
+    // Header fresh, section old — used to read as fresh, hiding the old claim.
+    await writeKnowledge(
+      'topics/fresh-head.md',
+      '# Fresh head\n\n**Verified:** 2026-08-14 head\n\n## Old bit\n\n**Verified:** 2026-01-02 deep\n',
+    );
+    // Header old, section fresh — used to read as stale on the header date
+    // alone, with no sign that anything in the file was recent.
+    await writeKnowledge(
+      'topics/stale-head.md',
+      '# Stale head\n\n**Verified:** 2026-05-04 head\n\n## New bit\n\n**Verified:** 2026-08-14 deep\n',
+    );
+
+    const result = await scanStaleStamps(conceptionPath, 90, today);
+    expect(result.fresh).toEqual([]);
+    expect(result.stale.map((s) => s.relPath).sort()).toEqual([
+      'knowledge/topics/fresh-head.md',
+      'knowledge/topics/stale-head.md',
+    ]);
+
+    const freshHead = result.stale.find((s) => s.relPath.endsWith('fresh-head.md'))!;
+    expect(freshHead).toMatchObject({ verifiedAt: '2026-01-02', line: 7, stampCount: 2 });
+    expect(freshHead.newest).toMatchObject({ verifiedAt: '2026-08-14', line: 3, ageDays: 4 });
+
+    const staleHead = result.stale.find((s) => s.relPath.endsWith('stale-head.md'))!;
+    expect(staleHead).toMatchObject({ verifiedAt: '2026-05-04', line: 3, stampCount: 2 });
+    expect(staleHead.newest).toMatchObject({ verifiedAt: '2026-08-14', line: 7, ageDays: 4 });
+  });
+
+  it('reports a single-stamp file with newest equal to oldest', async () => {
+    await writeKnowledge('topics/one.md', '# One\n\n**Verified:** 2026-01-20 x\n');
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
+    const entry = result.fresh[0];
+    expect(entry.stampCount).toBe(1);
+    expect(entry.newest).toMatchObject({ verifiedAt: entry.verifiedAt, line: entry.line });
+  });
+
   it('excludes auto-generated index.md from the scan', async () => {
     // An unstamped index.md must NOT show up as unstamped — it's generated.
     await writeKnowledge('index.md', '# knowledge\n\n- [a](topics/)\n');
@@ -82,6 +120,25 @@ describe('staleStampsToIssues', () => {
     expect(issues[0].severity).toBe('warn');
     expect(issues[0].fix.autoFix).toBe(false);
     expect(issues[0].file).toBe('knowledge/topics/stale.md');
+  });
+
+  it('names the newest stamp in the message of a multi-stamp file', async () => {
+    await writeKnowledge(
+      'topics/sectioned.md',
+      '# Sectioned\n\n**Verified:** 2020-01-01 old\n\n## Recent\n\n**Verified:** 2026-01-30 new\n',
+    );
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
+    const issue = staleStampsToIssues(result)[0];
+    expect(issue.message).toContain('2020-01-01');
+    expect(issue.message).toContain('newest of 2 stamps: 2026-01-30 (line 7)');
+    expect(issue.fix.newestVerifiedAt).toBe('2026-01-30');
+    expect(issue.fix.stampCount).toBe(2);
+  });
+
+  it('leaves the message unadorned for a single-stamp file', async () => {
+    await writeKnowledge('topics/one.md', '# One\n\n**Verified:** 2020-01-01 x\n');
+    const result = await scanStaleStamps(conceptionPath, 90, new Date('2026-02-01T00:00:00Z'));
+    expect(staleStampsToIssues(result)[0].message).not.toContain('newest of');
   });
 
   it('defaults the check label to the canonical hyphenated audit name', async () => {

@@ -14,7 +14,7 @@
 import { join, relative } from 'node:path';
 import { promises as fs } from 'node:fs';
 import { collectKnowledgeBodyFiles } from '../search/walk';
-import { parseVerifiedStamp, stampAgeDays } from '../knowledge-stamps';
+import { stampAgeDays, verifiedStampRange, type VerifiedStamp } from '../knowledge-stamps';
 import type { AuditIssue } from './shared';
 
 /** Default freshness window in days. Matches the pane chip's "stale" tier
@@ -22,12 +22,8 @@ import type { AuditIssue } from './shared';
  * all agree on what "stale" means. */
 export const DEFAULT_STALE_MAX_AGE_DAYS = 90;
 
-/** One scanned stamp: its file, date, provenance, line, and age in days. */
-export interface StampScanEntry {
-  /** Absolute path of the body file. */
-  path: string;
-  /** Path relative to the conception root. */
-  relPath: string;
+/** One stamp of a scan, with its age resolved. */
+export interface ScannedStamp {
   /** 1-based line the stamp was found on. */
   line: number;
   /** ISO `YYYY-MM-DD` date on the stamp. */
@@ -36,6 +32,27 @@ export interface StampScanEntry {
   where: string;
   /** Whole-day age of the stamp relative to the scan time. */
   ageDays: number;
+}
+
+/**
+ * One scanned **file**, described by its oldest stamp.
+ *
+ * The top-level `line` / `verifiedAt` / `where` / `ageDays` are the *oldest*
+ * stamp's — staleness is judged on the oldest claim, so a file is stale as
+ * soon as any one of its sections has aged out. `newest` carries the other
+ * end of the range so a reader can tell "nothing here has been touched in
+ * six months" from "the header is old but section 4 was re-verified last
+ * week"; in a single-stamp file the two are identical.
+ */
+export interface StampScanEntry extends ScannedStamp {
+  /** Absolute path of the body file. */
+  path: string;
+  /** Path relative to the conception root. */
+  relPath: string;
+  /** The file's latest-dated stamp. */
+  newest: ScannedStamp;
+  /** How many stamps the file carries. */
+  stampCount: number;
 }
 
 /** Full result of a stale-stamp scan: stale + fresh stamps and unstamped files. */
@@ -71,25 +88,33 @@ export async function scanStaleStamps(
 
   for (const path of files) {
     const raw = await fs.readFile(path, 'utf8');
-    const stamp = parseVerifiedStamp(raw);
+    const range = verifiedStampRange(raw);
     const relPath = relative(conceptionPath, path);
-    if (!stamp) {
+    if (!range) {
       unstamped.push(relPath);
       continue;
     }
-    const ageDays = stampAgeDays(stamp.verifiedAt, today);
     const entry: StampScanEntry = {
       path,
       relPath,
-      line: stamp.line,
-      verifiedAt: stamp.verifiedAt,
-      where: stamp.where,
-      ageDays,
+      ...withAge(range.oldest, today),
+      newest: withAge(range.newest, today),
+      stampCount: range.count,
     };
-    if (ageDays > maxAgeDays) stale.push(entry);
+    if (entry.ageDays > maxAgeDays) stale.push(entry);
     else fresh.push(entry);
   }
   return { stale, fresh, unstamped, maxAgeDays };
+}
+
+/** Resolve a parsed stamp's whole-day age against the scan's reference date. */
+function withAge(stamp: VerifiedStamp, today: Date): ScannedStamp {
+  return {
+    line: stamp.line,
+    verifiedAt: stamp.verifiedAt,
+    where: stamp.where,
+    ageDays: stampAgeDays(stamp.verifiedAt, today),
+  };
 }
 
 /**
@@ -111,15 +136,27 @@ export function staleStampsToIssues(
     severity: 'warn' as const,
     file: entry.relPath,
     line: entry.line,
-    message: `Verification stamp from ${entry.verifiedAt} (${entry.ageDays}d ago) is older than ${result.maxAgeDays}-day threshold`,
+    message: `Verification stamp from ${entry.verifiedAt} (${entry.ageDays}d ago) is older than ${result.maxAgeDays}-day threshold${newestSuffix(entry)}`,
     fix: {
       action: 'flag_for_user_review',
       autoFix: false,
       verifiedAt: entry.verifiedAt,
       ageDays: entry.ageDays,
       where: entry.where,
+      newestVerifiedAt: entry.newest.verifiedAt,
+      newestLine: entry.newest.line,
+      stampCount: entry.stampCount,
     },
   }));
+}
+
+/** " — newest of N stamps: DATE (line L)", or empty for a single-stamp file.
+ * The stale stamp is the oldest one, so on a sectioned file the message has
+ * to say what else is in there — otherwise it reads as though the whole file
+ * had gone unread since that date. */
+function newestSuffix(entry: StampScanEntry): string {
+  if (entry.stampCount < 2) return '';
+  return ` — newest of ${entry.stampCount} stamps: ${entry.newest.verifiedAt} (line ${entry.newest.line})`;
 }
 
 /**

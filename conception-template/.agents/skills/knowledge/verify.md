@@ -29,13 +29,13 @@ Trigger: `/knowledge verify`.
 
 ### Stale stamps (`condash knowledge verify` → `data.stale[]`)
 
-Stamps `**Verified:** YYYY-MM-DD <where>` older than `--max-age` days. Each row carries `relPath`, `line`, `verifiedAt`, `where`, `ageDays`. List as a punch-list. For each stale stamp, optionally verify the SHA is still reachable:
+One row per **file** whose oldest `**Verified:** YYYY-MM-DD <where>` stamp is older than `--max-age` days. Each row carries `relPath`, `line`, `verifiedAt`, `where`, `ageDays` for that oldest stamp, plus `stampCount` and `newest` (`{verifiedAt, line, where, ageDays}`). When `stampCount > 1` the file is sectioned: only the claim at `line` aged out, so say that in the punch-list rather than presenting the whole file as unread. List as a punch-list. For each stale stamp, optionally verify the SHA is still reachable:
 
 ```bash
 git -C <workspace_path>/<app> rev-parse --verify <shortsha>
 ```
 
-If unreachable, mark `SHA missing` — the fact may need re-verifying even if still correct. **Never auto-bump** — a bumped stamp without a re-read is a lie about freshness. Suggest the user re-read the current state of each referenced app and refresh each stale claim via `condash knowledge stamp <path> --where <new-where>`.
+If unreachable, mark `SHA missing` — the fact may need re-verifying even if still correct. **Never auto-bump** — a bumped stamp without a re-read is a lie about freshness. Suggest the user re-read the current state of each referenced app and refresh each stale claim via `condash knowledge stamp <path> --line <row.line> --where <new-where>`. Pass `--line` from the row: on a sectioned file, stamping without it refuses, and stamping the wrong line would refresh a claim nobody re-read.
 
 ### `lfs` (auto-fix candidate, with confirmation)
 

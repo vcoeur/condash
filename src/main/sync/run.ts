@@ -14,7 +14,13 @@ import { projectsStrategy } from '../index-projects';
 import { regenerateIndex } from '../index-tree';
 import type { IndexStrategy } from '../index-tree';
 import { closeMilestoneSubject, extractClosedEntries } from './close-milestone';
-import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT, type CommitGroup } from './group';
+import {
+  classifyPath,
+  commitGroups,
+  INDEX_COMMIT_SUBJECT,
+  type CommitGroup,
+  type SyncTree,
+} from './group';
 import {
   behindUpstream,
   commitPaths,
@@ -30,7 +36,7 @@ import {
 } from './git';
 import { acquireSyncLock, type LockHolder } from './lock';
 
-const TREES: [tree: 'projects' | 'knowledge', strategy: IndexStrategy][] = [
+const TREES: [tree: SyncTree, strategy: IndexStrategy][] = [
   ['projects', projectsStrategy],
   ['knowledge', knowledgeStrategy],
 ];
@@ -77,9 +83,15 @@ export interface SyncReport {
   skipped: SkippedPath[];
   /** Trees whose `.index-dirty` marker triggered a regeneration. */
   regeneratedTrees: string[];
-  /** Index regeneration was held back because some item is still mid-write;
-   *  the marker stays set and the next settled tick does it. */
+  /** Index regeneration was held back for at least one tree because something
+   *  in *that* tree is still mid-write; the marker stays set and the next tick
+   *  where the tree is settled does it. True iff `deferredIndexTrees` is
+   *  non-empty. */
   indexesDeferred: boolean;
+  /** The trees whose pending index work this run deferred. Empty when nothing
+   *  was deferred — a tree with an unsettled path but no index work waiting is
+   *  not listed, because there is nothing being held up. */
+  deferredIndexTrees: SyncTree[];
   /** Commits on HEAD that upstream doesn't have after the last check; `null`
    *  when no upstream. */
   ahead: number | null;
@@ -120,9 +132,11 @@ export async function syncRun(
 
     const eligible: string[] = [];
     const skipped: SkippedPath[] = [];
-    // Only an item/knowledge path held back defers the indexes — a mid-write
-    // `AGENTS.md` (a `meta` path) is never referenced by a regenerated index.
-    let treePathHeldBack = false;
+    // Only an item/knowledge path held back defers indexes, and only its own
+    // tree's — a mid-write `AGENTS.md` (a `meta` path) is never referenced by
+    // any index, and a mid-write project item is never referenced by a
+    // `knowledge/**/index.md`.
+    const heldBackTrees = new Set<SyncTree>();
     for (const { path } of changed) {
       const cls = classifyPath(path);
       if (cls.kind === 'index') continue;
@@ -132,32 +146,59 @@ export async function syncRun(
       }
       if (!(await isSettled(join(conceptionPath, path), cutoffMs))) {
         skipped.push({ path, reason: 'quiet-period' });
-        if (cls.kind === 'item' || cls.kind === 'knowledge') treePathHeldBack = true;
+        if (cls.kind === 'item') heldBackTrees.add('projects');
+        else if (cls.kind === 'knowledge') heldBackTrees.add('knowledge');
         continue;
       }
       eligible.push(path);
     }
 
-    // An index is fan-in over *every* item, so regenerating it while some item
-    // is still inside the quiet period would commit a `projects/index.md` whose
-    // bullets point at directories this commit doesn't contain — a dangling
-    // reference on `main`, which is worse than the mid-state file commits the
-    // quiet period already tolerates. Defer the whole index step (leaving
-    // `.index-dirty` set) until a tick finds the tree settled.
-    const indexesDeferred = treePathHeldBack;
-
-    const regeneratedTrees = indexesDeferred
-      ? []
-      : await regenerateDirtyTrees(conceptionPath, options.dryRun);
+    // An index is fan-in over every item *of its tree*, so regenerating it
+    // while one of them is still inside the quiet period would commit a
+    // `projects/index.md` whose bullets point at directories this commit
+    // doesn't contain — a dangling reference on `main`, which is worse than
+    // the mid-state file commits the quiet period already tolerates. So the
+    // index step is deferred (leaving `.index-dirty` set) — but per tree.
+    // Gating both trees on *any* unsettled path starved the index bucket
+    // indefinitely: in a conception with parallel sessions some item path is
+    // nearly always mid-write, so a knowledge restructure could commit its
+    // moved body files and never its `index.md` files, leaving the documented
+    // read path broken on the remote with nothing in the loop to repair it
+    // (condash#508).
+    const regeneratedTrees = await regenerateDirtyTrees(
+      conceptionPath,
+      options.dryRun,
+      heldBackTrees,
+    );
 
     // Re-read: regeneration just rewrote index.md files, and they are exempt
     // from the quiet period precisely because sync itself set their mtime.
-    const indexPaths = indexesDeferred
-      ? []
-      : (await readChangedPaths(conceptionPath))
-          .filter(({ path }) => classifyPath(path).kind === 'index')
-          .map(({ path }) => path)
-          .sort();
+    // A deferred tree's index.md changes are left uncommitted even when they
+    // are already on disk — an agent that ran `condash knowledge index` by
+    // hand clears the marker, so the marker alone doesn't cover them.
+    const indexPathsByTree = new Map<SyncTree, string[]>();
+    for (const { path } of await readChangedPaths(conceptionPath)) {
+      const cls = classifyPath(path);
+      if (cls.kind !== 'index') continue;
+      const bucket = indexPathsByTree.get(cls.tree);
+      if (bucket) bucket.push(path);
+      else indexPathsByTree.set(cls.tree, [path]);
+    }
+    const indexPaths = TREES.filter(([tree]) => !heldBackTrees.has(tree))
+      .flatMap(([tree]) => indexPathsByTree.get(tree) ?? [])
+      .sort();
+
+    // Only a tree with index work actually waiting counts as deferred, so the
+    // flag means "a structural inconsistency is sitting uncommitted", not
+    // merely "something somewhere is mid-write".
+    const deferredIndexTrees: SyncTree[] = [];
+    for (const [tree] of TREES) {
+      if (!heldBackTrees.has(tree)) continue;
+      const pending =
+        (indexPathsByTree.get(tree)?.length ?? 0) > 0 ||
+        (await exists(join(conceptionPath, tree, '.index-dirty')));
+      if (pending) deferredIndexTrees.push(tree);
+    }
 
     const commits: SyncCommitRecord[] = [];
     for (const group of commitGroups(eligible)) {
@@ -173,7 +214,8 @@ export async function syncRun(
       commits,
       skipped,
       regeneratedTrees,
-      indexesDeferred,
+      indexesDeferred: deferredIndexTrees.length > 0,
+      deferredIndexTrees,
     };
   });
 }
@@ -220,6 +262,7 @@ export async function syncCommit(
         skipped: [],
         regeneratedTrees: [],
         indexesDeferred: false,
+        deferredIndexTrees: [],
       };
     },
     { silentWhenLocked: false },
@@ -255,6 +298,7 @@ async function withLock(
       skipped: [],
       regeneratedTrees: [],
       indexesDeferred: false,
+      deferredIndexTrees: [],
       ahead: null,
       behind: null,
       diverged: false,
@@ -287,10 +331,19 @@ async function assertOperable(gitDir: string, changed: readonly ChangedPath[]): 
   }
 }
 
-/** Regenerate whichever trees carry a `.index-dirty` sentinel. */
-async function regenerateDirtyTrees(conceptionPath: string, dryRun: boolean): Promise<string[]> {
+/**
+ * Regenerate whichever trees carry a `.index-dirty` sentinel, skipping the
+ * ones held back. A skipped tree keeps its marker, so the next tick that finds
+ * it settled does the work.
+ */
+async function regenerateDirtyTrees(
+  conceptionPath: string,
+  dryRun: boolean,
+  heldBackTrees: ReadonlySet<SyncTree>,
+): Promise<string[]> {
   const regenerated: string[] = [];
   for (const [tree, strategy] of TREES) {
+    if (heldBackTrees.has(tree)) continue;
     if (!(await exists(join(conceptionPath, tree, '.index-dirty')))) continue;
     await regenerateIndex(conceptionPath, strategy, { dryRun });
     regenerated.push(tree);
