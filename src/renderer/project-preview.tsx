@@ -11,7 +11,7 @@ import {
 import type { JSX } from 'solid-js';
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
-import { compareByStatusThenSlug } from '@shared/projects';
+import { compareByStatusThenSlug, shortSlug } from '@shared/projects';
 import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
@@ -480,7 +480,7 @@ export function ProjectPreview(props: {
               <ActionDropdownButton
                 trigger={<IconTerminal />}
                 triggerTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
-                defaultLabel={`Work on ${project().slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
+                defaultLabel={`Work on ${shortSlug(project().slug)}`}
                 items={props.projectActions ?? []}
                 onItem={(idx) => {
                   if (idx === -1) {

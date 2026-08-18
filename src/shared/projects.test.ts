@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareByStatusThenSlug, countSteps, statusOrder } from './projects';
+import { compareByStatusThenSlug, countSteps, shortSlug, statusOrder } from './projects';
 import { KNOWN_STATUSES, type Step } from './types';
 
 describe('statusOrder', () => {
@@ -65,5 +65,19 @@ describe('countSteps section filtering', () => {
   it('returns zeros when no Steps section exists', () => {
     const steps: Step[] = [step(' ', 'Notes'), step('x', 'Step details')];
     expect(countSteps(steps)).toEqual({ todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 });
+  });
+});
+
+describe('shortSlug', () => {
+  it('drops the YYYY-MM-DD- prefix', () => {
+    expect(shortSlug('2026-08-18-project-card-slug')).toBe('project-card-slug');
+  });
+
+  it('returns a slug with no date prefix unchanged', () => {
+    expect(shortSlug('project-card-slug')).toBe('project-card-slug');
+  });
+
+  it('strips only the leading date, not a date inside the slug', () => {
+    expect(shortSlug('2026-08-18-bump-2026-08-01-report')).toBe('bump-2026-08-01-report');
   });
 });

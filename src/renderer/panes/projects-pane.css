@@ -566,6 +566,23 @@ body[data-dragging='project'] .row {
   gap: 6px;
 }
 
+/* Identifier line between the title and the meta row: the item's short slug in
+ * faint mono, so a card names the thing you type into a command. Kept to one
+ * line — a long slug ellipsises instead of wrapping and pushing the meta row
+ * down, and the full dated slug stays in the element's tooltip. */
+.row .slug {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The .row-head gap reads as a gulf between a title and its own identifier —
+   * pull the line up so the two group together, away from the meta row. */
+  margin-top: -3px;
+}
+
 .row .meta {
   display: flex;
   flex-wrap: wrap;
@@ -862,12 +879,6 @@ body[data-dragging='project'] .row {
  * colour so they read as "needs attention" wherever the marker appears. */
 .step-marker-blocked .step-toggle {
   color: var(--warn);
-}
-.row .slug {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  letter-spacing: 0.01em;
 }
 
 /* `.new-project-button` adds the `+ New project` flavour on top of the
