@@ -3,7 +3,6 @@ import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { elide } from './index-elide';
-import { readFileHead } from './read-file-head';
 import { matchVerifiedLine } from './knowledge-stamps';
 
 const HIDDEN_PREFIX = /^\./;
@@ -104,37 +103,42 @@ interface FileMeta {
 
 /**
  * Line count with `wc -l` semantics: the number of `\n` characters in the
- * file (a trailing newline counts; a one-line file without a trailing
- * newline reports 0). Best-effort — any read failure returns undefined,
- * same spirit as `readFileHead`'s catch-null. Reads the whole file because
- * the head used by `parseHead` is capped at 8 KB and a correct count needs
- * every line.
+ * text (a trailing newline counts; a one-line file without a trailing
+ * newline reports 0).
  */
-async function countLines(path: string): Promise<number | undefined> {
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    let lines = 0;
-    for (let i = 0; i < raw.length; i++) {
-      if (raw.charCodeAt(i) === 10) lines += 1;
-    }
-    return lines;
-  } catch {
-    return undefined;
+function countLines(raw: string): number {
+  let lines = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw.charCodeAt(i) === 10) lines += 1;
   }
+  return lines;
 }
 
-/** Parse the head of a markdown file for the card view: title (first h1),
- * a one-paragraph summary (first prose paragraph after the heading), and
- * the verification stamp date (`**Verified:** YYYY-MM-DD …`). Reads up to
- * 8 KB so we capture the verified line even when it sits below a long
- * lead paragraph. Best-effort — any failure falls back to the directory
+/** Read a markdown file for the card view: title (first h1), a one-paragraph
+ * summary (first prose paragraph after the heading), the verification stamp
+ * date (`**Verified:** YYYY-MM-DD …`), and the line count. Reads the whole
+ * file — the line count always needed it, and the stamp date must agree with
+ * `knowledge verify`, which judges a file on its *oldest* stamp wherever that
+ * sits (condash#512). Best-effort — any failure falls back to the directory
  * name as title and leaves summary / verifiedAt undefined. */
 async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
-  const head = await readFileHead(path);
-  if (head === null) return { title: fallback };
-  return { ...parseHead(head, fallback), lines: await countLines(path) };
+  let raw: string;
+  try {
+    raw = await fs.readFile(path, 'utf8');
+  } catch {
+    return { title: fallback };
+  }
+  return { ...parseHead(raw, fallback), lines: countLines(raw) };
 }
 
+/**
+ * Parse markdown text into card metadata. Accepts a whole file or a bounded
+ * head — callers that only need the title/summary may pass a head, but
+ * `verifiedAt` is only complete over the whole file.
+ *
+ * @param head the text to parse
+ * @param fallback title to use when the text carries no `#` heading
+ */
 export function parseHead(head: string, fallback: string): FileMeta {
   const lines = head.split(/\r?\n/);
   let title: string | null = null;
@@ -153,7 +157,11 @@ export function parseHead(head: string, fallback: string): FileMeta {
 
     const verifiedDate = matchVerifiedLine(line);
     if (verifiedDate) {
-      verifiedAt = verifiedDate;
+      // Oldest wins, not first or last: a sectioned file carries one stamp
+      // per section, and `knowledge verify` judges it on the oldest of them.
+      // Disagreeing here is what made `tree --json` and `verify` report
+      // different dates for the same file (condash#512).
+      if (verifiedAt === undefined || verifiedDate < verifiedAt) verifiedAt = verifiedDate;
       if (summaryParts.length > 0) summaryDone = true;
       continue;
     }

@@ -190,12 +190,21 @@ async function verifyCommand(
       const lines: string[] = [];
       if (d.stale.length === 0) {
         lines.push(
-          `OK — ${d.fresh} stamp(s) within ${maxAge} days, ${d.unstamped.length} unstamped`,
+          `OK — ${d.fresh} file(s) fully within ${maxAge} days, ${d.unstamped.length} unstamped`,
         );
       } else {
-        lines.push(`${d.stale.length} stale stamp(s) (older than ${maxAge} days):`);
+        lines.push(`${d.stale.length} file(s) with a stamp older than ${maxAge} days:`);
         for (const s of d.stale) {
-          lines.push(`  ${s.relPath}:${s.line}  ${s.verifiedAt} (${s.ageDays}d ago)  ${s.where}`);
+          // The flagged stamp is the file's oldest; when it carries others,
+          // name the newest too so "restamp what verify flags" doesn't read
+          // as "this whole file is unread".
+          const newest =
+            s.stampCount > 1
+              ? `  [newest of ${s.stampCount}: ${s.newest.verifiedAt} (${s.newest.ageDays}d ago) line ${s.newest.line}]`
+              : '';
+          lines.push(
+            `  ${s.relPath}:${s.line}  ${s.verifiedAt} (${s.ageDays}d ago)  ${s.where}${newest}`,
+          );
         }
       }
       return lines.join('\n') + '\n';
