@@ -90,6 +90,25 @@ test('clicking the star does not open the card preview', async () => {
   }
 });
 
+test('the star gutter keeps the slug line aligned with its title', async () => {
+  // The star claims a left gutter at the head of the title row, which pushes the
+  // title text right. The slug line below is a sibling row, so it has to indent
+  // by the same `--star-gutter` or it hangs out to the left of its own title —
+  // exactly what the (conflict-free) merge with the slug-line feature produced.
+  // Nothing else asserts that alignment, and no marker in the diff would show it.
+  const booted = await bootApp({ prepare: prepareSibling });
+  try {
+    const card = booted.window.locator('article.row', { hasText: 'Alpha project' });
+    const titleBox = await card.locator('.title-text').boundingBox();
+    const slugBox = await card.locator('.slug').boundingBox();
+    expect(titleBox, 'title text should be laid out').not.toBeNull();
+    expect(slugBox, 'slug line should be laid out').not.toBeNull();
+    expect(Math.abs(slugBox!.x - titleBox!.x)).toBeLessThanOrEqual(1);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('a pre-seeded starred slug is honoured on first paint', async () => {
   // Cold-start path: the store loads the set from config on conception open, so
   // the very first render must already be starred-first.
