@@ -265,23 +265,6 @@ export function SearchIcon() {
   );
 }
 
-/* Kind badge — the card's kind spelled out: the same monochrome outline
- * glyph as `KindGlyph` plus the word, in a hairline pill at the head of the
- * title. The label carries the meaning for a reader and a screen reader
- * alike, so the icon inside is decorative. Renders nothing for a kind the
- * icon set doesn't know (the caller already gates on `unknown`). */
-export function KindBadge(props: { kind: string }) {
-  if (!KIND_ICON[props.kind]) return null;
-  return (
-    <span class="pill kind-badge" data-kind={props.kind} title={KIND_LABEL[props.kind]}>
-      <span class="kind-badge-icon" aria-hidden="true">
-        <KindIcon kind={props.kind} />
-      </span>
-      <span class="kind-badge-label">{KIND_LABEL[props.kind]}</span>
-    </span>
-  );
-}
-
 // Unknown-status warning — circle with a duotone wash, a bold short
 // vertical bar, and a slightly larger dot below. Reads cleanly at 12 px.
 export function WarnIcon() {

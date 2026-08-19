@@ -196,11 +196,12 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(await familyClass(midChild)).toBe(midSlot);
     expect(await familyClass(midGrandchild)).toBe(midSlot);
 
-    // A plain project card wears the kind badge too (the glyph used to be
-    // incident/document only), and the badge spells the kind out.
-    const badge = standalone.locator('.title .kind-badge[data-kind="project"]');
-    await expect(badge).toBeVisible();
-    await expect(badge).toHaveText('Project');
+    // A plain project card wears the kind glyph too (it used to be
+    // incident/document only); the kind is carried by the icon and its
+    // tooltip, not by a spelled-out label.
+    const glyph = standalone.locator('.title .kind-glyph[data-kind="project"]');
+    await expect(glyph).toBeVisible();
+    await expect(glyph).toHaveAttribute('title', 'Project');
   } finally {
     await booted.cleanup();
   }
