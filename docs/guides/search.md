@@ -91,7 +91,7 @@ A hit with no snippet matched only in the path; it still shows, labelled by its 
 
 Each result has:
 
-- The **item title and kind badge** — click to open that item's card.
+- The **item title**, with a leading icon for the **source** it came from (project, knowledge, resources, skills, logs) — click to open that item's card. Results carry no per-item kind marker, so an incident and a project look alike here; the kind glyph is a Projects-pane thing.
 - One or more **hit rows** underneath, each showing its source, the file's path, and up to three snippets with the matched terms highlighted.
 
 Click any result to close the modal and jump to the corresponding card, knowledge file, or log session. When the raw hit count exceeded 100, a *Showing 100 of N* footer tells you the list was truncated — narrow the query rather than scrolling.

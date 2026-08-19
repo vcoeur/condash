@@ -1,5 +1,7 @@
-import { Match, Switch } from 'solid-js';
-import type { StepCounts, StepMarker } from '@shared/types';
+import { Match, Show, Switch } from 'solid-js';
+import type { JSX } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
+import type { ItemKind, StepCounts, StepMarker } from '@shared/types';
 
 /* StepIcon — single shape vocabulary for the five step states. Drawn as a
  * 16×16 SVG so the same component renders the card's next-step marker, the
@@ -161,88 +163,118 @@ export function StepProgress(props: { counts: StepCounts }) {
  * token (see .kind-glyph in styles.css). Each icon is hand-tuned rather than
  * a stock library glyph — see the comments above each definition. */
 
-const KIND_ICON: Record<string, () => any> = {
+type KindEntry = { label: string; icon: () => JSX.Element };
+
+/* One entry per item kind: the word that names it and its hand-tuned outline
+ * icon. A single record on purpose. These were two parallel maps keyed by the
+ * same strings, which let a kind exist in one and not the other — harmless
+ * while the glyph was an unlabelled span, but `role="img"` turns a missing
+ * label into an unnamed image (a WCAG 1.1.1 failure). One record makes that
+ * state unrepresentable instead of guarded against, and keying on `ItemKind`
+ * makes tsc flag a kind added to the union with no icon. The accessor below
+ * still returns `undefined` — for `'unknown'`, which is where an off-union
+ * `kind:` lands: `parseHeader` passes the raw string through with a warning,
+ * but `normaliseKind` (main/parse.ts) collapses anything unrecognised before a
+ * `Project` reaches the renderer. */
+const KIND: Record<Exclude<ItemKind, 'unknown'>, KindEntry> = {
   // Project — gem-cut diamond outline with a single soft horizontal facet
   // line. Reads as "waypoint with depth" rather than a flat rhombus.
   // Leftmost path point at viewBox x=2.5 to align with the step icon's rect
   // (also x=2.5) and the other kind icons.
-  project: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 2.5L13.5 8 8 13.5 2.5 8z" />
-      <path d="M5 8h6" stroke-opacity="0.45" />
-    </svg>
-  ),
+  project: {
+    label: 'Project',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 2.5L13.5 8 8 13.5 2.5 8z" />
+        <path d="M5 8h6" stroke-opacity="0.45" />
+      </svg>
+    ),
+  },
   // Incident — alert triangle outline with a clean exclamation glyph (line +
   // dot). Leftmost path point at x=2.5 (base's bottom-left) to match the rest
   // of the icon set.
-  incident: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3L13.5 13.5h-11z" />
-      <path d="M8 6.75v3" />
-      <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
-    </svg>
-  ),
+  incident: {
+    label: 'Incident',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 3L13.5 13.5h-11z" />
+        <path d="M8 6.75v3" />
+        <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
   // Document — page outline with a corner fold and two text lines, the
   // second shorter for natural text rhythm. Leftmost path point at x=2.5,
   // matching the rest of the icon set.
-  document: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 2h6L12 5.5v9H2.5z" />
-      <path d="M8.5 2L12 5.5h-3.5z" />
-      <path d="M4.75 9h4.5M4.75 11.5h2.75" />
-    </svg>
-  ),
-};
-
-function KindIcon(props: { kind: string }) {
-  const Icon = KIND_ICON[props.kind];
-  if (!Icon) return null;
-  return <Icon />;
-}
-
-const KIND_LABEL: Record<string, string> = {
-  project: 'Project',
-  incident: 'Incident',
-  document: 'Document',
+  document: {
+    label: 'Document',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M2.5 2h6L12 5.5v9H2.5z" />
+        <path d="M8.5 2L12 5.5h-3.5z" />
+        <path d="M4.75 9h4.5M4.75 11.5h2.75" />
+      </svg>
+    ),
+  },
 };
 
 /* Kind glyph — small monochrome outline icon that marks a card or modal
  * with its kind (project / incident / document). No text label: the icon
- * carries the meaning (helped by the `aria-label` and `title` for screen
- * readers and tooltips). Sits at the start of the title on every card whose
- * kind is known, and inline in the popup's metadata row. */
-export function KindGlyph(props: { kind: string }) {
-  if (!KIND_ICON[props.kind]) return null;
+ * carries the meaning, named by `aria-label` for a screen reader and `title`
+ * for a tooltip. `role="img"` is what makes that `aria-label` count: a bare
+ * span computes as `role=generic`, where ARIA prohibits the attribute and
+ * assistive tech may drop it — leaving a card whose own label (`<title>,
+ * <status>`) never says whether it is a project or an incident. Sits at the
+ * start of the title on every card whose kind is known, and at the head of the
+ * project preview's modal head. A kind the record doesn't know renders
+ * nothing — never an unnamed image.
+ *
+ * Read through an accessor + `Show`, never `const entry = KIND[props.kind]` in
+ * the body. The preview modal stays mounted while `props.project` is swapped in
+ * place (parent banner, Subprojects rows), so a body read freezes the label at
+ * whatever the first previewed item was and a project then announces itself as
+ * "Document". Solid puts `data-kind`/`title`/`aria-label` in one effect that
+ * re-runs on `props.kind` either way — it is the *value* that has to be re-read
+ * inside it. `Dynamic` gives the icon the same treatment; it was frozen the
+ * same way, silently, well before this component was touched. */
+export function KindGlyph(props: { kind: ItemKind }) {
+  const entry = (): KindEntry | undefined =>
+    props.kind === 'unknown' ? undefined : KIND[props.kind];
   return (
-    <span
-      class="kind-glyph"
-      data-kind={props.kind}
-      title={KIND_LABEL[props.kind]}
-      aria-label={KIND_LABEL[props.kind]}
-    >
-      <KindIcon kind={props.kind} />
-    </span>
+    <Show when={entry()}>
+      {(kind) => (
+        <span
+          class="kind-glyph"
+          data-kind={props.kind}
+          role="img"
+          title={kind().label}
+          aria-label={kind().label}
+        >
+          <Dynamic component={kind().icon} />
+        </span>
+      )}
+    </Show>
   );
 }
 
@@ -262,23 +294,6 @@ export function SearchIcon() {
       <circle cx="7" cy="7" r="4.25" />
       <path d="M10.25 10.25L13.5 13.5" />
     </svg>
-  );
-}
-
-/* Kind badge — the card's kind spelled out: the same monochrome outline
- * glyph as `KindGlyph` plus the word, in a hairline pill at the head of the
- * title. The label carries the meaning for a reader and a screen reader
- * alike, so the icon inside is decorative. Renders nothing for a kind the
- * icon set doesn't know (the caller already gates on `unknown`). */
-export function KindBadge(props: { kind: string }) {
-  if (!KIND_ICON[props.kind]) return null;
-  return (
-    <span class="pill kind-badge" data-kind={props.kind} title={KIND_LABEL[props.kind]}>
-      <span class="kind-badge-icon" aria-hidden="true">
-        <KindIcon kind={props.kind} />
-      </span>
-      <span class="kind-badge-label">{KIND_LABEL[props.kind]}</span>
-    </span>
   );
 }
 

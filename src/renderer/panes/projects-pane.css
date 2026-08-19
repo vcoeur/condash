@@ -646,11 +646,10 @@ body[data-dragging='project'] .row {
   border-radius: var(--radius);
 }
 
-/* Head row of every card — the chrome line: star, short slug + date, and
- * the action cluster pinned to the right. One line, always: the slug is the
- * only flexible item and ellipsises first; star, separator, date and actions
- * never shrink, so the date and the work-on button stay put however long the
- * slug is. */
+/* Head row of every card — the chrome line: star, dated slug, and the action
+ * cluster pinned to the right. One line, always: the slug is the only flexible
+ * item and ellipsises first; star and actions never shrink, so the work-on
+ * button stays put however long the slug is. */
 .row .head-row {
   display: flex;
   align-items: center;
@@ -681,7 +680,7 @@ body[data-dragging='project'] .row {
   flex-shrink: 0;
   /* Pull the star to the card's left edge: its box is 20 px but the glyph
    * inside is 15 px, so without this the star looks indented against the
-   * title's badge on the row below. */
+   * kind glyph on the row below. */
   margin-left: -3px;
   padding: 0;
   border: 1px solid transparent;
@@ -713,13 +712,15 @@ body[data-dragging='project'] .row {
   transform: scale(0.9);
 }
 
-/* Identifier + date on the head row, both in faint mono so the line reads as
- * a single "which item, when" stamp. The slug names the thing you type into a
- * command; it is the only item allowed to shrink — a long slug ellipsises
- * instead of wrapping, and the full dated slug stays in its tooltip. */
-.row .slug,
-.row .head-sep,
-.row .date {
+/* The dated slug on the head row, in faint mono — the item's directory name
+ * verbatim, which is also what you type into a command. It is the only thing
+ * on the row allowed to shrink: a long slug ellipsises instead of wrapping,
+ * and the tooltip carries the full text. */
+.row .slug {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--text-faint);
@@ -727,24 +728,8 @@ body[data-dragging='project'] .row {
   white-space: nowrap;
 }
 
-.row .slug {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.row .head-sep,
-.row .date {
-  flex-shrink: 0;
-}
-
-.row .date {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Title block: kind badge inline at the head, then the title text flowing on
- * — and wrapping under the badge — for as many lines as it needs. Never
+/* Title block: kind glyph inline at the head, then the title text flowing on
+ * — and wrapping under the glyph — for as many lines as it needs. Never
  * clamped: the card grows with the title rather than cutting it. */
 .row .title {
   margin: 0;
@@ -778,40 +763,16 @@ body[data-dragging='project'] .row {
   text-shadow: none;
 }
 
-/* Kind badge: hairline pill with the monochrome kind glyph and the word
- * (Project / Incident / Document). Muted ink on purpose — colour on this pane
- * is reserved for families (`.row.in-family`), the badge only labels. It sits
- * inline in the title's first line, so the title text wraps beneath it; the
- * UI font + no faux-weight keep it a label, not part of the serif title. */
-.row .kind-badge {
-  /* Geometry from the shared `.pill` base (primitives.css); colour, padding
-   * and type here. */
-  gap: 4px;
-  vertical-align: 3px;
+/* Kind glyph at the head of the title. It keeps its own muted ink (not the
+ * title's family tint) and none of the title's faux-weight stroke/shadow — a
+ * hairline icon must stay hairline. Inline rather than a flex sibling, so the
+ * title's later lines wrap under it and use the card's full width; the −2 px
+ * baseline nudge centres the 16 px glyph on the serif's cap height. */
+.row .title .kind-glyph {
+  vertical-align: -2px;
   margin-right: 8px;
-  padding: 1px 7px 1px 5px;
-  border: 1px solid var(--border-strong);
-  font-family: var(--font-ui);
-  font-size: var(--text-3xs);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
   -webkit-text-stroke: 0;
   text-shadow: none;
-  white-space: nowrap;
-}
-
-.row .kind-badge-icon {
-  display: inline-flex;
-  flex-shrink: 0;
-}
-
-.row .kind-badge-icon svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.4;
 }
 
 .row .title-text {

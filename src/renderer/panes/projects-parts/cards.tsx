@@ -18,7 +18,7 @@ import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
 import { isStarred } from '../../star-store';
 import { Group, firstDate, lastDate, readCollapseMap, writeCollapseEntry } from './data';
-import { KindBadge, StarIcon, StepProgress, WarnIcon } from './icons';
+import { KindGlyph, StarIcon, StepProgress, WarnIcon } from './icons';
 
 // Status lane the pointer currently hovers during a card drag (null = none).
 // Module scope so every GroupBlock highlights its lane reactively while the
@@ -551,9 +551,9 @@ export function Card(props: {
       onKeyDown={handleKeyDown}
     >
       <div class="row-head">
-        {/* Row 1 — the chrome line: star, the item's identifier + date, and
-            the work-on action pinned to the right. Kept to one line: the
-            slug ellipsises before the date or the action can move. */}
+        {/* Row 1 — the chrome line: star, the item's dated slug, and the
+            work-on action pinned to the right. Kept to one line: the slug
+            ellipsises before the action can move. */}
         <div class="head-row">
           {/* Star: first thing on the card, so the eye reads "is this one of
               mine?" before anything else. Filled when starred, dim outline when
@@ -572,22 +572,13 @@ export function Card(props: {
           >
             <StarIcon filled={starred()} />
           </button>
-          {/* The item's own identifier. The `YYYY-MM-DD-` prefix is dropped —
-              it is the short form every `condash projects <verb> <slug>` call
-              and the `{shortSlug}` action variable take, and the date sits
-              right beside it. The tooltip keeps the full dated slug one hover
-              away. */}
+          {/* The item's own identifier, written exactly as its directory name
+              — dated slug, `YYYY-MM-DD-` prefix included. The date is part of
+              the identifier here rather than a second stamp beside it; the
+              last-activity date stays on the meta row. The tooltip repeats the
+              slug for a card narrow enough to ellipsise it. */}
           <span class="slug" title={`slug: ${props.item.slug}`}>
-            {shortSlug(props.item.slug)}
-          </span>
-          <span class="head-sep" aria-hidden="true">
-            ·
-          </span>
-          <span
-            class="date"
-            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
-          >
-            {lastDate(props.item)}
+            {props.item.slug}
           </span>
           <div class="title-actions">
             <ActionDropdownButton
@@ -608,21 +599,23 @@ export function Card(props: {
           </div>
         </div>
 
-        {/* Row 2 — kind badge + title. The badge is inline at the head of the
+        {/* Row 2 — kind glyph + title. The glyph is inline at the head of the
             title so the text flows on under it; the title is never clamped —
             a long title takes the lines it needs. An `unknown` kind is a
-            README the parser couldn't type; that gets no badge rather than a
+            README the parser couldn't type; that gets no glyph rather than a
             made-up one. */}
         <h3 class="title">
           <Show when={props.item.kind !== 'unknown'}>
-            <KindBadge kind={props.item.kind} />
+            <KindGlyph kind={props.item.kind} />
           </Show>
           <span class="title-text">{props.item.title}</span>
         </h3>
 
         {/* Single compact meta row: app pills, branch/PR/warn, a spacer, then
-            a mini progress indicator. The status is shown in the section
-            header and the date on the head row, so both are omitted here. */}
+            a mini progress indicator and the last-activity date. The status is
+            shown in the section header, so it is omitted here; the head row's
+            slug carries the item's *creation* date, which is a different
+            stamp. */}
         <div class="meta meta-bottom">
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
@@ -660,6 +653,12 @@ export function Card(props: {
           </Show>
           <span class="meta-spacer" />
           <StepProgress counts={props.item.stepCounts} />
+          <span
+            class="meta-icon date"
+            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
+          >
+            {lastDate(props.item)}
+          </span>
         </div>
       </div>
       {/* Relations zone at the bottom of the card, hairline-separated from the

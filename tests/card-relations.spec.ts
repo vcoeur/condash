@@ -152,6 +152,17 @@ test('only family cards carry a family colour class; every known kind shows its 
         `---\ndate: 2026-04-25\nkind: project\nstatus: now\nparent: 2026-04-24-mid-child\n---\n\n# Mid grandchild\n\n## Goal\n\nThird-level fixture.\n`,
         'utf8',
       );
+      // A second kind, so "every known kind" is more than the default one:
+      // this is the card the glyph assertion below has to be distinguishable
+      // from. Standalone (no `parent:`), so it stays out of the family
+      // colouring asserted above.
+      const incidentDir = join(conceptionDir, 'projects', '2026-04', '2026-04-21-pager-fired');
+      await mkdir(incidentDir, { recursive: true });
+      await writeFile(
+        join(incidentDir, 'README.md'),
+        `---\ndate: 2026-04-21\nkind: incident\nstatus: now\nenvironment: PROD\nseverity: high — fixture\n---\n\n# Pager fired\n\n## Goal\n\nSecond-kind fixture.\n`,
+        'utf8',
+      );
     },
   });
   try {
@@ -170,6 +181,7 @@ test('only family cards carry a family colour class; every known kind shows its 
     const midChild = cardTitled('Mid child');
     const midGrandchild = cardTitled('Mid grandchild');
     const standalone = cardTitled('Sample project');
+    const incident = cardTitled('Pager fired');
     await expect(parentCard).toHaveClass(/is-parent/);
     await expect(childCard).toHaveClass(/is-subproject/);
     await expect(orphan).toHaveClass(/is-subproject/);
@@ -196,11 +208,29 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(await familyClass(midChild)).toBe(midSlot);
     expect(await familyClass(midGrandchild)).toBe(midSlot);
 
-    // A plain project card wears the kind badge too (the glyph used to be
-    // incident/document only), and the badge spells the kind out.
-    const badge = standalone.locator('.title .kind-badge[data-kind="project"]');
-    await expect(badge).toBeVisible();
-    await expect(badge).toHaveText('Project');
+    // A plain project card wears the kind glyph too (it used to be
+    // incident/document only); the kind is carried by the icon and its
+    // tooltip, not by a spelled-out label. Queried through the accessibility
+    // tree on purpose: the card's own aria-label is `<title>, <status>` and
+    // never names the kind, so this glyph is the only thing that tells a
+    // screen-reader user an incident card from a project card — and its
+    // aria-label only counts because of the role. A bare span computes as
+    // `role=generic`, where the attribute is prohibited and may be dropped.
+    // Both kinds are asserted because that distinction is the whole point;
+    // one of them alone would pass on a component that hard-coded a label.
+    for (const [card, kind, label] of [
+      [standalone, 'project', 'Project'],
+      [incident, 'incident', 'Incident'],
+    ] as const) {
+      const glyph = card.getByRole('img', { name: label });
+      await expect(glyph).toBeVisible();
+      await expect(glyph).toHaveClass(/kind-glyph/);
+      await expect(glyph).toHaveAttribute('title', label);
+      // `data-kind` is the raw kind, unlocalised and independent of the
+      // label — nothing styles on it today, so this assertion is its only
+      // reader and the reason it is not dead weight.
+      await expect(glyph).toHaveAttribute('data-kind', kind);
+    }
   } finally {
     await booted.cleanup();
   }
@@ -261,8 +291,8 @@ test('clicking the card body (not the title) opens that project preview', async 
     const win = booted.window;
     await win.waitForSelector('article.row', { state: 'visible', timeout: 5000 });
 
-    // The date span sits on the head row beside the slug: not the title, not
-    // in the click exclusion set (.row-action, .pr-badge, .title-actions,
+    // The date span sits at the end of the meta row: not the title, not in
+    // the click exclusion set (.row-action, .pr-badge, .title-actions,
     // banner buttons) — a plain body click that must bubble up to the
     // whole-card open.
     await win.click('article.row .date');
@@ -396,6 +426,67 @@ test('a pointer gesture past the drag threshold does not open the preview', asyn
     await win.waitForTimeout(300);
     await expect(win.locator('.modal.project-preview')).toHaveCount(0);
     await expect(card).toHaveAttribute('data-status-card', 'now');
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+/**
+ * The preview modal's kind glyph re-reads its kind when the previewed project
+ * is swapped in place.
+ *
+ * The modal stays mounted across projects — the parent banner and the
+ * Subprojects rows swap `props.project` rather than remounting — and the
+ * `kind !== 'unknown'` gate around the glyph stays truthy across a
+ * document → project switch, so `KindGlyph` is never re-created. That makes it
+ * the one place where reading `KIND[props.kind]` in the component body instead
+ * of through an accessor is observable: Solid re-runs the attribute effect on
+ * a `props.kind` change either way, but a body-read `const` writes the same
+ * frozen value back, and the card announces a project as "Document".
+ *
+ * Both halves are asserted because they froze independently: the label read
+ * from a mount-time const, and the icon component resolved once at mount.
+ */
+test('the preview kind glyph follows an in-place project swap', async () => {
+  const booted = await bootApp({
+    prepare: async (conceptionDir) => {
+      const parentDir = join(conceptionDir, 'projects', '2026-04', '2026-04-20-kind-parent');
+      await mkdir(parentDir, { recursive: true });
+      await writeFile(
+        join(parentDir, 'README.md'),
+        `---\ndate: 2026-04-20\nkind: project\nstatus: now\n---\n\n# Kind parent\n\n## Goal\n\nProject-kind fixture.\n`,
+        'utf8',
+      );
+      const childDir = join(conceptionDir, 'projects', '2026-04', '2026-04-21-kind-child');
+      await mkdir(childDir, { recursive: true });
+      await writeFile(
+        join(childDir, 'README.md'),
+        `---\ndate: 2026-04-21\nkind: document\nstatus: now\nparent: 2026-04-20-kind-parent\n---\n\n# Kind child\n\n## Goal\n\nDocument-kind fixture.\n`,
+        'utf8',
+      );
+    },
+  });
+  try {
+    const win = booted.window;
+    // Leftmost path of each hand-tuned outline: page body vs gem-cut diamond.
+    const DOCUMENT_PATH = 'M2.5 2h6L12 5.5v9H2.5z';
+    const PROJECT_PATH = 'M8 2.5L13.5 8 8 13.5 2.5 8z';
+
+    await win
+      .locator('article.row', { has: win.locator('.title-text', { hasText: 'Kind child' }) })
+      .locator('.title-text')
+      .click();
+    const glyph = win.locator('.modal.project-preview .kind-glyph');
+    await expect(glyph).toHaveAttribute('aria-label', 'Document');
+    await expect(glyph.locator('svg path').first()).toHaveAttribute('d', DOCUMENT_PATH);
+
+    // Swap the previewed project without remounting the modal.
+    await win.click('.modal.project-preview button.parent-banner-name');
+    await expect(win.locator('.modal.project-preview .modal-title')).toHaveText('Kind parent');
+
+    await expect(glyph).toHaveAttribute('aria-label', 'Project');
+    await expect(glyph).toHaveAttribute('data-kind', 'project');
+    await expect(glyph.locator('svg path').first()).toHaveAttribute('d', PROJECT_PATH);
   } finally {
     await booted.cleanup();
   }
