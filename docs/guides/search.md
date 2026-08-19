@@ -17,6 +17,8 @@ condash's search is a **modal**, not a pane. It's available from anywhere in the
 
 The query box takes focus the moment the modal opens. Start typing; results render live, ranked and grouped by item. `Esc` closes the modal.
 
+To narrow the **Projects pane itself** rather than get a ranked list — a README-content search that just hides non-matching cards, combined with a starred toggle and an apps multiselect — use the pane's own [filter bar](projects-pane.md#filter). It runs over the same index, README files only.
+
 ## What's indexed
 
 Four Markdown sources are held in an in-memory index, plus terminal logs which are scanned from disk on demand:

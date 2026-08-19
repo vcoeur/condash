@@ -88,6 +88,34 @@ export async function search(
   return { hits, terms, totalBeforeCap, truncated };
 }
 
+/**
+ * Which project READMEs match `query` — the Projects-pane filter bar's search.
+ * Same query grammar and matcher as `search`, restricted to `projects/` and to
+ * each item's `README.md` (notes are not consulted), and **uncapped**: a filter
+ * has to be exhaustive where the ranked search only has to be useful, so the
+ * `RAW_HIT_CAP` that keeps the search modal fast does not apply here. Returns
+ * the posix absolute README paths — the same value as `Project.path`, so the
+ * renderer matches cards by identity, no re-derivation. Empty for an empty or
+ * all-stopword query.
+ */
+export async function searchProjectReadmes(
+  conceptionPath: string,
+  query: string,
+): Promise<string[]> {
+  const terms = parseQuery(query);
+  if (terms.length === 0) return [];
+  const wants = (source: string): boolean => source === 'projects';
+  let matched = searchIndex(conceptionPath, terms, wants);
+  if (matched === null) {
+    matched = await scanMarkdownFromDisk(conceptionPath, terms, wants);
+  }
+  const paths: string[] = [];
+  for (const m of matched) {
+    if (m.hit.source === 'project' && m.hit.path.endsWith('/README.md')) paths.push(m.hit.path);
+  }
+  return paths;
+}
+
 /** Read a project's README title from disk. Used by the on-disk scan
  *  fallback to give every project hit the same `projectTitle` metadata the
  *  in-memory index provides. */

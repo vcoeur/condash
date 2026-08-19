@@ -22,6 +22,7 @@ const api: CondashApi = {
   readSkillsTree: (scope) => ipcRenderer.invoke('readSkillsTree', scope),
   readSkillFile: (path) => ipcRenderer.invoke('readSkillFile', path),
   search: (query, scopes) => ipcRenderer.invoke('search', query, scopes),
+  searchProjectReadmes: (query) => ipcRenderer.invoke('searchProjectReadmes', query),
   listRepos: () => ipcRenderer.invoke('listRepos'),
   listReposForPrimary: (primaryName) => ipcRenderer.invoke('listReposForPrimary', primaryName),
   invalidateGitStatus: () => ipcRenderer.invoke('invalidateGitStatus'),

@@ -171,6 +171,9 @@ export function SubGroup(props: {
   items: Project[];
   storageKey: string;
   defaultExpanded: boolean;
+  /** Override collapsed state — the pane's filter bar forces every subgroup
+   * with matches open, same as `GroupBlock.forceOpen`. */
+  forceOpen?: boolean;
   /** Title attribute on the header — used to explain non-obvious shapes
    * like the Recent window's deliberate overlap with the month subgroups. */
   hint?: string;
@@ -188,6 +191,7 @@ export function SubGroup(props: {
     typeof initialStored === 'boolean' ? initialStored : null,
   );
   const isOpen = (): boolean => {
+    if (props.forceOpen) return true;
     const ux = userExpanded();
     if (ux !== null) return ux;
     return props.defaultExpanded;

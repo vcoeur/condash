@@ -41,6 +41,18 @@ Three ways, all equivalent:
 
 All three rewrite the README's `status:` line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for the legacy bold-prose form. That one-line edit is the whole mutation: the card lands in its new section because the parser re-reads the file, not because condash keeps a record elsewhere. Every write condash is capable of is enumerated in [Mutation model](../reference/mutations.md).
 
+## Search and filter the pane { #filter }
+
+A bar between the pane title and the sections narrows the cards in place — no result list, no modal — with three controls that **AND** together:
+
+- **Search READMEs…** — a full-text query over each item's `README.md` (title, goal, steps, timeline — the same query grammar as the [search modal](search.md), served from the same in-memory index; `notes/` are not consulted here). Cards whose README does not match drop out. `Esc` in the field clears the query.
+- **Starred** — a toggle: only [starred](#star) items.
+- **Apps** — a multiselect over every app handle the current items mention, **any-of**: an item tagged with any selected app passes. The trigger shows how many are picked; **Clear apps** inside the menu resets it.
+
+While a filter is active the bar shows **N of M** and a **Clear filters** link. Sections that filtered down to nothing are hidden, and any section that still has matches is forced open — including the collapsed-by-default `backlog` and `done` (and its month subgroups) — so a match is never behind a fold. Drop the filter and the folds you set come back exactly as they were. The filter is a lens on the current session: it is not persisted, and it never touches the tree.
+
+Need notes and knowledge too, or a ranked result with snippets? That is the [search modal](search.md).
+
 ## Star the items that matter { #star }
 
 Each card carries a **star** at the head of its first row. Click it to pin that item to the **top of its status section**; click again to unpin. The star is the section's first sort key, so a starred item leads regardless of its date, and the usual order (newest first, or most-recently-closed first in `done`) decides the rest. It applies in every section, including the `done` band and each of its month subgroups.
