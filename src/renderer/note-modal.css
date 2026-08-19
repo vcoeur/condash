@@ -66,12 +66,14 @@
 }
 
 /* Soft-wrap long lines rather than scrolling them past the pane edge — the
- * same choice the note PDF export already makes (`export-pdf.css`), so a note
- * reads identically on screen and on paper. Applies to every `.md-rendered`
- * surface, the source read views (`.raw-code`) included: a line you have to
- * scroll to finish is worse than a wrapped one even in source. `overflow-x`
- * is the fallback for a child that can't wrap; mermaid isn't one (it emits a
- * `width="100%"` SVG that scales down), so nothing is known to reach it. */
+ * same choice the note PDF export already makes (`export-pdf.css`), so a
+ * fenced block reads the same on screen and on paper. (Tables are the one
+ * place the two sheets still differ: the bound below is screen-only.) Applies
+ * to every `.md-rendered` surface, the source read views (`.raw-code`)
+ * included: a line you have to scroll to finish is worse than a wrapped one
+ * even in source. `overflow-x` is the fallback for a child that can't wrap;
+ * mermaid isn't one (it emits a `width="100%"` SVG that scales down), so
+ * nothing is known to reach it. */
 .md-rendered pre {
   background: var(--bg-hover);
   border: 1px solid var(--border);

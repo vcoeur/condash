@@ -12,9 +12,11 @@ import { bootApp } from './fixtures/electron-app';
  *
  * Every declaration has a fixture that fails without it: `white-space:
  * pre-wrap` needs a long line with spaces to break at, `overflow-wrap:
- * break-word` a single token with none, and the `anywhere` on table cells a
- * long token inside one — `break-word` does not shrink min-content, which is
- * what an auto-layout table sizes its columns from.
+ * break-word` a single token with none, and the table bound (`display: block;
+ * width: max-content; max-width: 100%; overflow-x: auto`) a long token inside
+ * a cell — `break-word` does not shrink min-content, which is what an
+ * auto-layout table sizes its columns from, so the table is the one element
+ * here that gets a scroll box of its own rather than a wrap.
  */
 
 const SHOTS = resolve(__dirname, 'screenshots-out', 'md-preview-softwrap');
@@ -30,15 +32,16 @@ const LONG_CSS_LINE =
 
 /**
  * Worst horizontal overflow across *every* element matching the selector,
- * plus the distinct computed `white-space` values among them. Measuring all
- * matches rather than the first keeps a second fence in the same document
- * from slipping through.
+ * plus the distinct computed `white-space` / `overflow-x` values among them.
+ * Measuring all matches rather than the first keeps a second fence in the
+ * same document from slipping through.
  */
 async function overflowOf(window: Page, selector: string) {
   return window.locator(selector).evaluateAll((elements) => ({
     count: elements.length,
     maxOverflow: Math.max(0, ...elements.map((el) => el.scrollWidth - el.clientWidth)),
     whiteSpace: [...new Set(elements.map((el) => getComputedStyle(el).whiteSpace))],
+    overflowX: [...new Set(elements.map((el) => getComputedStyle(el).overflowX))],
   }));
 }
 
@@ -89,6 +92,12 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
     // the article wider. That last one is why the fixture has a table at all.
     expectNoOverflow(await overflowOf(window, '.note-modal .md-rendered'));
     expectNoOverflow(await overflowOf(window, '.note-modal .modal-body'));
+    // Both halves of the table bound, or the cell content becomes unreachable
+    // rather than scrollable: it does overflow, and it can be scrolled.
+    const table = await overflowOf(window, '.note-modal .md-rendered table');
+    expect(table.count).toBe(1);
+    expect(table.maxOverflow).toBeGreaterThan(0);
+    expect(table.overflowX).toEqual(['auto']);
     await mkdir(SHOTS, { recursive: true }).catch(() => undefined);
     await window.screenshot({ path: join(SHOTS, 'note-fence-wrapped.png') }).catch(() => undefined);
     await window.keyboard.press('Escape');
@@ -142,6 +151,11 @@ test('the Help modal wraps its bundled docs too', async () => {
     }, UNBREAKABLE);
 
     const fence = await overflowOf(window, '.help-modal .md-rendered pre');
+    // Two shipped fences plus the injected one. Pinned because the body's
+    // innerHTML is a reactive binding: if the injected node is ever dropped,
+    // the shipped two overflow by nothing and every assertion below would
+    // pass on content that cannot fail.
+    expect(fence.count).toBe(3);
     expect(fence.whiteSpace).toEqual(['pre-wrap']);
     expectNoOverflow(fence);
     expectNoOverflow(await overflowOf(window, '.help-modal .md-rendered'));
