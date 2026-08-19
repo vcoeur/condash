@@ -142,6 +142,14 @@ export type FileInstallState =
   | 'unchanged'
   | 'forced'
   | 'refused'
+  /**
+   * The file is already there and condash has never tracked it — the state
+   * every conception is in the first time a file joins `SHIPPED_FILES`. Left
+   * untouched and reported, but **not** an install failure: a routine upgrade
+   * must not start exiting non-zero on a file the user has had all along.
+   * `--diff` shows what the shipped copy would change; `--force` adopts it.
+   */
+  | 'untracked'
   | 'source-missing';
 
 export interface FileInstallOutcome {
@@ -365,11 +373,20 @@ async function installWholeShippedFile(
     record();
     return { path: file.path, region: file.region, state: 'forced', diff };
   }
+  if (!tracked) {
+    return {
+      path: file.path,
+      region: file.region,
+      state: 'untracked',
+      reason: 'already present and never tracked by condash — --diff to compare, --force to adopt',
+      diff,
+    };
+  }
   return {
     path: file.path,
     region: file.region,
     state: 'refused',
-    reason: tracked ? 'edited since last install' : 'present but not tracked by manifest',
+    reason: 'edited since last install',
     diff,
   };
 }

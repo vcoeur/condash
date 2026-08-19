@@ -66,6 +66,8 @@ export interface InstallReport {
     unchanged: { path: string; region: string }[];
     refused: { path: string; region: string; reason: string }[];
     forced: { path: string; region: string }[];
+    /** Present before condash ever tracked the file — reported, not a failure. */
+    untracked: { path: string; region: string; reason: string }[];
     sourceMissing: { path: string; region: string; shippedVersion: string }[];
   };
   agentsMd: AgentsMdOutcome | null;
@@ -155,6 +157,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
       unchanged: [],
       refused: [],
       forced: [],
+      untracked: [],
       sourceMissing: [],
     },
     agentsMd: null,
@@ -269,19 +272,23 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     const prunedFiles = pruneSourceMissingFileEntries(manifest);
     const dirs: { skill: string; path: string; removed: boolean; reason?: string }[] = [];
     for (const name of removedSkills) {
-      dirs.push(await prunePrunedSkillDir(sourceRoot, name, recordedHashes[name] ?? {}, dryRun));
+      dirs.push(await removeRetiredSkillDir(sourceRoot, name, recordedHashes[name] ?? {}, dryRun));
     }
     report.pruned = { skills: prunedSkills, files: prunedFiles, dirs };
   } else {
     // Even without --prune, surface source-missing entries so the user knows
     // to clean up.
-    const skillNames = new Set(shipped.map((s) => s.name));
+    const shippedByName = new Map(shipped.map((s) => [s.name, s]));
     for (const [name, entry] of Object.entries(manifest.skills)) {
-      if (skillNames.has(name)) continue;
-      let version: string | undefined;
+      const ship = shippedByName.get(name);
       for (const [relPath, fileEntry] of Object.entries(entry.source)) {
-        version ??= fileEntry.shippedVersion;
-        report.sourceMissing.push({ skill: name, relPath, shippedVersion: version });
+        // Both ghost shapes: the whole skill is gone, or this one file is.
+        if (ship?.files.includes(relPath)) continue;
+        report.sourceMissing.push({
+          skill: name,
+          relPath,
+          shippedVersion: fileEntry.shippedVersion,
+        });
       }
     }
     for (const row of sourceMissingFileRows(manifest)) {
@@ -329,7 +336,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
  * @param dryRun Report the decision without deleting anything.
  * @returns The directory's fate, for the install report.
  */
-async function prunePrunedSkillDir(
+async function removeRetiredSkillDir(
   sourceRoot: string,
   skillName: string,
   recorded: Record<string, string>,
@@ -397,6 +404,9 @@ function recordFileOutcome(report: InstallReport, outcome: FileInstallOutcome): 
     case 'refused':
       report.files.refused.push({ ...ref, reason: outcome.reason ?? 'refused' });
       break;
+    case 'untracked':
+      report.files.untracked.push({ ...ref, reason: outcome.reason ?? 'untracked' });
+      break;
     case 'source-missing':
       // Surfaced via the manifest walk so the row carries shippedVersion.
       break;
@@ -446,6 +456,12 @@ function formatInstallHuman(report: InstallReport): string {
     lines.push(`Files refused (${report.files.refused.length}):`);
     for (const f of report.files.refused) {
       lines.push(`  × ${f.path}  (${f.reason})`);
+    }
+  }
+  if (report.files.untracked.length > 0) {
+    lines.push(`Files left alone (${report.files.untracked.length}):`);
+    for (const f of report.files.untracked) {
+      lines.push(`  · ${f.path}  (${f.reason})`);
     }
   }
   if (report.agentsMd && report.agentsMd.state !== 'unchanged') {

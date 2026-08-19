@@ -220,6 +220,25 @@ describe('condash skills install — the top-level files lane', () => {
     expect(await fs.readFile(join(dest, HOOK), 'utf8')).not.toBe(customised);
   });
 
+  it('leaves a pre-existing untracked hook alone without failing the install', async () => {
+    // Every conception is in this state the first time a file joins
+    // SHIPPED_FILES: the hook has been there since `init`, diverged from the
+    // template, and condash has never tracked it. A routine upgrade must
+    // report that and exit 0 — not start failing on a file the user has had
+    // all along — and must not overwrite it either.
+    const theirs = '#!/usr/bin/env bash\n# hand-tuned trigger table\nexit 0\n';
+    await fs.mkdir(join(dest, '.claude/hooks'), { recursive: true });
+    await fs.writeFile(join(dest, HOOK), theirs, 'utf8');
+    await install(); // must not throw
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).toBe(theirs);
+    const manifest = await readManifest(dest);
+    expect(manifest!.files?.[HOOK]).toBeUndefined();
+    // --force is the way in, and it adopts the shipped copy.
+    await install([], { force: true });
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).not.toBe(theirs);
+    expect((await readManifest(dest))!.files![HOOK]).toBeTruthy();
+  });
+
   it('reports a converged whole-file entry as unchanged, not missing-heading', async () => {
     // The status path used to extract a heading-delimited region from every
     // tracked file. A shell script has no heading, so an installed, converged
