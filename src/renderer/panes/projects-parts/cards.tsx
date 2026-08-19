@@ -551,9 +551,9 @@ export function Card(props: {
       onKeyDown={handleKeyDown}
     >
       <div class="row-head">
-        {/* Row 1 — the chrome line: star, the item's identifier + date, and
-            the work-on action pinned to the right. Kept to one line: the
-            slug ellipsises before the action can move. */}
+        {/* Row 1 — the chrome line: star, the item's dated slug, and the
+            work-on action pinned to the right. Kept to one line: the slug
+            ellipsises before the action can move. */}
         <div class="head-row">
           {/* Star: first thing on the card, so the eye reads "is this one of
               mine?" before anything else. Filled when starred, dim outline when

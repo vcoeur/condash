@@ -198,9 +198,15 @@ test('only family cards carry a family colour class; every known kind shows its 
 
     // A plain project card wears the kind glyph too (it used to be
     // incident/document only); the kind is carried by the icon and its
-    // tooltip, not by a spelled-out label.
-    const glyph = standalone.locator('.title .kind-glyph[data-kind="project"]');
+    // tooltip, not by a spelled-out label. Queried through the accessibility
+    // tree on purpose: the card's own aria-label is `<title>, <status>` and
+    // never names the kind, so this glyph is the only thing that tells a
+    // screen-reader user an incident card from a project card — and its
+    // aria-label only counts because of the role. A bare span computes as
+    // `role=generic`, where the attribute is prohibited and may be dropped.
+    const glyph = standalone.getByRole('img', { name: 'Project' });
     await expect(glyph).toBeVisible();
+    await expect(glyph).toHaveClass(/kind-glyph/);
     await expect(glyph).toHaveAttribute('title', 'Project');
   } finally {
     await booted.cleanup();
@@ -262,8 +268,8 @@ test('clicking the card body (not the title) opens that project preview', async 
     const win = booted.window;
     await win.waitForSelector('article.row', { state: 'visible', timeout: 5000 });
 
-    // The date span sits on the head row beside the slug: not the title, not
-    // in the click exclusion set (.row-action, .pr-badge, .title-actions,
+    // The date span sits at the end of the meta row: not the title, not in
+    // the click exclusion set (.row-action, .pr-badge, .title-actions,
     // banner buttons) — a plain body click that must bubble up to the
     // whole-card open.
     await win.click('article.row .date');

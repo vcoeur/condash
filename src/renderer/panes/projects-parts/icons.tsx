@@ -229,15 +229,20 @@ const KIND_LABEL: Record<string, string> = {
 
 /* Kind glyph — small monochrome outline icon that marks a card or modal
  * with its kind (project / incident / document). No text label: the icon
- * carries the meaning (helped by the `aria-label` and `title` for screen
- * readers and tooltips). Sits at the start of the title on every card whose
- * kind is known, and inline in the popup's metadata row. */
+ * carries the meaning, named by `aria-label` for a screen reader and `title`
+ * for a tooltip. `role="img"` is what makes that `aria-label` count: a bare
+ * span computes as `role=generic`, where ARIA prohibits the attribute and
+ * assistive tech may drop it — leaving a card whose own label (`<title>,
+ * <status>`) never says whether it is a project or an incident. Sits at the
+ * start of the title on every card whose kind is known, and inline in the
+ * popup's metadata row. */
 export function KindGlyph(props: { kind: string }) {
   if (!KIND_ICON[props.kind]) return null;
   return (
     <span
       class="kind-glyph"
       data-kind={props.kind}
+      role="img"
       title={KIND_LABEL[props.kind]}
       aria-label={KIND_LABEL[props.kind]}
     >
