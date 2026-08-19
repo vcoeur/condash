@@ -646,11 +646,10 @@ body[data-dragging='project'] .row {
   border-radius: var(--radius);
 }
 
-/* Head row of every card — the chrome line: star, short slug + date, and
- * the action cluster pinned to the right. One line, always: the slug is the
- * only flexible item and ellipsises first; star, separator, date and actions
- * never shrink, so the date and the work-on button stay put however long the
- * slug is. */
+/* Head row of every card — the chrome line: star, dated slug, and the action
+ * cluster pinned to the right. One line, always: the slug is the only flexible
+ * item and ellipsises first; star and actions never shrink, so the work-on
+ * button stays put however long the slug is. */
 .row .head-row {
   display: flex;
   align-items: center;
@@ -681,7 +680,7 @@ body[data-dragging='project'] .row {
   flex-shrink: 0;
   /* Pull the star to the card's left edge: its box is 20 px but the glyph
    * inside is 15 px, so without this the star looks indented against the
-   * title's badge on the row below. */
+   * kind glyph on the row below. */
   margin-left: -3px;
   padding: 0;
   border: 1px solid transparent;

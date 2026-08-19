@@ -171,9 +171,11 @@ type KindEntry = { label: string; icon: () => JSX.Element };
  * while the glyph was an unlabelled span, but `role="img"` turns a missing
  * label into an unnamed image (a WCAG 1.1.1 failure). One record makes that
  * state unrepresentable instead of guarded against, and keying on `ItemKind`
- * makes tsc flag a kind added to the union with no icon. The lookup is still
- * fallible at runtime: `parseHeader` only *warns* on an off-union `kind:` and
- * passes the raw lowercased string through, so `KIND[...]` can miss. */
+ * makes tsc flag a kind added to the union with no icon. The accessor below
+ * still returns `undefined` — for `'unknown'`, which is where an off-union
+ * `kind:` lands: `parseHeader` passes the raw string through with a warning,
+ * but `normaliseKind` (main/parse.ts) collapses anything unrecognised before a
+ * `Project` reaches the renderer. */
 const KIND: Record<Exclude<ItemKind, 'unknown'>, KindEntry> = {
   // Project — gem-cut diamond outline with a single soft horizontal facet
   // line. Reads as "waypoint with depth" rather than a flat rhombus.
