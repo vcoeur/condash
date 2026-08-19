@@ -60,6 +60,11 @@
   font-size: 0.9em;
 }
 
+/* Soft-wrap long fenced lines rather than scrolling them past the pane edge —
+ * the same choice the note PDF export already makes (`export-pdf.css`), so a
+ * note reads identically on screen and on paper. `overflow-x` stays for the
+ * children that cannot wrap at all (a wide mermaid SVG). Source-file read
+ * views opt back out below (`.md-rendered.raw-code pre`). */
 .md-rendered pre {
   background: var(--bg-hover);
   border: 1px solid var(--border);
@@ -68,6 +73,8 @@
   overflow-x: auto;
   margin: 0.8em 0;
   line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .md-rendered pre code {
@@ -298,9 +305,12 @@
 /* Read view of a non-markdown file: one full-width highlighted code block.
  * The inner `<pre class="hljs">` inherits `.md-rendered pre` chrome (border,
  * background, horizontal scroll); drop its block margin so it fills the body
- * flush instead of floating like an inline fenced block. */
+ * flush instead of floating like an inline fenced block. This view shows real
+ * source, where a wrapped line reads as a fake indent level, so it keeps the
+ * horizontal scroll the markdown fences gave up. */
 .md-rendered.raw-code pre {
   margin: 0;
+  white-space: pre;
 }
 
 .config-summary-panel {
