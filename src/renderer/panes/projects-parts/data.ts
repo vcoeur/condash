@@ -1,6 +1,7 @@
 import type { Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { countSteps } from '@shared/projects';
+import { appHandle } from '@shared/app-color';
 
 /** Click-toggle cycle for the in-card step button. Skips `!` (blocked) on
  * purpose — that state is set deliberately when the work is stuck, not
@@ -274,5 +275,72 @@ export function projectsTabGroups(
   }
   const unknown = buckets.get(UNKNOWN) ?? [];
   if (unknown.length > 0) out.push(reuseOrBuild(UNKNOWN, unknown));
+  return out;
+}
+
+/** The Projects-pane filter bar's value. `apps` holds canonical handles
+ * (`appHandle`); `query` is the raw README-search text — the matching itself
+ * is done in the main process, the renderer only receives the matched paths. */
+export interface ProjectFilter {
+  starredOnly: boolean;
+  apps: string[];
+  query: string;
+}
+
+export const EMPTY_PROJECT_FILTER: ProjectFilter = { starredOnly: false, apps: [], query: '' };
+
+/** Whether any of the three filters is set — drives the force-open of collapsed
+ * sections and the "N of M · Clear filters" affordance. */
+export function projectFilterActive(filter: ProjectFilter): boolean {
+  return filter.starredOnly || filter.apps.length > 0 || filter.query.trim() !== '';
+}
+
+/** Every distinct app handle the project list mentions, sorted — the apps
+ * multiselect's option list. References go through `appHandle` (sigil stripped,
+ * lower-cased, a path reduced to its basename) so `#condash` and `Condash`
+ * collapse into one option — the same handle the card pills render. Registry
+ * aliases are not resolved here, exactly as on the pills. */
+export function collectAppHandles(buckets: Map<string, Project[]>): string[] {
+  const handles = new Set<string>();
+  for (const items of buckets.values()) {
+    for (const item of items) {
+      for (const app of item.apps) {
+        const handle = appHandle(app);
+        if (handle) handles.add(handle);
+      }
+    }
+  }
+  return [...handles].sort();
+}
+
+/**
+ * Apply the filter bar's three predicates to every bucket, keeping the bucket
+ * shape so `projectsTabGroups` runs unchanged on the result. Predicates AND
+ * together; the apps predicate is any-of (an item tagged with any selected app
+ * passes). `matchedPaths` is the README-search result — `null` while no query
+ * is active (nothing filtered on it), otherwise the set of `Project.path`
+ * values the main process matched, so an in-flight search that has not
+ * answered yet leaves the previous answer in force rather than blanking the
+ * pane. Every bucket survives (possibly empty) — hiding a section that
+ * filtered down to nothing is the view's call, not this function's.
+ */
+export function applyProjectFilter(
+  buckets: Map<string, Project[]>,
+  filter: ProjectFilter,
+  starred: ReadonlySet<string>,
+  matchedPaths: ReadonlySet<string> | null,
+): Map<string, Project[]> {
+  if (!projectFilterActive(filter)) return buckets;
+  const wantedApps = new Set(filter.apps);
+  const passes = (item: Project): boolean => {
+    if (filter.starredOnly && !starred.has(item.slug)) return false;
+    if (wantedApps.size > 0 && !item.apps.some((app) => wantedApps.has(appHandle(app)))) {
+      return false;
+    }
+    if (matchedPaths !== null && !matchedPaths.has(item.path)) return false;
+    return true;
+  };
+  const out = new Map<string, Project[]>();
+  for (const [status, items] of buckets) out.set(status, items.filter(passes));
   return out;
 }

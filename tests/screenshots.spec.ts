@@ -806,9 +806,9 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 11. item-fuzzy-search — the global search modal over the dashboard.
     await sendMenu(b.app, 'search');
     await settle(page);
-    const searchInput = page
-      .locator('.search-modal input, .search-input, input[placeholder*="search" i]')
-      .first();
+    // Scoped to the modal: the Projects pane's own filter bar also has an
+    // input whose placeholder says "Search", and it sits earlier in the DOM.
+    const searchInput = page.locator('.search-modal input').first();
     if (await searchInput.count()) {
       await searchInput.fill('fuzzy');
       await settle(page, 600);

@@ -27,7 +27,7 @@ The status values and their meanings are defined in [Status model](../reference/
 
 ## What a card carries
 
-A **star** first (see [Star the items that matter](#star)), then the **kind glyph** — a small monochrome outline that tells the three kinds apart by shape (diamond = project, triangle = incident, page = document; hover it for the word; a README whose `kind:` didn't parse gets none) — then the title, then the item's **short slug** — its directory name with the `YYYY-MM-DD-` prefix dropped, which is exactly what `condash projects <verb> <slug>` and the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) take; hover it for the full dated slug. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, the step progress, and the date of the item's last timeline entry.
+Two head rows, then a meta row. The first row is the card's chrome: a **star** (see [Star the items that matter](#star)), the item's **short slug** — its directory name with the `YYYY-MM-DD-` prefix dropped, which is exactly what `condash projects <verb> <slug>` and the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) take; hover it for the full dated slug — the **date** of the item's last timeline entry beside it (hover for first and last), and the work-on action on the right. That row never wraps: a long slug ellipsises before the date or the action move. The second row is the **kind badge** — a small hairline pill with a monochrome outline and the word (diamond = project, triangle = incident, page = document; a README whose `kind:` didn't parse gets none) — followed by the **title**, which flows on for as many lines as it needs and is never cut. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, and the step progress.
 
 The card frame is **neutral** — colour on this pane means "belongs together" and nothing else. A parent and its subprojects share one hue on their frame and a hint of it in the title, so a plan and its spin-offs read as one group at a glance; every other card keeps the plain frame (including a card whose only relation is a `parent:` that no longer resolves — there is nothing for a hue to tie it to), and status stays on the section, not the card. A card in a family also grows a **Part of ↑** banner (child) or a **Subprojects** fold (parent) — collapsed by default, one row per child once opened; the open/closed state is remembered per parent. See [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
 
@@ -41,9 +41,21 @@ Three ways, all equivalent:
 
 All three rewrite the README's `status:` line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for the legacy bold-prose form. That one-line edit is the whole mutation: the card lands in its new section because the parser re-reads the file, not because condash keeps a record elsewhere. Every write condash is capable of is enumerated in [Mutation model](../reference/mutations.md).
 
+## Search and filter the pane { #filter }
+
+A bar between the pane title and the sections narrows the cards in place — no result list, no modal — with three controls that **AND** together:
+
+- **Search READMEs…** — every term (same query grammar as the [search modal](search.md), served from the same in-memory index) must occur in the item's `README.md` — title, goal, steps, timeline — or in its dated slug; `notes/` are not consulted, and the rest of the path never counts, so `readme` or `md` match nothing by themselves while a month like `2026-07` matches that month's items. Two characters minimum. Cards whose README does not match drop out. `Esc` in the field clears the query.
+- **Starred** — a toggle: only [starred](#star) items.
+- **Apps** — a multiselect over every app handle the current items mention, **any-of**: an item tagged with any selected app passes. The trigger shows how many are picked; **Clear apps** inside the menu resets it.
+
+While a filter is active the bar shows **N of M** and a **Clear filters** link. Every section stays in place — one that filtered down to nothing shows as its empty header, still a drop lane for a card you drag — and any section that has matches is forced open — including the collapsed-by-default `backlog` and `done` (and its month subgroups) — so a match is never behind a fold; its header stops being a toggle for the duration. Drop the filter and the folds you set come back exactly as they were. The filter is a lens on the current session: it is not persisted, and it never touches the tree.
+
+Need notes and knowledge too, or a ranked result with snippets? That is the [search modal](search.md).
+
 ## Star the items that matter { #star }
 
-Each card carries a **star** at the head of its title row. Click it to pin that item to the **top of its status section**; click again to unpin. The star is the section's first sort key, so a starred item leads regardless of its date, and the usual order (newest first, or most-recently-closed first in `done`) decides the rest. It applies in every section, including the `done` band and each of its month subgroups.
+Each card carries a **star** at the head of its first row. Click it to pin that item to the **top of its status section**; click again to unpin. The star is the section's first sort key, so a starred item leads regardless of its date, and the usual order (newest first, or most-recently-closed first in `done`) decides the rest. It applies in every section, including the `done` band and each of its month subgroups.
 
 Starring is **local and uncommitted**, and that is the point of it:
 
