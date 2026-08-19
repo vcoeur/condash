@@ -11,7 +11,7 @@ test('app launches and renders the seeded project', async () => {
       'title',
       'Projects',
     );
-    await expect(booted.window.locator('.row .title').first()).toHaveText('Sample project');
+    await expect(booted.window.locator('.row .title-text').first()).toHaveText('Sample project');
   } finally {
     await booted.cleanup();
   }

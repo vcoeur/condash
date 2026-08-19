@@ -106,7 +106,7 @@ export function ProjectsFilterBar(props: {
         type="button"
         class="projects-filter-chip projects-filter-apps"
         classList={{ active: props.filter.apps.length > 0 }}
-        aria-haspopup="listbox"
+        aria-haspopup="true"
         aria-expanded={appsMenu.isOpen()}
         title="Filter by app"
         ref={appsMenu.setTrigger}
@@ -125,9 +125,8 @@ export function ProjectsFilterBar(props: {
           <div
             ref={appsMenu.setMenu}
             class="projects-filter-apps-menu portal"
-            role="listbox"
-            aria-multiselectable="true"
-            aria-label="Apps"
+            role="group"
+            aria-label="Filter by app"
             style={{
               position: 'fixed',
               top: `${appsMenu.anchor()!.top}px`,
@@ -144,7 +143,7 @@ export function ProjectsFilterBar(props: {
                 {(handle) => {
                   const selected = (): boolean => props.filter.apps.includes(handle);
                   return (
-                    <label class="projects-filter-apps-option" classList={{ selected: selected() }}>
+                    <label class="projects-filter-apps-option">
                       <input
                         type="checkbox"
                         checked={selected()}
