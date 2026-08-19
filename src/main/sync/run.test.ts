@@ -134,7 +134,9 @@ describe('syncRun', () => {
     const report = await syncRun(root, RUN_DEFAULTS);
 
     expect(report.locked).toBe(false);
-    expect(report.regeneratedTrees).toEqual(['projects']);
+    // projects via its marker; knowledge because the sweep commits content in
+    // it — a tree's indexes regenerate whenever what they describe commits.
+    expect(report.regeneratedTrees).toEqual(['projects', 'knowledge']);
     expect(report.commits.map((c) => c.subject)).toEqual([
       '2026-07-10-alpha: sync',
       '2026-07-11-beta: sync',
@@ -185,6 +187,7 @@ describe('syncRun', () => {
     const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
 
     expect(report.indexesDeferred).toBe(true);
+    expect(report.deferredIndexPaths).toEqual(['projects/2026-07/2026-07-10-alpha/README.md']);
     expect(report.regeneratedTrees).toEqual([]);
     expect(report.commits).toEqual([]);
     expect(await subjects(root)).toEqual(['init']);
@@ -239,8 +242,15 @@ describe('syncRun', () => {
     const report = await syncRun(root, RUN_DEFAULTS);
 
     expect(report.deferredIndexTrees).toEqual(['knowledge']);
-    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
-    // Still uncommitted, waiting for the tick that finds knowledge/ settled.
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
+    // The index commit carries the projects indexes alone (alpha's commit
+    // regenerated its own tree); the knowledge one is still uncommitted,
+    // waiting for the tick that finds knowledge/ settled.
+    const indexCommit = report.commits.find((c) => c.subject === 'indexes: sync');
+    expect(indexCommit?.paths.every((path) => path.startsWith('projects/'))).toBe(true);
     expect(await git(root, 'status', '--porcelain', '-uall')).toContain('knowledge/index.md');
     const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
     expect(tracked).not.toContain('knowledge/index.md');
@@ -277,6 +287,201 @@ describe('syncRun', () => {
     const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
     expect(tracked).toContain('projects/index.md');
     expect(tracked).toContain('projects/2026-07/2026-07-10-alpha/README.md');
+  });
+
+  it('regenerates over a tracked item that is mid-write, then re-derives once it settles', async () => {
+    // Regression (condash#527): within one tree, continuous writing kept the
+    // indexes deferred for as long as the churn lasted. A tracked file can't
+    // produce a dangling bullet, so its tree regenerates anyway; the bullet
+    // may describe mid-write text for one tick, and the marker is kept so the
+    // next tick re-derives it from the settled file.
+    const alpha = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+      body: '## Goal\n\nThe first version of the goal.\n',
+    });
+    const beta = await writeProjectReadme(root, 'beta', {
+      date: '2026-07-11',
+      kind: 'project',
+      status: 'now',
+    });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(alpha, beta);
+    await syncRun(root, RUN_DEFAULTS);
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).rejects.toThrow();
+
+    // Tick 1: beta closes (settled, marker set) while alpha is being rewritten
+    // — its status flips to `review` mid-edit. For an item folder the engine
+    // re-derives the tag block of an existing bullet (kind, status, apps) and
+    // leaves its description alone, so the tags are the transient to watch.
+    await writeProjectReadme(root, 'beta', { date: '2026-07-11', kind: 'project', status: 'done' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(beta);
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'review',
+      body: '## Goal\n\nThe first version of the goal.\n',
+    });
+
+    const tick1 = await syncRun(root, RUN_DEFAULTS);
+
+    expect(tick1.indexesDeferred).toBe(false);
+    expect(tick1.deferredIndexPaths).toEqual([]);
+    expect(tick1.skipped).toEqual([
+      { path: 'projects/2026-07/2026-07-10-alpha/README.md', reason: 'quiet-period' },
+    ]);
+    expect(tick1.regeneratedTrees).toEqual(['projects']);
+    expect(tick1.commits.map((c) => c.subject)).toEqual(['2026-07-11-beta: sync', 'indexes: sync']);
+    // beta's close reached main in the same tick; alpha's tag block is the
+    // one-tick transient, drawn from the mid-write header.
+    const month1 = await git(root, 'show', 'HEAD:projects/2026-07/index.md');
+    expect(month1).toMatch(/2026-07-11-beta.*\[project, done\]/);
+    expect(month1).toMatch(/2026-07-10-alpha.*\[project, review\]/);
+    // The marker survives precisely because alpha was unsettled.
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).resolves.toBeTruthy();
+
+    // Tick 2: alpha's edit ends on `done` and settles. No CLI mutation touched
+    // the marker in between — the kept marker is what brings the bullet back
+    // in line.
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+      body: '## Goal\n\nThe first version of the goal.\n',
+    });
+    await settle(alpha);
+
+    const tick2 = await syncRun(root, RUN_DEFAULTS);
+
+    expect(tick2.regeneratedTrees).toEqual(['projects']);
+    expect(tick2.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
+    const month2 = await git(root, 'show', 'HEAD:projects/2026-07/index.md');
+    expect(month2).toMatch(/2026-07-10-alpha.*\[project, done\]/);
+    expect(month2).not.toContain('[project, review]');
+    // Nothing was unsettled this time, so the marker clears.
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).rejects.toThrow();
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
+  });
+
+  it('still defers for a new-to-HEAD path mid-write, and names it, while a tracked one does not', async () => {
+    const alpha = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(alpha);
+    await syncRun(root, RUN_DEFAULTS);
+
+    // alpha (tracked) and gamma (never committed) are both mid-write.
+    await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project', status: 'now' });
+    await writeProjectReadme(root, 'gamma', { date: '2026-07-12', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.indexesDeferred).toBe(true);
+    expect(report.deferredIndexTrees).toEqual(['projects']);
+    // Only gamma is named: it is the one that would dangle.
+    expect(report.deferredIndexPaths).toEqual(['projects/2026-07/2026-07-12-gamma/README.md']);
+    expect(report.regeneratedTrees).toEqual([]);
+    expect(report.commits).toEqual([]);
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).resolves.toBeTruthy();
+    const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
+    expect(tracked).not.toContain('2026-07-12-gamma');
+  });
+
+  it('keeps the marker when a mid-write file is reverted before it ever settles', async () => {
+    // The one path that "content commits re-dirty" cannot cover: a file
+    // rewritten, regenerated over, then put back to its HEAD text — git no
+    // longer lists it, so no commit re-dirties the tree. The marker kept at
+    // regeneration time is what repairs the bullet.
+    const alpha = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(alpha);
+    await syncRun(root, RUN_DEFAULTS);
+
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+    });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    const tick1 = await syncRun(root, RUN_DEFAULTS);
+    expect(tick1.regeneratedTrees).toEqual(['projects']);
+    expect(await git(root, 'show', 'HEAD:projects/2026-07/index.md')).toMatch(
+      /2026-07-10-alpha.*\[project, done\]/,
+    );
+
+    // Reverted: content equals HEAD, so git status is silent about alpha.
+    await git(root, 'checkout', '--', 'projects/2026-07/2026-07-10-alpha/README.md');
+    const tick2 = await syncRun(root, RUN_DEFAULTS);
+
+    expect(tick2.skipped).toEqual([]);
+    expect(tick2.regeneratedTrees).toEqual(['projects']);
+    expect(tick2.commits.map((c) => c.subject)).toEqual(['indexes: sync']);
+    expect(await git(root, 'show', 'HEAD:projects/2026-07/index.md')).toMatch(
+      /2026-07-10-alpha.*\[project, now\]/,
+    );
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).rejects.toThrow();
+  });
+
+  it('regenerates a tree whose content it commits, even with the marker clear', async () => {
+    // A hand edit of a README header touches no marker; the index used to stay
+    // stale until the next CLI mutation anywhere in the tree.
+    const alpha = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(alpha);
+    await syncRun(root, RUN_DEFAULTS);
+    await expect(fs.stat(join(root, 'projects', '.index-dirty'))).rejects.toThrow();
+
+    await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'done',
+    });
+    await settle(alpha);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.regeneratedTrees).toEqual(['projects']);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
+    expect(await git(root, 'show', 'HEAD:projects/2026-07/index.md')).toMatch(
+      /2026-07-10-alpha.*\[project, done\]/,
+    );
+  });
+
+  it('drops the bullet of a deleted item in the tick that commits the deletion', async () => {
+    const alpha = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    const beta = await writeProjectReadme(root, 'beta', { date: '2026-07-11', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(alpha, beta);
+    await syncRun(root, RUN_DEFAULTS);
+    expect(await git(root, 'show', 'HEAD:projects/2026-07/index.md')).toContain('2026-07-11-beta');
+
+    await fs.rm(join(root, 'projects', '2026-07', '2026-07-11-beta'), { recursive: true });
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-11-beta: sync',
+      'indexes: sync',
+    ]);
+    expect(await git(root, 'show', 'HEAD:projects/2026-07/index.md')).not.toContain(
+      '2026-07-11-beta',
+    );
   });
 
   it('does not let an unresolved path defer the indexes forever', async () => {
@@ -402,8 +607,9 @@ describe('syncRun', () => {
 
     expect(report.commits.map((c) => c.subject)).toEqual([
       'Close 2026-07-10-alpha. Outcome: Did the thing.',
+      'indexes: sync',
     ]);
-    expect((await git(root, 'log', '--format=%s', '-1')).trim()).toBe(
+    expect((await git(root, 'log', '--format=%s', '-2')).trim().split('\n')).toContain(
       'Close 2026-07-10-alpha. Outcome: Did the thing.',
     );
   });
@@ -445,7 +651,10 @@ describe('syncRun', () => {
     await fs.rm(readme);
     const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
 
-    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
     expect(report.skipped).toEqual([]);
   });
 
@@ -471,7 +680,10 @@ describe('syncRun', () => {
 
     const report = await syncRun(root, RUN_DEFAULTS);
 
-    expect(report.commits).toHaveLength(1);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
     expect(report.commits[0].paths).toEqual(['projects/2026-07/2026-07-10-alpha/README.md']);
   });
 
@@ -555,7 +767,9 @@ describe('syncRun', () => {
     expect(report.pushed).toBe(true);
     expect(report.pushError).toBeNull();
     expect(report.ahead).toBe(0);
-    expect((await git(remote, 'log', '--format=%s', '-1')).trim()).toBe('2026-07-10-alpha: sync');
+    expect((await git(remote, 'log', '--format=%s')).trim().split('\n')).toContain(
+      '2026-07-10-alpha: sync',
+    );
 
     await fs.rm(remote, { recursive: true, force: true });
   });
@@ -578,12 +792,17 @@ describe('syncRun', () => {
     expect(report.diverged).toBe(false);
     expect(report.integrateError).toBeNull();
     expect(report.behind).toBe(0);
-    expect(report.commits).toHaveLength(1);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
 
     // The remote's commit is now part of the root's history…
     await expect(git(root, 'merge-base', '--is-ancestor', remoteSha, 'HEAD')).resolves.toBe('');
     // …and the push reached the remote.
-    expect((await git(remote, 'log', '--format=%s', '-1')).trim()).toBe('2026-07-10-alpha: sync');
+    expect((await git(remote, 'log', '--format=%s')).trim().split('\n')).toContain(
+      '2026-07-10-alpha: sync',
+    );
 
     await fs.rm(remote, { recursive: true, force: true });
   });
@@ -683,7 +902,7 @@ describe('syncRun', () => {
 
     const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
 
-    expect(report.commits).toHaveLength(1);
+    expect(report.commits).toHaveLength(2);
     expect(report.pushed).toBe(false);
     expect(report.pushError).toBeNull();
     expect(report.integrateError).toBeTruthy();
@@ -697,7 +916,7 @@ describe('syncRun', () => {
 
     const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
 
-    expect(report.commits).toHaveLength(1);
+    expect(report.commits).toHaveLength(2);
     expect(report.ahead).toBeNull();
     expect(report.behind).toBeNull();
     expect(report.diverged).toBe(false);
@@ -744,7 +963,7 @@ describe('syncRun', () => {
     expect(report.diverged).toBe(false);
     expect(report.pushed).toBe(false);
     expect(report.pushError).toBeTruthy();
-    expect(report.commits).toHaveLength(1);
+    expect(report.commits).toHaveLength(2);
     expect(await subjects(root)).toContain('2026-07-10-alpha: sync');
   });
 });
@@ -837,6 +1056,7 @@ describe('syncCommit', () => {
     expect(report.integrateError).toBeNull();
     expect(await subjects(root)).toEqual([
       'Close alpha: shipped v1.2.0',
+      'indexes: sync',
       '2026-07-10-alpha: sync',
       'init',
     ]);

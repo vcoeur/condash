@@ -183,11 +183,19 @@ describe('runSync run against a real repo', () => {
 
     const report = parseJsonEnvelope<SyncReport>(stdout).data as SyncReport;
     expect(report.dryRun).toBe(false);
-    expect(report.commits.map((c) => c.subject)).toEqual(['2026-07-10-alpha: sync']);
+    // The item commit regenerates its tree's indexes in the same sweep.
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
     expect(report.commits[0].sha).not.toBeNull();
 
     const log = await exec('git', ['log', '--format=%s'], { cwd: root });
-    expect(log.stdout.trim().split('\n')).toEqual(['2026-07-10-alpha: sync', 'init']);
+    expect(log.stdout.trim().split('\n')).toEqual([
+      'indexes: sync',
+      '2026-07-10-alpha: sync',
+      'init',
+    ]);
   });
 
   it('says so in human mode when there is nothing to sync', async () => {
@@ -195,6 +203,21 @@ describe('runSync run against a real repo', () => {
       runSync('run', args('run', [], { 'no-push': true }), humanCtx(), root),
     );
     expect(stdout).toBe('nothing to sync\n');
+  });
+
+  it("names the new path that holds a tree's indexes back", async () => {
+    // A mid-write README that HEAD has never held is the only thing that
+    // defers since condash#527, so the line says which one to let settle.
+    await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+
+    const { stdout } = await captureStdout(() =>
+      runSync('run', args('run', [], { 'no-push': true }), humanCtx(), root),
+    );
+
+    expect(stdout).toContain(
+      'deferred projects indexes until new projects/2026-07/2026-07-10-alpha/README.md settles',
+    );
   });
 
   it('prints nothing and exits cleanly when the lock is held', async () => {
