@@ -40,7 +40,18 @@ export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement>
  * (onClick, disabled, type, title, …).
  */
 export function Button(props: ButtonProps): JSX.Element {
-  const [local, rest] = splitProps(props, ['variant', 'size', 'tone', 'class', 'children']);
+  // `classList` is pulled out of the spread and applied explicitly: left in
+  // `rest`, Solid's `assign` toggled it before `class` was written, so an
+  // entry that was true at mount was wiped by the class string and only
+  // reappeared after a false→true cycle (a pressed toggle mounted un-pressed).
+  const [local, rest] = splitProps(props, [
+    'variant',
+    'size',
+    'tone',
+    'class',
+    'classList',
+    'children',
+  ]);
   return (
     <button
       {...rest}
@@ -50,6 +61,7 @@ export function Button(props: ButtonProps): JSX.Element {
         local.size === 'sm' && 'btn--sm',
         local.class,
       )}
+      classList={local.classList}
       data-tone={local.tone}
     >
       {local.children}

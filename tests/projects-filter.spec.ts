@@ -197,3 +197,59 @@ test('the apps multiselect is any-of, keeps its menu open across toggles and rep
     await booted.cleanup();
   }
 });
+
+test('a section that (re)mounts while held open is a working toggle again once the filter clears', async () => {
+  // Solid binds an event handler expression once at mount. A header whose
+  // `onClick` was `forceOpen ? undefined : toggle` therefore stayed inert for
+  // its whole life if its GroupBlock mounted while the filter was active — and
+  // a section whose membership the filter did not change is *reused* (not
+  // remounted) when the filter clears, so the dead handler survived the
+  // clear. Reproduce that exact shape: apps = #condash (every `later` item is
+  // on #condash, so `later`'s membership is unchanged by the filter), then a
+  // status flip on disk moves the backlog item into `later` — new membership,
+  // the `later` Group is rebuilt and its block remounts under forceOpen — then
+  // Clear filters reuses it, and its header must still collapse on click.
+  // (A README *content* patch is not enough: the store reconciles in place,
+  // so the Project object — and the Group — keep their identity.)
+  const booted = await bootApp({ prepare });
+  try {
+    const win = booted.window;
+    const later = win.locator('.projects-stack > .group-block[data-status="later"]');
+    await win.click('.projects-filter-apps');
+    await win
+      .locator('.projects-filter-apps-menu .projects-filter-apps-option', { hasText: '#condash' })
+      .locator('input')
+      .check();
+    await win.keyboard.press('Escape');
+    await expect(later.locator('article.row .title-text')).toHaveText(['Condash later']);
+    await expect(later.locator('> .group-header')).toHaveAttribute(
+      'title',
+      'Held open by the filter',
+    );
+
+    // Move the backlog item into `later` on disk: `later`'s membership changes,
+    // its Group is rebuilt and the block remounts while forced open.
+    await writeFile(
+      join(booted.conceptionDir, 'projects', '2026-04', '2026-04-22-condash-backlog', 'README.md'),
+      `---\ndate: 2026-04-22\nkind: project\nstatus: later\napps:\n  - condash\n---\n\n# Condash backlog\n\n## Goal\n\nNo flower here.\n`,
+      'utf8',
+    );
+    await expect(later.locator('article.row .title-text')).toHaveText(
+      ['Condash backlog', 'Condash later'],
+      { timeout: 10_000 },
+    );
+
+    // Clear filters: `later`'s membership is what it was, so the block is reused.
+    await win.click('.projects-filter-reset');
+    await expect(later.locator('> .group-header')).toHaveAttribute('title', 'Collapse section');
+    await later.locator('> .group-header').click();
+    await expect(later).toHaveClass(/collapsed/);
+    await expect(later.locator('article.row')).toHaveCount(0);
+    // …and it reopens.
+    await later.locator('> .group-header').click();
+    await expect(later).not.toHaveClass(/collapsed/);
+    await expect(later.locator('article.row')).toHaveCount(2);
+  } finally {
+    await booted.cleanup();
+  }
+});

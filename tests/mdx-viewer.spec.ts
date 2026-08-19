@@ -108,10 +108,20 @@ test('MDX plan opens in the block viewer with issues banner and source toggle', 
     await mkdir(SHOTS, { recursive: true }).catch(() => undefined);
     await window.screenshot({ path: join(SHOTS, 'mdx-rendered.png') }).catch(() => undefined);
 
+    // The Rendered tab is pressed from the first paint — a `classList` entry
+    // that is true at mount has to survive <Button>'s own class string (it
+    // used to be wiped until a false→true cycle).
+    const renderedTab = window.locator('.mdx-modal .modal-seg .btn', { hasText: 'Rendered' });
+    const sourceTab = window.locator('.mdx-modal .modal-seg .btn', { hasText: 'Source' });
+    await expect(renderedTab).toHaveClass(/\bactive\b/);
+    await expect(sourceTab).not.toHaveClass(/\bactive\b/);
+
     // Source toggle → highlighted MDX.
-    await window.locator('.mdx-modal .modal-seg .btn', { hasText: 'Source' }).click();
+    await sourceTab.click();
     await expect(window.locator('.mdx-modal .mdx-source .hljs')).toBeVisible();
-    await window.locator('.mdx-modal .modal-seg .btn', { hasText: 'Rendered' }).click();
+    await expect(sourceTab).toHaveClass(/\bactive\b/);
+    await expect(renderedTab).not.toHaveClass(/\bactive\b/);
+    await renderedTab.click();
 
     // Closing with unsaved answers is gated rather than silently discarding.
     await window.locator('.mdx-modal .plan-answer-text').fill('not saved yet');

@@ -74,8 +74,11 @@
 }
 
 /* The clear-× is a ghost icon button (shared `.btn--icon`), sized down to sit
- * inside the field: only its footprint and placement are set here. */
-.projects-filter-clear-query {
+ * inside the field: only its footprint and placement are set here. Two-class
+ * selector on purpose — this sheet is bundled before actions.css, so an
+ * equal-specificity override of `.btn--icon`'s size vars would lose on source
+ * order (knowledge: css-bundle-order-cascade). */
+.projects-filter-search .projects-filter-clear-query {
   --btn-size: 20px;
   --btn-icon: 13px;
   position: absolute;

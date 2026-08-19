@@ -84,21 +84,22 @@ export function ProjectsView(props: {
     const trimmed = filter().query.trim();
     return trimmed.length >= MIN_SEARCH_QUERY_LENGTH ? trimmed : '';
   });
-  // Bumped on every README tree event so an active query is re-matched after
-  // a README changes — the main process updates the search index before it
+  // Bumped on every project tree event so an active query is re-matched after
+  // an item changes — the main process updates the search index before it
   // pushes the batched tree events, and the debounce below adds more slack.
-  // Deliberately not `props.buckets`: those change on a star or step toggle
-  // and on every unrelated tree event, none of which changes README text.
+  // Every `project` event counts (the watcher already folds an item's note and
+  // local-file changes onto its README path, and the path's separator is
+  // native, so no suffix test): a re-query is one in-memory pass. Deliberately
+  // not `props.buckets`: those change on a star toggle and on unrelated tree
+  // events too.
   const [readmeVersion, setReadmeVersion] = createSignal(0);
   onCleanup(
     window.condash.onTreeEvents((events) => {
-      const readmeTouched = events.some(
+      const projectTouched = events.some(
         (event) =>
-          event.kind === 'projects-reload' ||
-          event.kind === 'unknown' ||
-          (event.kind === 'project' && event.path.toLowerCase().endsWith('/readme.md')),
+          event.kind === 'project' || event.kind === 'projects-reload' || event.kind === 'unknown',
       );
-      if (readmeTouched) setReadmeVersion((n) => n + 1);
+      if (projectTouched) setReadmeVersion((n) => n + 1);
     }),
   );
   let searchTimer: ReturnType<typeof setTimeout> | undefined;

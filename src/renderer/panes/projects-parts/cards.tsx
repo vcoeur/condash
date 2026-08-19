@@ -101,10 +101,13 @@ export function GroupBlock(props: {
     return !props.collapsedByDefault;
   };
   const toggle = (): void => {
-    // Held open by the pane's filter: a click must not flip (and persist) a
-    // collapsed state the user cannot see — the fold comes back untouched
-    // when the filter clears.
-    if (props.forceOpen) return;
+    // Guards live here, not in the JSX: an event handler expression is bound
+    // once at mount, so `onClick={cond ? undefined : toggle}` would freeze
+    // whatever `cond` was when the block mounted. An empty section has
+    // nothing to fold; a section held open by the pane's filter must not flip
+    // (and persist) a collapsed state the user cannot see — the fold comes
+    // back untouched when the filter clears.
+    if (isEmpty() || props.forceOpen) return;
     const next = !isOpen();
     setUserExpanded(next);
     writeCollapseEntry(props.group.status, next);
@@ -129,7 +132,7 @@ export function GroupBlock(props: {
       <header
         class="group-header"
         classList={{ 'held-open': !!props.forceOpen && !isEmpty() }}
-        onClick={isEmpty() || props.forceOpen ? undefined : toggle}
+        onClick={toggle}
         title={headerHint()}
       >
         <Caret expanded={isOpen()} />
@@ -207,7 +210,8 @@ export function SubGroup(props: {
     return props.defaultExpanded;
   };
   const toggle = (): void => {
-    // Same rule as GroupBlock: no flip while the filter holds the fold open.
+    // Same rule as GroupBlock, guarded here for the same reason (the handler
+    // binding is one-shot): no flip while the filter holds the fold open.
     if (props.forceOpen) return;
     const next = !isOpen();
     setUserExpanded(next);
@@ -218,7 +222,7 @@ export function SubGroup(props: {
       <header
         class="group-header"
         classList={{ 'held-open': !!props.forceOpen }}
-        onClick={props.forceOpen ? undefined : toggle}
+        onClick={toggle}
         title={
           props.forceOpen
             ? 'Held open by the filter'
