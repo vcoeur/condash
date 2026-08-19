@@ -17,6 +17,10 @@ export interface ChangedPath {
   /** Repo-relative, POSIX separators. */
   path: string;
   conflicted: boolean;
+  /** The path has no blob in HEAD — untracked, or added but never committed.
+   *  An index bullet pointing at such a path would dangle on `main`, which is
+   *  what the sweeper's index deferral exists to prevent. */
+  newToHead: boolean;
 }
 
 /** Error carrying git's own stderr, so callers can pattern-match on it. */
@@ -79,9 +83,20 @@ export async function readChangedPaths(cwd: string): Promise<ChangedPath[]> {
     if (entry.length < 4) continue;
     const x = entry[0];
     const y = entry[1];
-    out.push({ path: entry.slice(3), conflicted: isConflict(x, y) });
+    out.push({
+      path: entry.slice(3),
+      conflicted: isConflict(x, y),
+      newToHead: isNewToHead(x),
+    });
   }
   return out;
+}
+
+/** Porcelain v1 index-column codes for a path HEAD has never held: `?` is
+ *  untracked, `A` is staged as an addition. Anything else (`M`, `D`, ` `,
+ *  `R`, …) names a path that already has a committed blob. */
+function isNewToHead(x: string): boolean {
+  return x === '?' || x === 'A';
 }
 
 /** Porcelain v1 conflict codes: either side unmerged, or both-added/both-deleted. */
