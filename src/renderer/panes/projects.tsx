@@ -10,7 +10,6 @@ import {
   applyProjectFilter,
   collectAppHandles,
   groupDone,
-  projectFilterActive,
   projectsTabGroups,
   todayIso,
 } from './projects-parts/data';
@@ -27,6 +26,12 @@ import { familyRootOf } from '@shared/project-color';
 import { starredSlugs } from '../star-store';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
+
+/** Minimum trimmed query length before the README search runs — mirrors the
+ * search modal's floor. */
+const MIN_SEARCH_QUERY_LENGTH = 2;
+/** Debounce between the last keystroke and the README-search IPC. */
+const SEARCH_DEBOUNCE_MS = 150;
 
 // Public API re-exports — kept here so existing consumers
 // (`./panes/projects`) keep importing from the same module path.
@@ -70,17 +75,37 @@ export function ProjectsView(props: {
   // restart the way the star set does. The README search runs in the main
   // process (`searchProjectReadmes`, over the in-memory search index) and
   // answers with the matched `Project.path`s; `matchedPaths` is null while no
-  // query is active so the other two predicates work without a round-trip.
+  // query is in force so the other two predicates work without a round-trip.
   const [filter, setFilter] = createSignal<ProjectFilter>(EMPTY_PROJECT_FILTER);
   const [matchedPaths, setMatchedPaths] = createSignal<ReadonlySet<string> | null>(null);
-  const trimmedQuery = createMemo(() => filter().query.trim());
+  // Same floor as the search modal: one character matches too much of any
+  // README to be a filter, and it would fire an IPC per keystroke.
+  const searchQuery = createMemo(() => {
+    const trimmed = filter().query.trim();
+    return trimmed.length >= MIN_SEARCH_QUERY_LENGTH ? trimmed : '';
+  });
+  // Bumped on every README tree event so an active query is re-matched after
+  // a README changes — the main process updates the search index before it
+  // pushes the batched tree events, and the debounce below adds more slack.
+  // Deliberately not `props.buckets`: those change on a star or step toggle
+  // and on every unrelated tree event, none of which changes README text.
+  const [readmeVersion, setReadmeVersion] = createSignal(0);
+  onCleanup(
+    window.condash.onTreeEvents((events) => {
+      const readmeTouched = events.some(
+        (event) =>
+          event.kind === 'projects-reload' ||
+          event.kind === 'unknown' ||
+          (event.kind === 'project' && event.path.toLowerCase().endsWith('/readme.md')),
+      );
+      if (readmeTouched) setReadmeVersion((n) => n + 1);
+    }),
+  );
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let searchSeq = 0;
   createEffect(() => {
-    const query = trimmedQuery();
-    // Re-run on any project-list change too: a README edited while a query is
-    // active would otherwise keep (or miss) its card until the query changes.
-    void props.buckets;
+    const query = searchQuery();
+    void readmeVersion();
     if (searchTimer !== undefined) clearTimeout(searchTimer);
     if (query === '') {
       searchSeq++;
@@ -99,15 +124,28 @@ export function ProjectsView(props: {
           // overwrite the current one.
           if (seq === searchSeq) setMatchedPaths(new Set(paths));
         })
-        .catch(() => {
-          if (seq === searchSeq) setMatchedPaths(new Set<string>());
+        .catch((error: unknown) => {
+          // A failed search must not masquerade as "nothing matches": leave
+          // the query un-applied (every card stays) and say why in the log.
+          console.error('[projects] README search failed', error);
+          if (seq === searchSeq) setMatchedPaths(null);
         });
-    }, 150);
+    }, SEARCH_DEBOUNCE_MS);
   });
   onCleanup(() => {
     if (searchTimer !== undefined) clearTimeout(searchTimer);
   });
-  const filterActive = createMemo(() => projectFilterActive(filter()));
+  // The query counts as an active filter only once it has an answer: between
+  // the first keystroke and the debounced reply nothing is filtered yet, and
+  // forcing every collapsed section open for that window would flash the whole
+  // tree before snapping to the matches.
+  const searchPending = createMemo(() => searchQuery() !== '' && matchedPaths() === null);
+  const filterActive = createMemo(() => {
+    const current = filter();
+    return (
+      current.starredOnly || current.apps.length > 0 || (searchQuery() !== '' && !searchPending())
+    );
+  });
   const appOptions = createMemo(() => collectAppHandles(props.buckets));
   const filteredBuckets = createMemo(() =>
     applyProjectFilter(props.buckets, filter(), starredSlugs(), matchedPaths()),
@@ -191,6 +229,7 @@ export function ProjectsView(props: {
         </header>
         <ProjectsFilterBar
           filter={filter()}
+          active={filterActive()}
           appOptions={appOptions()}
           matchCount={matchCount()}
           totalCount={totalCount()}
@@ -204,14 +243,11 @@ export function ProjectsView(props: {
           </Show>
           <For each={groups()}>
             {(group) => {
-              // Under an active filter a section that filtered down to nothing
-              // is hidden rather than shown as an empty header, and any section
-              // that still has items is forced open so the matches are visible
-              // even in the collapsed-by-default `backlog` / `done`. Read
-              // reactively (a `<Show>` below, not an early return): the group
-              // object for an empty status is reused across filter changes, so
-              // this callback does not re-run when the filter flips.
-              const visible = (): boolean => !filterActive() || group.items.length > 0;
+              // Under an active filter every section stays in the DOM — an
+              // empty one as its usual empty header, which is also the drop
+              // lane a card drag needs to move a match to that status — and a
+              // section with matches is forced open so they are visible even
+              // in the collapsed-by-default `backlog` / `done`.
               // The "+ New project" button rides the NOW section header so it
               // sits on the same row as the section title. Other sections
               // don't get the action — creating an item from "later" or
@@ -247,61 +283,6 @@ export function ProjectsView(props: {
               if (group.status === 'done' && group.items.length > 0) {
                 const grouping = groupDone(group.items, todayIso(), starredSlugs());
                 return (
-                  <Show when={visible()}>
-                    <GroupBlock
-                      group={group}
-                      collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
-                      forceOpen={filterActive()}
-                      onOpen={props.onOpen}
-                      onDropProject={props.onDropProject}
-                      onWorkOn={props.onWorkOn}
-                      onToggleStar={props.onToggleStar}
-                      projectActions={props.projectActions}
-                      onProjectAction={props.onProjectAction}
-                      headerAction={headerAction}
-                      bodySlot={() => (
-                        <div class="group-body subgroups">
-                          <Show when={grouping.recent.length > 0}>
-                            <SubGroup
-                              label="recent (7 days)"
-                              items={grouping.recent}
-                              storageKey="done.recent"
-                              defaultExpanded={true}
-                              forceOpen={filterActive()}
-                              hint="Sliding window — projects move into their close month after 7 days."
-                              onOpen={props.onOpen}
-                              onWorkOn={props.onWorkOn}
-                              onToggleStar={props.onToggleStar}
-                              onChangeStatus={props.onDropProject}
-                              projectActions={props.projectActions}
-                              onProjectAction={props.onProjectAction}
-                            />
-                          </Show>
-                          <For each={grouping.byMonth}>
-                            {(sub) => (
-                              <SubGroup
-                                label={sub.month}
-                                items={sub.projects}
-                                storageKey={`done.${sub.month}`}
-                                defaultExpanded={sub.month === grouping.defaultExpandMonth}
-                                forceOpen={filterActive()}
-                                onOpen={props.onOpen}
-                                onWorkOn={props.onWorkOn}
-                                onToggleStar={props.onToggleStar}
-                                onChangeStatus={props.onDropProject}
-                                projectActions={props.projectActions}
-                                onProjectAction={props.onProjectAction}
-                              />
-                            )}
-                          </For>
-                        </div>
-                      )}
-                    />
-                  </Show>
-                );
-              }
-              return (
-                <Show when={visible()}>
                   <GroupBlock
                     group={group}
                     collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
@@ -313,8 +294,59 @@ export function ProjectsView(props: {
                     projectActions={props.projectActions}
                     onProjectAction={props.onProjectAction}
                     headerAction={headerAction}
+                    bodySlot={() => (
+                      <div class="group-body subgroups">
+                        <Show when={grouping.recent.length > 0}>
+                          <SubGroup
+                            label="recent (7 days)"
+                            items={grouping.recent}
+                            storageKey="done.recent"
+                            defaultExpanded={true}
+                            forceOpen={filterActive()}
+                            hint="Sliding window — projects move into their close month after 7 days."
+                            onOpen={props.onOpen}
+                            onWorkOn={props.onWorkOn}
+                            onToggleStar={props.onToggleStar}
+                            onChangeStatus={props.onDropProject}
+                            projectActions={props.projectActions}
+                            onProjectAction={props.onProjectAction}
+                          />
+                        </Show>
+                        <For each={grouping.byMonth}>
+                          {(sub) => (
+                            <SubGroup
+                              label={sub.month}
+                              items={sub.projects}
+                              storageKey={`done.${sub.month}`}
+                              defaultExpanded={sub.month === grouping.defaultExpandMonth}
+                              forceOpen={filterActive()}
+                              onOpen={props.onOpen}
+                              onWorkOn={props.onWorkOn}
+                              onToggleStar={props.onToggleStar}
+                              onChangeStatus={props.onDropProject}
+                              projectActions={props.projectActions}
+                              onProjectAction={props.onProjectAction}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    )}
                   />
-                </Show>
+                );
+              }
+              return (
+                <GroupBlock
+                  group={group}
+                  collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
+                  forceOpen={filterActive()}
+                  onOpen={props.onOpen}
+                  onDropProject={props.onDropProject}
+                  onWorkOn={props.onWorkOn}
+                  onToggleStar={props.onToggleStar}
+                  projectActions={props.projectActions}
+                  onProjectAction={props.onProjectAction}
+                  headerAction={headerAction}
+                />
               );
             }}
           </For>

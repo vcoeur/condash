@@ -47,8 +47,7 @@
   pointer-events: none;
 }
 
-.projects-filter-search-icon svg,
-.projects-filter-clear-query svg {
+.projects-filter-search-icon svg {
   width: 13px;
   height: 13px;
 }
@@ -74,73 +73,28 @@
   color: var(--text-faint);
 }
 
+/* The clear-× is a ghost icon button (shared `.btn--icon`), sized down to sit
+ * inside the field: only its footprint and placement are set here. */
 .projects-filter-clear-query {
+  --btn-size: 20px;
+  --btn-icon: 13px;
   position: absolute;
   right: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
 }
 
-.projects-filter-clear-query:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-/* Filter chips — the starred toggle and the apps multiselect trigger. Quiet
- * at rest (same chrome as the pane-header actions), accent-tinted once they
- * hold a value so an active filter is visible from across the pane. */
-.projects-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+/* The starred toggle and the apps trigger are shared `.btn.btn--sm` buttons
+ * (`.btn--active` while they hold a value); the bar only pins them so the
+ * search field is the one flexible item. */
+.projects-filter-starred,
+.projects-filter-apps {
   flex-shrink: 0;
-  height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition:
-    background 100ms ease,
-    color 100ms ease,
-    border-color 100ms ease;
 }
 
-.projects-filter-chip:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-
-.projects-filter-chip.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
-}
-
-.projects-filter-chip svg {
+.projects-filter-starred svg,
+.projects-filter-apps svg {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
-}
-
-/* Starred: gold when on, like the card star it mirrors. */
-.projects-filter-starred.active {
-  border-color: var(--col-soon);
-  color: var(--col-soon);
-  background: color-mix(in srgb, var(--col-soon) 10%, var(--bg-elevated));
 }
 
 .projects-filter-chip-count {
@@ -209,29 +163,10 @@
   font-size: var(--text-xs);
 }
 
-.projects-filter-apps-clear,
-.projects-filter-reset {
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-color: var(--border-strong);
-}
-
+/* Ghost text actions (shared `.btn--ghost.btn--sm`); only placement here. */
 .projects-filter-apps-clear {
   margin-top: 4px;
-  padding: 4px 6px;
-  text-align: left;
-}
-
-.projects-filter-apps-clear:hover,
-.projects-filter-reset:hover {
-  color: var(--text);
-  text-decoration-color: currentColor;
+  align-self: flex-start;
 }
 
 .projects-filter-count {
@@ -244,8 +179,6 @@
 
 .projects-filter-reset {
   flex-shrink: 0;
-  padding: 0;
-  white-space: nowrap;
 }
 
 .group-block {
@@ -365,6 +298,12 @@ body[data-dragging='project'] .group-block.drag-over {
   user-select: none;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-strong);
+}
+
+/* A section the filter bar holds open: the header is not a toggle for the
+ * duration, so it does not invite a click. */
+.group-header.held-open {
+  cursor: default;
 }
 
 /* Subgroup headers are nested and should stay subtle — no dividing rule. */
@@ -842,14 +781,13 @@ body[data-dragging='project'] .row {
  * inline in the title's first line, so the title text wraps beneath it; the
  * UI font + no faux-weight keep it a label, not part of the serif title. */
 .row .kind-badge {
-  display: inline-flex;
-  align-items: center;
+  /* Geometry from the shared `.pill` base (primitives.css); colour, padding
+   * and type here. */
   gap: 4px;
   vertical-align: 3px;
   margin-right: 8px;
   padding: 1px 7px 1px 5px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
   font-family: var(--font-ui);
   font-size: var(--text-3xs);
   font-weight: 600;

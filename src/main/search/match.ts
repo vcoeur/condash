@@ -167,6 +167,25 @@ export function matchPrepared(
 }
 
 /**
+ * Boolean AND match for the Projects-pane README filter: every term must occur
+ * in the (lowercased) README content or in the item's (lowercased) slug. No
+ * scoring, no snippets, and — unlike `matchPrepared` — no match on the rest of
+ * the path, so `readme`, `md`, `projects` or a month directory never match
+ * every card. The slug counts because a term that names the item is exactly
+ * what a filter is for. Pure; shared by the index path and the disk fallback.
+ */
+export function readmeMatchesTerms(
+  lowerContent: string,
+  lowerSlug: string,
+  terms: readonly SearchTerm[],
+): boolean {
+  for (const term of terms) {
+    if (!lowerContent.includes(term.value) && !lowerSlug.includes(term.value)) return false;
+  }
+  return true;
+}
+
+/**
  * Match a single file against the parsed query, reading it from disk. Returns
  * `null` on read failure or when the file fails the AND filter. Equivalent to
  * `prepareFile` + `matchPrepared`; used for the on-disk path (logs, and the

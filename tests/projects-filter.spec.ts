@@ -8,13 +8,14 @@ import { bootApp } from './fixtures/electron-app';
  *
  * Three predicates — README search (a main-process query over the search
  * index, answered as matched paths), starred-only, and an apps multiselect —
- * AND together and narrow the cards in place. Under an active filter a section
- * that filtered down to nothing is hidden, and one that still has matches is
- * forced open even when collapsed by default (`backlog`, `done`), so a match
- * is never behind a fold. Worth an app-level spec because every one of those
- * crosses a boundary a unit test can't see: the IPC round-trip and its debounce,
- * the star store's signal, the force-open of collapsed sections, and the
- * portal'd apps menu.
+ * AND together and narrow the cards in place. Under an active filter every
+ * section stays (an empty one as its empty header, which is also a drop lane),
+ * and one that has matches is forced open even when collapsed by default
+ * (`backlog`, `done`), so a match is never behind a fold — and its header stops
+ * being a toggle, so a click cannot persist a fold the user cannot see. Worth an
+ * app-level spec because every one of those crosses a boundary a unit test
+ * can't see: the IPC round-trip and its debounce, the star store's signal, the
+ * force-open of collapsed sections, and the portal'd apps menu.
  *
  * Fixture: the default `2026-04-26-sample` (now, no apps) plus four items —
  * a `now` item on `#nodum` whose README says "orchid", a `later` item on
@@ -49,38 +50,58 @@ const prepare = async (conceptionDir: string): Promise<void> => {
 const visibleTitles = (win: import('@playwright/test').Page) =>
   win.locator('article.row .title-text');
 
-test('the README search narrows the cards, forces matching sections open and hides empty ones', async () => {
+test('the README search narrows the cards and forces matching sections open, keeping empty ones as lanes', async () => {
   const booted = await bootApp({ prepare });
   try {
     const win = booted.window;
     // Idle: five cards exist, but backlog and done start collapsed, so only the
     // now + later cards are laid out; every section header is present.
     await expect(visibleTitles(win)).toHaveText(['Sample project', 'Nodum now', 'Condash later']);
-    await expect(win.locator('.group-block[data-status="review"]')).toBeVisible();
+    const review = win.locator('.projects-stack > .group-block[data-status="review"]');
+    const done = win.locator('.projects-stack > .group-block[data-status="done"]');
+    await expect(review).toBeVisible();
+    await expect(done).toHaveClass(/collapsed/);
+
+    // One character is below the search floor: nothing filters, no count.
+    await win.fill('.projects-filter-input', 'o');
+    await expect(win.locator('.projects-filter-count')).toHaveCount(0);
+    await expect(visibleTitles(win)).toHaveText(['Sample project', 'Nodum now', 'Condash later']);
 
     await win.fill('.projects-filter-input', 'orchid');
     // The done match is inside a collapsed-by-default section — forced open by
-    // the active filter, its card becomes visible; the empty review/backlog
-    // sections disappear.
+    // the active filter, its card becomes visible. Empty sections stay as their
+    // empty headers (they are the drop lanes a card drag needs).
     await expect(visibleTitles(win)).toHaveText(['Nodum now', 'Condash later', 'Both done']);
-    await expect(win.locator('.group-block[data-status="review"]')).toHaveCount(0);
-    await expect(win.locator('.projects-stack > .group-block[data-status="backlog"]')).toHaveCount(
-      0,
-    );
+    await expect(review).toBeVisible();
+    await expect(review).toHaveAttribute('data-empty', 'true');
     await expect(win.locator('.projects-filter-count')).toHaveText('3 of 5');
 
-    // A query nothing matches: empty state, no sections at all.
+    // The forced-open done header is not a toggle for the duration: clicking it
+    // neither closes the section nor persists a collapsed state.
+    await expect(done.locator('> .group-header')).toHaveAttribute(
+      'title',
+      'Held open by the filter',
+    );
+    await done.locator('> .group-header').click();
+    await expect(visibleTitles(win)).toHaveText(['Nodum now', 'Condash later', 'Both done']);
+    expect(
+      await win.evaluate(() => window.localStorage.getItem('condash:projects:section-collapse')),
+    ).toBeNull();
+
+    // A query nothing matches: empty state, sections still present.
     await win.fill('.projects-filter-input', 'zzznomatch');
     await expect(win.locator('.projects-filter-empty')).toBeVisible();
     await expect(win.locator('article.row')).toHaveCount(0);
     await expect(win.locator('.projects-filter-count')).toHaveText('0 of 5');
+    await expect(review).toBeVisible();
 
     // Esc in the field clears the query only; everything comes back and the
-    // default folds are restored (done collapsed again).
+    // default folds are restored (done collapsed again, exactly as before).
     await win.press('.projects-filter-input', 'Escape');
     await expect(win.locator('.projects-filter-input')).toHaveValue('');
     await expect(visibleTitles(win)).toHaveText(['Sample project', 'Nodum now', 'Condash later']);
     await expect(win.locator('.projects-filter-count')).toHaveCount(0);
+    await expect(done).toHaveClass(/collapsed/);
   } finally {
     await booted.cleanup();
   }
@@ -121,6 +142,23 @@ test('the apps multiselect is any-of, keeps its menu open across toggles and rep
     await win.click('.projects-filter-apps');
     const menu = win.locator('.projects-filter-apps-menu');
     await expect(menu).toBeVisible();
+    // A real portal: out of the pane's subtree, fixed, and actually painted
+    // (a probe just inside its corner hits it) — `toBeVisible` alone would
+    // pass for a menu clipped by a `contain: layout paint` ancestor.
+    const paint = await menu.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const probe = document.elementFromPoint(rect.left + 10, rect.top + 4);
+      return {
+        escaped: !el.closest('.projects-pane'),
+        position: getComputedStyle(el).position,
+        hit: el === probe || el.contains(probe as Node),
+        background: getComputedStyle(el).backgroundColor,
+      };
+    });
+    expect(paint.escaped).toBe(true);
+    expect(paint.position).toBe('fixed');
+    expect(paint.hit).toBe(true);
+    expect(paint.background).not.toBe('rgba(0, 0, 0, 0)');
     // Options are the handles the list mentions, sorted, one each.
     await expect(menu.locator('.projects-filter-apps-option')).toHaveText(['#condash', '#nodum']);
 

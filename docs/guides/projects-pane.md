@@ -45,11 +45,11 @@ All three rewrite the README's `status:` line in place — `status:` for YAML-fr
 
 A bar between the pane title and the sections narrows the cards in place — no result list, no modal — with three controls that **AND** together:
 
-- **Search READMEs…** — a full-text query over each item's `README.md` (title, goal, steps, timeline — the same query grammar as the [search modal](search.md), served from the same in-memory index; `notes/` are not consulted here). Cards whose README does not match drop out. `Esc` in the field clears the query.
+- **Search READMEs…** — every term (same query grammar as the [search modal](search.md), served from the same in-memory index) must occur in the item's `README.md` — title, goal, steps, timeline — or in its dated slug; `notes/` are not consulted, and the rest of the path never counts, so `readme` or `md` match nothing by themselves while a month like `2026-07` matches that month's items. Two characters minimum. Cards whose README does not match drop out. `Esc` in the field clears the query.
 - **Starred** — a toggle: only [starred](#star) items.
 - **Apps** — a multiselect over every app handle the current items mention, **any-of**: an item tagged with any selected app passes. The trigger shows how many are picked; **Clear apps** inside the menu resets it.
 
-While a filter is active the bar shows **N of M** and a **Clear filters** link. Sections that filtered down to nothing are hidden, and any section that still has matches is forced open — including the collapsed-by-default `backlog` and `done` (and its month subgroups) — so a match is never behind a fold. Drop the filter and the folds you set come back exactly as they were. The filter is a lens on the current session: it is not persisted, and it never touches the tree.
+While a filter is active the bar shows **N of M** and a **Clear filters** link. Every section stays in place — one that filtered down to nothing shows as its empty header, still a drop lane for a card you drag — and any section that has matches is forced open — including the collapsed-by-default `backlog` and `done` (and its month subgroups) — so a match is never behind a fold; its header stops being a toggle for the duration. Drop the filter and the folds you set come back exactly as they were. The filter is a lens on the current session: it is not persisted, and it never touches the tree.
 
 Need notes and knowledge too, or a ranked result with snippets? That is the [search modal](search.md).
 

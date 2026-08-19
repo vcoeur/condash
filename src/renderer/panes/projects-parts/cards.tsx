@@ -101,9 +101,18 @@ export function GroupBlock(props: {
     return !props.collapsedByDefault;
   };
   const toggle = (): void => {
+    // Held open by the pane's filter: a click must not flip (and persist) a
+    // collapsed state the user cannot see — the fold comes back untouched
+    // when the filter clears.
+    if (props.forceOpen) return;
     const next = !isOpen();
     setUserExpanded(next);
     writeCollapseEntry(props.group.status, next);
+  };
+  const headerHint = (): string | undefined => {
+    if (isEmpty()) return undefined;
+    if (props.forceOpen) return 'Held open by the filter';
+    return isOpen() ? 'Collapse section' : 'Expand section';
   };
 
   // Drop detection lives on the dragged Card (pointer hit-test on release);
@@ -119,8 +128,9 @@ export function GroupBlock(props: {
     >
       <header
         class="group-header"
-        onClick={isEmpty() ? undefined : toggle}
-        title={isEmpty() ? undefined : isOpen() ? 'Collapse section' : 'Expand section'}
+        classList={{ 'held-open': !!props.forceOpen && !isEmpty() }}
+        onClick={isEmpty() || props.forceOpen ? undefined : toggle}
+        title={headerHint()}
       >
         <Caret expanded={isOpen()} />
         <span class="dot" aria-hidden="true" />
@@ -197,6 +207,8 @@ export function SubGroup(props: {
     return props.defaultExpanded;
   };
   const toggle = (): void => {
+    // Same rule as GroupBlock: no flip while the filter holds the fold open.
+    if (props.forceOpen) return;
     const next = !isOpen();
     setUserExpanded(next);
     writeCollapseEntry(props.storageKey, next);
@@ -205,8 +217,13 @@ export function SubGroup(props: {
     <section class="group-block subgroup" classList={{ collapsed: !isOpen() }} data-status="done">
       <header
         class="group-header"
-        onClick={toggle}
-        title={props.hint ?? (isOpen() ? 'Collapse' : 'Expand')}
+        classList={{ 'held-open': !!props.forceOpen }}
+        onClick={props.forceOpen ? undefined : toggle}
+        title={
+          props.forceOpen
+            ? 'Held open by the filter'
+            : (props.hint ?? (isOpen() ? 'Collapse' : 'Expand'))
+        }
       >
         <Caret expanded={isOpen()} />
         <span class="name">{props.label}</span>

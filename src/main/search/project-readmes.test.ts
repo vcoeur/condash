@@ -1,9 +1,11 @@
 /**
  * `searchProjectReadmes` — the Projects-pane filter bar's search. It has to
  * behave like a filter, not a ranked search: every matching README comes back
- * (no hit cap), notes never make an item match, and the returned values are the
- * posix README paths the renderer already holds as `Project.path`. Both index
- * states are covered — the on-disk fallback of the boot gap and the live index.
+ * (no hit cap), notes never make an item match, a term matches the README
+ * content or the item's slug but never the rest of the path (`readme`, `md`, a
+ * month directory), and the returned values are the posix README paths the
+ * renderer already holds as `Project.path`. Both index states are covered — the
+ * on-disk fallback of the boot gap and the live index.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -29,7 +31,7 @@ describe('searchProjectReadmes', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'condash-readme-filter-'));
     readmes.length = 0;
-    readmes.push(await seedItem('2026-07-01-alpha', '# Alpha\n\nfilterword in the readme\n'));
+    readmes.push(await seedItem('2026-07-01-alpha', '# Alpha\n\nfilterword in the body\n'));
     readmes.push(
       await seedItem(
         '2026-07-02-beta',
@@ -63,6 +65,36 @@ describe('searchProjectReadmes', () => {
   it('returns the same paths from the live index', async () => {
     await rebuildSearchIndex(dir);
     await expectReadmeOnlyMatches();
+  });
+
+  it('matches the item slug, but never the rest of the path', async () => {
+    for (const build of [false, true]) {
+      if (build) await rebuildSearchIndex(dir);
+      // `gamma` names one item by its slug; its README body never says so.
+      expect(await searchProjectReadmes(dir, 'gamma')).toEqual([readmes[2]]);
+      // Path-only tokens: the README file name, its extension and the
+      // projects root match nothing on their own…
+      for (const token of ['readme', 'md', 'projects']) {
+        expect(await searchProjectReadmes(dir, token), token).toEqual([]);
+      }
+      // …while the dated slug prefix does — every seeded item is a 2026-07
+      // slug, so a month reads as a filter, by design.
+      expect((await searchProjectReadmes(dir, '2026-07')).sort()).toEqual([...readmes].sort());
+      // AND across terms, each satisfiable by content or slug.
+      expect(await searchProjectReadmes(dir, 'gamma mixed')).toEqual([readmes[2]]);
+      expect(await searchProjectReadmes(dir, 'gamma nothing')).toEqual([]);
+    }
+  });
+
+  it('accepts a lower-case readme.md file name', async () => {
+    const item = join(dir, 'projects', '2026-07', '2026-07-05-lower');
+    await mkdir(item, { recursive: true });
+    const readme = join(item, 'readme.md');
+    await writeFile(readme, '# Lower\n\nlowerword\n');
+    for (const build of [false, true]) {
+      if (build) await rebuildSearchIndex(dir);
+      expect(await searchProjectReadmes(dir, 'lowerword')).toEqual([toPosix(readme)]);
+    }
   });
 
   it('returns nothing for a blank or all-stopword query', async () => {

@@ -1,39 +1,27 @@
 import { For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { appColorClass, appPillText } from '@shared/app-color';
+import { Button, IconButton } from '../../actions';
 import { createDropdownMenu } from '../../dropdown-menu';
 import { ChevronDownIcon, IconClose } from '../../icons';
-import { StarIcon } from './icons';
-import type { ProjectFilter } from './data';
-
-/** Magnifier for the search field — same stroked, rounded vocabulary as the
- *  shared icon set; local because nothing else in the app draws one. */
-function SearchIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="7" cy="7" r="4.25" />
-      <path d="M10.25 10.25L13.5 13.5" />
-    </svg>
-  );
-}
+import { SearchIcon, StarIcon } from './icons';
+import { EMPTY_PROJECT_FILTER, type ProjectFilter } from './data';
 
 /**
  * Search + filter bar at the top of the Projects pane: a README-content search
  * field, a starred-only toggle, and an apps multiselect. Purely presentational
- * — the filter value is owned by ProjectsView, which also runs the search and
- * applies the three predicates (see `applyProjectFilter` in data.ts). Every
- * control writes back through `onChange` with a fresh filter object.
+ * — the filter value is owned by ProjectsView, which also runs the search,
+ * decides when the filter counts as active (`active`: a typed query only once
+ * its answer is in), and applies the three predicates (`applyProjectFilter` in
+ * data.ts). Every control writes back through `onChange` with a fresh filter
+ * object. Buttons are the shared action vocabulary (`actions.css`), so the bar
+ * restyles with every other toolbar.
  */
 export function ProjectsFilterBar(props: {
   filter: ProjectFilter;
+  /** Whether the pane is currently filtering on this value — drives the
+   *  "N of M · Clear filters" tail, so the bar and the pane cannot disagree. */
+  active: boolean;
   /** Every app handle the current project list mentions, sorted — the
    *  multiselect's option list. */
   appOptions: string[];
@@ -44,8 +32,6 @@ export function ProjectsFilterBar(props: {
   onChange: (next: ProjectFilter) => void;
 }) {
   const appsMenu = createDropdownMenu({ align: 'left' });
-  const active = (): boolean =>
-    props.filter.starredOnly || props.filter.apps.length > 0 || props.filter.query.trim() !== '';
   const patch = (partial: Partial<ProjectFilter>): void =>
     props.onChange({ ...props.filter, ...partial });
   const toggleApp = (handle: string): void => {
@@ -78,34 +64,35 @@ export function ProjectsFilterBar(props: {
           }}
         />
         <Show when={props.filter.query !== ''}>
-          <button
-            type="button"
+          <IconButton
+            variant="ghost"
+            size="sm"
             class="projects-filter-clear-query"
             title="Clear search"
             aria-label="Clear search"
             onClick={() => patch({ query: '' })}
           >
             <IconClose />
-          </button>
+          </IconButton>
         </Show>
       </label>
 
-      <button
-        type="button"
-        class="projects-filter-chip projects-filter-starred"
-        classList={{ active: props.filter.starredOnly }}
+      <Button
+        size="sm"
+        class="projects-filter-starred"
+        classList={{ 'btn--active': props.filter.starredOnly }}
         aria-pressed={props.filter.starredOnly}
         title={props.filter.starredOnly ? 'Showing starred items only' : 'Show starred items only'}
         onClick={() => patch({ starredOnly: !props.filter.starredOnly })}
       >
         <StarIcon filled={props.filter.starredOnly} />
         <span>Starred</span>
-      </button>
+      </Button>
 
-      <button
-        type="button"
-        class="projects-filter-chip projects-filter-apps"
-        classList={{ active: props.filter.apps.length > 0 }}
+      <Button
+        size="sm"
+        class="projects-filter-apps"
+        classList={{ 'btn--active': props.filter.apps.length > 0 }}
         aria-haspopup="true"
         aria-expanded={appsMenu.isOpen()}
         title="Filter by app"
@@ -119,7 +106,7 @@ export function ProjectsFilterBar(props: {
         <span class="projects-filter-chip-caret" aria-hidden="true">
           <ChevronDownIcon />
         </span>
-      </button>
+      </Button>
       <Show when={appsMenu.isOpen() && appsMenu.anchor()}>
         <Portal>
           <div
@@ -140,45 +127,44 @@ export function ProjectsFilterBar(props: {
               fallback={<div class="projects-filter-apps-empty">No apps on any item</div>}
             >
               <For each={props.appOptions}>
-                {(handle) => {
-                  const selected = (): boolean => props.filter.apps.includes(handle);
-                  return (
-                    <label class="projects-filter-apps-option">
-                      <input
-                        type="checkbox"
-                        checked={selected()}
-                        onChange={() => toggleApp(handle)}
-                      />
-                      <span class={`app-pill ${appColorClass(handle)}`}>{appPillText(handle)}</span>
-                    </label>
-                  );
-                }}
+                {(handle) => (
+                  <label class="projects-filter-apps-option">
+                    <input
+                      type="checkbox"
+                      checked={props.filter.apps.includes(handle)}
+                      onChange={() => toggleApp(handle)}
+                    />
+                    <span class={`app-pill ${appColorClass(handle)}`}>{appPillText(handle)}</span>
+                  </label>
+                )}
               </For>
             </Show>
             <Show when={props.filter.apps.length > 0}>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 class="projects-filter-apps-clear"
                 onClick={() => patch({ apps: [] })}
               >
                 Clear apps
-              </button>
+              </Button>
             </Show>
           </div>
         </Portal>
       </Show>
 
-      <Show when={active()}>
+      <Show when={props.active}>
         <span class="projects-filter-count" aria-live="polite">
           {props.matchCount} of {props.totalCount}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           class="projects-filter-reset"
-          onClick={() => props.onChange({ starredOnly: false, apps: [], query: '' })}
+          onClick={() => props.onChange(EMPTY_PROJECT_FILTER)}
         >
           Clear filters
-        </button>
+        </Button>
       </Show>
     </div>
   );
