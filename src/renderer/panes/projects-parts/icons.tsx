@@ -1,5 +1,7 @@
-import { Match, Switch } from 'solid-js';
-import type { StepCounts, StepMarker } from '@shared/types';
+import { Match, Show, Switch } from 'solid-js';
+import type { JSX } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
+import type { ItemKind, StepCounts, StepMarker } from '@shared/types';
 
 /* StepIcon — single shape vocabulary for the five step states. Drawn as a
  * 16×16 SVG so the same component renders the card's next-step marker, the
@@ -161,14 +163,18 @@ export function StepProgress(props: { counts: StepCounts }) {
  * token (see .kind-glyph in styles.css). Each icon is hand-tuned rather than
  * a stock library glyph — see the comments above each definition. */
 
+type KindEntry = { label: string; icon: () => JSX.Element };
+
 /* One entry per item kind: the word that names it and its hand-tuned outline
  * icon. A single record on purpose. These were two parallel maps keyed by the
  * same strings, which let a kind exist in one and not the other — harmless
  * while the glyph was an unlabelled span, but `role="img"` turns a missing
- * label into an unnamed image (a WCAG 1.1.1 failure), and `Record<string, T>`
- * without `noUncheckedIndexedAccess` means tsc never sees the divergence. One
- * record makes that state unrepresentable instead of guarded against. */
-const KIND: Record<string, { label: string; icon: () => any }> = {
+ * label into an unnamed image (a WCAG 1.1.1 failure). One record makes that
+ * state unrepresentable instead of guarded against, and keying on `ItemKind`
+ * makes tsc flag a kind added to the union with no icon. The lookup is still
+ * fallible at runtime: `parseHeader` only *warns* on an off-union `kind:` and
+ * passes the raw lowercased string through, so `KIND[...]` can miss. */
+const KIND: Record<Exclude<ItemKind, 'unknown'>, KindEntry> = {
   // Project — gem-cut diamond outline with a single soft horizontal facet
   // line. Reads as "waypoint with depth" rather than a flat rhombus.
   // Leftmost path point at viewBox x=2.5 to align with the step icon's rect
@@ -231,13 +237,6 @@ const KIND: Record<string, { label: string; icon: () => any }> = {
   },
 };
 
-function KindIcon(props: { kind: string }) {
-  const entry = KIND[props.kind];
-  if (!entry) return null;
-  const Icon = entry.icon;
-  return <Icon />;
-}
-
 /* Kind glyph — small monochrome outline icon that marks a card or modal
  * with its kind (project / incident / document). No text label: the icon
  * carries the meaning, named by `aria-label` for a screen reader and `title`
@@ -247,20 +246,33 @@ function KindIcon(props: { kind: string }) {
  * <status>`) never says whether it is a project or an incident. Sits at the
  * start of the title on every card whose kind is known, and at the head of the
  * project preview's modal head. A kind the record doesn't know renders
- * nothing — never an unnamed image. */
-export function KindGlyph(props: { kind: string }) {
-  const entry = KIND[props.kind];
-  if (!entry) return null;
+ * nothing — never an unnamed image.
+ *
+ * Read through an accessor + `Show`, never `const entry = KIND[props.kind]` in
+ * the body. The preview modal stays mounted while `props.project` is swapped in
+ * place (parent banner, Subprojects rows), so a body read freezes the label at
+ * whatever the first previewed item was and a project then announces itself as
+ * "Document". Solid puts `data-kind`/`title`/`aria-label` in one effect that
+ * re-runs on `props.kind` either way — it is the *value* that has to be re-read
+ * inside it. `Dynamic` gives the icon the same treatment; it was frozen the
+ * same way, silently, well before this component was touched. */
+export function KindGlyph(props: { kind: ItemKind }) {
+  const entry = (): KindEntry | undefined =>
+    props.kind === 'unknown' ? undefined : KIND[props.kind];
   return (
-    <span
-      class="kind-glyph"
-      data-kind={props.kind}
-      role="img"
-      title={entry.label}
-      aria-label={entry.label}
-    >
-      <KindIcon kind={props.kind} />
-    </span>
+    <Show when={entry()}>
+      {(kind) => (
+        <span
+          class="kind-glyph"
+          data-kind={props.kind}
+          role="img"
+          title={kind().label}
+          aria-label={kind().label}
+        >
+          <Dynamic component={kind().icon} />
+        </span>
+      )}
+    </Show>
   );
 }
 
