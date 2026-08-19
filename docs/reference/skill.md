@@ -119,7 +119,7 @@ Author a **visual note**: Markdown prose interleaved with capitalised JSX-like b
 | validate | before handing the document over | `condash mdx check <path>` |
 | vocabulary | "what blocks are there?" | `condash mdx blocks` |
 
-The frontmatter `kind` picks the posture: a **design** explores directions, a **plan** is the approval gate before code, a **review** is built from a landed diff, and a plain **note** is for anything a visual layout serves better than prose. The skill ships its own `blocks.md`, `wireframe.md`, `document-quality.md`, `exemplar.md`, and `review.md` alongside `SKILL.md`.
+The frontmatter `kind` picks the posture: a **design** explores directions, a **plan** is the approval gate before code, a **review** is built from a landed diff, and a plain **note** is for anything a visual layout serves better than prose. The skill ships its own `blocks.md`, `wireframe.md`, `svg.md`, `document-quality.md`, `exemplar.md`, and `review.md` alongside `SKILL.md`.
 
 The parser, the zod schemas, the in-app viewer, and `condash mdx check` are one code path, so a green check means the document matches the viewer by construction. See the [visual notes guide](../guides/plan-documents.md).
 

@@ -65,8 +65,24 @@ Resources pane, or an `.mdx` link inside a note. The viewer renders each
 block natively (split diffs, collapsible endpoints, JSON explorers, themed
 wireframes), shows parse/validation issues in a banner, renders an invalid
 block as a labeled placeholder instead of blanking the document, and carries
-a **Rendered / Source** toggle. Wireframe and diagram HTML is sanitized and
-themed through `--wf-*` tokens, so screens read correctly in light and dark.
+a **Rendered / Source** toggle. Every top-level block fills the document the
+way a classic `.md` note does — no centred reading measure. Wireframe and
+diagram HTML is sanitized and themed through `--wf-*` tokens, so screens read
+correctly in light and dark.
+
+**Export as PDF** (head button, rendered mode) prints the document you see —
+form answers as ticked, mermaid re-rendered light, inline SVG kept as vector
+— through the same hidden-window `printToPDF` path as the markdown note
+viewer, to a path you pick (default `<note>.pdf` beside the note).
+
+**`svg` blocks** — hand-authored inline SVG diagrams — draw on a light card
+in both themes and open in a lightbox on click: Fit / 1:1, **Copy SVG**, and
+**Download .svg**, which saves a standalone file (xmlns, the block's CSS
+embedded, `--wf-*` tokens resolved) wherever you pick (default
+`<note>-<block-id>.svg` beside the note). The markup is sanitized with an
+SVG-only allow-list; `<style>`, `<script>`, `<foreignObject>`, `<use>` and
+the animation family are dropped, and `condash mdx check` warns on each
+before you open the viewer.
 
 Question-forms are answered in place, and the **document** saves as a whole:
 answer as many forms as you like, then save once with the head Save button or

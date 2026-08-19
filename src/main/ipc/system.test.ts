@@ -239,6 +239,46 @@ describe('exportNotePdf', () => {
   });
 });
 
+describe('saveSvg', () => {
+  it('returns null without writing when the save dialog is cancelled', async () => {
+    const { dialog } = await import('electron');
+    (dialog.showSaveDialog as any).mockResolvedValue({ canceled: true });
+    const result = await handlers.saveSvg(trustedEvent, '/c/note-svg-1.svg', '<svg></svg>');
+    expect(result).toBeNull();
+  });
+
+  it('writes the markup verbatim to the picked path, seeding the dialog with defaultPath', async () => {
+    const target = join(tmp, 'diagram.svg');
+    const { dialog } = await import('electron');
+    (dialog.showSaveDialog as any).mockResolvedValue({ canceled: false, filePath: target });
+    const result = await handlers.saveSvg(trustedEvent, '/c/note-svg-1.svg', '<svg>x</svg>');
+    expect(result).toBe(target.split('\\').join('/'));
+    expect(await fs.readFile(target, 'utf8')).toBe('<svg>x</svg>');
+    expect(dialog.showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: '/c/note-svg-1.svg' }),
+    );
+  });
+
+  it('rejects an oversized diagram before opening the dialog', async () => {
+    const huge = 'x'.repeat(8 * 1024 * 1024 + 1);
+    await expect(handlers.saveSvg(trustedEvent, '/c/d.svg', huge)).rejects.toThrow(/size cap/);
+    const { dialog } = await import('electron');
+    expect(dialog.showSaveDialog).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty arguments and an untrusted sender', async () => {
+    await expect(handlers.saveSvg(trustedEvent, '', '<svg/>')).rejects.toThrow(
+      /expected a non-empty string/,
+    );
+    await expect(handlers.saveSvg(trustedEvent, '/c/d.svg', '')).rejects.toThrow(
+      /expected a non-empty string/,
+    );
+    await expect(handlers.saveSvg(webviewEvent, '/c/d.svg', '<svg/>')).rejects.toThrow(
+      /not an app window/,
+    );
+  });
+});
+
 describe('showInFolder', () => {
   it('rejects paths outside the workspace roots', async () => {
     await expect(handlers.showInFolder(trustedEvent, '/etc/passwd')).rejects.toThrow(

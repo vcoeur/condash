@@ -1,0 +1,37 @@
+/* Print additions for the visual-note PDF export (see export-pdf.ts in this
+ * folder). Layered after `export-pdf.css` (prose, code fences, mermaid) and
+ * `plan-blocks.css` (every block), which both ride along inline. The app
+ * tokens `plan-blocks.css` consumes come from the `:root` light block
+ * `extractRootTokens` lifts out of `styles.css`, so this file only has to say
+ * what differs on paper: the page margin, no scroll containers, whole
+ * figures. (The svg zoom glyph is removed from the clone by the serialiser,
+ * not hidden here.) */
+
+body {
+  padding: 12mm;
+}
+
+.plan-doc {
+  padding: 0;
+}
+
+/* Scroll containers become flow on paper — a clipped code fence or diff is
+ * worse than a long one. `pre-wrap` mirrors `export-pdf.css`'s rule for
+ * markdown fences. */
+.plan-code-body,
+.plan-lines,
+.plan-diff-split,
+.plan-json,
+.plan-tab-strip {
+  overflow: visible;
+}
+
+.plan-code-body pre,
+.plan-lines pre {
+  white-space: pre-wrap;
+}
+
+/* Keep a figure or card whole when it fits on a page. */
+.plan-block {
+  break-inside: avoid-page;
+}

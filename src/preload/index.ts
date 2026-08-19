@@ -96,6 +96,7 @@ const api: CondashApi = {
     ipcRenderer.invoke('writeNote', path, expectedContent, newContent),
   readHelpDoc: (name) => ipcRenderer.invoke('readHelpDoc', name),
   exportNotePdf: (path, html) => ipcRenderer.invoke('exportNotePdf', path, html),
+  saveSvg: (defaultPath, svg) => ipcRenderer.invoke('saveSvg', defaultPath, svg),
   onTreeEvents: (callback) => {
     const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
     ipcRenderer.on(EVENT_CHANNELS.treeEvents, handler);

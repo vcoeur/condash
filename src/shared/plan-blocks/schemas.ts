@@ -193,6 +193,16 @@ export interface DiagramData {
   frame?: 'auto' | 'show' | 'hide';
 }
 
+export interface SvgData {
+  /** The `<svg …>…</svg>` markup itself, from the ```svg fence. */
+  svg: string;
+  /** Optional CSS for classes the markup uses; scoped to the block by the viewer. */
+  css?: string;
+  caption?: string;
+  /** Accessible description of the diagram; the viewer labels the card with it. */
+  alt?: string;
+}
+
 /** Legacy kit-tree node preserved for best-effort rendering of old screens. */
 export interface KitNode {
   el: string;
@@ -426,6 +436,12 @@ export const DATA_SCHEMAS: Record<string, z.ZodType<unknown>> = {
     caption: z.string().optional(),
     frame: frameSchema.optional(),
   }) satisfies z.ZodType<DiagramData>,
+  svg: z.object({
+    svg: z.string().min(1),
+    css: z.string().optional(),
+    caption: z.string().optional(),
+    alt: z.string().optional(),
+  }) satisfies z.ZodType<SvgData>,
   wireframe: z.object({
     surface: z.enum(['browser', 'desktop', 'mobile', 'popover', 'panel']),
     html: z.string().optional(),

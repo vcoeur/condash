@@ -20,6 +20,7 @@ in-app viewer renders, so a green check is exactly what condash can display.
 | `json-explorer` | `<Json>` | title?, json, collapsedDepth? | A collapsible JSON tree with type-colored values and expand/collapse. |
 | `mermaid` | `<Mermaid>` | source, caption? | A Mermaid diagram for cases where textual sequence/flowchart grammar is clearer than a spatial layout. |
 | `diagram` | `<Diagram>` | html?, css?, caption?, frame? | An inline architecture/data-flow diagram from semantic HTML + CSS. Use the .diagram-* primitives and --wf-* tokens; never fonts or hard-coded colors. |
+| `svg` | `<Svg>` | svg, css?, caption?, alt? | A hand-authored inline SVG diagram — architecture maps, flows, pipelines, anything with geometry and arrows. The markup travels as a ```svg fence in the children (an optional ```css fence beside it for text classes); it is sanitized, drawn on a light card in both themes, and opens in a lightbox with Download .svg. Use --wf-* tokens for colour; the viewer strips <style>, <script>, <foreignObject>, <use> and animation. |
 | `wireframe` | `<WireframeBlock>` | surface, caption?, frame?, skeleton?, html?, css? | A wireframe of one screen: a `<Screen surface="…" html={…} />` child carrying a semantic HTML fragment, rendered in a desktop/browser/mobile/popover/panel surface. |
 | `columns` | `<Columns>` | columns | A side-by-side container built from `<Column label="…">` children, each wrapping nested blocks. The standard Before/After comparison primitive. |
 | `tabs` | `<TabsBlock>` | tabs, orientation? | A tab container; the whole `tabs` array (including nested child blocks in runtime JSON shape) is one prop — there is no nested Tab element. |
@@ -50,6 +51,11 @@ Deprecated (parse for old documents, never author):
   inline flex/grid layout. Never `<html>`/`<style>`/`<script>` tags, fonts, or hex colors.
 - `<Diagram>` carries its markup as ```html and ```css fences in the children; use the
   `.diagram-*` primitives and `--wf-*` tokens.
+- `<Svg alt="…" caption="…">` carries a real `<svg viewBox="…">…</svg>` as a ```svg fence
+  in the children, plus an optional ```css fence for the classes its `<text>` uses (never a
+  `<style>` element inside the svg — it is stripped). Inline only: no `src`, no sidecar file,
+  no render-to-PNG step — `condash mdx check` then the viewer. Colour with `--wf-*` tokens;
+  the card pins them to light values in both themes. `alt` is always set.
 - `<Endpoint>` prose description is the MDX children; each request/response `example` is one
   parseable JSON value in a string.
 - Block headings are a `###` heading in the prose directly above the block, not a `title`

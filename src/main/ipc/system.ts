@@ -20,7 +20,7 @@ import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
 import { requireMainWindowSender, requireNonEmptyString } from './utils';
 
-/** Backstop cap on the renderer-built export document handed to `exportNotePdf`. */
+/** Backstop cap on renderer-built payloads handed to `exportNotePdf` / `saveSvg`. */
 const MAX_EXPORT_HTML_CHARS = 8 * 1024 * 1024;
 
 /**
@@ -138,6 +138,25 @@ export function registerSystemIpc(opts: {
     if (result.canceled || !result.filePath) return null;
     const pdf = await htmlToPdf(html);
     await fs.writeFile(result.filePath, pdf);
+    return toPosix(result.filePath);
+  });
+
+  ipcMain.handle('saveSvg', async (event, defaultPath: string, svg: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('saveSvg', defaultPath);
+    requireNonEmptyString('saveSvg', svg);
+    if (svg.length > MAX_EXPORT_HTML_CHARS) {
+      throw new Error('saveSvg: diagram exceeds the export size cap');
+    }
+    // Same trust boundary as `exportNotePdf`: `defaultPath` only seeds the
+    // dialog, the user picks the target, nothing else is read or written.
+    const result = await dialog.showSaveDialog({
+      title: 'Save diagram as SVG',
+      defaultPath,
+      filters: [{ name: 'SVG', extensions: ['svg'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await fs.writeFile(result.filePath, svg, 'utf8');
     return toPosix(result.filePath);
   });
 

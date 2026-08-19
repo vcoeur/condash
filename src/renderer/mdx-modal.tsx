@@ -10,11 +10,12 @@ import {
 } from 'solid-js';
 import { Modal } from './modal';
 import { Button } from './actions';
-import { IconSave } from './note-modal-parts/icons';
+import { IconPdf, IconSave } from './note-modal-parts/icons';
 import { highlightCode } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { PlanDocument, QuestionFormData } from '@shared/plan-blocks/schemas';
 import { BlockView, type AnswerBinding } from './mdx-modal-parts/containers';
+import { PlanDocContext } from './mdx-modal-parts/doc-context';
 import {
   answersEqual,
   applyAllAnswers,
@@ -166,6 +167,46 @@ export function MdxModal(props: {
     return true;
   };
 
+  // Export the rendered document as a PDF through the same IPC the note
+  // viewer uses: serialise the live `.plan-doc` (form state frozen, mermaid
+  // re-rendered light), wrap it with the inline stylesheets, hand it to the
+  // main process, which owns the save dialog and the hidden print window. A
+  // `null` result is a cancelled dialog — only a real save shows the ✓ pill.
+  const [exporting, setExporting] = createSignal(false);
+  const [exportedAt, setExportedAt] = createSignal<number | null>(null);
+  const [exportError, setExportError] = createSignal<string | null>(null);
+  let exportedAtTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleExportedAtClear = (): void => {
+    if (exportedAtTimer !== null) clearTimeout(exportedAtTimer);
+    exportedAtTimer = setTimeout(() => {
+      setExportedAt(null);
+      exportedAtTimer = null;
+    }, 1500);
+  };
+  onCleanup(() => {
+    if (exportedAtTimer !== null) clearTimeout(exportedAtTimer);
+  });
+  const exportPdf = async (): Promise<void> => {
+    const root = bodyRef?.querySelector<HTMLElement>('.plan-doc');
+    if (!root || exporting()) return;
+    setExportError(null);
+    setExporting(true);
+    try {
+      // Lazy: the export module carries the app stylesheet as a string.
+      const { buildMdxPdfHtml, serializePlanDoc } = await import('./mdx-modal-parts/export-pdf');
+      const html = buildMdxPdfHtml(await serializePlanDoc(root), { title: title() });
+      const saved = await window.condash.exportNotePdf(props.path, html);
+      if (saved) {
+        setExportedAt(Date.now());
+        scheduleExportedAtClear();
+      }
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   /** Pending close request, held while the unsaved-answers gate is up. */
   const [pendingClose, setPendingClose] = createSignal(false);
   const requestClose = (): void => {
@@ -294,6 +335,11 @@ export function MdxModal(props: {
               ✓
             </span>
           </Show>
+          <Show when={exportedAt() !== null}>
+            <span class="modal-saved" title="PDF exported" aria-label="PDF exported">
+              ✓
+            </span>
+          </Show>
           {/* One save for the whole document: every form's answers go in a
               single write. Shown only for notes that actually have a form. */}
           <Show when={questionForms().length > 0}>
@@ -306,6 +352,20 @@ export function MdxModal(props: {
               aria-label="Save answers"
             >
               <IconSave />
+            </Button>
+          </Show>
+          {/* Export what is on screen, so only the rendered document qualifies:
+              source mode and a syntax-broken document have no blocks to print. */}
+          <Show when={mode() === 'rendered' && !brokenDocument()}>
+            <Button
+              variant="default"
+              class="btn--modal-head"
+              onClick={() => void exportPdf()}
+              disabled={exporting()}
+              title="Export as PDF"
+              aria-label="Export as PDF"
+            >
+              <IconPdf />
             </Button>
           </Show>
           <Button
@@ -354,6 +414,11 @@ export function MdxModal(props: {
           Could not save the answers — {saveError()}
         </div>
       </Show>
+      <Show when={exportError()}>
+        <div class="modal-error" role="alert">
+          Could not export the PDF — {exportError()}
+        </div>
+      </Show>
       <div class="mdx-body" ref={bodyRef} onClick={handleBodyClick}>
         <Show when={doc()?.issues.length}>
           <div class="plan-issues" data-severity={errors().length > 0 ? 'error' : 'warning'}>
@@ -388,9 +453,20 @@ export function MdxModal(props: {
           fallback={<div class="mdx-source md-rendered raw-code" innerHTML={sourceHtml() ?? ''} />}
         >
           <div class="plan-doc">
-            <For each={doc()?.blocks ?? []}>
-              {(block) => <BlockView block={block} baseDir={baseDir()} answers={answerBinding} />}
-            </For>
+            {/* A getter, not a snapshot: Solid reads the provider value once
+                (untracked), and this modal instance is reused when an .mdx link
+                navigates to another .mdx in place. */}
+            <PlanDocContext.Provider
+              value={{
+                get notePath() {
+                  return props.path;
+                },
+              }}
+            >
+              <For each={doc()?.blocks ?? []}>
+                {(block) => <BlockView block={block} baseDir={baseDir()} answers={answerBinding} />}
+              </For>
+            </PlanDocContext.Provider>
           </div>
         </Show>
       </div>

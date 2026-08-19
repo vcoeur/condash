@@ -135,6 +135,17 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
       'primitives and --wf-* tokens; never fonts or hard-coded colors.',
   },
   {
+    type: 'svg',
+    tag: 'Svg',
+    fields: 'svg, css?, caption?, alt?',
+    description:
+      'A hand-authored inline SVG diagram — architecture maps, flows, pipelines, anything ' +
+      'with geometry and arrows. The markup travels as a ```svg fence in the children (an ' +
+      'optional ```css fence beside it for text classes); it is sanitized, drawn on a light ' +
+      'card in both themes, and opens in a lightbox with Download .svg. Use --wf-* tokens ' +
+      'for colour; the viewer strips <style>, <script>, <foreignObject>, <use> and animation.',
+  },
+  {
     type: 'wireframe',
     tag: 'WireframeBlock',
     fields: 'surface, caption?, frame?, skeleton?, html?, css?',

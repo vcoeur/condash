@@ -47,13 +47,17 @@ vocabulary is `blocks.md` (`condash mdx blocks`); highlights:
   already answered.
 - `columns` for side-by-side before/after or current/target comparisons
   where each side carries real nested blocks; label the columns.
-- `diagram` for two-dimensional architecture/data-flow relationships, only
-  when it clarifies something real: paired panels, layers, swimlanes,
-  matrices, grouped regions — not a default left-to-right chain. Author
-  `html`/`css` with the `.diagram-*` primitives (`.diagram-panel`,
-  `.diagram-node`, `.diagram-pill`, …) and `--wf-*` tokens; never
-  `font-family` or hex/rgb/hsl literals. Keep labels short; labels must not
-  overlap nodes or each other.
+- `svg` for a diagram with geometry — architecture maps, pipelines, flows
+  with arrows, layered systems — only when it clarifies something real.
+  Hand-authored inline SVG in a ```svg fence (rules in `svg.md`): `viewBox`,
+  `--wf-*` tokens for every colour, text classes in the ```css fence, `alt`
+  set, one idea per diagram. No sidecar file, no PNG step.
+- `diagram` for two-dimensional relationships whose text must reflow: paired
+  panels, layers, swimlanes, matrices, grouped regions — not a default
+  left-to-right chain. Author `html`/`css` with the `.diagram-*` primitives
+  (`.diagram-panel`, `.diagram-node`, `.diagram-pill`, …) and `--wf-*`
+  tokens; never `font-family` or hex/rgb/hsl literals. Keep labels short;
+  labels must not overlap nodes or each other.
 - `tabs` for multiple states or comparisons. A tab that reveals only prose
   usually means the plan is under-specified.
 - `table`, `checklist`, `callout` for scannable structure.

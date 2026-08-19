@@ -55,7 +55,7 @@ The Markdown sources *are* indexed in RAM (`src/main/search/index-cache.ts`), so
 
 One visible `BrowserWindow`. Modals (note, PDF, help, settings) are in-renderer overlays. The terminal pane is a bottom strip in the same window.
 
-The one exception is invisible by design: **Export as PDF** spins up a hidden, sandboxed, script-free `BrowserWindow` (`src/main/export-pdf.ts`) purely so `printToPDF` captures the rendered note and not the app UI. It never shows, never takes focus, and is destroyed when the print returns.
+The one exception is invisible by design: **Export as PDF** spins up a hidden, sandboxed, script-free `BrowserWindow` (`src/main/export-pdf.ts`) purely so `printToPDF` captures the rendered note — markdown or visual (`.mdx`) — and not the app UI. It never shows, never takes focus, and is destroyed when the print returns.
 
 **Why**: window state is hard. Multi-window means restoring layouts, focus tracking, drag-between-windows. The dashboard's job is "one place to see what's going on" — multiple windows fight that goal.
 

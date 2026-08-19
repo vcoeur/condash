@@ -32,7 +32,7 @@ Every mutation the dashboard performs is exposed as an [IPC verb](ipc-api.md) on
 - `.condash/transcripts/<sid>.ndjson` — the per-tab in-band agent transcript sidecar.
 - `.condash/cache/readme-parse.json` — the CLI's mtime-keyed README parse cache.
 
-One write lands **outside** the tree entirely: `exportNotePdf` writes wherever the OS save dialog puts it.
+Two writes land **outside** the tree entirely: `exportNotePdf` and `saveSvg` write wherever the OS save dialog puts it.
 
 It does **not** touch `.git/`, and does not move or rename item directories. The only shell commands it runs are ones you configured: the `open_with.*` / `pdf_viewer` chains, the `agents[].command` launchers, and `repositories[].run` / `force_stop`.
 
@@ -125,7 +125,7 @@ These write on their own schedule, without a user action, and all live under the
 | `.condash/transcripts/<sid>.ndjson` | A cooperating agent appends in-band transcript frames for its tab | Manually |
 | `.condash/cache/readme-parse.json` | Every CLI invocation that parses READMEs | Manually; regenerated on the next run |
 
-One more write is not a mutation of the tree at all: `exportNotePdf` renders a note through `printToPDF` in a hidden window and saves it wherever the OS dialog puts it — possibly outside the conception entirely.
+Two more writes are not mutations of the tree at all: `exportNotePdf` renders a note (markdown or visual) through `printToPDF` in a hidden window, and `saveSvg` writes an `svg` block's diagram as a standalone file — each wherever the OS dialog puts it, possibly outside the conception entirely.
 
 ## Open-with / external-launch commands
 

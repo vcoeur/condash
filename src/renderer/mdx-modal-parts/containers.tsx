@@ -19,6 +19,7 @@ import type {
   PlanBlock,
   QuestionFormData,
   RichTextData,
+  SvgData,
   TableData,
   TabsData,
   WireframeData,
@@ -37,7 +38,12 @@ import {
   QuestionFormBlock,
   TableBlock,
 } from './data-blocks';
-import { CustomHtmlBlockView, DiagramBlockView, WireframeBlockView } from './visual-blocks';
+import {
+  CustomHtmlBlockView,
+  DiagramBlockView,
+  SvgBlockView,
+  WireframeBlockView,
+} from './visual-blocks';
 
 /** Container blocks + the type → component dispatch every level renders through. */
 
@@ -85,6 +91,8 @@ export function BlockView(props: {
       return <MermaidBlock data={data<MermaidData>()} />;
     case 'diagram':
       return <DiagramBlockView data={data<DiagramData>()} />;
+    case 'svg':
+      return <SvgBlockView data={data<SvgData>()} blockId={props.block.id} />;
     case 'wireframe':
       return <WireframeBlockView data={data<WireframeData>()} />;
     case 'columns':

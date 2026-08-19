@@ -78,7 +78,7 @@ Slug the filename to match the item: `<item-slug>.pdf` for the primary deliverab
 
 ## Generating the PDF
 
-**The quick path is built in.** Open any Markdown note in the viewer and click **Export as PDF** in the header. condash prints the rendered note — code highlighting, task lists, Mermaid diagrams, embedded images — through a save dialog that defaults to `<note-name>.pdf` next to the source. No external tools, and the export always uses a light, print-oriented style regardless of the app theme. For most deliverables this is the whole story.
+**The quick path is built in.** Open any Markdown note — or visual note (`.mdx`) — in the viewer and click **Export as PDF** in the header. condash prints the rendered note — code highlighting, task lists, Mermaid diagrams, embedded images — through a save dialog that defaults to `<note-name>.pdf` next to the source. No external tools, and the export always uses a light, print-oriented style regardless of the app theme. For most deliverables this is the whole story.
 
 Reach for a toolchain only when you need finer typographic control — LaTeX-grade output, section numbering, a house template. condash has no opinion about which one; the shape is:
 

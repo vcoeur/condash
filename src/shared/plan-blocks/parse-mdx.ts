@@ -10,6 +10,7 @@ import type {
 import { parse as parseYaml } from 'yaml';
 import { specForTag } from './registry';
 import { evaluateAttributeProgram, NonLiteralError } from './literal-eval';
+import { containsElement, SVG_STRIPPED_ELEMENTS, svgRootTag } from './svg-markup';
 import {
   DATA_SCHEMAS,
   type KitNode,
@@ -214,8 +215,23 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
     data.columns = normalizeColumns(el, state);
   } else if (spec.children === 'screen') {
     foldScreenChild(el, data, state);
-  } else if (spec.type === 'diagram') {
+  } else if (spec.type === 'diagram' || spec.type === 'svg') {
     foldHtmlCssFences(el, data);
+  }
+
+  // An svg block's payload is structural, not just present: the viewer can
+  // only draw an `<svg>` root, so anything else is an error the author must
+  // fix, and the softer findings (no viewBox, no alt, elements the sanitizer
+  // will strip) are warnings surfaced before the block renders blank or bare.
+  if (spec.type === 'svg') {
+    const findings = svgPayloadIssues(data);
+    for (const warning of findings.warnings) {
+      state.issues.push({ severity: 'warning', message: `<${tag}>: ${warning}`, line });
+    }
+    if (findings.error) {
+      state.issues.push({ severity: 'error', message: `<${tag}>: ${findings.error}`, line });
+      return invalidBlock(state, tag, findings.error, sliceOf(el, state));
+    }
   }
 
   // Validate, then recurse into JSON-carried nested blocks (tabs).
@@ -372,15 +388,64 @@ function kitTreeOf(el: MdxJsxFlowElement, state: NormalizeState): KitNode[] {
   return out;
 }
 
-/** Fold ```html / ```css fenced children into data.html/css — the escape-hatch
- *  authoring form shared by `<Diagram>` and `<Screen>` (no attribute escaping). */
+/** Fold ```html / ```css / ```svg fenced children into data.html/css/svg — the
+ *  escape-hatch authoring form shared by `<Diagram>`, `<Screen>` and `<Svg>`
+ *  (no attribute escaping). */
 function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>): void {
   for (const child of el.children) {
     if (child.type !== 'code') continue;
     const lang = (child.lang ?? '').toLowerCase();
     if (lang === 'html' && data.html === undefined) data.html = child.value;
     if (lang === 'css' && data.css === undefined) data.css = child.value;
+    if (lang === 'svg' && data.svg === undefined) data.svg = child.value;
   }
+}
+
+/**
+ * Structural findings for an svg block payload. One hard error — no `<svg>`
+ * root to draw — and the warnings that predict a blank, unscalable or
+ * unlabelled render. The root is located the way the viewer's HTML parser
+ * would (prolog / DOCTYPE / comments skipped, quoted `>` honoured) so a
+ * tool-exported file passes and an attribute value cannot fake or hide the
+ * tag. The parser applies it at top level and for JSON-carried nested
+ * blocks alike.
+ */
+function svgPayloadIssues(data: Record<string, unknown>): {
+  error: string | null;
+  warnings: string[];
+} {
+  const markup = typeof data.svg === 'string' ? data.svg.trim() : '';
+  if (markup === '') {
+    return {
+      error: 'no svg payload — add a ```svg fence holding the <svg …>…</svg> markup',
+      warnings: [],
+    };
+  }
+  const root = svgRootTag(markup);
+  if (!root) {
+    return {
+      error:
+        'the ```svg fence must hold an <svg> root element (an XML prolog, DOCTYPE or comment before it is fine)',
+      warnings: [],
+    };
+  }
+  const warnings: string[] = [];
+  if (!/\sviewBox\s*=/i.test(root.tag)) {
+    warnings.push('the <svg> root has no viewBox — it cannot scale to the card or the page');
+  }
+  if (typeof data.alt !== 'string' || data.alt.trim() === '') {
+    warnings.push('no alt — add a one-line description of what the diagram shows');
+  }
+  for (const name of SVG_STRIPPED_ELEMENTS) {
+    if (containsElement(markup, name)) {
+      warnings.push(
+        name === 'style'
+          ? 'contains a <style> element — the viewer strips it; put class rules in a ```css fence beside the ```svg fence'
+          : `contains <${name}> — the viewer strips it, so the diagram renders without it`,
+      );
+    }
+  }
+  return { error: null, warnings };
 }
 
 /**
@@ -466,6 +531,24 @@ function validateNestedRef(
       line,
     });
     return { id: candidate.id, type: 'invalid', data: { reason: message, tag: candidate.type } };
+  }
+  if (candidate.type === 'svg') {
+    const findings = svgPayloadIssues(candidate.data);
+    for (const warning of findings.warnings) {
+      state.issues.push({
+        severity: 'warning',
+        message: `<${tag}> nested svg "${candidate.id}": ${warning}`,
+        line,
+      });
+    }
+    if (findings.error) {
+      state.issues.push({
+        severity: 'error',
+        message: `<${tag}> nested svg "${candidate.id}": ${findings.error}`,
+        line,
+      });
+      return { id: candidate.id, type: 'invalid', data: { reason: findings.error, tag: 'svg' } };
+    }
   }
   const emptiness = emptyPayloadMessage(candidate.type, candidate.data);
   if (emptiness) {

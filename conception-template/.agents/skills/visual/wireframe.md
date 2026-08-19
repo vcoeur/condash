@@ -94,8 +94,9 @@ menus, command palettes use `surface: "popover"` unless page placement is the
 point. Dialogs, sheets, inspectors use `panel` / `desktop` as appropriate.
 Show the real chrome: title/header row, top-right actions, separators,
 fields, selected states, footer actions visible in the workflow. A rendered
-UI change belongs in a wireframe; reserve `diagram` for architecture and
-data-flow relationships.
+UI change belongs in a wireframe; an architecture or data-flow relationship
+is an `svg` block (geometry, arrows — see `svg.md`) or, when its text must
+reflow, an html/css `diagram` block — never a wireframe.
 
 **Modify, don't redesign.** When the task changes an existing screen,
 reproduce the current screen's real layout FIRST, then change only the delta.
