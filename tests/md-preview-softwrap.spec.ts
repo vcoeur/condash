@@ -4,11 +4,10 @@ import { join, resolve } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
 /**
- * Regression for 2026-08-19-md-preview-code-softwrap: a fenced block in a
- * rendered note soft-wraps instead of pushing its long lines off the pane edge
- * behind a horizontal scrollbar. The source-file read view is the deliberate
- * exception — real source keeps `white-space: pre` so a wrapped line can't read
- * as an indent level — so both halves are pinned here.
+ * Regression for 2026-08-19-md-preview-code-softwrap: verbatim text in the note
+ * modal soft-wraps instead of pushing its long lines off the pane edge behind a
+ * horizontal scrollbar. Both `.md-rendered` shapes are pinned — the fenced
+ * block of a rendered note, and the read view of a source file.
  */
 
 const SHOTS = resolve(__dirname, 'screenshots-out', 'md-preview-softwrap');
@@ -31,7 +30,7 @@ async function preOverflow(window: import('@playwright/test').Page) {
     }));
 }
 
-test('note preview soft-wraps fenced code; source read view still scrolls', async () => {
+test('note modal soft-wraps verbatim text: fenced code and source read view', async () => {
   const booted = await bootApp({
     prepare: async (conceptionDir) => {
       const res = join(conceptionDir, 'resources');
@@ -64,15 +63,18 @@ test('note preview soft-wraps fenced code; source read view still scrolls', asyn
     await window.keyboard.press('Escape');
     await expect(window.locator('.note-modal')).toHaveCount(0);
 
-    // Source read view: alignment is load-bearing, so long lines still scroll.
+    // Source read view of a non-markdown file: same treatment, same rule.
     await window
       .locator('.resources-card', { hasText: 'long-line.css' })
       .locator('.resources-card-body')
       .click();
     await expect(window.locator('.note-modal .raw-code .hljs')).toBeVisible();
     const source = await preOverflow(window);
-    expect(source.whiteSpace).toBe('pre');
-    expect(source.scrollWidth).toBeGreaterThan(source.clientWidth);
+    expect(source.whiteSpace).toBe('pre-wrap');
+    expect(source.scrollWidth).toBeLessThanOrEqual(source.clientWidth + 1);
+    await window
+      .screenshot({ path: join(SHOTS, 'source-view-wrapped.png') })
+      .catch(() => undefined);
   } finally {
     await cleanup();
   }
