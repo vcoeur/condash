@@ -28,10 +28,10 @@ Rules:
 
 Non-exhaustive triggers — always consult `knowledge/` before editing or advising:
 
-- Touching an **app**? → read `internal/index.md`, open the matching `internal/<app>.md` for conception-side knowledge, then jump to that app's own `CLAUDE.md` for in-repo details.
+- Touching an **app**? → read `internal/index.md`, open the matching `internal/<app>.md` for conception-side knowledge, then jump to that app's own `AGENTS.md` for in-repo details.
 - Changing how we call a **third-party service**? → read `external/<system>.md`.
 - Touching any **cross-cutting concern** (ports, legal/privacy, auth, deployment, logging…)? → read the matching `topics/<subcategory>/<topic>.md`.
-- Workspace-specific high-stakes triggers — log analytics, legal pages, payment flows, etc. — should be captured in `knowledge/conventions.md` or surfaced through the `PreToolUse` hook (`.claude/hooks/knowledge-retrieve-reminder.sh`). The hook is a backstop; reading `knowledge/` proactively when the topic is obvious from the prompt is still on you.
+- Workspace-specific high-stakes triggers — log analytics, legal pages, payment flows, etc. — belong in this conception's `AGENTS.md` under `## Specifics`, where they load every session. A conception may also register a `PreToolUse` reminder hook, but only where its own settings file actually wires one up — so never rely on a hook firing. Reading `knowledge/` proactively when the topic is obvious from the prompt is on you either way.
 
 ## Grep fallback
 

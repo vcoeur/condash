@@ -1,16 +1,10 @@
 ---
 name: visual
 description: >-
-  Author "visual notes" — MDX documents of typed blocks (wireframes, diagrams,
-  data models, API contracts, annotated diffs, open questions) that render in
-  the condash in-app viewer and validate with `condash mdx check`. One skill,
-  four postures set by frontmatter `kind`: a **design** exploring directions, a
-  **plan** as the approval gate before code, a **review** built from a landed
-  diff, or a plain **note** where a visual layout beats Markdown. Owns the block
-  vocabulary, the wireframe and document-quality bars, and the `condash mdx`
-  CLI. Use when asked for a visual note, visual plan, visual design, or visual
-  review, or for any note better shown as blocks than prose. Fully local; no
-  hosted service.
+  Author visual notes — MDX documents of typed blocks (wireframes, diagrams,
+  data models, API contracts, annotated diffs, question forms) that render in
+  the condash viewer and validate with `condash mdx check`. Use for a visual
+  note, plan, design or review, or any note better shown as blocks than prose.
 ---
 
 # /visual — visual notes (MDX documents)
@@ -144,7 +138,8 @@ judgment calls to the Open Questions form.
 
 A note's open decisions live in ONE bottom `question-form` block under an
 `### Open Questions` heading, each with a recommended default — the single place
-they are enumerated. What they ask follows the posture: **directions** for a
+they are enumerated. One block, as many questions as the document has open
+decisions: what is fixed is where they live, not how many there are. What they ask follows the posture: **directions** for a
 `design`, **approval** for a `plan`, **feedback** for a `review`; a `note`
 usually has none. Non-answerable assumptions stay as concise `callout`s in the
 relevant section.
@@ -173,7 +168,8 @@ from a Deliverables entry, the Resources pane, or an `.mdx` link in a note.
 
 ## Shared references — read before authoring
 
-Read the relevant one before authoring; never author blocks from memory.
+Read the relevant one before authoring — the grounding rule from step 1 of the
+authoring workflow applies to every block you write.
 
 | File | Read before |
 |---|---|

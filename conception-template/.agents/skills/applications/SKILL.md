@@ -7,22 +7,31 @@ description: Manage the app registry — the single source of truth for `#handle
 
 Every app in this workspace has exactly one canonical **`#handle`** — the short, lowercase token that identifies it everywhere it is named. This skill manages the registry and is the reference for the conventions agents must follow when referencing apps.
 
-## The one rule: reference apps by `#handle`
+## The one rule: one canonical name per app
 
-Anywhere an app is named — a project README `apps:` list, prose, a deliverable — use the `#handle`:
+Every app has exactly one canonical handle. In prose, in a deliverable, in anything a reader
+sees, write it as `#handle` (e.g. `#app-one`) — that is what the coloured pill renders in both
+the Projects pane and the Code pane, so the same app reads identically everywhere.
 
-- **Registered app** → `#handle` (e.g. `#condash`, `#kasten`, `#alicepeintures`). The handle is what the coloured pill renders, in both the Projects pane and the Code pane, so the same app reads identically everywhere.
-- **Unregistered repo outside the workspace** → an absolute path (`/home/me/src/other/Thing` or `~/src/other/Thing`). The only accepted non-handle form.
-- **Never** a bare directory name (`condash`), a domain (`notes.vcoeur.com`), a label (`Kasten`), or a sub-path (`vcoeur.com/blog`). These are legacy forms — `validate` flags them and suggests the `#handle`.
-
-In a YAML `apps:` list a `#`-prefixed value **must be quoted** (an unquoted leading `#` is read as a YAML comment):
+In a project README `apps:` list, the handle is the value, and the `#` is optional: the
+resolver strips a leading `#`, lowercases, and reduces a path to its last segment, so both
+forms hit the same registry entry.
 
 ```yaml
 apps:
-  - "#condash"
-  - "#kasten"
-  - "~/src/sophie/RechercheAutoAO"   # unregistered, abs path
+  - app-one                          # the handle, bare — the common form
+  - "#app-two"                       # identical after resolution; the leading # needs quotes
+  - "~/src/other/Thing"              # unregistered repo outside the workspace, abs path
 ```
+
+- **Prefer the bare handle in `apps:`.** An unquoted leading `#` is read as a YAML comment, so
+  the `#` form must be quoted and buys nothing the resolver does not already do.
+- **Unregistered repo outside the workspace** → an absolute path (`/home/me/src/other/Thing`
+  or `~/src/other/Thing`). The only accepted value that is not a registry name.
+- **Never a name the registry does not know** — a domain, a human label, or a sub-path that is
+  not itself the handle. `validate` reports a declared legacy spelling as `problem: "alias"`
+  with the current handle to use, and anything it cannot resolve at all as
+  `problem: "unknown-handle"`, which is a hard error.
 
 ## Where identity lives
 

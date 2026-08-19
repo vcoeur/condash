@@ -4,6 +4,8 @@ Multi-repo items use git worktrees at `<worktrees_path>/<branch>/<repo>/`, group
 
 The CLI owns the multi-app derivation, the protected-set logic, and the per-repo `git worktree` calls. The skill just translates user intent into CLI calls.
 
+**The three raw `git` steps below are deliberate.** Switching a primary checkout's branch (`setup` step 3), fetching before setup (`setup` step 4), and deleting a local branch (`remove` step 4) all run in a **main app checkout** — never in the conception, where agents run no `git` at all. They are also outside this skill's tool grant on purpose: each needs the user's go-ahead, and a `git branch -d` refusal has to reach them rather than being swallowed.
+
 ```
 /projects worktree <action> [branch]
 ```

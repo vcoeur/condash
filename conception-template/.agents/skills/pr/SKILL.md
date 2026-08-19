@@ -21,7 +21,7 @@ This skill handles the **project-side mechanics** of opening a PR for any repo l
 - **No force-push.** Never `--force` / `--force-with-lease` unless the user explicitly asks.
 - **No `--no-verify` / hook skipping.**
 
-Anything else about the body — title style, mandatory sections, prohibited trailers, language conventions — is house style and belongs in the user's `/git` skill (`git/pr.md`) or in `knowledge/conventions.md`.
+Anything else about the body — title style, mandatory sections, prohibited trailers, language conventions — is house style and belongs in the user's `/git` skill (`git/pr.md`) or in this conception's `AGENTS.md`, under `## Specifics`.
 
 ## Process
 
@@ -42,9 +42,12 @@ Anything else about the body — title style, mandatory sections, prohibited tra
    |--------|-------|
    | User call-site override | "`/pr base=develop`", "open PR to `release-4.2`", etc. |
    | Project `base` field | `condash projects list --branch <current-branch> --json` returns one row per matching project with parsed `branch` / `base`. If exactly one match has a non-empty `base`, use that value. |
-   | `origin/HEAD` on main checkout | `git rev-parse --git-common-dir` to find the main checkout; `git -C "$main" symbolic-ref refs/remotes/origin/HEAD` for the default. If unset, try `git remote set-head origin -a` once, then ask the user. |
+   | The repo's integration branch | Some repos merge into a long-lived `next` / `develop` / `staging` instead of their default branch. Look for one (`git -C <repo> for-each-ref refs/remotes/origin`) and, if it exists, **ask** which of it and the default branch to target. Never pick it silently, and never skip the question because the default branch resolved fine. |
+   | `origin/HEAD` on main checkout | `git rev-parse --git-common-dir` to find the main checkout; `git -C "$main" symbolic-ref refs/remotes/origin/HEAD` for the default. **Frequently unset** — then `git remote set-head origin -a` once, and if it still does not resolve, ask. |
 
    Sanity-check: `git log --oneline <base>..HEAD` must be a clean non-empty diff. Re-ask if it's empty or enormous.
+
+   **Targeting a base is not a unilateral call.** A wrong base is free to fix before the PR exists and expensive after — it re-opens the PR, invalidates the review, and can merge work into the wrong line. When anything is ambiguous — an integration branch exists, `origin/HEAD` will not resolve, two projects disagree — ask.
 
 3. **Compose the body.**
 

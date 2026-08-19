@@ -152,6 +152,32 @@ describe('condash skills install (verbatim placement)', () => {
     expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
   });
 
+  it('ships a Claude overlay for every shipped skill that shells out to condash', async () => {
+    // A skill whose documented path runs `condash …` needs an `allowed-tools`
+    // grant, or every call it wraps raises a permission prompt. `applications`
+    // and `visual` shipped without one for several releases; this keeps the
+    // grant and the shell-out from drifting apart again.
+    await install();
+    const skillsDir = join(dest, '.agents/skills');
+    const names = (await fs.readdir(skillsDir, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    expect(names.length).toBeGreaterThan(0);
+
+    const missing: string[] = [];
+    for (const name of names) {
+      const files = await fs.readdir(join(skillsDir, name));
+      const bodies = files.filter((f) => f.endsWith('.md') && f !== 'SKILL.claude.md');
+      let shellsOut = false;
+      for (const file of bodies) {
+        const body = await fs.readFile(join(skillsDir, name, file), 'utf8');
+        if (/```bash\n[^`]*\bcondash /.test(body)) shellsOut = true;
+      }
+      if (shellsOut && !files.includes('SKILL.claude.md')) missing.push(name);
+    }
+    expect(missing).toEqual([]);
+  });
+
   it('normalizes a v3 manifest whose per-skill entry predates the source split', async () => {
     // The pre-v4 v3 schema tracked compiled outputs under a per-skill `files`
     // key with no `source` map. Reusing version 3 across the schema change,

@@ -52,11 +52,11 @@ Trigger: `/knowledge garden`.
 
 4. **Gap assessment.** Note any signal the verbs could not supply. If one exists, **stop** and propose the smallest verb extension to the user before continuing — extend an existing verb before adding a new one (e.g. surface `unstamped` from `verify` if it ever stops doing so), never a whole new noun. No condash code without a proven gap.
 
-5. **Triage every finding** against the bucket-picking rubric and the three-yes durability gate (the core rules in `SKILL.md`): single app → `internal/<app>.md`; ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`; durable team rule → the project's `CLAUDE.md`, not here — and promote/keep only on three yeses (holds beyond this task; applies to more than one app or governs the ecosystem; true regardless of the PR's outcome). A finding is a *candidate*, not a verdict — the skill owns the editorial call.
+5. **Triage every finding** against the bucket-picking rubric in `SKILL.md` and the three-yes gate in [promotion.md](promotion.md): single app → `internal/<app>.md`; ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`; durable team rule → this conception's `AGENTS.md` under `## Specifics`, not here. A finding is a *candidate*, not a verdict — the skill owns the editorial call.
 
 6. **Write the ranked findings report** as a note in the driving project (e.g. `notes/02-pass-results.md`), one row per finding (class, path, action, origin, confidence — see the taxonomy below). Present the report to the user and get approval before applying anything.
 
-7. **Apply approved batches.** Conception-side edits (body files, indexes, keywords) go direct into the tree. App-doc moves go through that app's worktree. Renames happen only after a reference grep (wikilinks key off the basename — every `[[target]]` must be found first). Deletions only of rot the user approves. Never commit — `condash sync run` (the sweeper) is the conception's only committer.
+7. **Apply approved batches.** Conception-side edits (body files, indexes, keywords) go direct into the tree. App-doc moves go through that app's worktree. Renames happen only after a reference grep (wikilinks key off the basename — every `[[target]]` must be found first). Deletions only of rot the user approves. Never commit — see the `## General` region of this conception's `AGENTS.md`.
 
 8. **Verify after each batch:**
 

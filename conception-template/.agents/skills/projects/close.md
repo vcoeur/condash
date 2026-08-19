@@ -1,6 +1,6 @@
 # /projects — close
 
-Mark an item as `done`. Under the flat layout, this is a status change only — no folder move. The whole ritual is **write-files-only**: nothing here commits — the sweeper (`condash sync run` on its timer) sweeps the close and mints the `Close <slug>. Outcome: …` milestone commit on its next tick.
+Mark an item as `done`. Under the flat layout, this is a status change only — no folder move. The whole ritual is **write-files-only**: the sweeper picks the close up on its next tick and mints the `Close <slug>. Outcome: …` milestone commit.
 
 Trigger: `/projects close <slug>`.
 
@@ -18,7 +18,7 @@ Trigger: `/projects close <slug>`.
 
 4. **Knowledge promotion review.** Editorial step — the agent reads, the CLI is a backstop.
 
-   a. **Read the README and every `notes/*.md` or `notes/*.mdx` body** returned by step 2's `read --with-notes`, and apply the three-question durability test (canonical definition in the `/knowledge` skill) to each candidate paragraph:
+   a. **Read the README and every `notes/*.md` or `notes/*.mdx` body** returned by step 2's `read --with-notes`, and apply the three-yes durability test to each candidate paragraph — canonically defined in the `/knowledge` skill's `promotion.md`, summarised here only to keep the sequence readable:
 
       1. Holds beyond this task? (Not specific to the in-flight work.)
       2. Applies to more than one app, or to the ecosystem?
@@ -86,12 +86,12 @@ Trigger: `/projects close <slug>`.
    - If `data.projects.present` is true → `condash projects index --json`.
    - If `data.knowledge.present` is true → `condash knowledge index --json`.
 
-8. **Report** what changed: status, knowledge promotions, worktrees removed, branches deleted, indexes refreshed. Do **not** commit anything — the sweeper mints the `Close <slug>. Outcome: …` milestone commit from the closing timeline entry on its next tick.
+8. **Report** what changed: status, knowledge promotions, worktrees removed, branches deleted, indexes refreshed. The sweeper mints the `Close <slug>. Outcome: …` milestone commit from the closing timeline entry on its next tick.
 
 ## Rules
 
 - **No folder move.** Done items stay in their creation-month bucket.
-- **No commits, no sync verbs.** Never run `git add` / `git commit` / `git push` or any `condash sync` verb here, and never invoke `/commit` — write the files and stop. The sweeper owns every conception commit and synthesizes the close milestone subject itself; `condash sync commit` stays a manual escape hatch for humans.
+- **No commits, no sync verbs** — the `## General` region of this conception's `AGENTS.md` owns the rule, including for `/commit`. Closing needs no exception: the sweeper synthesizes the milestone subject itself.
 - **Transfer stamps are historical.** They never expire; no `/verify` action checks them.
 
 ## Reopen

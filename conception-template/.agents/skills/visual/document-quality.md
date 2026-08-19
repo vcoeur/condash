@@ -1,8 +1,7 @@
 # Document quality — single source of truth
 
 The canonical quality bar for the visual note, whatever its posture
-(design / plan / review / note). Read it in full before authoring; do not write
-the document from memory.
+(design / plan / review / note). Read it in full before authoring.
 
 **The document is serious technical writing, not marketing.** Write a `plan` or
 `design` the way a strong implementation plan reads, a `review` the way a strong
@@ -62,7 +61,8 @@ vocabulary is `blocks.md` (`condash mdx blocks`); highlights:
   mockup or comparison, and it must read correctly in both themes via the
   `--wf-*` tokens.
 
-**Open questions live at the bottom as ONE form.** A final `question-form`
+**Open questions live at the bottom as ONE form** — one block, holding as many
+questions as the document has open decisions. A final `question-form`
 block under an `### Open Questions` heading is the only place that
 enumerates them; a one-line pointer in the overview is fine, a second list
 is not. `single`/`multi` for clear choices, `freeform` for constraints,
