@@ -299,6 +299,10 @@ export async function installShippedFile(
     };
     return { path: file.path, region: file.region, state: 'forced', diff };
   }
+  // The region lane keeps refusing an untracked-but-present file: there the
+  // file is user-owned and condash merges one section into it, so "present and
+  // unmatched" is a real conflict rather than a first encounter. Only the
+  // whole-file lane adopts the `untracked` state.
   return {
     path: file.path,
     region: file.region,
