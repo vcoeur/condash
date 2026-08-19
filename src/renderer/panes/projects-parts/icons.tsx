@@ -161,71 +161,82 @@ export function StepProgress(props: { counts: StepCounts }) {
  * token (see .kind-glyph in styles.css). Each icon is hand-tuned rather than
  * a stock library glyph — see the comments above each definition. */
 
-const KIND_ICON: Record<string, () => any> = {
+/* One entry per item kind: the word that names it and its hand-tuned outline
+ * icon. A single record on purpose. These were two parallel maps keyed by the
+ * same strings, which let a kind exist in one and not the other — harmless
+ * while the glyph was an unlabelled span, but `role="img"` turns a missing
+ * label into an unnamed image (a WCAG 1.1.1 failure), and `Record<string, T>`
+ * without `noUncheckedIndexedAccess` means tsc never sees the divergence. One
+ * record makes that state unrepresentable instead of guarded against. */
+const KIND: Record<string, { label: string; icon: () => any }> = {
   // Project — gem-cut diamond outline with a single soft horizontal facet
   // line. Reads as "waypoint with depth" rather than a flat rhombus.
   // Leftmost path point at viewBox x=2.5 to align with the step icon's rect
   // (also x=2.5) and the other kind icons.
-  project: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 2.5L13.5 8 8 13.5 2.5 8z" />
-      <path d="M5 8h6" stroke-opacity="0.45" />
-    </svg>
-  ),
+  project: {
+    label: 'Project',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 2.5L13.5 8 8 13.5 2.5 8z" />
+        <path d="M5 8h6" stroke-opacity="0.45" />
+      </svg>
+    ),
+  },
   // Incident — alert triangle outline with a clean exclamation glyph (line +
   // dot). Leftmost path point at x=2.5 (base's bottom-left) to match the rest
   // of the icon set.
-  incident: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3L13.5 13.5h-11z" />
-      <path d="M8 6.75v3" />
-      <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
-    </svg>
-  ),
+  incident: {
+    label: 'Incident',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 3L13.5 13.5h-11z" />
+        <path d="M8 6.75v3" />
+        <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
   // Document — page outline with a corner fold and two text lines, the
   // second shorter for natural text rhythm. Leftmost path point at x=2.5,
   // matching the rest of the icon set.
-  document: () => (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 2h6L12 5.5v9H2.5z" />
-      <path d="M8.5 2L12 5.5h-3.5z" />
-      <path d="M4.75 9h4.5M4.75 11.5h2.75" />
-    </svg>
-  ),
+  document: {
+    label: 'Document',
+    icon: () => (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M2.5 2h6L12 5.5v9H2.5z" />
+        <path d="M8.5 2L12 5.5h-3.5z" />
+        <path d="M4.75 9h4.5M4.75 11.5h2.75" />
+      </svg>
+    ),
+  },
 };
 
 function KindIcon(props: { kind: string }) {
-  const Icon = KIND_ICON[props.kind];
-  if (!Icon) return null;
+  const entry = KIND[props.kind];
+  if (!entry) return null;
+  const Icon = entry.icon;
   return <Icon />;
 }
-
-const KIND_LABEL: Record<string, string> = {
-  project: 'Project',
-  incident: 'Incident',
-  document: 'Document',
-};
 
 /* Kind glyph — small monochrome outline icon that marks a card or modal
  * with its kind (project / incident / document). No text label: the icon
@@ -235,22 +246,18 @@ const KIND_LABEL: Record<string, string> = {
  * assistive tech may drop it — leaving a card whose own label (`<title>,
  * <status>`) never says whether it is a project or an incident. Sits at the
  * start of the title on every card whose kind is known, and at the head of the
- * project preview's modal head.
- *
- * The guard needs BOTH maps. `role="img"` with no accessible name is an
- * unnamed image — a WCAG 1.1.1 failure — so a kind present in `KIND_ICON` but
- * missing from `KIND_LABEL` must render nothing rather than an anonymous
- * glyph. `Record<string, string>` without `noUncheckedIndexedAccess` means
- * tsc will not catch that divergence for us. */
+ * project preview's modal head. A kind the record doesn't know renders
+ * nothing — never an unnamed image. */
 export function KindGlyph(props: { kind: string }) {
-  if (!KIND_ICON[props.kind] || !KIND_LABEL[props.kind]) return null;
+  const entry = KIND[props.kind];
+  if (!entry) return null;
   return (
     <span
       class="kind-glyph"
       data-kind={props.kind}
       role="img"
-      title={KIND_LABEL[props.kind]}
-      aria-label={KIND_LABEL[props.kind]}
+      title={entry.label}
+      aria-label={entry.label}
     >
       <KindIcon kind={props.kind} />
     </span>
