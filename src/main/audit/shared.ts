@@ -21,7 +21,8 @@ export type AuditCheckName =
   | 'stale-index'
   | 'stale-verification'
   | 'check-knowledge'
-  | 'check-knowledge-deferred';
+  | 'check-knowledge-deferred'
+  | 'hooks';
 
 /**
  * Timeline tokens for the deferred-knowledge-promotion state machine
@@ -29,7 +30,7 @@ export type AuditCheckName =
  * records a finding that passed the three-yes durability test except that
  * its truth depended on a not-yet-merged PR; the *done* token, in a later
  * entry, records that the deferral was resolved after merge (promoted or
- * dropped). See `conception-template/knowledge/conventions.md`.
+ * dropped). See `conception-template/.agents/skills/knowledge/promotion.md`.
  */
 export const RECHECK_PENDING_MARKER = '[knowledge-recheck:pending]';
 export const RECHECK_DONE_MARKER = '[knowledge-recheck:done]';

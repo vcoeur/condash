@@ -23,6 +23,10 @@ export type RawSubmoduleRepo =
       name?: string;
       path?: string;
       label?: string;
+      /** One line on what the app is for. Rendered as the AGENTS.md table's
+       *  Purpose column, so a reader gets the answer without opening a second
+       *  file. */
+      purpose?: string;
       aliases?: string[];
       run?: string;
       force_stop?: string;
@@ -45,6 +49,8 @@ export type RawRepo =
       name?: string;
       path?: string;
       label?: string;
+      /** One line on what the app is for — the AGENTS.md table's Purpose cell. */
+      purpose?: string;
       aliases?: string[];
       run?: string;
       force_stop?: string;

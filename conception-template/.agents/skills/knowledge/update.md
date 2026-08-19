@@ -10,7 +10,7 @@ Use `/knowledge update` when the fact being recorded is:
 
 - **Durable** — true beyond the current project, incident, or conversation.
 - **Load-bearing** — a future AI agent session should find it when asked about the topic.
-- **Not already** in an app's `CLAUDE.md` (for app internals, write there instead).
+- **Not already** in an app's `AGENTS.md` (for app internals, write there instead).
 
 If the fact is in-flight project work or a point-in-time finding, it goes under the item's `notes/` via `/projects update`.
 
@@ -55,7 +55,7 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
 
 - Core rules live in `SKILL.md` — read before writing.
 - Preserve citations on edits. When refactoring existing prose, keep `([source]…)` and `(`path:line`…)` citations anchored to the right claims.
-- Do not commit. Write the file and stop — `condash sync run` (the sweeper) is the conception's only committer and sweeps it up.
+- Do not commit — see the `## General` region of this conception's `AGENTS.md`, which owns that rule.
 
 ## After writing
 

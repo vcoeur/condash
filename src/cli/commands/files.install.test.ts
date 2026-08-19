@@ -152,9 +152,107 @@ describe('condash skills install — AGENTS.md marker region', () => {
   });
 });
 
-describe('condash skills install — no top-level files shipped', () => {
-  it('ships no top-level files (SHIPPED_FILES is empty)', () => {
-    expect(SHIPPED_FILES).toHaveLength(0);
+/** `skills status` file-lane rows for the tmp dest, off the JSON envelope. */
+async function statusFileRows(): Promise<{ path: string; state: string }[]> {
+  process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
+  const chunks: string[] = [];
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+    chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    await runSkills(
+      'status',
+      { noun: 'skills', verb: 'status', positional: [], flags: { dest } },
+      ctx(),
+    );
+  } finally {
+    process.stdout.write = write;
+  }
+  const envelope = JSON.parse(chunks.join('')) as {
+    data: { files: { path: string; state: string }[] };
+  };
+  return envelope.data.files;
+}
+
+describe('condash skills install — the top-level files lane', () => {
+  const HOOK = '.claude/hooks/knowledge-retrieve-reminder.sh';
+
+  it('ships the knowledge-retrieve reminder hook, and only that', () => {
+    expect(SHIPPED_FILES.map((f) => f.path)).toEqual([HOOK]);
+  });
+
+  it('installs the hook executable on a fresh tree', async () => {
+    await install();
+    const body = await fs.readFile(join(dest, HOOK), 'utf8');
+    expect(body).toContain('#!');
+    const mode = (await fs.stat(join(dest, HOOK))).mode & 0o777;
+    expect(mode & 0o111).toBeTruthy();
+  });
+
+  it('refreshes an unmodified hook and reports it unchanged when converged', async () => {
+    await install();
+    const first = await fs.readFile(join(dest, HOOK), 'utf8');
+    // A stale-but-unmodified copy: the manifest hash still matches disk.
+    await fs.writeFile(join(dest, HOOK), first, 'utf8');
+    await install();
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).toBe(first);
+    const manifest = await readManifest(dest);
+    expect(manifest!.files![HOOK]).toBeTruthy();
+  });
+
+  it('restores the executable bit on an already-converged hook', async () => {
+    await install();
+    await fs.chmod(join(dest, HOOK), 0o644);
+    await install();
+    const mode = (await fs.stat(join(dest, HOOK))).mode & 0o777;
+    expect(mode & 0o111).toBeTruthy();
+  });
+
+  it('refuses a locally edited hook, and overwrites it only with --force', async () => {
+    await install();
+    const customised = '#!/usr/bin/env bash\n# my own trigger table\nexit 0\n';
+    await fs.writeFile(join(dest, HOOK), customised, 'utf8');
+    await expect(install()).rejects.toThrow(/refused/);
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).toBe(customised);
+    await install([], { force: true });
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).not.toBe(customised);
+  });
+
+  it('leaves a pre-existing untracked hook alone without failing the install', async () => {
+    // Every conception is in this state the first time a file joins
+    // SHIPPED_FILES: the hook has been there since `init`, diverged from the
+    // template, and condash has never tracked it. A routine upgrade must
+    // report that and exit 0 — not start failing on a file the user has had
+    // all along — and must not overwrite it either.
+    const theirs = '#!/usr/bin/env bash\n# hand-tuned trigger table\nexit 0\n';
+    await fs.mkdir(join(dest, '.claude/hooks'), { recursive: true });
+    await fs.writeFile(join(dest, HOOK), theirs, 'utf8');
+    await install(); // must not throw
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).toBe(theirs);
+    const manifest = await readManifest(dest);
+    expect(manifest!.files?.[HOOK]).toBeUndefined();
+    // --force is the way in, and it adopts the shipped copy.
+    await install([], { force: true });
+    expect(await fs.readFile(join(dest, HOOK), 'utf8')).not.toBe(theirs);
+    expect((await readManifest(dest))!.files![HOOK]).toBeTruthy();
+  });
+
+  it('reports a converged whole-file entry as unchanged, not missing-heading', async () => {
+    // The status path used to extract a heading-delimited region from every
+    // tracked file. A shell script has no heading, so an installed, converged
+    // hook reported `missing-heading` — which reads as drift on a file that is
+    // in fact byte-identical to what shipped.
+    await install();
+    const rows = await statusFileRows();
+    const hook = rows.find((r) => r.path === HOOK);
+    expect(hook?.state).toBe('unchanged');
+  });
+
+  it('writes nothing under --dry-run', async () => {
+    await install([], { 'dry-run': true });
+    await expect(fs.access(join(dest, HOOK))).rejects.toThrow();
   });
 
   it('does not create or touch .gitignore on a full install', async () => {

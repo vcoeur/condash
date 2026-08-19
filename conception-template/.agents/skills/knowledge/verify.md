@@ -2,7 +2,7 @@
 
 Audit the conception tree for convention drift: stale `**Verified:**` stamps, LFS coverage gaps, large plain-git binaries, dangling cross-repo references from sibling apps pointing into conception, `knowledge/**/index.md` orphans/danglers, and done projects missing their knowledge-promotion check. Every check lives in `condash` — there is no separate Python script.
 
-This is the conception-wide **sweep**: the batched audit + verify + fix workflow. It absorbs what the retired `tidy` skill did — its audits all live under these two verbs now.
+This is the conception-wide **sweep**: the batched audit + verify + fix workflow. Every audit lives under these two verbs.
 
 Trigger: `/knowledge verify`.
 
@@ -37,16 +37,16 @@ git -C <workspace_path>/<app> rev-parse --verify <shortsha>
 
 If unreachable, mark `SHA missing` — the fact may need re-verifying even if still correct. **Never auto-bump** — a bumped stamp without a re-read is a lie about freshness. Suggest the user re-read the current state of each referenced app and refresh each stale claim via `condash knowledge stamp <path> --line <row.line> --where <new-where>`. Pass `--line` from the row: on a sectioned file, stamping without it refuses, and stamping the wrong line would refresh a claim nobody re-read.
 
-### `lfs` (auto-fix candidate, with confirmation)
+### `lfs` (report only — applying it is the user's step)
 
-A `*.pdf|*.png|*.jpg|*.jpeg` under `projects/` is not tracked by git-lfs. Group the paths, report sizes (in `fix.sizeKb`), confirm once, then for each:
+A `*.pdf|*.png|*.jpg|*.jpeg` under `projects/` is not tracked by git-lfs. Group the paths and report sizes (in `fix.sizeKb`). Tracking a path takes `git` **in the conception checkout**, which agents never run — so hand the commands over instead of running them:
 
 ```bash
 git -C <conception-path> lfs track <path>
 git -C <conception-path> add <path>
 ```
 
-Do **not** commit — `condash sync run` (the sweeper) is the conception's only committer.
+The user stops there too: the sweeper does the commit.
 
 ### `binaries` (informational)
 
@@ -54,12 +54,12 @@ A binary under `projects/` is > 50 kB and not in git-lfs. Usually resolved by fi
 
 ### `cross-repo` (flag only)
 
-A sibling app's `CLAUDE.md` references `../../conception/...` and the target doesn't resolve. Don't auto-fix — the reference may need re-pointing to a renamed file, not removal. For each:
+A sibling app's `AGENTS.md` (or a legacy `CLAUDE.md`) references `../../conception/...` and the target doesn't resolve. Don't auto-fix — the reference may need re-pointing to a renamed file, not removal. For each:
 
 1. Use `condash knowledge retrieve <name>` to find a likely renamed target.
 2. If confident, propose the new path.
 3. If not, propose removal.
-4. Confirm before editing the sibling repo's `CLAUDE.md` — cross-repo writes affect other projects.
+4. Confirm before editing the sibling repo's instruction file — cross-repo writes affect other projects.
 
 ### `worktrees` (informational; offer setup)
 

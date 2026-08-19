@@ -39,6 +39,8 @@ export interface RepoLookup {
   aliases?: string[];
   /** Optional human-friendly label. Surfaced as a card subtitle when set. */
   label?: string;
+  /** One line on what the app is for — the AGENTS.md table's Purpose cell. */
+  purpose?: string;
   /** Parent name when this entry is a submodule. */
   parent?: string;
   /** Resolved absolute cwd. */
@@ -134,6 +136,7 @@ function visitOne(
     handle: entry.handle ?? appHandle(dirName),
     aliases: entry.aliases,
     label: entry.label,
+    purpose: entry.purpose,
     parent,
     cwd: resolveCwd(parentCwd ?? workspace, undefined, dirName, entry.path),
     run: entry.run,

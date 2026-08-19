@@ -35,7 +35,8 @@ The **sweeper** — timer-driven `condash sync run` — is the conception's **on
 ### Generated layers — never hand-edit
 
 - **Skills** under `.agents/skills/` ship from condash and are refreshed by `condash skills install` (`projects`, `knowledge`, `pr`, `applications`, `visual`). To change one, edit it in condash. A conception may add its own skills; condash leaves those alone.
-- **Harness views** (`CLAUDE.md`, `.kimi/AGENTS.md`, …) are compiled from `AGENTS.md` at launch. Edit `AGENTS.md`; the views follow. Durable rules go in versioned files (`knowledge/` or `## Specifics`), never agent auto-memory.
+- **Harness views** (`CLAUDE.md`, `.kimi/AGENTS.md`, the per-harness skill dirs, …) are compiled from `AGENTS.md` + `.agents/` at launch and gitignored. Edit `AGENTS.md`; the views follow. A rule written into a view is discarded on the next launch, with no error — so a view is never a destination.
+- **Where a durable rule goes.** Instructions that must load every session — workflow rules, team conventions, pre-skill behaviour — go in this conception's `AGENTS.md`, under `## Specifics`. An app's own internals go in that app's `AGENTS.md`. Reference material you look up goes in `knowledge/` through `/knowledge`. Never a harness view, never agent auto-memory.
 
 <!-- end condash agents -->
 

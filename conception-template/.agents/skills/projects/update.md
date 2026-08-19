@@ -31,7 +31,7 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 ## Promoting durable knowledge
 
-After every notes write — not just at close — re-read the paragraph you just wrote and apply the durability test from `knowledge/conventions.md`:
+After every notes write — not just at close — re-read the paragraph you just wrote and apply the three-yes durability test (canonical definition: the `/knowledge` skill's `promotion.md`):
 
 1. Does it hold beyond this task? (Not specific to the in-flight work.)
 2. Does it apply to more than one app, or to the ecosystem?

@@ -131,6 +131,7 @@ const submoduleRepoEntry: z.ZodType<RawSubmoduleRepo> = z.union([
       name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
+      purpose: z.string().min(1).optional(),
       aliases: z.array(z.string().min(1)).optional(),
       run: z.string().optional(),
       force_stop: z.string().optional(),
@@ -167,6 +168,9 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
       name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
+      /** One line on what the app is for. `applications sync-docs` renders it
+       *  as the AGENTS.md table's Purpose column. */
+      purpose: z.string().min(1).optional(),
       /** Legacy spellings that resolve to this handle — drives the cleanup
        *  rewriter and lets `applications validate` auto-suggest a fix. */
       aliases: z.array(z.string().min(1)).optional(),

@@ -1,6 +1,6 @@
 # Internal
 
-Our own systems: one row (and optionally one body file) per app or shared self-hosted service. App internals belong in that app's own `CLAUDE.md`, not here. This index carries **conception-side** knowledge: sandbox-testing recipes, rename history, cross-project gotchas, cross-app invariants.
+Our own systems: one row (and optionally one body file) per app or shared self-hosted service. App internals belong in that app's own `AGENTS.md`, not here. This index carries **conception-side** knowledge: sandbox-testing recipes, rename history, cross-project gotchas, cross-app invariants.
 
 ## When to create a body file
 

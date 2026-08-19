@@ -120,6 +120,21 @@ export async function repoStatus(args: ParsedArgs, ctx: OutputContext): Promise<
   for (const [skillName, skillEntry] of Object.entries(manifest.skills)) {
     const ship = shippedByName.get(skillName);
     for (const [relPath, entry] of Object.entries(skillEntry.source)) {
+      // Ask "does the bundle still ship this?" before "is it on disk?". An
+      // entry left behind by an older layout (a renamed or dropped file) is
+      // absent from both, and reporting it as `missing` made it read like real
+      // drift — padding the output enough to hide genuine `outdated` rows.
+      // `source-missing` is the state that actually describes it, and
+      // `--prune` clears it.
+      if (!ship || !ship.files.includes(relPath)) {
+        skillRows.push({
+          skill: skillName,
+          file: relPath,
+          state: 'source-missing',
+          shippedVersion: entry.shippedVersion,
+        });
+        continue;
+      }
       const onDiskPath = join(sourceRoot, skillName, relPath);
       let onDisk: Buffer | null = null;
       try {
@@ -147,14 +162,13 @@ export async function repoStatus(args: ParsedArgs, ctx: OutputContext): Promise<
         continue;
       }
       let shippedFile: Buffer | null = null;
-      if (ship && ship.files.includes(relPath)) {
-        try {
-          shippedFile = await fs.readFile(join(ship.sourceDir, relPath));
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        }
+      try {
+        shippedFile = await fs.readFile(join(ship.sourceDir, relPath));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
       if (shippedFile === null) {
+        // Listed in the bundle but unreadable — treat as no longer shipped.
         skillRows.push({
           skill: skillName,
           file: relPath,

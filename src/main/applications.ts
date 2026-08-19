@@ -27,6 +27,8 @@ import { pathExists } from './fs-helpers';
 export interface AppRecord {
   handle: string;
   label?: string;
+  /** One line on what the app is for, from the registry. Empty when unset. */
+  purpose?: string;
   /** Configured path (as written in condash.json) for live apps; undefined for retired. */
   path?: string;
   /** Resolved absolute cwd for live apps; undefined for retired. */
@@ -82,6 +84,7 @@ export async function listApplications(
     records.push({
       handle: entry.handle,
       label: entry.label,
+      purpose: entry.purpose,
       path: pathAsConfigured(config, entry),
       cwd: entry.cwd,
       dirName: entry.name,
@@ -301,18 +304,23 @@ async function instructionsFile(cwd: string | undefined): Promise<string> {
 
 /**
  * Render the Apps table markdown from the live registry. Columns: the
- * `#handle`, the repo path (as configured), the absolute path to the app's
- * instruction file (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an
- * agent can open it directly), and the conventional knowledge file
+ * `#handle`, the repo path (as configured), one line of purpose from the
+ * registry's `purpose` field, the absolute path to the app's instruction file
+ * (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an agent can open it
+ * directly), and the conventional knowledge file
  * `knowledge/internal/<handle>.md`. Submodules render right after their parent
  * with a `↳`-prefixed App cell. Retired apps are omitted — the table
  * documents live apps only.
+ *
+ * The Purpose column exists so a reader does not need a second, hand-kept
+ * table beside the generated one: a cell is empty until the registry carries a
+ * `purpose`, and `applications set <handle> --purpose "…"` fills it.
  */
 export async function renderAppsTable(records: AppRecord[]): Promise<string> {
   const live = records.filter((r) => !r.retired);
   const lines = [
-    '| App | Repo | AGENTS.md | Knowledge |',
-    '|-----|------|-----------|-----------|',
+    '| App | Repo | Purpose | AGENTS.md | Knowledge |',
+    '|-----|------|---------|-----------|-----------|',
   ];
   for (const record of live) {
     const repo = record.path ?? '';
@@ -320,10 +328,19 @@ export async function renderAppsTable(records: AppRecord[]): Promise<string> {
     const agentsCell = agents ? `\`${agents}\`` : '';
     const appCell = `${record.parent ? '↳ ' : ''}\`#${record.handle}\``;
     lines.push(
-      `| ${appCell} | \`${repo}\` | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
+      `| ${appCell} | \`${repo}\` | ${escapeCell(record.purpose)} | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
     );
   }
   return lines.join('\n');
+}
+
+/** One markdown table cell: pipes escaped, newlines flattened, empty when unset. */
+function escapeCell(value: string | undefined): string {
+  if (!value) return '';
+  return value
+    .replace(/\s*\n\s*/g, ' ')
+    .replace(/\|/g, '\\|')
+    .trim();
 }
 
 /** Outcome of a {@link syncAppsDocs} run. */
@@ -391,7 +408,7 @@ async function mutateConfig(
 /** Register a new live application. Fails if the handle already resolves. */
 export async function addApplication(
   conceptionPath: string,
-  input: { handle: string; path: string; label?: string },
+  input: { handle: string; path: string; label?: string; purpose?: string },
 ): Promise<void> {
   const handle = appHandle(input.handle);
   const records = await listApplications(conceptionPath);
@@ -402,15 +419,16 @@ export async function addApplication(
     const repos = (config.repositories ??= []);
     const entry: Record<string, unknown> = { handle, path: input.path };
     if (input.label) entry.label = input.label;
+    if (input.purpose) entry.purpose = input.purpose;
     repos.push(entry);
   });
 }
 
-/** Update a live application's label or path, keyed by handle. */
+/** Update a live application's label, purpose or path, keyed by handle. */
 export async function setApplication(
   conceptionPath: string,
   handle: string,
-  patch: { label?: string; path?: string },
+  patch: { label?: string; path?: string; purpose?: string },
 ): Promise<void> {
   const target = appHandle(handle);
   await mutateConfig(conceptionPath, (config) => {
@@ -420,6 +438,8 @@ export async function setApplication(
     const obj = entry as Record<string, unknown>;
     if (patch.label !== undefined) obj.label = patch.label || undefined;
     if (patch.path !== undefined) obj.path = patch.path;
+    // An empty --purpose clears the cell rather than writing a blank string.
+    if (patch.purpose !== undefined) obj.purpose = patch.purpose || undefined;
   });
 }
 

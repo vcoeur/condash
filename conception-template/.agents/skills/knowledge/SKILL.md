@@ -23,6 +23,8 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `verify`    | `/knowledge verify`                  | [verify.md](verify.md)     |
 | `garden`    | `/knowledge garden`                  | [garden.md](garden.md)     |
 
+[promotion.md](promotion.md) is not an action — it is the shared promotion contract, referenced from here and from the `projects` skill.
+
 For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly. The `condash knowledge stamp` verb (described under "Verification stamps" below) is also callable on its own when refreshing a single fact's `**Verified:**` line.
 
 ## Core rules
@@ -40,47 +42,28 @@ These are the contract every `/knowledge` action enforces:
   `<where>` is one of `<app>@<shortsha>` (optionally `on <branch>`), `<conception-path>`, or `<name>: <url>`. For external state without a SHA, append `HH:MM UTC` when intra-day drift matters. The CLI writes this idempotently — `condash knowledge stamp <path> --where <where>` replaces an existing stamp or inserts a new one. A file may carry **one stamp per section** when sections were verified on different dates; freshness is then judged on the oldest of them, and `stamp` needs `--line <n>` to say which one you re-read (it refuses rather than guess).
 
 - **Cross-link.** Body files link to the `projects/` items that produced them; items link back via `## Notes`.
-- **Don't duplicate app internals.** Single-app details belong in that app's own `CLAUDE.md`. `knowledge/internal/<app>.md` carries conception-side knowledge only.
+- **Don't duplicate app internals.** Single-app details belong in that app's own `AGENTS.md`. `knowledge/internal/<app>.md` carries conception-side knowledge only.
 - **Don't create pointer-only stubs.** If there's no conception-side knowledge for an app, the `internal/index.md` row is the body.
 - **Prefer narrow-scope slugs over subject-area slugs.** `ci-action-pinning.md` beats `github-actions.md`.
-- **Bucket-picking rubric:** durable team rule → **not here** (goes in the project's `CLAUDE.md` Specific section); single app → `internal/<app>.md` (or index row); ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`.
+- **Bucket-picking rubric:** durable team rule → **not here** (goes in this conception's `AGENTS.md`, under `## Specifics`); single app → `internal/<app>.md` (or index row); ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`.
 - **Durable only.** Project-specific plans, incident reports, and in-flight work live under `projects/`, never here.
-- **No workflow rules.** `knowledge/` is reference material — facts you look up. Workflow rules, team conventions, and pre-skill behaviour go in the project's `CLAUDE.md`. The bucket-picking rubric, read flow, and edit flow are documented here in `SKILL.md`, not duplicated into `knowledge/index.md`.
+- **No workflow rules.** `knowledge/` is reference material — facts you look up. Workflow rules, team conventions, and pre-skill behaviour go in this conception's `AGENTS.md`, under `## Specifics`. Never in a harness view (`CLAUDE.md`, `.claude/`, …): those are compiled from `AGENTS.md` at launch and gitignored, so a rule written there is discarded without an error. The bucket-picking rubric, read flow, and edit flow are documented here in `SKILL.md`, not duplicated into `knowledge/index.md`.
 
 ## When to create vs. extend
 
-- **Durable team rule** → not here. Lives in the project's `CLAUDE.md` Specific section (auto-loaded).
+- **Durable team rule** → not here. Lives in this conception's `AGENTS.md`, under `## Specifics` — loaded in every session.
 - **New third-party service** → `external/<system>.md`.
 - **New shared self-hosted service** → `internal/<service>.md`.
 - **New cross-cutting topic** → `topics/<subcategory>/<slug>.md`.
 - **New app** → add a row to `internal/index.md`. Create `internal/<app>.md` only when the first non-pointer fact surfaces.
-- **Single-app detail** → that app's own `CLAUDE.md`, not here.
+- **Single-app detail** → that app's own `AGENTS.md`, not here.
 
-## Promotion (the three-yes gate, the check, deferred re-evaluation)
+## Promotion
 
-Durable findings from project work enter `knowledge/` only through this gate — it keeps single-PR detail and app-internal trivia out of the tree.
-
-### Three-yes durability test
-
-Before promoting any finding, run it through all three conditions — promote only on three yeses:
-
-1. **Holds beyond this task** — still true even if the task were done differently; not tied to one PR's implementation detail.
-2. **Applies to more than one app, or governs the ecosystem** — single-app internals belong in that app's own `CLAUDE.md`, not here.
-3. **True regardless of the PR's outcome** — a finding made true only *by* the not-yet-merged PR fails this condition at evaluation time (see deferred re-evaluation below).
-
-Three yeses → `/knowledge update`, stamping the origin paragraph `**Transferred:** YYYY-MM-DD → <path>` (the historical promotion marker; the body file also carries the `**Verified:**` freshness stamp from Core rules).
-
-### Promotion check (signalled by `projects`)
-
-`condash projects check-knowledge <slug>` and `condash audit --include check-knowledge` only **signal** that a done project may still hold un-promoted findings — they are read-only and never write the marker. Resolving the signal is this skill's job: run `condash projects scan-promotions <slug>`, walk each candidate through the three-yes test, and **create the actual knowledge** with `/knowledge update` (stamping the origin paragraph as above). Only once the real promotion is done — or every candidate is genuinely dropped — does the project record `- YYYY-MM-DD — Checked knowledge promotion` as its last timeline entry. The marker attests that this work happened; never append it as a substitute for doing it.
-
-### Deferred re-evaluation
-
-A finding that passes conditions 1 and 2 but fails only condition 3 — because its truth is *established by* a not-yet-merged PR — would otherwise be silently stranded in project notes. Instead:
-
-1. Write an open `[knowledge-recheck:pending]` timeline marker in the project README.
-2. After the PR merges, re-run the three-yes test; on a pass, promote via `/knowledge update` and update the marker to `[knowledge-recheck:done]`.
-3. `condash audit --include check-knowledge-deferred` surfaces any unmatched open marker across all projects (closed ones included), so the deferral can't be buried.
+Durable findings from project work enter `knowledge/` only through the three-yes gate. The
+full contract — the gate itself, the `Checked knowledge promotion` marker, and deferred
+re-evaluation — lives in **[promotion.md](promotion.md)**, which is the canonical definition
+every other skill points at. Read it before promoting anything.
 
 ## Index tree contract
 

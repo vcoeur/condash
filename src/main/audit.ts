@@ -31,6 +31,8 @@
  *  - `check-knowledge` — `done` projects whose last timeline entry isn't
  *                   `Checked knowledge promotion` — the promotion review is
  *                   missing or stale.
+ *  - `hooks`      — a hook script under `.claude/hooks/` that no settings
+ *                   file registers, so it never runs while looking live.
  *
  * Pure read-only. Returns `{summary, issues[]}` so the CLI can either pretty-
  * print it or hand it to the skill verbatim.
@@ -43,6 +45,7 @@
 
 import { checkBinaries } from './audit/binaries';
 import { checkCrossRepo } from './audit/cross-repo';
+import { checkHooks } from './audit/hooks';
 import { checkIndex } from './audit/index-check';
 import { checkKnowledgeCheck } from './audit/check-knowledge';
 import { checkKnowledgeRecheck } from './audit/check-knowledge-deferred';
@@ -88,6 +91,9 @@ export async function runAudit(
           break;
         case 'check-knowledge-deferred':
           issues.push(...(await checkKnowledgeRecheck(conceptionPath)));
+          break;
+        case 'hooks':
+          issues.push(...(await checkHooks(conceptionPath)));
           break;
         default:
           issues.push({

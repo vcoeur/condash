@@ -6,8 +6,8 @@ Permanent reference material for this workspace. Stable facts, conventions, cros
 
 Before writing a new entry, decide which tree the content belongs to. Before reading, use the same rubric to pick where to look first.
 
-- *Is it an intent / rule about how we work?* → [`conventions.md`](conventions.md).
-- *Is it a fact about one of our apps?* → [`internal/<app>.md`](internal/index.md) (or the app's own `CLAUDE.md` when the fact is app-internal plumbing).
+- *Is it an intent / rule about how we work?* → a rule that must govern **every session** belongs in `AGENTS.md` under `## Specifics`, not here. A convention a teammate **looks up** — a standard, a naming rule, a decision record — → [`conventions.md`](conventions.md).
+- *Is it a fact about one of our apps?* → [`internal/<app>.md`](internal/index.md) (or the app's own `AGENTS.md` when the fact is app-internal plumbing).
 - *Is it a fact that spans apps or the ecosystem?* → [`topics/<subcategory>/<slug>.md`](topics/index.md).
 - *Is it about a third-party service we call?* → [`external/<system>.md`](external/index.md).
 
@@ -15,7 +15,7 @@ Before writing a new entry, decide which tree the content belongs to. Before rea
 
 `conventions.md` is the only body file permitted at the tree root; everything else lives under a subdir.
 
-- [`conventions.md`](conventions.md) — *durable team rules surfaced from sessions: claim + **Why** + **How to apply**; stable by design (no stamps).* `[conventions, team-rules]`
+- [`conventions.md`](conventions.md) — *durable team conventions a teammate looks up: claim + **Why** + **How to apply**; stable by design (no stamps). Rules that must load in every session live in `AGENTS.md` under `## Specifics` instead.* `[conventions, team-rules]`
 
 ## Structure
 
@@ -35,7 +35,7 @@ Consult `knowledge/` whenever the user's request touches something that could be
 
 Use indexes as a fast filter. Each entry in every `index.md` carries three parts — link, italic one-line description, and a `[keyword-1, keyword-2, …]` tag list. Most lookups should resolve at the index level: read all relevant `index.md` files top-to-bottom, match the user's query against descriptions and keyword tags, and open a body file only when an entry matches.
 
-A `PreToolUse` hook (`.claude/hooks/knowledge-retrieve-reminder.sh`) fires on every `Edit` / `Write` whose target path matches a correctness-critical glob and injects a reminder to read the matching knowledge file. Extend the trigger table when a new critical surface emerges. The hook is a safety net, not a substitute for proactive reading.
+This conception ships a `PreToolUse` reminder hook (`.claude/hooks/knowledge-retrieve-reminder.sh`): where a settings file registers it, it fires on every `Edit` / `Write` whose target path matches a correctness-critical glob and injects a reminder to read the matching knowledge file. Check that it is registered before relying on it — `condash audit --include hooks` reports a hook nothing registers — and extend the trigger table when a new critical surface emerges. Either way the hook is a safety net, not a substitute for proactive reading.
 
 ## Edit rules
 

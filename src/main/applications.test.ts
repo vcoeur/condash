@@ -169,18 +169,44 @@ describe('validateApplications', () => {
 });
 
 describe('renderAppsTable', () => {
-  it('renders #handle / path / AGENTS.md / knowledge rows for live apps only', async () => {
+  it('renders #handle / path / Purpose / AGENTS.md / knowledge rows for live apps only', async () => {
     writeConfig({
       repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com', label: 'Kasten' }],
       retired_apps: [{ handle: 'kasten-manager' }],
     });
-    // No checkout on disk → the AGENTS.md cell is empty.
+    // No checkout on disk → the AGENTS.md cell is empty; no `purpose` in the
+    // registry → the Purpose cell is empty too.
     const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain('| App | Repo | AGENTS.md | Knowledge |');
+    expect(table).toContain('| App | Repo | Purpose | AGENTS.md | Knowledge |');
     expect(table).toContain(
-      '| `#kasten` | `notes.vcoeur.com` |  | `knowledge/internal/kasten.md` |',
+      '| `#kasten` | `notes.vcoeur.com` |  |  | `knowledge/internal/kasten.md` |',
     );
     expect(table).not.toContain('kasten-manager');
+  });
+
+  it('renders the registry purpose in the Purpose cell', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'kasten', path: 'notes.vcoeur.com', purpose: 'Zettelkasten vault and web UI' },
+      ],
+    });
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
+    expect(table).toContain('| `#kasten` | `notes.vcoeur.com` | Zettelkasten vault and web UI |');
+  });
+
+  it('keeps a purpose containing a pipe or newline inside its cell', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'kasten', path: 'notes.vcoeur.com', purpose: 'notes | vault\nand web UI' },
+      ],
+    });
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
+    const row = table.split('\n').find((line) => line.includes('#kasten'))!;
+    expect(row).toContain('notes \\| vault and web UI');
+    // One row, five columns: the escaped pipe must not open a sixth cell, so
+    // count only the delimiters that are not backslash-escaped.
+    const delimiters = row.match(/(?<!\\)\|/g) ?? [];
+    expect(delimiters.length - 1).toBe(5);
   });
 
   it('points the AGENTS.md cell at the resolved instruction file', async () => {
