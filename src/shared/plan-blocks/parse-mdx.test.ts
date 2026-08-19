@@ -222,7 +222,7 @@ describe('parsePlanMdx', () => {
         '',
         '```svg',
         '<?xml version="1.0"?>',
-        '<!DOCTYPE svg>',
+        '<!DOCTYPE svg [ <!ENTITY ns "x"> ]>',
         '<!-- from a tool -->',
         '<svg aria-label="A > B" viewBox="0 0 1 1"></svg>',
         '```',

@@ -3,8 +3,9 @@
  * `plan-blocks.css` (every block), which both ride along inline. The app
  * tokens `plan-blocks.css` consumes come from the `:root` light block
  * `extractRootTokens` lifts out of `styles.css`, so this file only has to say
- * what differs on paper: the page margin, no scroll containers, and no
- * on-screen affordances. */
+ * what differs on paper: the page margin, no scroll containers, whole
+ * figures. (The svg zoom glyph is removed from the clone by the serialiser,
+ * not hidden here.) */
 
 body {
   padding: 12mm;
@@ -33,9 +34,4 @@ body {
 /* Keep a figure or card whole when it fits on a page. */
 .plan-block {
   break-inside: avoid-page;
-}
-
-/* On-screen affordances that mean nothing on paper. */
-.plan-svg-zoom {
-  display: none;
 }

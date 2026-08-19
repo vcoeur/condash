@@ -111,14 +111,13 @@ export async function serializePlanDoc(root: HTMLElement): Promise<string> {
     } else if (live instanceof HTMLTextAreaElement && copy instanceof HTMLTextAreaElement) {
       copy.textContent = live.value;
     } else if (live instanceof HTMLSelectElement && copy instanceof HTMLSelectElement) {
-      copy.value = live.value;
       for (const option of copy.options) {
         if (option.value === live.value) option.setAttribute('selected', '');
         else option.removeAttribute('selected');
       }
     }
   });
-  for (const el of clone.querySelectorAll('.plan-svg-zoom, [data-export-skip]')) el.remove();
+  for (const el of clone.querySelectorAll('.plan-svg-zoom')) el.remove();
   await renderMermaidForExportIn(clone);
   return clone.outerHTML;
 }

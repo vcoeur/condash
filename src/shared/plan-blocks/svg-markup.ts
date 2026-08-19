@@ -29,7 +29,7 @@ export const SVG_STRIPPED_ELEMENTS = [
  * test on its `<svg>`, exactly as the HTML parser behind the sanitizer
  * treats it (the prolog is dropped).
  */
-export function firstElementOffset(markup: string): number {
+function firstElementOffset(markup: string): number {
   let i = 0;
   while (i < markup.length) {
     const rest = markup.slice(i);
@@ -51,8 +51,12 @@ export function firstElementOffset(markup: string): number {
       continue;
     }
     if (rest.startsWith('<!')) {
-      const end = rest.indexOf('>');
-      if (end < 0) return -1;
+      // A DOCTYPE may carry an internal subset `[ … ]` whose declarations
+      // contain `>` themselves; the construct then ends at `]>`.
+      const bracket = rest.indexOf('[');
+      const plainEnd = rest.indexOf('>');
+      const end = bracket >= 0 && bracket < plainEnd ? rest.indexOf(']>', bracket) + 1 : plainEnd;
+      if (end < 1) return -1;
       i += end + 1;
       continue;
     }

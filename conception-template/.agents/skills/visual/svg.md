@@ -52,8 +52,11 @@ themes, opens it full-size in a lightbox on click, and offers **Download .svg**
 - **Sanitizes** with an SVG-only allow-list. Stripped (and `condash mdx check`
   warns on each before you open the viewer): `<style>` (document-scoped — put
   class rules in the ```css fence instead), `<script>`, `<foreignObject>`,
-  `<use>`, `<animate>`, `<set>` and the rest of the animation family; anchors
-  are neutralised. External images and fonts never load.
+  `<use>`, `<animate>`, `<animateMotion>`, `<animateTransform>`, `<set>`;
+  anchors are neutralised. Every external reference is dropped at the same
+  time — an `href` / `xlink:href` that is not `#fragment` or `data:image/…`,
+  a `style` attribute with a non-fragment `url()` — so neither the card nor
+  the downloaded file loads anything from outside.
 - **Draws it on a light card** in light *and* dark theme. Inside the card the
   `--wf-*` tokens are pinned to the light palette, so a token-coloured diagram
   reads everywhere; a literal-coloured one reads too, because the ground is
@@ -113,7 +116,8 @@ without its render-verify loop and file hand-off.
   box subtitle 11.5 · section header 11/700 uppercase, letter-spacing 1.5 ·
   flow labels 10.5 italic. Define classes once, reuse them.
 - **No external resources** — no `<image href="http…">`, no web fonts, no
-  `url()` in the CSS (the standalone file scrubs them anyway).
+  non-fragment `url()` in the CSS; the sanitizer drops them and the standalone
+  file scrubs the CSS ones. `url(#marker)` / `url(#gradient)` are fine.
 
 ## When not to use an `svg` block
 

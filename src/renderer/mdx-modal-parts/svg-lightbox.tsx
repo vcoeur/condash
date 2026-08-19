@@ -21,13 +21,8 @@ export interface SvgLightboxPayload {
 /**
  * Full-size view of one svg block, with Download .svg and Copy SVG. Rendered
  * through a Portal on `document.body` so the modal's own `transform`
- * animation never captures the fixed backdrop, and it sits above the mdx
- * modal in stacking order.
- *
- * Esc is intercepted on `window` in the capture phase and stopped there: the
- * shared `Modal` shell registers its Esc-to-close on `document`, and two
- * modals are mounted while the lightbox is open — without the interception,
- * one Esc would close the lightbox *and* the visual note under it.
+ * animation never captures the fixed backdrop, and it paints above every
+ * overlay inside `#root`. Esc handling is explained on `onKey`.
  */
 export function SvgLightbox(props: { payload: SvgLightboxPayload; onClose: () => void }) {
   const [fit, setFit] = createSignal(true);
@@ -38,12 +33,14 @@ export function SvgLightbox(props: { payload: SvgLightboxPayload; onClose: () =>
 
   const onKey = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
-    // Only while this lightbox is the topmost overlay: a dialog opened above
-    // it (search, shortcuts, a prompt) owns Esc — listener order is by target,
-    // not z-order, so check the DOM rather than assume.
-    const backdrops = document.querySelectorAll('.modal-backdrop');
-    const topmost = backdrops[backdrops.length - 1];
-    if (!topmost?.classList.contains('svg-lightbox-backdrop')) return;
+    // While mounted, the lightbox is what the reader sees on top: it is
+    // portalled to `document.body` after `#root`, where every other overlay
+    // renders, and all backdrops share one z-index — so a search or shortcuts
+    // overlay opened meanwhile paints *under* it. Esc therefore belongs to the
+    // lightbox for as long as it exists; the next Esc reaches whatever is
+    // left. Intercepted on `window` capture and stopped here because the
+    // shared `Modal` shell registers its Esc-to-close on `document` and two
+    // shells are mounted — without this, one Esc would close the note too.
     event.preventDefault();
     event.stopImmediatePropagation();
     props.onClose();

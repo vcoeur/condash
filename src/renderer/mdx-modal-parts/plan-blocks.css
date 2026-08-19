@@ -929,10 +929,12 @@
   align-items: flex-start;
   justify-content: flex-start;
 }
+/* The card keeps `contain: paint` + `overflow: hidden` from `.plan-svg-card`:
+ * the block's css fence is applied as written (only selector-prefixed), so a
+ * rule that fix-positions the root svg must stay inside the card here too —
+ * `contain: paint` makes the card the containing block for it. */
 .svg-lightbox-card {
   cursor: default;
-  contain: none;
-  overflow: visible;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
 }
 .svg-lightbox-body .plan-svg-card svg {

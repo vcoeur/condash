@@ -19,6 +19,9 @@ const SVG = [
   '  <script>window.__pwned = 1</script>',
   '  <a href="javascript:alert(1)"><rect x="10" y="20" width="120" height="60" rx="8" fill="var(--wf-accent-soft)" stroke="var(--wf-accent)"/></a>',
   '  <text x="70" y="55" text-anchor="middle" class="t">A</text>',
+  '  <image width="1" height="1" href="https://tracker.invalid/p.gif"/>',
+  '  <circle cx="200" cy="50" r="10" style="fill:url(https://evil.invalid/x);stroke:red"/>',
+  '  <defs><linearGradient id="g"/><linearGradient id="h" xlink:href="#g"/></defs>',
   '</svg>',
 ].join('\n');
 
@@ -84,6 +87,11 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     await expect(card.locator('foreignObject')).toHaveCount(0);
     await expect(card.locator('script')).toHaveCount(0);
     await expect(card.locator('svg a')).toHaveAttribute('href', '#');
+    // External references never survive sanitizing: the tracker image loses
+    // its href, the external url() style is dropped, the fragment xlink stays.
+    await expect(card.locator('svg image')).not.toHaveAttribute('href', /.+/);
+    await expect(card.locator('svg circle')).not.toHaveAttribute('style', /.+/);
+    await expect(card.locator('svg linearGradient#h')).toHaveAttribute('xlink:href', '#g');
     expect(await win.evaluate(() => (window as { __pwned?: number }).__pwned)).toBeUndefined();
     // The block's css fence is scoped to the block and applied (ink, not red).
     const textFill = await card.locator('svg text').evaluate((el) => getComputedStyle(el).fill);
@@ -121,6 +129,9 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     expect(file).not.toContain('var(--wf');
     expect(file).not.toContain('<script');
     expect(file).not.toContain('foreignObject');
+    expect(file).not.toContain('tracker.invalid');
+    expect(file).not.toContain('evil.invalid');
+    expect(file).toContain('xmlns:xlink="http://www.w3.org/1999/xlink"');
   } finally {
     await booted.cleanup();
   }

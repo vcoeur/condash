@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { resolveWfTokens, standaloneSvg, SVG_CARD_TOKENS } from './sanitize';
+import { resolveWfTokens, standaloneCss, standaloneSvg, SVG_CARD_TOKENS } from './sanitize';
 
 /** The `--wf-*` literals `.plan-svg-card` declares in plan-blocks.css. */
 function cardTokensFromCss(): Record<string, string> {
@@ -49,14 +49,25 @@ describe('standaloneSvg', () => {
     expect(out).not.toContain('var(--wf');
   });
 
-  it('keeps an existing xmlns and scrubs @import / url() out of the css', () => {
+  it('keeps an existing xmlns and scrubs @import / external url() out of the css', () => {
     const out = standaloneSvg(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
       '@import url(x.css); .t { background: url(http://evil/x.png); }',
     );
     expect(out.match(/xmlns=/g)).toHaveLength(1);
     expect(out).not.toContain('@import');
-    expect(out).not.toMatch(/url\s*\(/);
+    expect(out).not.toMatch(/[^-]url\s*\(/);
+  });
+
+  it('declares xmlns:xlink when xlink attributes occur', () => {
+    const out = standaloneSvg('<svg viewBox="0 0 1 1"><use xlink:href="#g"/></svg>');
+    expect(out).toContain('xmlns:xlink="http://www.w3.org/1999/xlink"');
+    expect(out.match(/xmlns:xlink=/g)).toHaveLength(1);
+    expect(
+      standaloneSvg('<svg xmlns:xlink="x" viewBox="0 0 1 1"><a xlink:href="#g"/></svg>').match(
+        /xmlns:xlink=/g,
+      ),
+    ).toHaveLength(1);
   });
 
   it('embeds no style element when there is no css', () => {
@@ -70,7 +81,7 @@ describe('standaloneSvg', () => {
     );
     expect(out).not.toContain('<script');
     expect(out.match(/<style>/g)).toHaveLength(1);
-    expect(out).toContain('\\3c /style\\3e ');
+    expect(out).toContain('\\3c /style>');
   });
 
   it('honours a quoted > in a root attribute and a leading comment', () => {
@@ -85,5 +96,19 @@ describe('standaloneSvg', () => {
     ).toBe(true);
     expect(out).toContain('aria-label="A -> B">\n<style>');
     expect(out.match(/xmlns=/g)).toHaveLength(1);
+  });
+});
+
+describe('standaloneCss', () => {
+  it('keeps child combinators and fragment urls, neutralises escapes and external urls', () => {
+    const css =
+      '.box > text { marker-end: url(#arrow); fill: u\\72l(http://x) } .a { background: url( "https://e/x.png" ) } b { c: "&" }';
+    const out = standaloneCss(css);
+    expect(out).toContain('.box > text');
+    expect(out).toContain('url(#arrow)');
+    expect(out).toContain('u\\\\72l(http://x)');
+    expect(out).toContain('url-removed("https://e/x.png" )');
+    expect(out).toContain('"\\26 "');
+    expect(out).not.toContain('<');
   });
 });

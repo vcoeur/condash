@@ -407,10 +407,10 @@ function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>)
  * unlabelled render. The root is located the way the viewer's HTML parser
  * would (prolog / DOCTYPE / comments skipped, quoted `>` honoured) so a
  * tool-exported file passes and an attribute value cannot fake or hide the
- * tag. Exported for the CLI tests; the parser applies it at top level and
- * for JSON-carried nested blocks alike.
+ * tag. The parser applies it at top level and for JSON-carried nested
+ * blocks alike.
  */
-export function svgPayloadIssues(data: Record<string, unknown>): {
+function svgPayloadIssues(data: Record<string, unknown>): {
   error: string | null;
   warnings: string[];
 } {

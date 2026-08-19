@@ -65,6 +65,56 @@ export async function sanitizeFragment(html: string): Promise<string> {
   });
 }
 
+let svgPurifyPromise: Promise<DomPurifyModule> | null = null;
+
+/** A reference an svg block may keep: same-document (`#id`) or an inline
+ *  raster. Anything else — http(s), file, a bare path — leaves the viewer
+ *  (CSP kills it there) but would load from the standalone file. */
+const SVG_LOCAL_REF = /^(?:#|data:image\/)/i;
+/** A `url()` whose argument is not a fragment. */
+const EXTERNAL_CSS_URL = /url\(\s*['"]?\s*(?!#)/i;
+
+/**
+ * The svg block's own DOMPurify instance (a second `createDOMPurify`, so its
+ * hooks never touch the wireframe/diagram HTML path). Beyond the SVG-only
+ * profile it strips every external reference at sanitize time — `href` /
+ * `xlink:href` not pointing at a fragment or an inline raster, a `style`
+ * attribute carrying a non-fragment `url()` — so the markup the card draws
+ * is already the markup the standalone file can hold: no second policy for
+ * the download. `position: fixed` is downgraded and anchors neutralised as
+ * in the HTML path.
+ */
+async function getSvgPurify(): Promise<DomPurifyModule> {
+  if (!svgPurifyPromise) {
+    svgPurifyPromise = import('dompurify').then(({ default: purify }) => {
+      const instance = purify(window) as DomPurifyModule;
+      instance.addHook('afterSanitizeAttributes', (node) => {
+        if (!(node instanceof Element)) return;
+        for (const name of ['href', 'xlink:href']) {
+          const value = node.getAttribute(name);
+          if (value !== null && !SVG_LOCAL_REF.test(value.trim())) node.removeAttribute(name);
+        }
+        const style = node.getAttribute('style');
+        if (style !== null) {
+          if (EXTERNAL_CSS_URL.test(style)) node.removeAttribute('style');
+          else if (/position\s*:\s*fixed/i.test(style)) {
+            node.setAttribute(
+              'style',
+              style.replace(/position\s*:\s*fixed/gi, 'position:absolute'),
+            );
+          }
+        }
+        if (node.localName === 'a') {
+          node.setAttribute('href', '#');
+          node.removeAttribute('xlink:href');
+        }
+      });
+      return instance;
+    });
+  }
+  return svgPurifyPromise;
+}
+
 /**
  * Sanitize an svg block's markup for inline rendering. SVG profiles only — no
  * HTML vocabulary can ride in through `<foreignObject>` (forbidden outright,
@@ -72,10 +122,11 @@ export async function sanitizeFragment(html: string): Promise<string> {
  * `animate` / `set` (which DOMPurify drops) so nothing can retarget an
  * attribute after the fact. `<style>` stays forbidden as in the HTML path: an
  * inline SVG's stylesheet is document-scoped, so class rules go through the
- * block's ```css fence, which the viewer prefixes per block.
+ * block's ```css fence, which the viewer prefixes per block. External
+ * references are dropped by the instance's hook (`getSvgPurify`).
  */
 export async function sanitizeSvg(markup: string): Promise<string> {
-  const purify = await getPurify();
+  const purify = await getSvgPurify();
   return purify.sanitize(markup, {
     USE_PROFILES: { svg: true, svgFilters: true },
     // One list with `condash mdx check` (SVG_STRIPPED_ELEMENTS): the check
@@ -137,32 +188,47 @@ export function resolveWfTokens(text: string): string {
 }
 
 /**
+ * The block's css fence as it goes into the standalone file's `<style>`.
+ * The fence is author text landing in an element the XML parser reads raw,
+ * so three things are made impossible and nothing else is touched:
+ * - markup: `<` and `&` become the CSS escapes `\3c ` / `\26 `, which every
+ *   CSS engine reads back as the character — `</style>` cannot close the
+ *   element; `>` needs no escaping in XML text and stays a child combinator;
+ * - escape tricks: every backslash is doubled first, so an author escape
+ *   such as `u\72l(` is a literal backslash in an ident, not `url(`;
+ * - external loads: `@import` goes, and a `url()` whose argument is not a
+ *   same-document fragment becomes `url-removed(` — `url(#arrow)` for a
+ *   marker or gradient survives.
+ */
+export function standaloneCss(css: string): string {
+  return css
+    .replace(/\\/g, '\\\\')
+    .replace(/@import[^;]*;?/gi, '')
+    .replace(/url\(\s*(['"]?)\s*(?!#)/gi, 'url-removed($1')
+    .replace(/</g, '\\3c ')
+    .replace(/&/g, '\\26 ');
+}
+
+/**
  * Turn a sanitized svg block into a file that stands on its own: the
- * `xmlns` a standalone document needs, the block's CSS embedded as the root's
- * first `<style>` child (scrubbed of `@import` and `url(` so the file loads no
- * external resource when opened elsewhere), and every `--wf-*` token resolved
- * to its light literal. Pure string work on already-sanitized markup.
+ * `xmlns` (and `xmlns:xlink` when `xlink:` attributes occur) a standalone
+ * document needs, the block's CSS embedded as the root's first `<style>`
+ * child (`standaloneCss`), and every `--wf-*` token resolved to its light
+ * literal. Pure string work on already-sanitized markup — external
+ * references were dropped by `sanitizeSvg`, so nothing here re-inspects them.
  */
 export function standaloneSvg(sanitizedSvg: string, css?: string): string {
   let out = sanitizedSvg.trim();
   const root = svgRootTag(out);
   if (!root) return resolveWfTokens(out);
   let tag = root.tag;
+  if (/\sxlink:/i.test(out) && !/\sxmlns:xlink\s*=/i.test(tag)) {
+    tag = tag.replace(/^<svg/i, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+  }
   if (!/\sxmlns\s*=/i.test(tag)) {
     tag = tag.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
   }
-  // The css fence is author text going into an element whose content the
-  // XML parser reads raw: `</style>` would close it and anything after runs
-  // as markup in the file, outside the sanitizer. `<`, `>` and `&` are
-  // therefore written as CSS escapes (`\3c ` …), which every CSS engine reads
-  // back as the character and which cannot be markup. `@import` / `url(`
-  // go too, so the file loads no external resource wherever it is opened.
-  const rules = (css ?? '')
-    .replace(/@import[^;]*;?/gi, '')
-    .replace(/url\s*\(/gi, 'url-removed(')
-    .replace(/</g, '\\3c ')
-    .replace(/>/g, '\\3e ')
-    .replace(/&/g, '\\26 ');
+  const rules = standaloneCss(css ?? '');
   const style = rules.trim() === '' ? '' : `\n<style>${rules}</style>`;
   out = `${tag}${style}${out.slice(root.end)}`;
   // DOMPurify serialises through the HTML serialiser, whose one non-XML
