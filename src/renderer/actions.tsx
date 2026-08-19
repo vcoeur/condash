@@ -44,6 +44,11 @@ export function Button(props: ButtonProps): JSX.Element {
   // `rest`, Solid's `assign` toggled it before `class` was written, so an
   // entry that was true at mount was wiped by the class string and only
   // reappeared after a false→true cycle (a pressed toggle mounted un-pressed).
+  // Applied after `class`, an entry survives mount and toggles reactively.
+  // Solid-wide caveat, unchanged here: a later *reactive* change of the class
+  // string still resets the element's classes, and `classList` will not re-add
+  // an entry it already believes is on — so pass a static `class` alongside
+  // `classList` (every call site does), never a reactive one.
   const [local, rest] = splitProps(props, [
     'variant',
     'size',
