@@ -234,10 +234,16 @@ const KIND_LABEL: Record<string, string> = {
  * span computes as `role=generic`, where ARIA prohibits the attribute and
  * assistive tech may drop it — leaving a card whose own label (`<title>,
  * <status>`) never says whether it is a project or an incident. Sits at the
- * start of the title on every card whose kind is known, and inline in the
- * popup's metadata row. */
+ * start of the title on every card whose kind is known, and at the head of the
+ * project preview's modal head.
+ *
+ * The guard needs BOTH maps. `role="img"` with no accessible name is an
+ * unnamed image — a WCAG 1.1.1 failure — so a kind present in `KIND_ICON` but
+ * missing from `KIND_LABEL` must render nothing rather than an anonymous
+ * glyph. `Record<string, string>` without `noUncheckedIndexedAccess` means
+ * tsc will not catch that divergence for us. */
 export function KindGlyph(props: { kind: string }) {
-  if (!KIND_ICON[props.kind]) return null;
+  if (!KIND_ICON[props.kind] || !KIND_LABEL[props.kind]) return null;
   return (
     <span
       class="kind-glyph"

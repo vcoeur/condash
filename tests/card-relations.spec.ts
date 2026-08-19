@@ -152,6 +152,17 @@ test('only family cards carry a family colour class; every known kind shows its 
         `---\ndate: 2026-04-25\nkind: project\nstatus: now\nparent: 2026-04-24-mid-child\n---\n\n# Mid grandchild\n\n## Goal\n\nThird-level fixture.\n`,
         'utf8',
       );
+      // A second kind, so "every known kind" is more than the default one:
+      // this is the card the glyph assertion below has to be distinguishable
+      // from. Standalone (no `parent:`), so it stays out of the family
+      // colouring asserted above.
+      const incidentDir = join(conceptionDir, 'projects', '2026-04', '2026-04-21-pager-fired');
+      await mkdir(incidentDir, { recursive: true });
+      await writeFile(
+        join(incidentDir, 'README.md'),
+        `---\ndate: 2026-04-21\nkind: incident\nstatus: now\nenvironment: PROD\nseverity: high — fixture\n---\n\n# Pager fired\n\n## Goal\n\nSecond-kind fixture.\n`,
+        'utf8',
+      );
     },
   });
   try {
@@ -170,6 +181,7 @@ test('only family cards carry a family colour class; every known kind shows its 
     const midChild = cardTitled('Mid child');
     const midGrandchild = cardTitled('Mid grandchild');
     const standalone = cardTitled('Sample project');
+    const incident = cardTitled('Pager fired');
     await expect(parentCard).toHaveClass(/is-parent/);
     await expect(childCard).toHaveClass(/is-subproject/);
     await expect(orphan).toHaveClass(/is-subproject/);
@@ -204,10 +216,20 @@ test('only family cards carry a family colour class; every known kind shows its 
     // screen-reader user an incident card from a project card — and its
     // aria-label only counts because of the role. A bare span computes as
     // `role=generic`, where the attribute is prohibited and may be dropped.
-    const glyph = standalone.getByRole('img', { name: 'Project' });
-    await expect(glyph).toBeVisible();
-    await expect(glyph).toHaveClass(/kind-glyph/);
-    await expect(glyph).toHaveAttribute('title', 'Project');
+    // Both kinds are asserted because that distinction is the whole point;
+    // one of them alone would pass on a component that hard-coded a label.
+    for (const [card, kind, label] of [
+      [standalone, 'project', 'Project'],
+      [incident, 'incident', 'Incident'],
+    ] as const) {
+      const glyph = card.getByRole('img', { name: label });
+      await expect(glyph).toBeVisible();
+      await expect(glyph).toHaveClass(/kind-glyph/);
+      await expect(glyph).toHaveAttribute('title', label);
+      // `data-kind` is the hook the pane's CSS and any future per-kind rule
+      // key on; assert it so the attribute keeps a reader.
+      await expect(glyph).toHaveAttribute('data-kind', kind);
+    }
   } finally {
     await booted.cleanup();
   }
