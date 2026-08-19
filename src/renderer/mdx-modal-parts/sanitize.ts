@@ -12,6 +12,8 @@
  * only paid when a document actually carries an HTML-bearing block.
  */
 
+import { SVG_STRIPPED_ELEMENTS, svgRootTag } from '@shared/plan-blocks/svg-markup';
+
 type DomPurifyModule = typeof import('dompurify').default;
 
 let purifyPromise: Promise<DomPurifyModule> | null = null;
@@ -76,7 +78,9 @@ export async function sanitizeSvg(markup: string): Promise<string> {
   const purify = await getPurify();
   return purify.sanitize(markup, {
     USE_PROFILES: { svg: true, svgFilters: true },
-    FORBID_TAGS: [...FORBID_TAGS, 'foreignobject', 'animatemotion', 'animatetransform'],
+    // One list with `condash mdx check` (SVG_STRIPPED_ELEMENTS): the check
+    // warns on exactly what is dropped here. DOMPurify keys are lowercase.
+    FORBID_TAGS: [...FORBID_TAGS, ...SVG_STRIPPED_ELEMENTS.map((name) => name.toLowerCase())],
   });
 }
 
@@ -100,11 +104,36 @@ export const SVG_CARD_TOKENS: Readonly<Record<string, string>> = {
   '--wf-radius': '6px',
 };
 
-/** Replace every `var(--wf-*)` (with or without a fallback) by its card value. */
+/** Replace every `var(--wf-*)` — with or without a fallback, the fallback
+ *  itself possibly holding parentheses (`rgb()`, a nested `var()`) — by its
+ *  card value. A balanced-paren scan, not a regex, so the closing `)` found is
+ *  the call's own. */
 export function resolveWfTokens(text: string): string {
-  return text.replace(/var\(\s*(--wf-[a-z-]+)\s*(?:,[^)]*)?\)/g, (whole, name: string) => {
-    return SVG_CARD_TOKENS[name] ?? whole;
-  });
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const at = text.indexOf('var(', i);
+    if (at < 0) break;
+    let depth = 0;
+    let close = -1;
+    for (let j = at + 3; j < text.length; j += 1) {
+      if (text[j] === '(') depth += 1;
+      else if (text[j] === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          close = j;
+          break;
+        }
+      }
+    }
+    if (close < 0) break;
+    const inner = text.slice(at + 4, close);
+    const name = inner.match(/^\s*(--wf-[a-z-]+)\s*(?:,|$)/)?.[1];
+    const value = name ? SVG_CARD_TOKENS[name] : undefined;
+    out += text.slice(i, at) + (value ?? text.slice(at, close + 1));
+    i = close + 1;
+  }
+  return out + text.slice(i);
 }
 
 /**
@@ -116,16 +145,26 @@ export function resolveWfTokens(text: string): string {
  */
 export function standaloneSvg(sanitizedSvg: string, css?: string): string {
   let out = sanitizedSvg.trim();
-  if (!/^<svg[^>]*\sxmlns\s*=/i.test(out)) {
-    out = out.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  const root = svgRootTag(out);
+  if (!root) return resolveWfTokens(out);
+  let tag = root.tag;
+  if (!/\sxmlns\s*=/i.test(tag)) {
+    tag = tag.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
   }
-  const rules = (css ?? '').replace(/@import[^;]*;?/gi, '').replace(/url\s*\(/gi, 'url-removed(');
-  if (rules.trim() !== '') {
-    const rootEnd = out.indexOf('>');
-    if (rootEnd > 0) {
-      out = `${out.slice(0, rootEnd + 1)}\n<style>${rules}</style>${out.slice(rootEnd + 1)}`;
-    }
-  }
+  // The css fence is author text going into an element whose content the
+  // XML parser reads raw: `</style>` would close it and anything after runs
+  // as markup in the file, outside the sanitizer. `<`, `>` and `&` are
+  // therefore written as CSS escapes (`\3c ` …), which every CSS engine reads
+  // back as the character and which cannot be markup. `@import` / `url(`
+  // go too, so the file loads no external resource wherever it is opened.
+  const rules = (css ?? '')
+    .replace(/@import[^;]*;?/gi, '')
+    .replace(/url\s*\(/gi, 'url-removed(')
+    .replace(/</g, '\\3c ')
+    .replace(/>/g, '\\3e ')
+    .replace(/&/g, '\\26 ');
+  const style = rules.trim() === '' ? '' : `\n<style>${rules}</style>`;
+  out = `${tag}${style}${out.slice(root.end)}`;
   // DOMPurify serialises through the HTML serialiser, whose one non-XML
   // entity is `&nbsp;`; a standalone .svg is XML, so spell it numerically.
   return resolveWfTokens(out).replace(/&nbsp;/g, '&#160;');

@@ -4,6 +4,7 @@ import noteExportCss from '../note-modal-parts/export-pdf.css?inline';
 import planBlocksCss from './plan-blocks.css?inline';
 import mdxExportCss from './mdx-export.css?inline';
 import { renderMermaidForExportIn } from '../markdown';
+import { wrapPrintDocument } from '../note-modal-parts/export-pdf';
 
 /**
  * Visual-note PDF export: builds the self-contained document `exportNotePdf`
@@ -18,15 +19,6 @@ import { renderMermaidForExportIn } from '../markdown';
  * Loaded lazily by the mdx modal on the first export click — `styles.css`
  * rides along as a string, and there is no reason to pay for it at boot.
  */
-
-/** Minimal escape for text dropped into the export document's <title>. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 /**
  * Lift the first top-level `:root { … }` block out of a stylesheet. In
@@ -131,28 +123,9 @@ export async function serializePlanDoc(root: HTMLElement): Promise<string> {
   return clone.outerHTML;
 }
 
-/**
- * Assemble the print document around an already-serialised `.plan-doc`.
- * Mirrors `buildNotePdfHtml`: `data-theme="light"` pins the light palette
- * (the code theme's dark arm keys on `[data-theme-kind='dark']`, which only
- * the live renderer stamps; the app tokens' dark arms key on
- * `:root:not([data-theme])` / `[data-theme='dark']`), and the CSP locks the
- * document down — no scripts run, images and fonts resolve only over the
- * conception-bounded `condash-file:` scheme or inline `data:`.
- */
+/** Assemble the print document around an already-serialised `.plan-doc` —
+ *  the shared shell (`wrapPrintDocument`: light pin + CSP) around the
+ *  stylesheet bundle and the body. */
 export function buildMdxPdfHtml(planDocHtml: string, opts: { title: string }): string {
-  return [
-    '<!doctype html>',
-    '<html data-theme="light">',
-    '<head>',
-    '<meta charset="utf-8" />',
-    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src condash-file: data:; font-src condash-file: data:; style-src \'unsafe-inline\'" />',
-    `<title>${escapeHtml(opts.title)}</title>`,
-    `<style>${exportStylesheet()}</style>`,
-    '</head>',
-    '<body>',
-    planDocHtml,
-    '</body>',
-    '</html>',
-  ].join('\n');
+  return wrapPrintDocument({ title: opts.title, styles: exportStylesheet(), body: planDocHtml });
 }

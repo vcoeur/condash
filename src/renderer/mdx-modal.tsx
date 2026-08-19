@@ -453,7 +453,16 @@ export function MdxModal(props: {
           fallback={<div class="mdx-source md-rendered raw-code" innerHTML={sourceHtml() ?? ''} />}
         >
           <div class="plan-doc">
-            <PlanDocContext.Provider value={{ notePath: props.path }}>
+            {/* A getter, not a snapshot: Solid reads the provider value once
+                (untracked), and this modal instance is reused when an .mdx link
+                navigates to another .mdx in place. */}
+            <PlanDocContext.Provider
+              value={{
+                get notePath() {
+                  return props.path;
+                },
+              }}
+            >
               <For each={doc()?.blocks ?? []}>
                 {(block) => <BlockView block={block} baseDir={baseDir()} answers={answerBinding} />}
               </For>

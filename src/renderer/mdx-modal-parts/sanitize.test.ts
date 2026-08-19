@@ -26,6 +26,15 @@ describe('resolveWfTokens', () => {
     const input = 'fill="var(--wf-accent)" stroke="var( --wf-line , red )" x="var(--other)"';
     expect(resolveWfTokens(input)).toBe('fill="#672167" stroke="#ddd2da" x="var(--other)"');
   });
+
+  it('handles fallbacks that themselves carry parentheses', () => {
+    expect(
+      resolveWfTokens('fill="var(--wf-accent, rgb(0 0 0))" s="var(--wf-line, var(--x))"'),
+    ).toBe('fill="#672167" s="#ddd2da"');
+    expect(resolveWfTokens('a="var(--other, rgb(1,2,3))" b="var(--wf-ok)"')).toBe(
+      'a="var(--other, rgb(1,2,3))" b="#2e7d32"',
+    );
+  });
 });
 
 describe('standaloneSvg', () => {
@@ -52,5 +61,29 @@ describe('standaloneSvg', () => {
 
   it('embeds no style element when there is no css', () => {
     expect(standaloneSvg('<svg viewBox="0 0 1 1"></svg>')).not.toContain('<style>');
+  });
+
+  it('a css fence cannot break out of the style element', () => {
+    const out = standaloneSvg(
+      '<svg viewBox="0 0 1 1"></svg>',
+      '.t{fill:red} </style><script>alert(1)</script><style>',
+    );
+    expect(out).not.toContain('<script');
+    expect(out.match(/<style>/g)).toHaveLength(1);
+    expect(out).toContain('\\3c /style\\3e ');
+  });
+
+  it('honours a quoted > in a root attribute and a leading comment', () => {
+    const out = standaloneSvg(
+      '<!-- exported --><svg viewBox="0 0 10 10" aria-label="A -> B"><rect/></svg>',
+      '.t{fill:red}',
+    );
+    expect(
+      out.startsWith(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" aria-label="A -> B">',
+      ),
+    ).toBe(true);
+    expect(out).toContain('aria-label="A -> B">\n<style>');
+    expect(out.match(/xmlns=/g)).toHaveLength(1);
   });
 });

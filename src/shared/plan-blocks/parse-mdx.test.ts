@@ -181,7 +181,7 @@ describe('parsePlanMdx', () => {
     expect(doc.blocks.map((b) => b.type)).toEqual(['invalid', 'invalid']);
     const messages = doc.issues.map((i) => `${i.severity}:${i.message}`);
     expect(messages[0]).toContain('error:<Svg>: no svg payload');
-    expect(messages[1]).toContain('error:<Svg>: the ```svg fence must start with an <svg> root');
+    expect(messages[1]).toContain('error:<Svg>: the ```svg fence must hold an <svg> root element');
   });
 
   it('Svg: warns on a missing viewBox, a missing alt, and elements the viewer strips', () => {
@@ -213,6 +213,48 @@ describe('parsePlanMdx', () => {
       ),
     );
     expect(clean.issues).toEqual([]);
+  });
+
+  it('Svg: an XML prolog, DOCTYPE or comment before the root is fine, and a quoted > is honoured', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg alt="x">',
+        '',
+        '```svg',
+        '<?xml version="1.0"?>',
+        '<!DOCTYPE svg>',
+        '<!-- from a tool -->',
+        '<svg aria-label="A > B" viewBox="0 0 1 1"></svg>',
+        '```',
+        '',
+        '</Svg>',
+      ].join('\n'),
+    );
+    expect(doc.blocks[0].type).toBe('svg');
+    expect(doc.issues).toEqual([]);
+  });
+
+  it('Svg: the animation family is warned on with its real casing, and nested svg blocks are checked too', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg alt="x">',
+        '',
+        '```svg',
+        '<svg viewBox="0 0 1 1"><animateTransform attributeName="transform"/></svg>',
+        '```',
+        '',
+        '</Svg>',
+        '',
+        '<TabsBlock tabs={[{ id: "t", label: "T", blocks: [{ id: "n", type: "svg", data: { svg: "<div>no</div>" } }] }]} />',
+      ].join('\n'),
+    );
+    const messages = doc.issues.map((i) => `${i.severity}:${i.message}`);
+    expect(messages.some((m) => m.startsWith('warning:') && m.includes('<animateTransform>'))).toBe(
+      true,
+    );
+    expect(messages.some((m) => m.startsWith('error:') && m.includes('nested svg "n"'))).toBe(true);
+    const tabs = doc.blocks[1].data as { tabs: { blocks: { type: string }[] }[] };
+    expect(tabs.tabs[0].blocks[0].type).toBe('invalid');
   });
 
   it('folds Screen html/css fences from children like Diagram', () => {

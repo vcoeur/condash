@@ -10,6 +10,7 @@ import type {
 import { parse as parseYaml } from 'yaml';
 import { specForTag } from './registry';
 import { evaluateAttributeProgram, NonLiteralError } from './literal-eval';
+import { containsElement, SVG_STRIPPED_ELEMENTS, svgRootTag } from './svg-markup';
 import {
   DATA_SCHEMAS,
   type KitNode,
@@ -400,21 +401,14 @@ function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>)
   }
 }
 
-/** Elements the viewer's SVG sanitizer drops. Named here so `mdx check` can
- *  tell the author before the viewer silently renders the diagram without them. */
-const SVG_STRIPPED_ELEMENTS = [
-  'script',
-  'foreignObject',
-  'style',
-  'use',
-  'animate',
-  'set',
-] as const;
-
 /**
  * Structural findings for an svg block payload. One hard error — no `<svg>`
  * root to draw — and the warnings that predict a blank, unscalable or
- * unlabelled render. Exported for the CLI tests; the parser applies it.
+ * unlabelled render. The root is located the way the viewer's HTML parser
+ * would (prolog / DOCTYPE / comments skipped, quoted `>` honoured) so a
+ * tool-exported file passes and an attribute value cannot fake or hide the
+ * tag. Exported for the CLI tests; the parser applies it at top level and
+ * for JSON-carried nested blocks alike.
  */
 export function svgPayloadIssues(data: Record<string, unknown>): {
   error: string | null;
@@ -427,19 +421,23 @@ export function svgPayloadIssues(data: Record<string, unknown>): {
       warnings: [],
     };
   }
-  if (!/^<svg[\s>]/i.test(markup)) {
-    return { error: 'the ```svg fence must start with an <svg> root element', warnings: [] };
+  const root = svgRootTag(markup);
+  if (!root) {
+    return {
+      error:
+        'the ```svg fence must hold an <svg> root element (an XML prolog, DOCTYPE or comment before it is fine)',
+      warnings: [],
+    };
   }
   const warnings: string[] = [];
-  const root = markup.match(/^<svg[^>]*>/i)?.[0] ?? '';
-  if (!/\sviewBox\s*=/i.test(root)) {
+  if (!/\sviewBox\s*=/i.test(root.tag)) {
     warnings.push('the <svg> root has no viewBox — it cannot scale to the card or the page');
   }
   if (typeof data.alt !== 'string' || data.alt.trim() === '') {
     warnings.push('no alt — add a one-line description of what the diagram shows');
   }
   for (const name of SVG_STRIPPED_ELEMENTS) {
-    if (new RegExp(`<${name}[\\s>/]`, 'i').test(markup)) {
+    if (containsElement(markup, name)) {
       warnings.push(
         name === 'style'
           ? 'contains a <style> element — the viewer strips it; put class rules in a ```css fence beside the ```svg fence'
@@ -533,6 +531,24 @@ function validateNestedRef(
       line,
     });
     return { id: candidate.id, type: 'invalid', data: { reason: message, tag: candidate.type } };
+  }
+  if (candidate.type === 'svg') {
+    const findings = svgPayloadIssues(candidate.data);
+    for (const warning of findings.warnings) {
+      state.issues.push({
+        severity: 'warning',
+        message: `<${tag}> nested svg "${candidate.id}": ${warning}`,
+        line,
+      });
+    }
+    if (findings.error) {
+      state.issues.push({
+        severity: 'error',
+        message: `<${tag}> nested svg "${candidate.id}": ${findings.error}`,
+        line,
+      });
+      return { id: candidate.id, type: 'invalid', data: { reason: findings.error, tag: 'svg' } };
+    }
   }
   const emptiness = emptyPayloadMessage(candidate.type, candidate.data);
   if (emptiness) {

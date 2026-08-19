@@ -38,6 +38,12 @@ export function SvgLightbox(props: { payload: SvgLightboxPayload; onClose: () =>
 
   const onKey = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
+    // Only while this lightbox is the topmost overlay: a dialog opened above
+    // it (search, shortcuts, a prompt) owns Esc — listener order is by target,
+    // not z-order, so check the DOM rather than assume.
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    const topmost = backdrops[backdrops.length - 1];
+    if (!topmost?.classList.contains('svg-lightbox-backdrop')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     props.onClose();

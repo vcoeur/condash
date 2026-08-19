@@ -42,6 +42,16 @@
   margin-inline: 0;
 }
 
+/* A mermaid SVG keeps its natural width (`useMaxWidth` caps it inline), so
+ * in a full-width figure it would sit flush left trailing a void. Centre it,
+ * which is what the classic note viewer does for a prose mermaid fence
+ * (`.md-rendered .mermaid { text-align: center }` — a selector that never
+ * reaches this figure, a direct child of `.plan-doc`). The SVG is
+ * inline-level, so `text-align` is the mechanism and carries the caption. */
+.plan-doc > .plan-mermaid {
+  text-align: center;
+}
+
 .plan-block {
   margin: 0;
 }
