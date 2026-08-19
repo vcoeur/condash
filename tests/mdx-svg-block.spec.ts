@@ -21,6 +21,7 @@ const SVG = [
   '  <text x="70" y="55" text-anchor="middle" class="t">A</text>',
   '  <image width="1" height="1" href="https://tracker.invalid/p.gif"/>',
   '  <circle cx="200" cy="50" r="10" style="fill:url(https://evil.invalid/x);stroke:red"/>',
+  '  <ellipse cx="240" cy="50" rx="10" ry="6" fill="url(https://evil.invalid/paint.svg#p)" stroke="url(\'#g\')"/>',
   '  <defs><linearGradient id="g"/><linearGradient id="h" xlink:href="#g"/></defs>',
   '</svg>',
 ].join('\n');
@@ -92,6 +93,10 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     await expect(card.locator('svg image')).not.toHaveAttribute('href', /.+/);
     await expect(card.locator('svg circle')).not.toHaveAttribute('style', /.+/);
     await expect(card.locator('svg linearGradient#h')).toHaveAttribute('xlink:href', '#g');
+    // One rule for every attribute: an external paint server goes, a quoted
+    // fragment stays.
+    await expect(card.locator('svg ellipse')).not.toHaveAttribute('fill', /.+/);
+    await expect(card.locator('svg ellipse')).toHaveAttribute('stroke', "url('#g')");
     expect(await win.evaluate(() => (window as { __pwned?: number }).__pwned)).toBeUndefined();
     // The block's css fence is scoped to the block and applied (ink, not red).
     const textFill = await card.locator('svg text').evaluate((el) => getComputedStyle(el).fill);
@@ -105,6 +110,19 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     const lightbox = win.locator('.svg-lightbox');
     await expect(lightbox).toBeVisible();
     await expect(lightbox.locator('.svg-lightbox-card svg rect')).toHaveCount(1);
+    // The card carries `contain: paint` + `overflow: hidden`, so the lightbox
+    // must have escaped it (Portal) and be the element actually under its
+    // own centre — `toBeVisible()` alone cannot tell a clipped overlay apart.
+    const escaped = await lightbox.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return {
+        insideCard: el.closest('.plan-svg-card') !== null,
+        insideRoot: el.closest('#root') !== null,
+        hitInside: hit !== null && el.contains(hit),
+      };
+    });
+    expect(escaped).toEqual({ insideCard: false, insideRoot: false, hitInside: true });
     await win.keyboard.press('Escape');
     await expect(lightbox).toHaveCount(0);
     await expect(win.locator('.mdx-modal')).toBeVisible();

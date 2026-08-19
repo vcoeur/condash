@@ -71,18 +71,33 @@ let svgPurifyPromise: Promise<DomPurifyModule> | null = null;
  *  raster. Anything else — http(s), file, a bare path — leaves the viewer
  *  (CSP kills it there) but would load from the standalone file. */
 const SVG_LOCAL_REF = /^(?:#|data:image\/)/i;
-/** A `url()` whose argument is not a fragment. */
-const EXTERNAL_CSS_URL = /url\(\s*['"]?\s*(?!#)/i;
+
+/**
+ * Does an attribute value reach outside the document? One rule for every
+ * attribute, whatever its name — `fill`, `filter`, `mask`, `clip-path`,
+ * `marker-*`, `style`, anything DOMPurify's profile admits can carry a
+ * `url()` paint server or filter: a `url(` whose argument (quotes and
+ * whitespace allowed) is not a `#fragment`, or any backslash, which is how a
+ * CSS ident escape spells `u\72l(` without the letters. Attributes never
+ * need a backslash in SVG, so dropping on sight costs nothing legitimate.
+ */
+export function attributeReachesOutside(value: string): boolean {
+  if (value.includes('\\')) return true;
+  for (const match of value.matchAll(/url\(\s*(['"]?)\s*([^'")\s]*)/gi)) {
+    if (!match[2].startsWith('#')) return true;
+  }
+  return false;
+}
 
 /**
  * The svg block's own DOMPurify instance (a second `createDOMPurify`, so its
  * hooks never touch the wireframe/diagram HTML path). Beyond the SVG-only
  * profile it strips every external reference at sanitize time — `href` /
- * `xlink:href` not pointing at a fragment or an inline raster, a `style`
- * attribute carrying a non-fragment `url()` — so the markup the card draws
- * is already the markup the standalone file can hold: no second policy for
- * the download. `position: fixed` is downgraded and anchors neutralised as
- * in the HTML path.
+ * `xlink:href` not pointing at a fragment or an inline raster, and any
+ * attribute at all whose value reaches outside (`attributeReachesOutside`) —
+ * so the markup the card draws is already the markup the standalone file can
+ * hold: no second policy for the download. `position: fixed` is downgraded
+ * and anchors neutralised as in the HTML path.
  */
 async function getSvgPurify(): Promise<DomPurifyModule> {
   if (!svgPurifyPromise) {
@@ -90,19 +105,17 @@ async function getSvgPurify(): Promise<DomPurifyModule> {
       const instance = purify(window) as DomPurifyModule;
       instance.addHook('afterSanitizeAttributes', (node) => {
         if (!(node instanceof Element)) return;
-        for (const name of ['href', 'xlink:href']) {
-          const value = node.getAttribute(name);
-          if (value !== null && !SVG_LOCAL_REF.test(value.trim())) node.removeAttribute(name);
+        for (const attr of [...node.attributes]) {
+          const isRef = attr.name === 'href' || attr.name === 'xlink:href';
+          if (
+            isRef ? !SVG_LOCAL_REF.test(attr.value.trim()) : attributeReachesOutside(attr.value)
+          ) {
+            node.removeAttribute(attr.name);
+          }
         }
         const style = node.getAttribute('style');
-        if (style !== null) {
-          if (EXTERNAL_CSS_URL.test(style)) node.removeAttribute('style');
-          else if (/position\s*:\s*fixed/i.test(style)) {
-            node.setAttribute(
-              'style',
-              style.replace(/position\s*:\s*fixed/gi, 'position:absolute'),
-            );
-          }
+        if (style !== null && /position\s*:\s*fixed/i.test(style)) {
+          node.setAttribute('style', style.replace(/position\s*:\s*fixed/gi, 'position:absolute'));
         }
         if (node.localName === 'a') {
           node.setAttribute('href', '#');
@@ -204,7 +217,9 @@ export function standaloneCss(css: string): string {
   return css
     .replace(/\\/g, '\\\\')
     .replace(/@import[^;]*;?/gi, '')
-    .replace(/url\(\s*(['"]?)\s*(?!#)/gi, 'url-removed($1')
+    .replace(/url\((\s*['"]?\s*)([^'")\s]*)/gi, (whole, lead: string, arg: string) =>
+      arg.startsWith('#') ? whole : `url-removed(${lead}${arg}`,
+    )
     .replace(/</g, '\\3c ')
     .replace(/&/g, '\\26 ');
 }

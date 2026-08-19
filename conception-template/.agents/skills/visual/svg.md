@@ -81,8 +81,8 @@ themes, opens it full-size in a lightbox on click, and offers **Download .svg**
 
 ## Design rules (the quality bar)
 
-Adapted from the `/svg-diagram-designer` skill's layout and collision rules,
-without its render-verify loop and file hand-off.
+Condensed layout and collision rules for hand-authored diagram SVG; no
+render-verify loop, no file hand-off.
 
 - **Plan the canvas first.** Size it to content (a typical architecture map is
   1200–1600 × 600–1000 user units; `viewBox="0 0 W H"` with matching
@@ -124,5 +124,7 @@ without its render-verify loop and file hand-off.
 - Panels, layers, swimlanes, matrices whose **text must reflow** — that is the
   html/css `diagram` block with the `.diagram-*` primitives.
 - A screen or UI state — a `wireframe`.
-- A standalone deliverable (a presentation figure, a file to send) — author it
-  with `/svg-diagram-designer` as its own `.svg`, outside the note.
+- A standalone deliverable (a presentation figure, a file to send) — author
+  it as its own `.svg` file outside the note, with the same rules above (the
+  user-level `/svg-diagram-designer` skill covers that case when it is
+  installed; otherwise hand-author the file directly).

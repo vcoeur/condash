@@ -82,9 +82,10 @@ memory.
   delta BEFORE the reader reaches code: `columns` with `Before`/`After` labels
   when comparison clarifies, after-only when purely additive, a state sequence
   for flows. Read [`wireframe.md`](wireframe.md) first — always.
-- **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
-  primitives) as before/after panels or layers, or an `svg` block for a graph
-  with arrows (see `svg.md`). Never use a diagram as a stand-in for rendered UI.
+- **Architecture / data-flow shift** → an `svg` block for anything with
+  geometry and arrows (see `svg.md`); `diagram` (html/css with `.diagram-*`
+  primitives) only for before/after panels or layers whose text must reflow.
+  Never use a diagram as a stand-in for rendered UI.
 - **CLI / command-surface change** → there is no endpoint block for a command:
   summarize new or changed verbs in a `table` (command, effect, exit code) or a
   `code` block of real invocations, with a short prose note. `api-endpoint` is

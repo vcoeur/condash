@@ -222,8 +222,8 @@ describe('parsePlanMdx', () => {
         '',
         '```svg',
         '<?xml version="1.0"?>',
-        '<!DOCTYPE svg [ <!ENTITY ns "x"> ]>',
-        '<!-- from a tool -->',
+        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">',
+        '<!-- from a tool, <style> mentioned here is not an element -->',
         '<svg aria-label="A > B" viewBox="0 0 1 1"></svg>',
         '```',
         '',
@@ -232,6 +232,23 @@ describe('parsePlanMdx', () => {
     );
     expect(doc.blocks[0].type).toBe('svg');
     expect(doc.issues).toEqual([]);
+  });
+
+  it('Svg: a DOCTYPE internal subset is an error, as the viewer would show its tail as text', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg alt="x">',
+        '',
+        '```svg',
+        '<!DOCTYPE svg [ <!ENTITY ns "x"> ]>',
+        '<svg viewBox="0 0 1 1"></svg>',
+        '```',
+        '',
+        '</Svg>',
+      ].join('\n'),
+    );
+    expect(doc.blocks[0].type).toBe('invalid');
+    expect(doc.issues[0].message).toContain('must hold an <svg> root');
   });
 
   it('Svg: the animation family is warned on with its real casing, and nested svg blocks are checked too', () => {

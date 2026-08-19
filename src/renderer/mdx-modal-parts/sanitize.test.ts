@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { resolveWfTokens, standaloneCss, standaloneSvg, SVG_CARD_TOKENS } from './sanitize';
+import {
+  attributeReachesOutside,
+  resolveWfTokens,
+  standaloneCss,
+  standaloneSvg,
+  SVG_CARD_TOKENS,
+} from './sanitize';
 
 /** The `--wf-*` literals `.plan-svg-card` declares in plan-blocks.css. */
 function cardTokensFromCss(): Record<string, string> {
@@ -107,8 +113,45 @@ describe('standaloneCss', () => {
     expect(out).toContain('.box > text');
     expect(out).toContain('url(#arrow)');
     expect(out).toContain('u\\\\72l(http://x)');
-    expect(out).toContain('url-removed("https://e/x.png" )');
+    expect(out).toContain('url-removed( "https://e/x.png" )');
     expect(out).toContain('"\\26 "');
     expect(out).not.toContain('<');
+  });
+
+  it('keeps quoted and space-led fragment urls', () => {
+    const out = standaloneCss('.e { marker-end: url(\'#a\'); fill: url( "#g" ); mask: url( #m) }');
+    expect(out).toContain("url('#a')");
+    expect(out).toContain('url( "#g" )');
+    expect(out).toContain('url( #m)');
+    expect(out).not.toContain('url-removed');
+  });
+});
+
+describe('attributeReachesOutside', () => {
+  it('passes fragment urls in any quoting and plain values', () => {
+    for (const value of [
+      'url(#g)',
+      "url('#g')",
+      'url( "#g" )',
+      'url( #m)',
+      'M0 0L10 10',
+      'var(--wf-ink)',
+      '0 0 10 10',
+    ]) {
+      expect(attributeReachesOutside(value), value).toBe(false);
+    }
+  });
+
+  it('flags non-fragment urls and any backslash', () => {
+    for (const value of [
+      'url(https://evil/x.svg#a)',
+      "url('https://e')",
+      'fill:url(https://e)',
+      'url(x.png)',
+      'cursor:u\\72l(https://x)',
+      'a\\b',
+    ]) {
+      expect(attributeReachesOutside(value), value).toBe(true);
+    }
   });
 });

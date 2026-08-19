@@ -51,12 +51,13 @@ function firstElementOffset(markup: string): number {
       continue;
     }
     if (rest.startsWith('<!')) {
-      // A DOCTYPE may carry an internal subset `[ … ]` whose declarations
-      // contain `>` themselves; the construct then ends at `]>`.
-      const bracket = rest.indexOf('[');
-      const plainEnd = rest.indexOf('>');
-      const end = bracket >= 0 && bracket < plainEnd ? rest.indexOf(']>', bracket) + 1 : plainEnd;
-      if (end < 1) return -1;
+      // A DOCTYPE ends at the first `>` — exactly as the HTML parser behind
+      // the sanitizer reads it. An internal subset (`<!DOCTYPE svg [ … ]>`)
+      // therefore leaves `]>` as text before the root, and this scanner
+      // reports no root for it, the same way the viewer would show the stray
+      // text: the check verb must not accept what the viewer breaks on.
+      const end = rest.indexOf('>');
+      if (end < 0) return -1;
       i += end + 1;
       continue;
     }
@@ -89,7 +90,10 @@ export function svgRootTag(markup: string): { tag: string; start: number; end: n
 }
 
 /** Case-insensitive "does the markup contain an element named `name`" test —
- *  `<animate ` matches, `<animateTransform ` does not match `animate`. */
+ *  `<animate ` matches, `<animateTransform ` does not match `animate`.
+ *  Comments are ignored: a `<style>` mentioned inside `<!-- -->` is not one
+ *  the sanitizer will strip. */
 export function containsElement(markup: string, name: string): boolean {
-  return new RegExp(`<${name}[\\s>/]`, 'i').test(markup);
+  const withoutComments = markup.replace(/<!--[\s\S]*?-->/g, '');
+  return new RegExp(`<${name}[\\s>/]`, 'i').test(withoutComments);
 }
