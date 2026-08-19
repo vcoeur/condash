@@ -10,11 +10,16 @@
   max-height: calc(100% - 48px);
 }
 
+/* Nothing rendered here scrolls sideways. `overflow-wrap` is inherited, so one
+ * declaration covers paragraphs, list items, table cells, inline `code` and
+ * the fenced blocks below: a token too long for the pane — a URL, a base64
+ * blob, a fenced line — breaks instead of pushing the whole modal wider. */
 .md-rendered {
   font-size: var(--text-md);
   line-height: 1.6;
   max-width: none;
   margin: 0;
+  overflow-wrap: break-word;
 }
 
 .md-rendered h1,
@@ -60,6 +65,15 @@
   font-size: 0.9em;
 }
 
+/* Soft-wrap long lines rather than scrolling them past the pane edge — the
+ * same choice the note PDF export already makes (`export-pdf.css`), so a
+ * fenced block reads the same on screen and on paper. (Tables are the one
+ * place the two sheets still differ: the bound below is screen-only.) Applies
+ * to every `.md-rendered` surface, the source read views (`.raw-code`)
+ * included: a line you have to scroll to finish is worse than a wrapped one
+ * even in source. `overflow-x` is the fallback for a child that can't wrap;
+ * mermaid isn't one (it emits a `width="100%"` SVG that scales down), so
+ * nothing is known to reach it. */
 .md-rendered pre {
   background: var(--bg-hover);
   border: 1px solid var(--border);
@@ -68,6 +82,7 @@
   overflow-x: auto;
   margin: 0.8em 0;
   line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .md-rendered pre code {
@@ -76,9 +91,22 @@
   font-size: 0.92em;
 }
 
+/* A table is the one thing here that can still outgrow the pane: the
+ * inherited `overflow-wrap: break-word` deliberately does not count toward
+ * min-content width, and an auto-layout table sizes its columns from exactly
+ * that — so one long token in a cell drags the whole article wider. The
+ * alternative, `overflow-wrap: anywhere` on the cells, does shrink
+ * min-content and does fix the overflow, but it also lets the layout squeeze
+ * an ordinary column below its longest word ("projects" broken as "proje /
+ * cts" in the Help modal's CLI table). So bound the table instead: it scrolls
+ * inside its own box, columns intact, and the article never widens. */
 .md-rendered table {
   border-collapse: collapse;
   margin: 0.8em 0;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .md-rendered th,
@@ -297,8 +325,8 @@
 
 /* Read view of a non-markdown file: one full-width highlighted code block.
  * The inner `<pre class="hljs">` inherits `.md-rendered pre` chrome (border,
- * background, horizontal scroll); drop its block margin so it fills the body
- * flush instead of floating like an inline fenced block. */
+ * background, soft wrap); drop its block margin so it fills the body flush
+ * instead of floating like an inline fenced block. */
 .md-rendered.raw-code pre {
   margin: 0;
 }
