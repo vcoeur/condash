@@ -16,9 +16,12 @@ body {
     sans-serif;
 }
 
+/* Same inherited break rule as the on-screen `.md-rendered`: a token wider
+ * than the text column breaks instead of running off the page. */
 .md-rendered {
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: break-word;
 }
 
 .md-rendered h1,
@@ -77,9 +80,11 @@ body {
   padding: 12px;
   margin: 0.8em 0;
   line-height: 1.45;
-  /* No horizontal scroll on paper — wrap long code lines instead. */
+  /* No horizontal scroll on paper — wrap long code lines instead. The break
+   * half is inherited from `.md-rendered` above; `word-break: break-word`
+   * used to live here, which is a different property (it maps to
+   * `overflow-wrap: anywhere`, which also shrinks min-content width). */
   white-space: pre-wrap;
-  word-break: break-word;
   break-inside: avoid-page;
 }
 

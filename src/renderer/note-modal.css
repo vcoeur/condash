@@ -10,11 +10,16 @@
   max-height: calc(100% - 48px);
 }
 
+/* Nothing rendered here scrolls sideways. `overflow-wrap` is inherited, so one
+ * declaration covers paragraphs, list items, table cells, inline `code` and
+ * the fenced blocks below: a token too long for the pane — a URL, a base64
+ * blob, a fenced line — breaks instead of pushing the whole modal wider. */
 .md-rendered {
   font-size: var(--text-md);
   line-height: 1.6;
   max-width: none;
   margin: 0;
+  overflow-wrap: break-word;
 }
 
 .md-rendered h1,
@@ -65,7 +70,8 @@
  * reads identically on screen and on paper. Applies to every `.md-rendered`
  * surface, the source read views (`.raw-code`) included: a line you have to
  * scroll to finish is worse than a wrapped one even in source. `overflow-x`
- * stays for the children that cannot wrap at all (a wide mermaid SVG). */
+ * is the fallback for a child that can't wrap; mermaid isn't one (it emits a
+ * `width="100%"` SVG that scales down), so nothing is known to reach it. */
 .md-rendered pre {
   background: var(--bg-hover);
   border: 1px solid var(--border);
@@ -75,7 +81,6 @@
   margin: 0.8em 0;
   line-height: 1.45;
   white-space: pre-wrap;
-  overflow-wrap: break-word;
 }
 
 .md-rendered pre code {
