@@ -35,7 +35,7 @@ The incident is in the **NOW** section of the Projects pane — click its row an
 ![The search modal open over the dashboard: the query "fuzzy" matched across projects and knowledge, with per-source filter pills counting the hits and a snippet under each result](../assets/screenshots/item-fuzzy-search-light.png#only-light)
 ![The search modal open over the dashboard: the query "fuzzy" matched across projects and knowledge, with per-source filter pills counting the hits and a snippet under each result](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
 
-An incident card looks like a project card. What marks it as one is the **kind glyph** in the card head — every card whose kind parsed carries one, a small monochrome outline whose shape is the label (a triangle for an incident, a diamond for a project, a page for a document); the icon and its tooltip carry the meaning, there is no text. `Environment` and `Severity` are frontmatter fields you set when creating the item; they live in the README, not on the card.
+An incident card looks like a project card. What marks it as one is the **kind badge** at the head of the title — every card whose kind parsed carries one, a small hairline pill with a monochrome outline and the word (a triangle for an incident, a diamond for a project, a page for a document). `Environment` and `Severity` are frontmatter fields you set when creating the item; they live in the README, not on the card.
 
 Read the README. The Description points at a specific test corpus, and `notes/stack-trace.md` has the traceback from the reporter.
 
@@ -105,7 +105,7 @@ Then declare it: add a Markdown link under the README's `## Deliverables` headin
 ![The item modal: status pill and title in the head, then Goal, the Steps list with its marker buttons, the item's file tree showing deliverables/plugin-api-proposal.pdf, the Activity timeline, and a Deliverables section listing the PDF with its full path](../assets/screenshots/item-document-with-pdf-light.png#only-light)
 ![The item modal: status pill and title in the head, then Goal, the Steps list with its marker buttons, the item's file tree showing deliverables/plugin-api-proposal.pdf, the Activity timeline, and a Deliverables section listing the PDF with its full path](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
 
-Clicking the entry opens the PDF in an in-app modal hosting a Chromium `<webview>` — no OS handler involved. The **Files** panel next to Steps is a live tree of the item's own directory, with `+ Add note` / `+ New file` / `+ New folder` to grow it without leaving the app. There is no deliverable badge on the card itself; the card carries its short slug under the title, and a meta row with app pills, branch, open-PR badges, a warn glyph for a non-canonical status, the step progress, and the date. See [Deliverables and PDFs](../guides/deliverables.md).
+Clicking the entry opens the PDF in an in-app modal hosting a Chromium `<webview>` — no OS handler involved. The **Files** panel next to Steps is a live tree of the item's own directory, with `+ Add note` / `+ New file` / `+ New folder` to grow it without leaving the app. There is no deliverable badge on the card itself; the card carries its short slug and date on its first row, the kind badge and title on the second, and a meta row with app pills, branch, open-PR badges, a warn glyph for a non-canonical status, and the step progress. See [Deliverables and PDFs](../guides/deliverables.md).
 
 ## 6. Push a PR
 

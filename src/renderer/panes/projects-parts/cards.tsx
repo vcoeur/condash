@@ -18,7 +18,7 @@ import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
 import { isStarred } from '../../star-store';
 import { Group, firstDate, lastDate, readCollapseMap, writeCollapseEntry } from './data';
-import { KindGlyph, StarIcon, StepProgress, WarnIcon } from './icons';
+import { KindBadge, StarIcon, StepProgress, WarnIcon } from './icons';
 
 // Status lane the pointer currently hovers during a card drag (null = none).
 // Module scope so every GroupBlock highlights its lane reactively while the
@@ -526,11 +526,12 @@ export function Card(props: {
       onKeyDown={handleKeyDown}
     >
       <div class="row-head">
-        {/* Row 1: kind glyph + title (left, can wrap to 2 lines) and the
-            work-on action pinned to the right. */}
-        <div class="title-row">
-          {/* Star: first thing on the row, so the eye reads "is this one of
-              mine?" before the title. Filled when starred, dim outline when
+        {/* Row 1 — the chrome line: star, the item's identifier + date, and
+            the work-on action pinned to the right. Kept to one line: the
+            slug ellipsises before the date or the action can move. */}
+        <div class="head-row">
+          {/* Star: first thing on the card, so the eye reads "is this one of
+              mine?" before anything else. Filled when starred, dim outline when
               not — a starred card also sorts to the top of its section. */}
           <button
             type="button"
@@ -546,16 +547,23 @@ export function Card(props: {
           >
             <StarIcon filled={starred()} />
           </button>
-          <h3 class="title">
-            {/* Kind glyph on every card whose kind parsed — project included,
-                so the three kinds are told apart by shape at a glance. An
-                `unknown` kind is a README the parser couldn't type; that gets
-                no icon rather than a made-up one. */}
-            <Show when={props.item.kind !== 'unknown'}>
-              <KindGlyph kind={props.item.kind} />
-            </Show>
-            <span class="title-text">{props.item.title}</span>
-          </h3>
+          {/* The item's own identifier. The `YYYY-MM-DD-` prefix is dropped —
+              it is the short form every `condash projects <verb> <slug>` call
+              and the `{shortSlug}` action variable take, and the date sits
+              right beside it. The tooltip keeps the full dated slug one hover
+              away. */}
+          <span class="slug" title={`slug: ${props.item.slug}`}>
+            {shortSlug(props.item.slug)}
+          </span>
+          <span class="head-sep" aria-hidden="true">
+            ·
+          </span>
+          <span
+            class="date"
+            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
+          >
+            {lastDate(props.item)}
+          </span>
           <div class="title-actions">
             <ActionDropdownButton
               trigger={<TerminalIcon />}
@@ -575,20 +583,21 @@ export function Card(props: {
           </div>
         </div>
 
-        {/* Row 2: the item's own identifier, directly under the title. The
-            `YYYY-MM-DD-` prefix is dropped — it is the short form every
-            `condash projects <verb> <slug>` call and the `{shortSlug}` action
-            variable take, and the card already carries a date on the meta row.
-            The tooltip keeps the full dated slug one hover away. */}
-        <div class="slug" title={`slug: ${props.item.slug}`}>
-          {shortSlug(props.item.slug)}
-        </div>
+        {/* Row 2 — kind badge + title. The badge is inline at the head of the
+            title so the text flows on under it; the title is never clamped —
+            a long title takes the lines it needs. An `unknown` kind is a
+            README the parser couldn't type; that gets no badge rather than a
+            made-up one. */}
+        <h3 class="title">
+          <Show when={props.item.kind !== 'unknown'}>
+            <KindBadge kind={props.item.kind} />
+          </Show>
+          <span class="title-text">{props.item.title}</span>
+        </h3>
 
-        {/* Single compact meta row: app pills, branch/PR/warn, a spacer,
-            then a mini progress indicator + date. The status is shown in the
-            section header, so it is omitted from each card. The summary and
-            next-step line have been removed to make the card denser and keep
-            the focus on title + status silhouette. */}
+        {/* Single compact meta row: app pills, branch/PR/warn, a spacer, then
+            a mini progress indicator. The status is shown in the section
+            header and the date on the head row, so both are omitted here. */}
         <div class="meta meta-bottom">
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
@@ -626,12 +635,6 @@ export function Card(props: {
           </Show>
           <span class="meta-spacer" />
           <StepProgress counts={props.item.stepCounts} />
-          <span
-            class="meta-icon date"
-            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
-          >
-            {lastDate(props.item)}
-          </span>
         </div>
       </div>
       {/* Relations zone at the bottom of the card, hairline-separated from the

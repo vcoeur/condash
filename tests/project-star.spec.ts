@@ -90,22 +90,37 @@ test('clicking the star does not open the card preview', async () => {
   }
 });
 
-test('the star gutter keeps the slug line aligned with its title', async () => {
-  // The star claims a left gutter at the head of the title row, and the kind
-  // glyph a second column after it; both push the title text right. The slug
-  // line below is a sibling row, so it has to indent by the same amount or it
-  // hangs out to the left of its own title — exactly what the (conflict-free)
-  // merge with the slug-line feature produced, and again when the glyph landed
-  // on every card. Nothing else asserts that alignment, and no marker in the
-  // diff would show it.
+test('the star opens the head row, with the slug and date beside it and the title below', async () => {
+  // The card head is two rows: star | slug · date | actions on the first, kind
+  // badge + title on the second. Nothing else asserts that arrangement — a
+  // stray flex rule can drop the date to its own line or float the title up
+  // beside the star, and no marker in the diff would show it — so measure the
+  // laid-out boxes: star, slug and date share one line, and the title's first
+  // line starts below it.
   const booted = await bootApp({ prepare: prepareSibling });
   try {
     const card = booted.window.locator('article.row', { hasText: 'Alpha project' });
-    const titleBox = await card.locator('.title-text').boundingBox();
+    const starBox = await card.locator('.star-toggle').boundingBox();
     const slugBox = await card.locator('.slug').boundingBox();
+    const dateBox = await card.locator('.date').boundingBox();
+    const badgeBox = await card.locator('.kind-badge').boundingBox();
+    const titleBox = await card.locator('.title-text').boundingBox();
+    expect(starBox, 'star should be laid out').not.toBeNull();
+    expect(slugBox, 'slug should be laid out').not.toBeNull();
+    expect(dateBox, 'date should be laid out').not.toBeNull();
+    expect(badgeBox, 'kind badge should be laid out').not.toBeNull();
     expect(titleBox, 'title text should be laid out').not.toBeNull();
-    expect(slugBox, 'slug line should be laid out').not.toBeNull();
-    expect(Math.abs(slugBox!.x - titleBox!.x)).toBeLessThanOrEqual(1);
+    const centreY = (box: { y: number; height: number }) => box.y + box.height / 2;
+    // One line: star, slug and date centred on the same y, left to right.
+    expect(Math.abs(centreY(slugBox!) - centreY(starBox!))).toBeLessThanOrEqual(2);
+    expect(Math.abs(centreY(dateBox!) - centreY(slugBox!))).toBeLessThanOrEqual(2);
+    expect(slugBox!.x).toBeGreaterThan(starBox!.x + starBox!.width - 1);
+    expect(dateBox!.x).toBeGreaterThan(slugBox!.x + slugBox!.width - 1);
+    // The title row sits below the head row, badge first, text after it (the
+    // fixture title is one line, so the inline text span starts after the
+    // badge rather than wrapping back to the card's left edge).
+    expect(badgeBox!.y).toBeGreaterThanOrEqual(slugBox!.y + slugBox!.height - 1);
+    expect(titleBox!.x).toBeGreaterThan(badgeBox!.x + badgeBox!.width - 1);
   } finally {
     await booted.cleanup();
   }
