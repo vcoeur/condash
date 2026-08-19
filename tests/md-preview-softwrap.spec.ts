@@ -7,13 +7,14 @@ import { bootApp } from './fixtures/electron-app';
  * Regression for 2026-08-19-md-preview-code-softwrap: rendered markdown never
  * scrolls sideways. Four surfaces are pinned — a fenced block, prose (which
  * covers the inherited `overflow-wrap` on paragraphs, list items and inline
- * `code`), the source read view of a non-markdown file, and the Help modal,
- * which renders through the same pipeline into `.markdown-body` and so needs
- * its own rule.
+ * `code`), a table, and the source read view of a non-markdown file — plus the
+ * Help modal, which renders the bundled docs through the same pipeline.
  *
- * Both halves of the CSS matter and each has its own fixture: `white-space:
- * pre-wrap` handles a long line that has spaces to break at, `overflow-wrap:
- * break-word` handles a single token with none.
+ * Every declaration has a fixture that fails without it: `white-space:
+ * pre-wrap` needs a long line with spaces to break at, `overflow-wrap:
+ * break-word` a single token with none, and the `anywhere` on table cells a
+ * long token inside one — `break-word` does not shrink min-content, which is
+ * what an auto-layout table sizes its columns from.
  */
 
 const SHOTS = resolve(__dirname, 'screenshots-out', 'md-preview-softwrap');
@@ -54,7 +55,7 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
       await mkdir(res, { recursive: true });
       await writeFile(
         join(res, 'long-fence.md'),
-        `# Long fence\n\nBefore.\n\n\`\`\`markdown\n${LONG_FENCE_LINE}\n\`\`\`\n\nA paragraph with an unbreakable token ${UNBREAKABLE} and an inline span \`${UNBREAKABLE}\`.\n\n\`\`\`text\n${UNBREAKABLE}\n\`\`\`\n\nAfter.\n`,
+        `# Long fence\n\nBefore.\n\n\`\`\`markdown\n${LONG_FENCE_LINE}\n\`\`\`\n\nA paragraph with an unbreakable token ${UNBREAKABLE} and an inline span \`${UNBREAKABLE}\`.\n\n\`\`\`text\n${UNBREAKABLE}\n\`\`\`\n\n| Key | Value |\n|---|---|\n| token | ${UNBREAKABLE} |\n\nAfter.\n`,
         'utf8',
       );
       await writeFile(
@@ -81,8 +82,11 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
     expect(fence.count).toBe(2);
     expect(fence.whiteSpace).toEqual(['pre-wrap']);
     expectNoOverflow(fence);
-    // …and neither does the article around it, nor the modal body: prose, the
-    // inline span and the space-free fence all break rather than widen it.
+    // …and neither does the article around it, nor the modal body: prose and
+    // the inline span break, and the table — whose cell holds the same token,
+    // and which sizes its columns from a min-content pass `break-word` does
+    // not affect — is bounded so it scrolls inside itself instead of dragging
+    // the article wider. That last one is why the fixture has a table at all.
     expectNoOverflow(await overflowOf(window, '.note-modal .md-rendered'));
     expectNoOverflow(await overflowOf(window, '.note-modal .modal-body'));
     await mkdir(SHOTS, { recursive: true }).catch(() => undefined);
@@ -97,6 +101,9 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
       .click();
     await expect(window.locator('.note-modal .raw-code .hljs')).toBeVisible();
     const source = await overflowOf(window, '.note-modal .md-rendered pre');
+    // One `<pre class="hljs">` for the whole file — pinned so a future
+    // line-gutter or degrade path can't leave this measuring a fragment.
+    expect(source.count).toBe(1);
     expect(source.whiteSpace).toEqual(['pre-wrap']);
     expectNoOverflow(source);
     await window
@@ -118,14 +125,30 @@ test('the Help modal wraps its bundled docs too', async () => {
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].webContents.send('menu-command', 'help-cli');
     });
-    // `docs/help/cli.md` is mostly long `condash …` invocations in fences.
-    await expect(window.locator('.help-modal .markdown-body pre').first()).toBeVisible();
-    const fence = await overflowOf(window, '.help-modal .markdown-body pre');
+    // The Help body carries `.md-rendered`, so it inherits the note contract
+    // rather than a second copy of it.
+    await expect(window.locator('.help-modal .md-rendered pre').first()).toBeVisible();
+
+    // Nothing in the bundled `cli.md` is long enough to overflow this panel,
+    // so measuring it as shipped would pass with or without the fix. Inject
+    // a token that cannot fit and measure that instead — the docs come out of
+    // the asar, so injection is the only way this test controls its fixture.
+    await window.evaluate((token) => {
+      const body = document.querySelector('.help-modal .md-rendered');
+      if (!body) throw new Error('help body missing');
+      const block = document.createElement('pre');
+      block.textContent = token;
+      body.appendChild(block);
+    }, UNBREAKABLE);
+
+    const fence = await overflowOf(window, '.help-modal .md-rendered pre');
     expect(fence.whiteSpace).toEqual(['pre-wrap']);
     expectNoOverflow(fence);
-    expectNoOverflow(await overflowOf(window, '.help-modal .markdown-body'));
+    expectNoOverflow(await overflowOf(window, '.help-modal .md-rendered'));
     await mkdir(SHOTS, { recursive: true }).catch(() => undefined);
     await window.screenshot({ path: join(SHOTS, 'help-cli-wrapped.png') }).catch(() => undefined);
+    await window.keyboard.press('Escape');
+    await expect(window.locator('.help-modal')).toHaveCount(0);
   } finally {
     await cleanup();
   }

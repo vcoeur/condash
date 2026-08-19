@@ -266,15 +266,3 @@
 .help-modal {
   width: var(--modal-w-md);
 }
-
-/* The Help modal renders the bundled docs through the same markdown-it
- * pipeline as a note, but into `.markdown-body`, which `note-modal.css`
- * cannot reach. `docs/help/cli.md` is mostly long `condash …` invocations in
- * fences, so give it the same wrap rather than let the panel scroll sideways. */
-.help-modal .markdown-body {
-  overflow-wrap: break-word;
-}
-
-.help-modal .markdown-body pre {
-  white-space: pre-wrap;
-}

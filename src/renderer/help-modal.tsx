@@ -70,7 +70,7 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
     <Modal class="help-modal" title={TITLE[props.doc]} path="condash docs/" onClose={props.onClose}>
       <Show when={content()} fallback={<div class="modal-body modal-empty">Loading…</div>}>
         <div
-          class="modal-body markdown-body"
+          class="modal-body md-rendered"
           ref={(el) => (bodyRef = el)}
           innerHTML={html() ?? ''}
           onClick={handleBodyClick}
