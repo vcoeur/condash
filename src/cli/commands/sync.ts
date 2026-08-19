@@ -184,12 +184,17 @@ function formatReport(report: SyncReport): string {
     lines.push(`${verb} indexes: ${report.regeneratedTrees.join(', ')}`);
   }
   if (report.deferredIndexTrees.length > 0) {
-    // Name the trees: a deferral that repeats tick after tick means index
-    // changes are sitting uncommitted while the content they describe is on
-    // the remote, and a generic message made that invisible (condash#508).
+    // Name the trees and the paths: a deferral that repeats tick after tick
+    // means index changes are sitting uncommitted while the content they
+    // describe is on the remote, and a generic message made that invisible
+    // (condash#508). Since condash#527 only a mid-write path with no blob in
+    // HEAD defers, so naming it tells the reader exactly what to let settle.
     const trees = report.deferredIndexTrees;
-    const subject = trees.length === 1 ? 'that tree settles' : 'those trees settle';
-    lines.push(`deferred ${trees.join(' + ')} indexes until ${subject}`);
+    const paths = report.deferredIndexPaths;
+    const shown = paths.slice(0, 3).join(', ');
+    const more = paths.length > 3 ? ` (+${paths.length - 3} more)` : '';
+    const verb = paths.length === 1 ? 'settles' : 'settle';
+    lines.push(`deferred ${trees.join(' + ')} indexes until new ${shown}${more} ${verb}`);
   }
   for (const skip of report.skipped) {
     lines.push(`skipped ${skip.path}  (${skip.reason})`);
@@ -219,9 +224,13 @@ function printHelp(verb: string | null): void {
           'tick, so a session mid-write is never swept. If the lock is already held,',
           'this exits 0 without doing anything.',
           '',
-          'When any path is held back that way, index regeneration is deferred too —',
-          'an index is fan-in over every item, so committing one while an item is',
-          'still mid-write would record a bullet pointing at an uncommitted directory.',
+          'When a held-back path has no blob in HEAD yet (a new item or knowledge',
+          "file), that tree's index regeneration is deferred too — an index is fan-in",
+          'over every item, so committing one now would record a bullet pointing at',
+          'a directory main does not contain. A held-back path that HEAD already',
+          'holds does not defer: the indexes regenerate, the tree stays marked dirty,',
+          'and the next tick re-derives any bullet drawn from mid-write text. Every',
+          'sweep that commits content in a tree regenerates that tree too.',
           '',
           "A sweep that introduces an item's `Closed.` timeline entry commits that",
           'item under a synthesized `Close <item>. Outcome: …` subject instead of',
