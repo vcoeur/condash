@@ -17,19 +17,46 @@
   background: var(--bg-panel);
 }
 
+/* Search + filter bar between the pane header and the section stack: the
+ * README search field takes the width, the starred and apps chips sit after
+ * it, and — only while a filter is active — a "N of M" count and a reset link
+ * close the row. Same horizontal inset as the stack so the bar reads as the
+ * stack's first row, not as part of the header. */
 .projects-filter {
-  position: sticky;
-  top: 0;
-  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 28px 10px;
+  flex-shrink: 0;
   background: var(--bg-panel);
-  padding: 12px 0 8px;
+}
+
+.projects-filter-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+.projects-filter-search-icon {
+  position: absolute;
+  left: 9px;
+  display: inline-flex;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.projects-filter-search-icon svg {
+  width: 13px;
+  height: 13px;
 }
 
 .projects-filter-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 26px 5px 27px;
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -44,6 +71,117 @@
 
 .projects-filter-input::placeholder {
   color: var(--text-faint);
+}
+
+/* The clear-× is a ghost icon button (shared `.btn--icon`), sized down to sit
+ * inside the field: only its footprint and placement are set here. Two-class
+ * selector on purpose — this sheet is bundled before actions.css, so an
+ * equal-specificity override of `.btn--icon`'s size vars would lose on source
+ * order (knowledge: css-bundle-order-cascade). */
+.projects-filter-search .projects-filter-clear-query {
+  --btn-size: 20px;
+  --btn-icon: 13px;
+  position: absolute;
+  right: 4px;
+}
+
+/* The starred toggle and the apps trigger are shared `.btn.btn--sm` buttons
+ * (`.btn--active` while they hold a value); the bar only pins them so the
+ * search field is the one flexible item. */
+.projects-filter-starred,
+.projects-filter-apps {
+  flex-shrink: 0;
+}
+
+.projects-filter-starred svg,
+.projects-filter-apps svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.projects-filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--bg-elevated);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.projects-filter-chip-caret {
+  display: inline-flex;
+  margin-left: -1px;
+}
+
+.projects-filter-chip-caret svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* Apps multiselect popover — portal'd (see AGENTS.md: overlays are portals;
+ * the pane's `contain: layout paint` would clip an inline one). One checkbox
+ * row per app handle, the pill in the app's own colour so the option reads
+ * like the card pill it filters on. */
+.projects-filter-apps-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.projects-filter-apps-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.projects-filter-apps-option:hover {
+  background: var(--bg-hover);
+}
+
+.projects-filter-apps-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.projects-filter-apps-empty {
+  padding: 6px 8px;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+/* Ghost text actions (shared `.btn--ghost.btn--sm`); only placement here. */
+.projects-filter-apps-clear {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.projects-filter-count {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.projects-filter-reset {
+  flex-shrink: 0;
 }
 
 .group-block {
@@ -163,6 +301,12 @@ body[data-dragging='project'] .group-block.drag-over {
   user-select: none;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-strong);
+}
+
+/* A section the filter bar holds open: the header is not a toggle for the
+ * duration, so it does not invite a click. */
+.group-header.held-open {
+  cursor: default;
 }
 
 /* Subgroup headers are nested and should stay subtle — no dividing rule. */
@@ -502,14 +646,15 @@ body[data-dragging='project'] .row {
   border-radius: var(--radius);
 }
 
-/* Top row of every card: title (with a leading kind glyph) on the left,
- * action cluster on the right. The title can wrap to two lines; the
- * action cluster stays anchored top-right via flex-shrink: 0. */
-.row .title-row {
+/* Head row of every card — the chrome line: star, short slug + date, and
+ * the action cluster pinned to the right. One line, always: the slug is the
+ * only flexible item and ellipsises first; star, separator, date and actions
+ * never shrink, so the date and the work-on button stay put however long the
+ * slug is. */
+.row .head-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -518,34 +663,15 @@ body[data-dragging='project'] .row {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  /* Nudge so the work-on button visually centres on the title's first
-   * line of text — the button is 28 px tall, the title cap height
-   * sits a couple of pixels below the box top. */
-  margin-top: -1px;
+  margin-left: auto;
   opacity: 1;
   transition: opacity 120ms ease;
 }
 
-/* Star flag. Quieter than `.row-action`'s boxed chrome on purpose: it sits
- * inline before the serif title and must not compete with it, so there is no
+/* Star flag. Quieter than `.row-action`'s boxed chrome on purpose: it opens
+ * the head row and must not compete with the title below, so there is no
  * resting fill or border — only the glyph. Gold (`--col-soon`, this app's
- * general gold token) when starred, faint outline when not. The 2 px top nudge
- * drops the 15 px glyph onto the title's cap height, matching how
- * `.title-actions` nudges the work-on button on the other end of the row. */
-/* Width the star occupies at the head of the title row: its 20 px box, less
- * the 4 px gap trim below, plus the row's own 12 px gap. Rows under the title
- * that belong to the title block (the slug line) indent by this so the block
- * has one left edge. Keep the three numbers here and in `.star-toggle` in
- * step — a change to either margin moves the title text. */
-.row {
-  --star-gutter: 28px;
-  /* Width the kind glyph claims after the star: its 16 px box (`.kind-glyph`,
-   * styles.css) plus the title row's 9 px gap (`.row .title`). The slug line
-   * indents by this too when a glyph is present — keep the sum in step with
-   * both. */
-  --kind-gutter: 25px;
-}
-
+ * general gold token) when starred, faint outline when not. */
 .row .star-toggle {
   display: inline-flex;
   align-items: center;
@@ -553,10 +679,10 @@ body[data-dragging='project'] .row {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  margin-top: 2px;
-  /* Trim the row's 12 px gap down to the ~8 px the glyph wants beside the
-   * title, without touching the title↔work-on gap at the other end. */
-  margin-right: -4px;
+  /* Pull the star to the card's left edge: its box is 20 px but the glyph
+   * inside is 15 px, so without this the star looks indented against the
+   * title's badge on the row below. */
+  margin-left: -3px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -587,18 +713,47 @@ body[data-dragging='project'] .row {
   transform: scale(0.9);
 }
 
+/* Identifier + date on the head row, both in faint mono so the line reads as
+ * a single "which item, when" stamp. The slug names the thing you type into a
+ * command; it is the only item allowed to shrink — a long slug ellipsises
+ * instead of wrapping, and the full dated slug stays in its tooltip. */
+.row .slug,
+.row .head-sep,
+.row .date {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.row .slug {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row .head-sep,
+.row .date {
+  flex-shrink: 0;
+}
+
+.row .date {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Title block: kind badge inline at the head, then the title text flowing on
+ * — and wrapping under the badge — for as many lines as it needs. Never
+ * clamped: the card grows with the title rather than cutting it. */
 .row .title {
   margin: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  flex: 1 1 auto;
   min-width: 0;
   /* Upright Cormorant serif (bold redesign, 2026-07): 700 weight at 18 px with
-   * a light stroke keeps the title prominent on the denser card. The kind glyph
-   * aligns with the first line. `--ui-font-card-title` is the user's Settings →
-   * Appearance choice for the Card & list titles category (`use-ui-fonts`);
-   * unset, the editorial serif base applies, so the default is unchanged. */
+   * a light stroke keeps the title prominent on the denser card.
+   * `--ui-font-card-title` is the user's Settings → Appearance choice for the
+   * Card & list titles category (`use-ui-fonts`); unset, the editorial serif
+   * base applies, so the default is unchanged. */
   font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
   font-size: var(--text-xl);
@@ -623,23 +778,43 @@ body[data-dragging='project'] .row {
   text-shadow: none;
 }
 
-.row .title .kind-glyph {
-  /* The glyph keeps its own muted ink (not the title's tint) and none of the
-   * title's faux-weight stroke/shadow — a hairline icon must stay hairline.
-   * The 4 px top nudge centres the 16 px glyph on the star's 20 px box (its
-   * 2 px nudge + 10 px half-height = 12 px), so star, glyph and the first
-   * title line share one optical centre. */
+/* Kind badge: hairline pill with the monochrome kind glyph and the word
+ * (Project / Incident / Document). Muted ink on purpose — colour on this pane
+ * is reserved for families (`.row.in-family`), the badge only labels. It sits
+ * inline in the title's first line, so the title text wraps beneath it; the
+ * UI font + no faux-weight keep it a label, not part of the serif title. */
+.row .kind-badge {
+  /* Geometry from the shared `.pill` base (primitives.css); colour, padding
+   * and type here. */
+  gap: 4px;
+  vertical-align: 3px;
+  margin-right: 8px;
+  padding: 1px 7px 1px 5px;
+  border: 1px solid var(--border-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
   -webkit-text-stroke: 0;
   text-shadow: none;
-  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.row .kind-badge-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.row .kind-badge-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.4;
 }
 
 .row .title-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  flex: 1;
   min-width: 0;
 }
 
@@ -647,36 +822,6 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-/* Identifier line between the title and the meta row: the item's short slug in
- * faint mono, so a card names the thing you type into a command. Kept to one
- * line — a long slug ellipsises instead of wrapping and pushing the meta row
- * down, and the full dated slug stays in the element's tooltip. */
-/* Indent by the gutter the star claims in the title row — plus the kind
- * glyph's column when the title carries one — so an item's identifier shares a
- * left edge with its title *text* instead of hanging out to its left. The
- * title row then reads as star | glyph | text block (title over slug). The
- * meta row below keeps the card's full width — it reads as its own footer
- * band, not as part of the title block. */
-.row .slug {
-  margin-left: var(--star-gutter);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  letter-spacing: 0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* The .row-head gap reads as a gulf between a title and its own identifier —
-   * pull the line up so the two group together, away from the meta row. */
-  margin-top: -3px;
-}
-/* Glyph column: only when the row above actually rendered a glyph — an
- * `unknown` kind has none, and its slug still lines up with its title text at
- * the star gutter alone. */
-.row .title-row:has(.kind-glyph) + .slug {
-  margin-left: calc(var(--star-gutter) + var(--kind-gutter));
 }
 
 .row .meta {

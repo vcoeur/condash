@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Project, Step, StepMarker, TimelineEntry } from '../../../shared/types';
-import { groupByStatus, groupDone, lastDate, nextOpenStep, projectsTabGroups } from './data';
+import {
+  applyProjectFilter,
+  collectAppHandles,
+  EMPTY_PROJECT_FILTER,
+  groupByStatus,
+  groupDone,
+  lastDate,
+  nextOpenStep,
+  projectFilterActive,
+  projectsTabGroups,
+} from './data';
 
 function step(marker: StepMarker, text: string, lineIndex = 0): Step {
   return { lineIndex, marker, text, section: 'Steps' };
@@ -223,5 +233,91 @@ describe('star flag ordering', () => {
       '2026-04-02-month-old',
       '2026-04-01-month-new',
     ]);
+  });
+});
+
+describe('filter bar — collectAppHandles + applyProjectFilter', () => {
+  const withApps = (slug: string, status: string, apps: string[]): Project =>
+    ({ ...projectAt(slug, status), apps }) as Project;
+  const buckets = new Map<string, Project[]>([
+    [
+      'now',
+      [
+        withApps('2026-05-03-a', 'now', ['condash', '#conception']),
+        withApps('2026-05-02-b', 'now', ['Painting-Manager']),
+        withApps('2026-05-01-c', 'now', []),
+      ],
+    ],
+    ['done', [withApps('2026-04-01-d', 'done', ['painting-manager'])]],
+  ]);
+  const slugsOf = (result: Map<string, Project[]>): Record<string, string[]> =>
+    Object.fromEntries([...result].map(([status, items]) => [status, items.map((p) => p.slug)]));
+
+  it('lists every handle once, canonicalised and sorted', () => {
+    // `#conception` loses its sigil, `Painting-Manager` and `painting-manager`
+    // collapse into one option — the same handle the card pills render.
+    expect(collectAppHandles(buckets)).toEqual(['conception', 'condash', 'painting-manager']);
+  });
+
+  it('is the identity when no filter is set', () => {
+    expect(projectFilterActive(EMPTY_PROJECT_FILTER)).toBe(false);
+    expect(applyProjectFilter(buckets, EMPTY_PROJECT_FILTER, new Set(), null)).toBe(buckets);
+  });
+
+  it('keeps only starred items when starredOnly is set, in every bucket', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, starredOnly: true };
+    const starred = new Set(['2026-05-02-b', '2026-04-01-d']);
+    expect(slugsOf(applyProjectFilter(buckets, filter, starred, null))).toEqual({
+      now: ['2026-05-02-b'],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('matches apps any-of, through the canonical handle', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, apps: ['painting-manager', 'conception'] };
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+      now: ['2026-05-03-a', '2026-05-02-b'],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('keeps every bucket (possibly empty) so the section order is unchanged', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, apps: ['nothing-has-this'] };
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+      now: [],
+      done: [],
+    });
+  });
+
+  it('applies the README search by path, and only once an answer has arrived', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, query: 'anything' };
+    expect(projectFilterActive(filter)).toBe(true);
+    // In flight (null): the query alone filters nothing yet.
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+      now: ['2026-05-03-a', '2026-05-02-b', '2026-05-01-c'],
+      done: ['2026-04-01-d'],
+    });
+    // Answered: only the matched paths survive.
+    const matched = new Set(['/p/2026-05-01-c', '/p/2026-04-01-d']);
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), matched))).toEqual({
+      now: ['2026-05-01-c'],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('ANDs the three predicates', () => {
+    const filter = { starredOnly: true, apps: ['painting-manager'], query: 'x' };
+    const starred = new Set(['2026-05-02-b', '2026-04-01-d']);
+    const matched = new Set(['/p/2026-04-01-d']);
+    expect(slugsOf(applyProjectFilter(buckets, filter, starred, matched))).toEqual({
+      now: [],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('treats a whitespace-only query as no filter', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, query: '   ' };
+    expect(projectFilterActive(filter)).toBe(false);
+    expect(applyProjectFilter(buckets, filter, new Set(), null)).toBe(buckets);
   });
 });

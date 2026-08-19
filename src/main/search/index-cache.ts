@@ -18,6 +18,7 @@ import {
   type FileRef,
   type MatchOutput,
   type PreparedFile,
+  readmeMatchesTerms,
 } from './match';
 import {
   collectKnowledgeFiles,
@@ -118,6 +119,40 @@ export function searchIndex(
     }
   }
   return out;
+}
+
+/**
+ * README-only boolean pass over the index for the Projects-pane filter: the
+ * posix path of every indexed project `README.md` whose content or slug
+ * satisfies every term (`readmeMatchesTerms`). No scoring, no snippets, notes
+ * skipped up front. Returns `null` when no index is built yet — the caller
+ * falls back to the disk scan.
+ */
+export function indexedReadmesMatching(
+  conceptionPath: string,
+  terms: readonly SearchTerm[],
+): string[] | null {
+  const index = getIndex(conceptionPath);
+  if (!index) return null;
+  const out: string[] = [];
+  for (const file of index.byPath.values()) {
+    if (file.source !== 'project' || !file.projectPath || !isReadmePath(file.path)) continue;
+    if (readmeMatchesTerms(file.lowerContent, projectSlugLower(file.projectPath), terms)) {
+      out.push(file.path);
+    }
+  }
+  return out;
+}
+
+/** `<dir>/README.md` — the item README, case-insensitively on the file name
+ *  (a `readme.md` item on a case-insensitive filesystem is still the README). */
+export function isReadmePath(posixPath: string): boolean {
+  return posixPath.slice(posixPath.lastIndexOf('/') + 1).toLowerCase() === 'readme.md';
+}
+
+/** Lowercased last segment of a project directory path — the item slug. */
+export function projectSlugLower(projectPath: string): string {
+  return projectPath.slice(projectPath.lastIndexOf('/') + 1).toLowerCase();
 }
 
 /**

@@ -6,7 +6,7 @@ import { readResourcesTree } from '../resources';
 import { requireReadableSkillPath } from '../path-bounds';
 import { readSkillsTreeForScope } from '../skills';
 import { getSkillsSyncStatus } from '../skills-sync-status';
-import { search } from '../search';
+import { search, searchProjectReadmes } from '../search';
 import { readSettings } from '../settings';
 import { treeCreateMd, treeImportFile, treeMkdir } from '../tree-mutations';
 import {
@@ -117,5 +117,17 @@ export function registerTreesIpc(): void {
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return emptySearchResults();
     return search(conceptionPath, q, validScopes);
+  });
+
+  // The Projects-pane filter bar's README search. Same query gating as
+  // `search` — a blank query is a no-op returning no paths, a non-string one a
+  // contract violation.
+  ipcMain.handle('searchProjectReadmes', async (event, query: unknown) => {
+    requireMainWindowSender(event);
+    if (query === '') return [];
+    const q = requireNonEmptyString('searchProjectReadmes', query);
+    const { lastConceptionPath: conceptionPath } = await readSettings();
+    if (!conceptionPath) return [];
+    return searchProjectReadmes(conceptionPath, q);
   });
 }

@@ -9,10 +9,16 @@ import {
   collectResourceFiles,
   collectSkillFiles,
 } from './walk';
-import { matchFile, type MatchOutput, extractFirstHeadingOrLine } from './match';
+import {
+  matchFile,
+  type MatchOutput,
+  extractFirstHeadingOrLine,
+  readmeMatchesTerms,
+} from './match';
+import { toLowerCaseSameLength } from './lowercase';
 import { parseQuery } from './query';
 import { runWithConcurrency } from './concurrency';
-import { searchIndex } from './index-cache';
+import { indexedReadmesMatching, isReadmePath, projectSlugLower, searchIndex } from './index-cache';
 import { resolveConceptionPaths } from '../conception-paths';
 import { condashLogsRoot } from '../condash-dir';
 
@@ -86,6 +92,49 @@ export async function search(
   const hits = matched.slice(0, RAW_HIT_CAP).map((m) => m.hit);
 
   return { hits, terms, totalBeforeCap, truncated };
+}
+
+/**
+ * Which project READMEs match `query` — the Projects-pane filter bar's search.
+ * Same query grammar as `search`, but a boolean predicate rather than a ranked
+ * match: every term must occur in the item's `README.md` content or in its
+ * slug (`readmeMatchesTerms`) — notes are not consulted, and the rest of the
+ * path never counts, so `readme` / `md` / a month directory match nothing by
+ * themselves. **Uncapped**: a filter has to be exhaustive where the ranked
+ * search only has to be useful, so the `RAW_HIT_CAP` that keeps the search
+ * modal fast does not apply. Served from the in-memory index (no scoring, no
+ * snippets); while the index is still building, from a README-only disk read.
+ * Returns the posix absolute README paths — the same value as `Project.path`,
+ * so the renderer matches cards by identity. Empty for an empty or
+ * all-stopword query.
+ */
+export async function searchProjectReadmes(
+  conceptionPath: string,
+  query: string,
+): Promise<string[]> {
+  const terms = parseQuery(query);
+  if (terms.length === 0) return [];
+  const indexed = indexedReadmesMatching(conceptionPath, terms);
+  if (indexed !== null) return indexed;
+  // Boot gap: no index yet. Read only the READMEs, apply the same predicate.
+  const projectFiles = await collectProjectFiles(join(conceptionPath, 'projects'));
+  const readmes = projectFiles.filter((file) => isReadmePath(toPosix(file.path)));
+  const matched = await runWithConcurrency(
+    readmes.map((file) => async () => {
+      let raw: string;
+      try {
+        raw = await fs.readFile(file.path, 'utf8');
+      } catch {
+        return null;
+      }
+      const slug = projectSlugLower(toPosix(file.projectPath));
+      return readmeMatchesTerms(toLowerCaseSameLength(raw), slug, terms)
+        ? toPosix(file.path)
+        : null;
+    }),
+    READ_CONCURRENCY,
+  );
+  return matched.filter((path): path is string => path !== null);
 }
 
 /** Read a project's README title from disk. Used by the on-disk scan

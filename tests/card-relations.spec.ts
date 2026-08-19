@@ -196,9 +196,11 @@ test('only family cards carry a family colour class; every known kind shows its 
     expect(await familyClass(midChild)).toBe(midSlot);
     expect(await familyClass(midGrandchild)).toBe(midSlot);
 
-    // A plain project card shows the kind glyph too (it used to be
-    // incident/document only).
-    await expect(standalone.locator('.title .kind-glyph[data-kind="project"]')).toBeVisible();
+    // A plain project card wears the kind badge too (the glyph used to be
+    // incident/document only), and the badge spells the kind out.
+    const badge = standalone.locator('.title .kind-badge[data-kind="project"]');
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('Project');
   } finally {
     await booted.cleanup();
   }
@@ -259,10 +261,11 @@ test('clicking the card body (not the title) opens that project preview', async 
     const win = booted.window;
     await win.waitForSelector('article.row', { state: 'visible', timeout: 5000 });
 
-    // The date span sits in the meta row: not the title, not in the click
-    // exclusion set (.row-action, .pr-badge, .title-actions, banner buttons)
-    // — a plain body click that must bubble up to the whole-card open.
-    await win.click('article.row .meta-icon.date');
+    // The date span sits on the head row beside the slug: not the title, not
+    // in the click exclusion set (.row-action, .pr-badge, .title-actions,
+    // banner buttons) — a plain body click that must bubble up to the
+    // whole-card open.
+    await win.click('article.row .date');
 
     await win.waitForSelector('.modal.project-preview', { state: 'visible' });
     await expect(win.locator('.modal.project-preview .modal-title')).toHaveText('Sample project');

@@ -88,6 +88,10 @@ export interface CondashApi {
    *  `logs`); omitted/empty searches every bucket. Narrowing skips the walk +
    *  read of the unselected buckets — notably the heavy logs tree. */
   search(query: string, scopes?: string[]): Promise<SearchResults>;
+  /** Posix README paths (`Project.path`) of every item whose README matches
+   *  `query` — the Projects-pane filter bar's search. Uncapped, README-only,
+   *  same query grammar as `search`. */
+  searchProjectReadmes(query: string): Promise<string[]>;
   listRepos(): Promise<RepoEntry[]>;
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
    * its submodule children freshly re-read. Driven by the structural
