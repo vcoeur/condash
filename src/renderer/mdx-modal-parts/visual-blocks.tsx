@@ -1,7 +1,14 @@
-import { createEffect, createResource, createUniqueId, Show } from 'solid-js';
-import type { CustomHtmlData, DiagramData, WireframeData } from '@shared/plan-blocks/schemas';
-import { injectIcons, sanitizeFragment } from './sanitize';
+import { createEffect, createResource, createSignal, createUniqueId, Show } from 'solid-js';
+import type {
+  CustomHtmlData,
+  DiagramData,
+  SvgData,
+  WireframeData,
+} from '@shared/plan-blocks/schemas';
+import { injectIcons, sanitizeFragment, sanitizeSvg } from './sanitize';
 import { kitNodesToHtml, scopeCss } from './data';
+import { usePlanDoc } from './doc-context';
+import { SvgLightbox, type SvgLightboxPayload } from './svg-lightbox';
 
 /**
  * Visual blocks: wireframe screens, HTML diagrams, and the custom-html escape
@@ -99,6 +106,73 @@ export function CustomHtmlBlockView(props: { data: CustomHtmlData }) {
       <SanitizedHtml html={props.data.html} css={props.data.css} scopeClass="plan-custom-body" />
       <Show when={props.data.caption}>
         <figcaption class="plan-caption">{props.data.caption}</figcaption>
+      </Show>
+    </figure>
+  );
+}
+
+/**
+ * An inline SVG diagram on a light card. The markup goes through the SVG-only
+ * sanitizer and the block's CSS is scoped per block like a diagram's; the card
+ * pins the `--wf-*` tokens to their light values in both themes
+ * (`plan-blocks.css`), so a token-coloured diagram and a literal-coloured one
+ * both read. Clicking the card (or its zoom button) opens the lightbox with
+ * Download .svg / Copy SVG.
+ */
+export function SvgBlockView(props: { data: SvgData; blockId: string }) {
+  const docInfo = usePlanDoc();
+  const scopeId = `plan-scope-${createUniqueId()}`;
+  const [clean] = createResource(
+    () => props.data.svg,
+    (markup) => sanitizeSvg(markup),
+  );
+  const [open, setOpen] = createSignal(false);
+
+  const title = (): string => props.data.caption ?? props.data.alt ?? 'Diagram';
+  const defaultPath = (): string => {
+    const notePath = docInfo?.notePath ?? '';
+    const stem = notePath.replace(/\.[^./\\]*$/, '');
+    return `${stem === '' ? 'diagram' : stem}-${props.blockId}.svg`;
+  };
+  const payload = (): SvgLightboxPayload | null => {
+    const svg = clean();
+    if (!svg) return null;
+    return { svg, css: props.data.css, title: title(), defaultPath: defaultPath() };
+  };
+  const openLightbox = (): void => {
+    if (payload()) setOpen(true);
+  };
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openLightbox();
+  };
+
+  return (
+    <figure class="plan-block plan-svg">
+      <Show when={props.data.css}>
+        <style>{scopeCss(props.data.css!, `#${scopeId}`)}</style>
+      </Show>
+      <div
+        id={scopeId}
+        class="plan-svg-card"
+        role="button"
+        tabIndex={0}
+        aria-label={`${props.data.alt ?? title()} — open full size`}
+        title="Open full size"
+        onClick={openLightbox}
+        onKeyDown={onKey}
+      >
+        <div class="plan-svg-body" innerHTML={clean() ?? ''} />
+        <span class="plan-svg-zoom" aria-hidden="true">
+          ⤢
+        </span>
+      </div>
+      <Show when={props.data.caption}>
+        <figcaption class="plan-caption">{props.data.caption}</figcaption>
+      </Show>
+      <Show when={open() && payload()} keyed>
+        {(data) => <SvgLightbox payload={data} onClose={() => setOpen(false)} />}
       </Show>
     </figure>
   );

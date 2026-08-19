@@ -121,11 +121,21 @@ judgment calls to the Open Questions form.
 
 ## Visual surface choice
 
+- **Diagrams are `svg` blocks first.** Anything with geometry — an architecture
+  map, a pipeline, a flow with arrows, a layered system — is a hand-authored
+  inline SVG in an `<Svg>` block: real `<svg>` markup in a ```svg fence inside
+  the `.mdx`, coloured with `--wf-*` tokens, one block per diagram, `alt` set.
+  Inline only — no sidecar file, no render-to-PNG step: the check is
+  `condash mdx check` (green, warnings read) and then the note opened once in
+  condash, where the diagram draws on a light card and opens in a lightbox
+  with Download .svg. Read [`svg.md`](svg.md) before authoring one. The
+  html/css `diagram` block stays for panel / layer / swimlane / matrix layouts
+  whose text must reflow; `mermaid` is no longer suggested.
 - **Non-visual notes** (architecture-only, backend, migrations, copy): no
-  wireframes. A strong document with local inline `diagram` / `data-model` /
-  `api-endpoint` blocks next to the claims they support. Prefer two-dimensional
-  layouts (before/after panels, layers, swimlanes, matrices) over
-  left-to-right chains.
+  wireframes. A strong document with local inline `svg` / `diagram` /
+  `data-model` / `api-endpoint` blocks next to the claims they support. Prefer
+  two-dimensional layouts (before/after panels, layers, swimlanes, matrices)
+  over left-to-right chains.
 - **UI/product notes**: wireframe blocks ARE the surface — put the primary
   screens near the top, one `wireframe` block per meaningful state, `columns`
   for Before/After pairs. Show the entry point, the opened surface, and the
@@ -161,10 +171,12 @@ condash mdx blocks                              # print the block vocabulary
 ```
 
 A green `check` means the document parses and matches the viewer by
-construction; it still warns on a block that would render blank (an unfolded
-diagram, an empty `code`, a wireframe with no html), so read the warnings and
-open the note in condash once before hand-off. Any `.mdx` opens in the viewer —
-from a Deliverables entry, the Resources pane, or an `.mdx` link in a note.
+construction; it still warns on a block that would render blank or bare (an
+unfolded diagram, an empty `code`, a wireframe with no html, an `svg` without
+`viewBox` or `alt`, or one carrying an element the viewer strips), so read the
+warnings and open the note in condash once before hand-off. Any `.mdx` opens
+in the viewer — from a Deliverables entry, the Resources pane, or an `.mdx`
+link in a note — and the viewer's head exports the rendered note as a PDF.
 
 ## Shared references — read before authoring
 
@@ -175,6 +187,7 @@ authoring workflow applies to every block you write.
 |---|---|
 | [`blocks.md`](blocks.md) | authoring any structured block — the vocabulary (regenerate with `condash mdx blocks`) |
 | [`wireframe.md`](wireframe.md) | authoring ANY wireframe / `<Screen>` — the quality bar |
+| [`svg.md`](svg.md) | authoring ANY `svg` diagram block — layout, arrows, tokens, what the sanitizer strips |
 | [`document-quality.md`](document-quality.md) | writing the document — block choice, open questions, altitude |
 | [`review.md`](review.md) | a `review` — worktree scope, diff → block mapping, the grounding rule |
 | [`exemplar.md`](exemplar.md) | a worked good/bad example of the bar |

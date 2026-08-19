@@ -19,88 +19,27 @@
   --wf-ok: var(--success);
   --wf-radius: var(--radius-md);
 
-  /* Reading measure for prose-shaped blocks. The document itself fills the
-   * modal (`--modal-w-lg`, up to 1680px) and the measure is applied per block
-   * below — capping the container instead left a narrow column in a wide
-   * modal, and shrank the blocks whose whole point is showing a wide layout. */
-  --plan-measure: 860px;
-
   padding: 16px 24px 40px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-/* Top-level blocks sit on the reading measure by default, so an unclassified
- * (or newly added) block type stays prose-safe; the structural set opts out
- * below. `width: 100%` is load-bearing: an `auto` inline margin suppresses
- * flex cross-axis stretch, so without it a short block would collapse to its
- * content width. Both selectors are spelled out rather than `.plan-doc > *`
- * so they outrank `.plan-block { margin: 0 }` (below) and note-modal.css's
- * `.md-rendered { max-width: none; margin: 0 }`, which the prose block carries. */
+/* Every top-level block fills the document, exactly as `.md-rendered` does in
+ * the classic note viewer (`note-modal.css`: `max-width: none; margin: 0`) —
+ * the MDX viewer opens in the same `--modal-w-lg` modal and reads the same way.
+ * No reading measure, no per-type classification: a prose block, a table and a
+ * wireframe all share the left edge and the full width, and a new block type
+ * needs no opt-in. `width: 100%` is load-bearing: a block whose intrinsic width
+ * is narrow (a mobile wireframe, a short table) must still claim the row so
+ * its caption and neighbours align; the selectors are spelled out rather than
+ * `.plan-doc > *` so they outrank `.plan-block { margin: 0 }` below and
+ * note-modal.css's `.md-rendered` rule, which the prose block also carries. */
 .plan-doc > .plan-block,
 .plan-doc > .plan-prose {
   width: 100%;
-  max-width: var(--plan-measure);
-  margin-inline: auto;
-}
-
-/* Structural blocks: the content *is* a layout, so the reading measure shrinks
- * the very thing being shown. Only top-level blocks are freed — a wireframe
- * nested in a column or a tab stays bounded by its container.
- *
- * The test for membership is whether the content actually grows into the freed
- * width. The API blocks fail it and are deliberately absent: `.plan-endpoint` is
- * a bordered `details` card whose body is a summary line, a `width: 100%`
- * four-column params table and JSON explorers — freeing it stretched text
- * columns rather than revealing anything, and stretched the nested description
- * prose too (a `RichTextBlock`, which the measure rule above cannot reach: it
- * only matches direct children). Visible chrome made the resulting offset from
- * the prose column unmissable. `.plan-openapi` is a list of short path rows plus
- * a scrolling JSON explorer, so it grows no further either. Both read as prose
- * and stay on the measure. `.plan-data-model` does belong here: `.plan-entities`
- * is a `flex-wrap` of `min-width: 200px` cards, so extra width means more cards
- * per row.
- *
- * Wireframes are freed per surface, not wholesale. Only `desktop` / `browser`
- * have a fluid frame (`.wf-frame { width: 100% }` below) that actually grows
- * into the freed space — the same pair `columnsMustStack` in containers.tsx
- * treats as needing width. The device surfaces pin `.wf-frame` to a fixed px
- * width, so freeing them widens only the `figure`: `.plan-wireframe` is a flex
- * column with `align-items: flex-start`, so a 300px phone would sit hard against
- * the left edge of a ~1600px figure trailing a void, while the prose above it
- * stayed centred on the measure. Held on the measure instead, the frame and its
- * `figcaption` share the prose block's left edge. Listing the wide surfaces
- * (rather than excluding the narrow ones) keeps the same prose-safe default as
- * above: a sixth surface added to the schema enum starts on the measure. */
-.plan-doc > .plan-wireframe[data-surface='desktop'],
-.plan-doc > .plan-wireframe[data-surface='browser'],
-.plan-doc > .plan-diagram,
-.plan-doc > .plan-mermaid,
-.plan-doc > .plan-data-model,
-.plan-doc > .plan-diff,
-.plan-doc > .plan-custom-html,
-.plan-doc > .plan-columns {
   max-width: none;
-}
-
-/* Mermaid is freed above, but unlike the other freed blocks its content is
- * self-limiting: mermaid sizes the rendered SVG `width="100%"` with an inline
- * `max-width: {natural}px` (`useMaxWidth`, on by default and not overridden by
- * `markdown.ts`'s `initialize` calls), so a small diagram keeps its natural
- * width and would otherwise sit hard against the left edge of a full-width
- * figure while every prose block stayed centred on the measure. Centring the
- * figure's contents puts a narrow diagram over the prose column and leaves a
- * wide one spanning everything.
- *
- * `text-align` is the mechanism because the SVG is inline-level: mermaid's
- * generated stylesheet sets only font and fill on the svg root, never `display`,
- * and no rule here does either. It also carries the `figcaption` onto the same
- * axis as the diagram. This is the treatment `note-modal.css` already gives
- * mermaid via `.md-rendered .mermaid` — the figure `MermaidBlock` renders is a
- * direct child of `.plan-doc`, so that selector never reaches it. */
-.plan-doc > .plan-mermaid {
-  text-align: center;
+  margin-inline: 0;
 }
 
 .plan-block {
@@ -889,4 +828,111 @@
 /* -- custom html -- */
 .plan-custom-body {
   color: var(--wf-ink);
+}
+
+/* -- svg diagram -- */
+.plan-svg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* The diagram card is light in both themes: diagrams are artefacts, like
+ * images, and hand-authored SVG tends to carry literal colours that only read
+ * on a light ground. The `--wf-*` tokens are therefore pinned to the light
+ * theme's values *inside the card* (literals on purpose — they must not
+ * follow the app theme; `SVG_CARD_TOKENS` in sanitize.ts carries the same
+ * list for the standalone file, and a test keeps the two in step), so a
+ * token-coloured diagram reads on the card too. `contain: paint` plus
+ * `overflow: hidden` keep an absolutely-positioned author element (the
+ * sanitizer downgrades `position: fixed` to `absolute`) inside the card. */
+.plan-svg-card {
+  --wf-ink: #1a1418;
+  --wf-muted: #665c64;
+  --wf-line: #ddd2da;
+  --wf-paper: #ffffff;
+  --wf-card: #f5f0f3;
+  --wf-accent: #672167;
+  --wf-accent-fg: #ffffff;
+  --wf-accent-soft: #f6e4ef;
+  --wf-warn: #b03020;
+  --wf-ok: #2e7d32;
+  --wf-radius: 6px;
+
+  position: relative;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: var(--wf-ink);
+  overflow: hidden;
+  contain: paint;
+  cursor: zoom-in;
+}
+.plan-svg-card:hover,
+.plan-svg-card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.plan-svg-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.plan-svg-body {
+  line-height: 0;
+}
+.plan-svg-body svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.plan-svg-zoom {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  color: #665c64;
+  background: rgba(255, 255, 255, 0.85);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.plan-svg-card:hover .plan-svg-zoom,
+.plan-svg-card:focus-visible .plan-svg-zoom {
+  opacity: 1;
+}
+
+/* Lightbox — the image modal's body on a light card, fit or natural size.
+ * Portalled to body, so its backdrop paints above the visual note's. */
+.svg-lightbox-action {
+  height: 32px;
+  flex-shrink: 0;
+}
+.svg-lightbox-body {
+  align-items: center;
+}
+.svg-lightbox-body.svg-lightbox-natural {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.svg-lightbox-card {
+  cursor: default;
+  contain: none;
+  overflow: visible;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+.svg-lightbox-body .plan-svg-card svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.svg-lightbox-natural .plan-svg-card {
+  max-width: none;
+}
+.svg-lightbox-natural .plan-svg-card svg {
+  max-width: none;
 }

@@ -83,8 +83,8 @@ memory.
   when comparison clarifies, after-only when purely additive, a state sequence
   for flows. Read [`wireframe.md`](wireframe.md) first — always.
 - **Architecture / data-flow shift** → `diagram` (html/css with `.diagram-*`
-  primitives) as before/after panels or layers, or `mermaid` for a quick graph.
-  Never use a diagram as a stand-in for rendered UI.
+  primitives) as before/after panels or layers, or an `svg` block for a graph
+  with arrows (see `svg.md`). Never use a diagram as a stand-in for rendered UI.
 - **CLI / command-surface change** → there is no endpoint block for a command:
   summarize new or changed verbs in a `table` (command, effect, exit code) or a
   `code` block of real invocations, with a short prose note. `api-endpoint` is

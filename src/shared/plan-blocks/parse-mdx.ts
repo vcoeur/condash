@@ -214,8 +214,23 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
     data.columns = normalizeColumns(el, state);
   } else if (spec.children === 'screen') {
     foldScreenChild(el, data, state);
-  } else if (spec.type === 'diagram') {
+  } else if (spec.type === 'diagram' || spec.type === 'svg') {
     foldHtmlCssFences(el, data);
+  }
+
+  // An svg block's payload is structural, not just present: the viewer can
+  // only draw an `<svg>` root, so anything else is an error the author must
+  // fix, and the softer findings (no viewBox, no alt, elements the sanitizer
+  // will strip) are warnings surfaced before the block renders blank or bare.
+  if (spec.type === 'svg') {
+    const findings = svgPayloadIssues(data);
+    for (const warning of findings.warnings) {
+      state.issues.push({ severity: 'warning', message: `<${tag}>: ${warning}`, line });
+    }
+    if (findings.error) {
+      state.issues.push({ severity: 'error', message: `<${tag}>: ${findings.error}`, line });
+      return invalidBlock(state, tag, findings.error, sliceOf(el, state));
+    }
   }
 
   // Validate, then recurse into JSON-carried nested blocks (tabs).
@@ -372,15 +387,67 @@ function kitTreeOf(el: MdxJsxFlowElement, state: NormalizeState): KitNode[] {
   return out;
 }
 
-/** Fold ```html / ```css fenced children into data.html/css — the escape-hatch
- *  authoring form shared by `<Diagram>` and `<Screen>` (no attribute escaping). */
+/** Fold ```html / ```css / ```svg fenced children into data.html/css/svg — the
+ *  escape-hatch authoring form shared by `<Diagram>`, `<Screen>` and `<Svg>`
+ *  (no attribute escaping). */
 function foldHtmlCssFences(el: MdxJsxFlowElement, data: Record<string, unknown>): void {
   for (const child of el.children) {
     if (child.type !== 'code') continue;
     const lang = (child.lang ?? '').toLowerCase();
     if (lang === 'html' && data.html === undefined) data.html = child.value;
     if (lang === 'css' && data.css === undefined) data.css = child.value;
+    if (lang === 'svg' && data.svg === undefined) data.svg = child.value;
   }
+}
+
+/** Elements the viewer's SVG sanitizer drops. Named here so `mdx check` can
+ *  tell the author before the viewer silently renders the diagram without them. */
+const SVG_STRIPPED_ELEMENTS = [
+  'script',
+  'foreignObject',
+  'style',
+  'use',
+  'animate',
+  'set',
+] as const;
+
+/**
+ * Structural findings for an svg block payload. One hard error — no `<svg>`
+ * root to draw — and the warnings that predict a blank, unscalable or
+ * unlabelled render. Exported for the CLI tests; the parser applies it.
+ */
+export function svgPayloadIssues(data: Record<string, unknown>): {
+  error: string | null;
+  warnings: string[];
+} {
+  const markup = typeof data.svg === 'string' ? data.svg.trim() : '';
+  if (markup === '') {
+    return {
+      error: 'no svg payload — add a ```svg fence holding the <svg …>…</svg> markup',
+      warnings: [],
+    };
+  }
+  if (!/^<svg[\s>]/i.test(markup)) {
+    return { error: 'the ```svg fence must start with an <svg> root element', warnings: [] };
+  }
+  const warnings: string[] = [];
+  const root = markup.match(/^<svg[^>]*>/i)?.[0] ?? '';
+  if (!/\sviewBox\s*=/i.test(root)) {
+    warnings.push('the <svg> root has no viewBox — it cannot scale to the card or the page');
+  }
+  if (typeof data.alt !== 'string' || data.alt.trim() === '') {
+    warnings.push('no alt — add a one-line description of what the diagram shows');
+  }
+  for (const name of SVG_STRIPPED_ELEMENTS) {
+    if (new RegExp(`<${name}[\\s>/]`, 'i').test(markup)) {
+      warnings.push(
+        name === 'style'
+          ? 'contains a <style> element — the viewer strips it; put class rules in a ```css fence beside the ```svg fence'
+          : `contains <${name}> — the viewer strips it, so the diagram renders without it`,
+      );
+    }
+  }
+  return { error: null, warnings };
 }
 
 /**

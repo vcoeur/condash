@@ -48,6 +48,11 @@ ${deprecated.join('\n')}
   inline flex/grid layout. Never \`<html>\`/\`<style>\`/\`<script>\` tags, fonts, or hex colors.
 - \`<Diagram>\` carries its markup as \`\`\`html and \`\`\`css fences in the children; use the
   \`.diagram-*\` primitives and \`--wf-*\` tokens.
+- \`<Svg alt="…" caption="…">\` carries a real \`<svg viewBox="…">…</svg>\` as a \`\`\`svg fence
+  in the children, plus an optional \`\`\`css fence for the classes its \`<text>\` uses (never a
+  \`<style>\` element inside the svg — it is stripped). Inline only: no \`src\`, no sidecar file,
+  no render-to-PNG step — \`condash mdx check\` then the viewer. Colour with \`--wf-*\` tokens;
+  the card pins them to light values in both themes. \`alt\` is always set.
 - \`<Endpoint>\` prose description is the MDX children; each request/response \`example\` is one
   parseable JSON value in a string.
 - Block headings are a \`###\` heading in the prose directly above the block, not a \`title\`

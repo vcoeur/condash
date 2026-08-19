@@ -534,6 +534,13 @@ export interface CondashApi {
    *  hidden window via `printToPDF`, and writes the result. Resolves to the
    *  saved file's path, or `null` when the user cancels the dialog. */
   exportNotePdf(path: string, html: string): Promise<string | null>;
+  /** Save an svg block's diagram as a standalone `.svg` file. `defaultPath`
+   *  only seeds the save dialog (`<note-stem>-<block-id>.svg` beside the
+   *  note) — never read or written itself; the write target is whatever the
+   *  user picks. `svg` is the sanitized, token-resolved markup the viewer
+   *  drew. Resolves to the saved path, or `null` when the dialog is
+   *  cancelled. */
+  saveSvg(defaultPath: string, svg: string): Promise<string | null>;
   /**
    * Subscribe to commands sent by the application menu (File → Search,
    * File → Open conception directory, File → Quit). Returns an unsubscribe.

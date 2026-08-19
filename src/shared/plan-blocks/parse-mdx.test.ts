@@ -140,6 +140,81 @@ describe('parsePlanMdx', () => {
     expect(doc.blocks[0].data.css).toContain('display: flex');
   });
 
+  it('folds Svg svg/css fences from children and accepts a well-formed diagram', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg id="sv" caption="Flow" alt="A then B">',
+        '',
+        '```svg',
+        '<svg viewBox="0 0 10 10" width="10" height="10"><rect width="5" height="5" class="b"/></svg>',
+        '```',
+        '',
+        '```css',
+        '.b { fill: var(--wf-accent); }',
+        '```',
+        '',
+        '</Svg>',
+      ].join('\n'),
+    );
+    expect(doc.issues).toEqual([]);
+    expect(doc.blocks[0].type).toBe('svg');
+    expect(doc.blocks[0].id).toBe('sv');
+    expect(doc.blocks[0].data.svg).toContain('<rect');
+    expect(doc.blocks[0].data.css).toContain('--wf-accent');
+    expect(doc.blocks[0].data.alt).toBe('A then B');
+  });
+
+  it('Svg: a missing fence or a non-svg root is an error and the block is salvaged', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg alt="x" />',
+        '',
+        '<Svg alt="y">',
+        '',
+        '```svg',
+        '<div>not svg</div>',
+        '```',
+        '',
+        '</Svg>',
+      ].join('\n'),
+    );
+    expect(doc.blocks.map((b) => b.type)).toEqual(['invalid', 'invalid']);
+    const messages = doc.issues.map((i) => `${i.severity}:${i.message}`);
+    expect(messages[0]).toContain('error:<Svg>: no svg payload');
+    expect(messages[1]).toContain('error:<Svg>: the ```svg fence must start with an <svg> root');
+  });
+
+  it('Svg: warns on a missing viewBox, a missing alt, and elements the viewer strips', () => {
+    const doc = parsePlanMdx(
+      [
+        '<Svg>',
+        '',
+        '```svg',
+        '<svg width="10" height="10"><style>.a{}</style><foreignObject/><script>1</script><use href="#x"/><animate/><set/></svg>',
+        '```',
+        '',
+        '</Svg>',
+      ].join('\n'),
+    );
+    expect(doc.blocks[0].type).toBe('svg');
+    const warnings = doc.issues.filter((i) => i.severity === 'warning').map((i) => i.message);
+    expect(warnings.some((w) => w.includes('no viewBox'))).toBe(true);
+    expect(warnings.some((w) => w.includes('no alt'))).toBe(true);
+    for (const name of ['<style>', '<script>', '<foreignObject>', '<use>', '<animate>', '<set>']) {
+      expect(
+        warnings.some((w) => w.includes(name)),
+        name,
+      ).toBe(true);
+    }
+    // A clean diagram with viewBox + alt raises none of them.
+    const clean = parsePlanMdx(
+      ['<Svg alt="ok">', '', '```svg', '<svg viewBox="0 0 1 1"></svg>', '```', '', '</Svg>'].join(
+        '\n',
+      ),
+    );
+    expect(clean.issues).toEqual([]);
+  });
+
   it('folds Screen html/css fences from children like Diagram', () => {
     const doc = parsePlanMdx(
       [

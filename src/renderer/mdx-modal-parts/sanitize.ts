@@ -27,8 +27,13 @@ async function getPurify(): Promise<DomPurifyModule> {
         }
         // Links inside a wireframe/diagram are mock affordances, never
         // navigation. Neutralise the href; the modal's click router treats
-        // `#` as an in-document anchor no-op.
-        if (node.tagName === 'A') node.setAttribute('href', '#');
+        // `#` as an in-document anchor no-op. `localName`, not `tagName`: an
+        // `<a>` inside `<svg>` is foreign content and keeps its lowercase name,
+        // so an uppercase comparison would let SVG anchors through.
+        if (node.localName === 'a') {
+          node.setAttribute('href', '#');
+          node.removeAttribute('xlink:href');
+        }
       });
       return purify;
     });
@@ -56,6 +61,74 @@ export async function sanitizeFragment(html: string): Promise<string> {
     USE_PROFILES: { html: true, svg: true },
     FORBID_TAGS,
   });
+}
+
+/**
+ * Sanitize an svg block's markup for inline rendering. SVG profiles only — no
+ * HTML vocabulary can ride in through `<foreignObject>` (forbidden outright,
+ * on top of DOMPurify already dropping it), and the animation family joins
+ * `animate` / `set` (which DOMPurify drops) so nothing can retarget an
+ * attribute after the fact. `<style>` stays forbidden as in the HTML path: an
+ * inline SVG's stylesheet is document-scoped, so class rules go through the
+ * block's ```css fence, which the viewer prefixes per block.
+ */
+export async function sanitizeSvg(markup: string): Promise<string> {
+  const purify = await getPurify();
+  return purify.sanitize(markup, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: [...FORBID_TAGS, 'foreignobject', 'animatemotion', 'animatetransform'],
+  });
+}
+
+/**
+ * The light values the svg card pins its `--wf-*` tokens to, in both themes —
+ * the same literals `.plan-svg-card` carries in `plan-blocks.css` (a test keeps
+ * the two in step). Used to resolve tokens out of a diagram that leaves the
+ * viewer: a standalone `.svg` file has no stylesheet to resolve `var()` against.
+ */
+export const SVG_CARD_TOKENS: Readonly<Record<string, string>> = {
+  '--wf-ink': '#1a1418',
+  '--wf-muted': '#665c64',
+  '--wf-line': '#ddd2da',
+  '--wf-paper': '#ffffff',
+  '--wf-card': '#f5f0f3',
+  '--wf-accent': '#672167',
+  '--wf-accent-fg': '#ffffff',
+  '--wf-accent-soft': '#f6e4ef',
+  '--wf-warn': '#b03020',
+  '--wf-ok': '#2e7d32',
+  '--wf-radius': '6px',
+};
+
+/** Replace every `var(--wf-*)` (with or without a fallback) by its card value. */
+export function resolveWfTokens(text: string): string {
+  return text.replace(/var\(\s*(--wf-[a-z-]+)\s*(?:,[^)]*)?\)/g, (whole, name: string) => {
+    return SVG_CARD_TOKENS[name] ?? whole;
+  });
+}
+
+/**
+ * Turn a sanitized svg block into a file that stands on its own: the
+ * `xmlns` a standalone document needs, the block's CSS embedded as the root's
+ * first `<style>` child (scrubbed of `@import` and `url(` so the file loads no
+ * external resource when opened elsewhere), and every `--wf-*` token resolved
+ * to its light literal. Pure string work on already-sanitized markup.
+ */
+export function standaloneSvg(sanitizedSvg: string, css?: string): string {
+  let out = sanitizedSvg.trim();
+  if (!/^<svg[^>]*\sxmlns\s*=/i.test(out)) {
+    out = out.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+  const rules = (css ?? '').replace(/@import[^;]*;?/gi, '').replace(/url\s*\(/gi, 'url-removed(');
+  if (rules.trim() !== '') {
+    const rootEnd = out.indexOf('>');
+    if (rootEnd > 0) {
+      out = `${out.slice(0, rootEnd + 1)}\n<style>${rules}</style>${out.slice(rootEnd + 1)}`;
+    }
+  }
+  // DOMPurify serialises through the HTML serialiser, whose one non-XML
+  // entity is `&nbsp;`; a standalone .svg is XML, so spell it numerically.
+  return resolveWfTokens(out).replace(/&nbsp;/g, '&#160;');
 }
 
 /**

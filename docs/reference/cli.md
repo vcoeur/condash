@@ -365,7 +365,11 @@ The parser, the zod schemas, the viewer, and this verb are one code path
 (`src/shared/plan-blocks/`), so a green `check` means the document parses and
 matches the viewer by construction. It does not guarantee visible content —
 `check` warns on a block with an empty payload (an unfolded diagram, an empty
-`code`/`diff`, a wireframe with no html).
+`code`/`diff`, a wireframe with no html). For an `svg` block it goes one step
+further: a missing ```svg fence or a root that is not `<svg>` is an error, and
+it warns on a root without `viewBox`, a block without `alt`, and any
+`<style>` / `<script>` / `<foreignObject>` / `<use>` / `<animate>` / `<set>`
+the viewer's sanitizer will strip.
 
 ### `config`
 

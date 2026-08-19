@@ -337,20 +337,43 @@ export async function renderMarkdownForExport(
   const html = await renderMarkdown(input, options);
   const container = document.createElement('div');
   container.innerHTML = html;
-  if (container.querySelector('pre.mermaid')) {
-    const mermaid = await getMermaid();
-    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
-    try {
-      await renderMermaidBlocks(container, mermaid);
-    } finally {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: activeMermaidTheme(),
-        securityLevel: 'strict',
-      });
-    }
-  }
+  await renderMermaidForExportIn(container);
   return container.innerHTML;
+}
+
+/**
+ * Render every unprocessed `pre.mermaid` under `container` with the light
+ * theme, for a document that is about to be printed. Shared by the markdown
+ * note export (fresh render) and the visual-note export (a clone of the live
+ * document whose mermaid blocks were reset to their source). The shared
+ * singleton is re-initialised back to the live app theme afterwards.
+ */
+export async function renderMermaidForExportIn(container: HTMLElement): Promise<void> {
+  resetMermaidBlocksIn(container);
+  if (!container.querySelector('pre.mermaid')) return;
+  const mermaid = await getMermaid();
+  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
+  try {
+    await renderMermaidBlocks(container, mermaid);
+  } finally {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: activeMermaidTheme(),
+      securityLevel: 'strict',
+    });
+  }
+}
+
+/** Put every already-rendered mermaid block under `container` back to its
+ *  source so the next render pass (with a different theme) re-draws it. No-op
+ *  for blocks never rendered, or rendered before the source was stashed. */
+function resetMermaidBlocksIn(container: HTMLElement): void {
+  for (const block of container.querySelectorAll<HTMLElement>('pre.mermaid[data-processed]')) {
+    const source = block.dataset.mermaidSource;
+    if (source === undefined) continue;
+    block.textContent = source;
+    delete block.dataset.processed;
+  }
 }
 
 async function renderMermaidBlocks(
@@ -374,6 +397,10 @@ async function renderMermaidBlocks(
       // regardless of any ancestor transform. See issue #319.
       const id = `condash-mermaid-${(mermaidRenderSeq += 1)}`;
       const { svg, bindFunctions } = await mermaid.render(id, source);
+      // The source is gone from the DOM once the SVG replaces it; keep it on
+      // the element so an export can reset the block and re-render it light
+      // (`resetMermaidBlocksIn`).
+      block.dataset.mermaidSource = source;
       block.innerHTML = svg;
       block.dataset.processed = 'true';
       bindFunctions?.(block);
