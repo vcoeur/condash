@@ -72,6 +72,8 @@ export interface InstallReport {
   pruned?: {
     skills: { skill: string; relPath: string; shippedVersion: string }[];
     files: { path: string; region: string; shippedVersion: string }[];
+    /** Source directories of no-longer-shipped skills: removed, or kept with a reason. */
+    dirs: { skill: string; path: string; removed: boolean; reason?: string }[];
   };
   diffs?: { kind: 'skill' | 'file'; label: string; diff: string }[];
 }
@@ -128,6 +130,15 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     version: MANIFEST_VERSION,
     skills: {},
   };
+
+  // Snapshot the hashes the manifest recorded, before install or prune mutates
+  // it: `--prune` needs them to tell condash's own content from the user's.
+  const recordedHashes: Record<string, Record<string, string>> = {};
+  for (const [name, entry] of Object.entries(manifest.skills)) {
+    recordedHashes[name] = Object.fromEntries(
+      Object.entries(entry.source).map(([relPath, file]) => [relPath, file.sha256]),
+    );
+  }
 
   const report: InstallReport = {
     destination: sourceRoot,
@@ -248,11 +259,19 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     report.agentsMd = await installAgentsMd(dest, dryRun);
   }
 
-  // --prune: drop manifest entries whose shipped source is gone.
+  // --prune: drop manifest entries whose shipped source is gone, and remove
+  // the leftover source directory of any skill that went with them.
   if (prune) {
-    const prunedSkills = pruneSourceMissingSkillEntries(manifest, shipped);
+    const { entries: prunedSkills, removedSkills } = pruneSourceMissingSkillEntries(
+      manifest,
+      shipped,
+    );
     const prunedFiles = pruneSourceMissingFileEntries(manifest);
-    report.pruned = { skills: prunedSkills, files: prunedFiles };
+    const dirs: { skill: string; path: string; removed: boolean; reason?: string }[] = [];
+    for (const name of removedSkills) {
+      dirs.push(await prunePrunedSkillDir(sourceRoot, name, recordedHashes[name] ?? {}, dryRun));
+    }
+    report.pruned = { skills: prunedSkills, files: prunedFiles, dirs };
   } else {
     // Even without --prune, surface source-missing entries so the user knows
     // to clean up.
@@ -292,6 +311,69 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
       { refused },
     );
   }
+}
+
+/**
+ * Remove the on-disk source directory of a skill the bundle no longer ships.
+ *
+ * Only when every file in it is condash's own: present in the pre-prune
+ * manifest and still matching the hash recorded there. One locally edited or
+ * hand-added file and the directory stays, reported with the reason — a
+ * customised skill has no other copy, and a prune that eats it is
+ * unrecoverable. Harness views are not touched: they are rendered from these
+ * sources at launch, so removing the source is what retires the view.
+ *
+ * @param sourceRoot Absolute `<dest>/.agents/skills` path.
+ * @param skillName Directory name under `sourceRoot`.
+ * @param recorded relPath → sha256 as the manifest had it before pruning.
+ * @param dryRun Report the decision without deleting anything.
+ * @returns The directory's fate, for the install report.
+ */
+async function prunePrunedSkillDir(
+  sourceRoot: string,
+  skillName: string,
+  recorded: Record<string, string>,
+  dryRun: boolean,
+): Promise<{ skill: string; path: string; removed: boolean; reason?: string }> {
+  const dir = join(sourceRoot, skillName);
+  const ref = { skill: skillName, path: dir };
+  let onDisk: string[];
+  try {
+    onDisk = await collectRelativeFiles(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ...ref, removed: false, reason: 'no source directory on disk' };
+    }
+    throw err;
+  }
+  for (const relPath of onDisk) {
+    const recordedHash = recorded[relPath];
+    if (!recordedHash) {
+      return { ...ref, removed: false, reason: `kept: ${relPath} was not installed by condash` };
+    }
+    const content = await fs.readFile(join(dir, relPath));
+    if (sha256(content) !== recordedHash) {
+      return { ...ref, removed: false, reason: `kept: ${relPath} is locally edited` };
+    }
+  }
+  if (!dryRun) await fs.rm(dir, { recursive: true, force: true });
+  return { ...ref, removed: true };
+}
+
+/** Every file under `dir`, recursively, as `/`-joined relative paths. */
+async function collectRelativeFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(current: string, prefix: string): Promise<void> {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const next = join(current, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(next, rel);
+      else out.push(rel);
+    }
+  }
+  await walk(dir, '');
+  return out.sort();
 }
 
 function recordFileOutcome(report: InstallReport, outcome: FileInstallOutcome): void {
@@ -389,6 +471,9 @@ function formatInstallHuman(report: InstallReport): string {
       for (const f of report.pruned.files) {
         lines.push(`  − ${f.path}  (last shipped ${f.shippedVersion})`);
       }
+    }
+    for (const d of report.pruned.dirs) {
+      lines.push(d.removed ? `  − ${d.path}  (directory removed)` : `  · ${d.path}  ${d.reason}`);
     }
   }
   if (report.diffs && report.diffs.length > 0) {

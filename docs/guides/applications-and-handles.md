@@ -88,7 +88,7 @@ condash applications sync-docs           # regenerate the AGENTS.md Apps table
 | `add <handle> --path <p> [--label <l>]` | Register a new live app. |
 | `set <handle> [--label <l>] [--path <p>]` | Update a registered app. |
 | `rename <old> <new>` | Rename a handle; records the old as an alias **and** rewrites every project README `apps:` reference that pointed at it. |
-| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry. (Agent-specific files like `CLAUDE.md` are virtual renders of `AGENTS.md` and are never written to disk.) |
+| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry, including each app's one-line `purpose`. (Agent-specific files like `CLAUDE.md` are virtual renders of `AGENTS.md` and are never written to disk.) |
 | `validate [--fix]` | Check every README `apps:` value resolves to a known `#handle` or existing path. `--fix` canonicalises every resolvable value (bare names and aliases alike), leaving only the unresolvable ones for a human. |
 
 → Schema details for `repositories[]` and `retired_apps` are in **[Config files → repositories](../reference/config.md#repositories)**. The full CLI surface is in **[CLI → applications](../reference/cli.md#applications)**. How handles read inside an `AGENTS.md` `## Specifics` section: **[AGENTS.md style guide](../reference/agents-md-style.md)**.

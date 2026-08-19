@@ -35,7 +35,7 @@ apps:
 
 ## Where identity lives
 
-`.condash/settings.json › repositories[]` is the registry. Each entry: `handle` (defaults to the directory name when omitted), `label` (human title), `path` (location). Defunct handles that closed projects still reference live in `retired_apps` — valid for history, never rendered. Either may carry `aliases` (legacy spellings). Full schema: `docs/reference/config.md` in the condash repo.
+`.condash/settings.json › repositories[]` is the registry. Each entry: `handle` (defaults to the directory name when omitted), `label` (human title), `purpose` (one line on what the app is for — the generated Apps table's Purpose column), `path` (location). Defunct handles that closed projects still reference live in `retired_apps` — valid for history, never rendered. Either may carry `aliases` (legacy spellings). Full schema: `docs/reference/config.md` in the condash repo.
 
 The directory name and the label are **not** identities — only the handle is.
 
@@ -48,8 +48,8 @@ The directory name and the label are **not** identities — only the handle is.
 | Verb | Trigger |
 |------|---------|
 | `list` | `/applications list` — every registered app (live + retired) |
-| `add` | `/applications add <handle> --path <p> [--label <l>]` — register a new app |
-| `set` | `/applications set <handle> [--label <l>] [--path <p>]` — update one |
+| `add` | `/applications add <handle> --path <p> [--label <l>] [--purpose <text>]` — register a new app |
+| `set` | `/applications set <handle> [--label <l>] [--purpose <text>] [--path <p>]` — update one |
 | `rename` | `/applications rename <old> <new>` — rename a handle; cascades |
 | `sync-docs` | `/applications sync-docs` — regenerate the AGENTS.md Apps table |
 | `validate` | `/applications validate` — check every README `apps:` resolves |
@@ -64,7 +64,7 @@ Every verb shells out to `condash applications <verb>`. Pass `--json` for a mach
 condash applications list --json
 ```
 
-Returns `[{handle, label, path, retired, aliases}]`. Use it to pick the right `#handle` before editing a README's `apps:`.
+Returns `[{handle, label, purpose, path, retired, aliases}]`. Use it to pick the right `#handle` before editing a README's `apps:`.
 
 ### validate
 
@@ -80,13 +80,14 @@ Each issue is `{readme, ref, problem, suggestion?}`. `problem: "unknown-handle"`
 condash applications sync-docs
 ```
 
-Regenerates the Apps table inside **AGENTS.md** between the `<!-- condash:apps:start -->` / `<!-- condash:apps:end -->` sentinels from the registry. **AGENTS.md is the only source** — agent-specific files like CLAUDE.md are virtual, rendered from AGENTS.md by agedum at launch (never written to disk); never hand-edit them. If the verb reports `missingSentinels`, add the two sentinel comments around the existing Apps table once, then re-run. Run after any `add` / `set` / `rename`.
+Regenerates the Apps table inside **AGENTS.md** between the `<!-- condash:apps:start -->` / `<!-- condash:apps:end -->` sentinels from the registry — App, Repo, Purpose, AGENTS.md, Knowledge. The whole region is rewritten, so a column or a companion table added by hand is erased on the next run: put the one-line description in the registry's `purpose` instead. **AGENTS.md is the only source** — agent-specific files like CLAUDE.md are virtual, rendered from AGENTS.md by agedum at launch (never written to disk); never hand-edit them. If the verb reports `missingSentinels`, add the two sentinel comments around the existing Apps table once, then re-run. Run after any `add` / `set` / `rename`.
 
 ### add / set
 
 ```bash
-condash applications add fovea --path fovea --label Fovea
+condash applications add fovea --path fovea --label Fovea --purpose "Screenshot diffing service"
 condash applications set kasten --label "Kasten"
+condash applications set kasten --purpose "Zettelkasten vault and web UI"
 ```
 
 `add` fails if the handle (or an alias) already resolves. `<path>` is relative to `workspace_path` or absolute. After either, run `sync-docs`.

@@ -68,6 +68,16 @@ export interface ShippedFile {
    * headings.
    */
   siblings?: string[];
+  /**
+   * Ship the whole file rather than one heading-delimited region. For files
+   * that have no headings to merge through — a shell hook, a JSON fragment.
+   * `region` is then a label for the report only, and the tracked hash covers
+   * the entire file, so the refuse-on-edit contract still holds: a customised
+   * copy is refused, never merged into.
+   */
+  wholeFile?: boolean;
+  /** chmod to apply after writing, e.g. 0o755 for an executable hook. */
+  mode?: number;
 }
 
 /**
@@ -82,7 +92,21 @@ export interface ShippedFile {
  * asar (electron-builder drops bare dotfiles like `.gitignore`) ships under an
  * alias via `sourcePath`.
  */
-export const SHIPPED_FILES: ShippedFile[] = [];
+export const SHIPPED_FILES: ShippedFile[] = [
+  {
+    // The knowledge-retrieve reminder hook. Scaffolded by `condash init` and,
+    // before this entry existed, never refreshed again — the one thing condash
+    // put in a conception with no update path, so a four-month-old copy kept
+    // its original trigger table while the shipped one learned that a bare
+    // `*auth*` glob also matches `author`. Whole-file: a shell script has no
+    // heading to merge a region through, and refuse-on-edit protects a
+    // customised trigger table.
+    path: '.claude/hooks/knowledge-retrieve-reminder.sh',
+    region: 'knowledge-retrieve reminder hook',
+    wholeFile: true,
+    mode: 0o755,
+  },
+];
 
 function optsFor(t: ShippedFile): HeadingOpts {
   return { mark: t.mark ?? DEFAULT_MARK, siblings: t.siblings };
@@ -163,6 +187,10 @@ export async function installShippedFile(
       return { path: file.path, region: file.region, state: 'source-missing' };
     }
     throw err;
+  }
+
+  if (file.wholeFile) {
+    return installWholeShippedFile(file, params, sourceContent);
   }
 
   const sourceRegion = extractRegion(sourceContent, file.region, opts);
@@ -261,6 +289,80 @@ export async function installShippedFile(
       sha256: sourceRegionHash,
       shippedVersion,
     };
+    return { path: file.path, region: file.region, state: 'forced', diff };
+  }
+  return {
+    path: file.path,
+    region: file.region,
+    state: 'refused',
+    reason: tracked ? 'edited since last install' : 'present but not tracked by manifest',
+    diff,
+  };
+}
+
+/**
+ * Install a file condash ships in full, under the same refuse-on-edit contract
+ * as a region: converged → refresh the manifest; matching the recorded hash →
+ * push the new content; anything else → refuse (or overwrite with `--force`).
+ *
+ * @param file The shipped-file descriptor, with `wholeFile` set.
+ * @param params Install parameters shared with the region path.
+ * @param sourceContent The shipped content, already read by the caller.
+ * @returns The per-file outcome for the install report.
+ */
+async function installWholeShippedFile(
+  file: ShippedFile,
+  params: FileInstallParams,
+  sourceContent: string,
+): Promise<FileInstallOutcome> {
+  const { dest, shippedVersion, force, showDiff, dryRun, manifest } = params;
+  if (!manifest.files) manifest.files = {};
+  const files = manifest.files;
+  const targetPath = join(dest, file.path);
+  const sourceHash = sha256(sourceContent);
+
+  const record = (): void => {
+    files[file.path] = { region: file.region, sha256: sourceHash, shippedVersion };
+  };
+  const write = async (): Promise<void> => {
+    if (dryRun) return;
+    await writeFileMkdir(targetPath, Buffer.from(sourceContent, 'utf8'));
+    if (file.mode !== undefined) await fs.chmod(targetPath, file.mode);
+  };
+
+  let onDisk: string | null = null;
+  try {
+    onDisk = await fs.readFile(targetPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+
+  if (onDisk === null) {
+    await write();
+    record();
+    return { path: file.path, region: file.region, state: 'copied' };
+  }
+
+  const onDiskHash = sha256(onDisk);
+  if (onDiskHash === sourceHash) {
+    // Already converged. Re-assert the mode: a copy that lost its +x bit is
+    // silently inert, which is the failure this entry exists to prevent.
+    if (!dryRun && file.mode !== undefined) await fs.chmod(targetPath, file.mode);
+    record();
+    return { path: file.path, region: file.region, state: 'unchanged' };
+  }
+
+  const tracked = files[file.path];
+  if (tracked && tracked.sha256 === onDiskHash) {
+    await write();
+    record();
+    return { path: file.path, region: file.region, state: 'updated' };
+  }
+
+  const diff = showDiff ? cheapDiff(onDisk, sourceContent) : undefined;
+  if (force) {
+    await write();
+    record();
     return { path: file.path, region: file.region, state: 'forced', diff };
   }
   return {
@@ -453,7 +555,9 @@ export async function statusShippedFile(
     }
     return null;
   }
-  const onDiskRegion = extractRegion(onDisk, file.region, opts);
+  // A whole-file entry has no region to extract: the hash covers the file, so
+  // the comparisons below run on its full content.
+  const onDiskRegion = file.wholeFile ? onDisk : extractRegion(onDisk, file.region, opts);
   if (onDiskRegion === null) {
     // No condash-owned region on disk. Only surface this when the manifest
     // already tracks the file (so the user previously opted in) — otherwise
@@ -488,7 +592,7 @@ export async function statusShippedFile(
   let sourceRegion: string | null = null;
   try {
     const sourceContent = await fs.readFile(sourcePath, 'utf8');
-    sourceRegion = extractRegion(sourceContent, file.region, opts);
+    sourceRegion = file.wholeFile ? sourceContent : extractRegion(sourceContent, file.region, opts);
   } catch {
     /* shipped source disappeared — falls through to source-missing below */
   }

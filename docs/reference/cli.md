@@ -186,7 +186,7 @@ The app registry — one canonical `#handle` per app, with its `label` + `path`.
 | `add <handle> --path <p> [--label <l>]` | Register a new live app |
 | `set <handle> [--label <l>] [--path <p>]` | Update a registered app |
 | `rename <old> <new>` | Rename a handle; records the old as an alias and rewrites every project README `apps:` reference that pointed at it |
-| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry; submodule rows render right after their parent with a `↳`-prefixed App cell (agent-specific files like CLAUDE.md are virtual [agedum](skill.md#the-harness-launcher-agedum) renders of AGENTS.md — never written to disk) |
+| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry — App, Repo, Purpose, AGENTS.md, Knowledge; submodule rows render right after their parent with a `↳`-prefixed App cell (agent-specific files like CLAUDE.md are virtual [agedum](skill.md#the-harness-launcher-agedum) renders of AGENTS.md — never written to disk) |
 | `validate [--fix]` | Every project README `apps:` value must resolve to a known `#handle` (live or retired) or an existing absolute path; unknown handles exit 3, alias hits are reported with a suggested rewrite. `--fix` canonicalises every resolvable value to its `#handle` (bare names and legacy aliases alike) and leaves only the unresolvable ones for a human |
 
 ```bash
@@ -231,6 +231,7 @@ condash audit --include lfs,binaries
 | `stale-verification` | Knowledge body files whose oldest `**Verified:**` stamp is older than the freshness threshold (default 90 days). Shares its engine with `condash knowledge verify`, so the two agree on what counts as stale. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
 | `check-knowledge-deferred` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 | `check-knowledge` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
+| `hooks` | A hook script under `.claude/hooks/` that no settings file registers (`.claude/settings.json`, `.claude/settings.local.json`). The file is present and executable and reads as live, while nothing runs it — so a skill calling it a backstop is promising something the tree does not deliver. Never auto-fixed: registering it or deleting it is a judgment call |
 
 `--include <list>` restricts to a comma-separated subset (or `all`).
 
@@ -344,7 +345,7 @@ condash no longer ships any top-level file — `.gitignore` was dropped after v4
 | `status` | Per-skill install state (tracked, edited, missing on source) |
 | `validate [<skill>…]` | Lint shipped skills — each must have a `SKILL.md` carrying a `description` |
 
-Install flags: `--dest <path>` (retarget the install dir; default the resolved conception or cwd), `--force` (override refuse-on-edit), `--diff` (show a unified diff per refused item), `--dry-run` (report without writing), `--prune` (drop manifest entries whose shipped source has been removed).
+Install flags: `--dest <path>` (retarget the install dir; default the resolved conception or cwd), `--force` (override refuse-on-edit), `--diff` (show a unified diff per refused item), `--dry-run` (report without writing), `--prune` (drop manifest entries whose shipped source has been removed — a whole skill or a single file the current layout no longer ships — and remove the leftover source directory of a dropped skill when every file in it still matches the hash condash recorded; a locally edited or hand-added file keeps the directory, reported with the reason. Harness views are left alone: they are rendered from these sources at launch, so retiring the source retires the view).
 
 Skill sources flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` per source file; a `files.<path>` namespace is retained only to reconcile legacy top-level entries such as a `.gitignore` shipped by condash ≤ 4.0.1), tracking the shipped version and SHA256 per file so a re-install can detect local edits. A per-skill entry left by an earlier schema (one with no `source` map) is re-seeded on read, so upgrading condash never crashes the install. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
 

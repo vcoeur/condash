@@ -33,7 +33,7 @@ condash <noun> <verb> [args] [--flags]
 | `repos` | `list [--include-worktrees]` |
 | `applications` | `list`, `add`, `set`, `rename`, `sync-docs`, `validate` (the `#handle` registry) |
 | `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>`, `mismatch` |
-| `audit` | `--include all\|lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,check-knowledge-deferred,check-knowledge` |
+| `audit` | `--include all\|lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,check-knowledge-deferred,check-knowledge,hooks` |
 | `sync` | `run` (executes the sweep), `commit <item> --message "…"` — the single-writer git sweeper for a checkout shared by parallel sessions: fetches first, fast-forwards an ahead-only remote, and refuses to push (never to commit) on divergence. Bare `condash sync` is a dry-run (prints what a sweep would commit, writes nothing); `sync run` executes. Backs the Settings → Auto-commit timer. |
 | `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
 | `skills` | `list`, `install`, `status`, `validate` |

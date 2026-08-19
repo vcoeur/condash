@@ -15,7 +15,7 @@ import {
 } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
 
-const NOUN_FLAGS: readonly string[] = ['label', 'path', 'fix'];
+const NOUN_FLAGS: readonly string[] = ['label', 'purpose', 'path', 'fix'];
 
 /**
  * `condash applications <verb>` — manage the app registry: the single source
@@ -116,32 +116,34 @@ export async function runApplications(
 
   if (verb === 'add') {
     const label = takeStringFlag(args, 'label');
+    const purpose = takeStringFlag(args, 'purpose');
     const path = takeStringFlag(args, 'path');
     assertNoExtraFlags(args, NOUN_FLAGS);
     const handle = args.positional[0];
     if (!handle || !path) {
       throw new CliError(
         ExitCodes.USAGE,
-        'Usage: condash applications add <handle> --path <path> [--label <label>]',
+        'Usage: condash applications add <handle> --path <path> [--label <label>] [--purpose <text>]',
       );
     }
-    await addApplication(conceptionPath, { handle, path, label });
+    await addApplication(conceptionPath, { handle, path, label, purpose });
     emit(ctx, { ok: true, handle }, () => `registered #${handle}\n`);
     return;
   }
 
   if (verb === 'set') {
     const label = takeStringFlag(args, 'label');
+    const purpose = takeStringFlag(args, 'purpose');
     const path = takeStringFlag(args, 'path');
     assertNoExtraFlags(args, NOUN_FLAGS);
     const handle = args.positional[0];
-    if (!handle || (label === undefined && path === undefined)) {
+    if (!handle || (label === undefined && path === undefined && purpose === undefined)) {
       throw new CliError(
         ExitCodes.USAGE,
-        'Usage: condash applications set <handle> [--label <label>] [--path <path>]',
+        'Usage: condash applications set <handle> [--label <label>] [--purpose <text>] [--path <path>]',
       );
     }
-    await setApplication(conceptionPath, handle, { label, path });
+    await setApplication(conceptionPath, handle, { label, path, purpose });
     emit(ctx, { ok: true, handle }, () => `updated #${handle}\n`);
     return;
   }
@@ -183,12 +185,12 @@ function printHelp(verb: string | null): void {
     [
       'condash applications <verb> [args]',
       '',
-      'The app registry — one canonical #handle per app, with label + path.',
+      'The app registry — one canonical #handle per app, with label, purpose + path.',
       '',
       'Verbs:',
       '  list                       List registered apps (live + retired; submodules nested).',
       '  add <handle> --path P      Register a new app.',
-      '  set <handle> [--label|--path]   Update an app.',
+      '  set <handle> [--label|--purpose|--path]   Update an app.',
       '  rename <old> <new>         Rename a handle; rewrites README refs.',
       '  sync-docs                  Regenerate the AGENTS.md Apps table.',
       '  validate                   Check every README apps: resolves.',
@@ -200,14 +202,14 @@ function printHelp(verb: string | null): void {
 function verbHelp(verb: string): string {
   const lines: Record<string, string[]> = {
     add: [
-      'condash applications add <handle> --path <path> [--label <label>]',
+      'condash applications add <handle> --path <path> [--label <label>] [--purpose <text>]',
       '',
       'Register a new live app. <path> is relative to workspace_path or absolute.',
     ],
     set: [
-      'condash applications set <handle> [--label <label>] [--path <path>]',
+      'condash applications set <handle> [--label <label>] [--purpose <text>] [--path <path>]',
       '',
-      "Update a registered app's label or path.",
+      "Update a registered app's label, purpose or path. An empty --purpose clears it.",
     ],
     rename: [
       'condash applications rename <old-handle> <new-handle>',

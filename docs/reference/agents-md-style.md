@@ -19,10 +19,10 @@ Open `## Specifics` with the **Apps** table — one row per live app the concept
 
 ```markdown
 <!-- condash:apps:start -->
-| App | Repo | AGENTS.md | Knowledge |
-|-----|------|-----------|-----------|
-| `#helio` | `~/src/acme/helio` | `/home/you/src/acme/helio/AGENTS.md` | `knowledge/internal/helio.md` |
-| ↳ `#helio.web` | `~/src/acme/helio/apps/web` | | `knowledge/internal/helio.web.md` |
+| App | Repo | Purpose | AGENTS.md | Knowledge |
+|-----|------|---------|-----------|-----------|
+| `#helio` | `~/src/acme/helio` | Customer-facing API | `/home/you/src/acme/helio/AGENTS.md` | `knowledge/internal/helio.md` |
+| ↳ `#helio.web` | `~/src/acme/helio/apps/web` | Marketing site | | `knowledge/internal/helio.web.md` |
 <!-- condash:apps:end -->
 ```
 
@@ -32,10 +32,11 @@ Add both sentinels by hand the first time. Without them `sync-docs` writes nothi
 |---|---|
 | **App** | The `#handle`, backticked. Lower-case, kebab-or-dot, matching the repo basename when possible. The slug used in cross-references everywhere. A submodule row is prefixed `↳ ` and rendered directly under its parent. |
 | **Repo** | The path as configured in `repositories[]` (e.g. `~/src/<workspace>/<repo>`). |
+| **Purpose** | One line on what the app is for, from the registry's `purpose` field. Empty until set — fill it with `condash applications set <handle> --purpose "…"`, then re-run `sync-docs`. Pipes and newlines in the text are escaped and flattened so a long purpose cannot break the table. |
 | **AGENTS.md** | Absolute path to the app's own agent-config file. `sync-docs` resolves it per checkout with the fallback `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md`, so the cell always points at the file that actually exists; empty when the checkout carries none. (Formerly labelled **Config**.) |
 | **Knowledge** | The conventional per-app knowledge entry point, `knowledge/internal/<handle>.md`. Emitted for every row whether or not the file exists — it is the path to create, not a link that was checked. |
 
-Four columns, and there is **no `Purpose` column**: `sync-docs` regenerates the whole region, so any column you add by hand is erased on the next run. Retired handles are omitted too — the table documents live apps only. Keep it a navigation index; operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`.
+Five columns, and no others: `sync-docs` regenerates the whole region, so any column you add by hand is erased on the next run — including a hand-kept companion table beside it, which is what the `Purpose` column exists to make unnecessary. Retired handles are omitted too — the table documents live apps only. Keep it a navigation index; operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`.
 
 Everything the table needs comes from the registry, so the way to change a row is [`condash applications set`](cli.md#applications) followed by `sync-docs` — never a hand-edit inside the sentinels.
 

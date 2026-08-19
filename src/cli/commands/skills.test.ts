@@ -3,6 +3,7 @@
  * (read-only fixture) writing into a tmp dest. condash places the skill source
  * layout verbatim — no compile to per-harness dirs.
  */
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,7 +28,7 @@ function ctx(): OutputContext {
   return { json: true, ndjson: false, quiet: true, noColor: true };
 }
 
-async function install(extra: { force?: boolean } = {}): Promise<void> {
+async function install(extra: { force?: boolean; prune?: boolean } = {}): Promise<void> {
   process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
   await runSkills(
     'install',
@@ -35,10 +36,49 @@ async function install(extra: { force?: boolean } = {}): Promise<void> {
       noun: 'skills',
       verb: 'install',
       positional: [],
-      flags: { dest, ...(extra.force ? { force: true } : {}) },
+      flags: {
+        dest,
+        ...(extra.force ? { force: true } : {}),
+        ...(extra.prune ? { prune: true } : {}),
+      },
     },
     ctx(),
   );
+}
+
+/** `skills status` rows for the tmp dest, straight off the JSON envelope. */
+async function statusRows(): Promise<{ skill: string; file: string; state: string }[]> {
+  process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
+  const chunks: string[] = [];
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+    chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    await runSkills(
+      'status',
+      { noun: 'skills', verb: 'status', positional: [], flags: { dest } },
+      ctx(),
+    );
+  } finally {
+    process.stdout.write = write;
+  }
+  const envelope = JSON.parse(chunks.join('')) as {
+    data: { items: { skill: string; file: string; state: string }[] };
+  };
+  return envelope.data.items;
+}
+
+/** Add a manifest entry for a file the bundle does not ship — a layout ghost. */
+async function seedGhostEntry(skill: string, relPath: string): Promise<void> {
+  const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as {
+    skills: Record<string, { source: Record<string, { sha256: string; shippedVersion: string }> }>;
+  };
+  manifest.skills[skill] ??= { source: {} };
+  manifest.skills[skill].source[relPath] = { sha256: 'b'.repeat(64), shippedVersion: '3.35.2' };
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 }
 
 describe('condash skills install (verbatim placement)', () => {
@@ -150,6 +190,91 @@ describe('condash skills install (verbatim placement)', () => {
     expect(manifest!.version).toBe(3);
     expect(manifest!.files!['AGENTS.md']).toBeTruthy();
     expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
+  });
+
+  it('reports a manifest entry the bundle no longer ships as source-missing, not missing', async () => {
+    // An entry from a superseded layout (`body.md`, `spec.yaml`, …) is absent
+    // from disk *and* from the bundle. Reporting it as `missing` read like real
+    // drift and padded the output enough to bury genuine `outdated` rows.
+    await install();
+    await seedGhostEntry('knowledge', 'body.md');
+    const rows = await statusRows();
+    const ghost = rows.find((r) => r.skill === 'knowledge' && r.file === 'body.md');
+    expect(ghost?.state).toBe('source-missing');
+    expect(rows.filter((r) => r.state === 'missing')).toEqual([]);
+  });
+
+  it('--prune drops a stale per-file entry under a still-shipped skill', async () => {
+    await install();
+    await seedGhostEntry('knowledge', 'body.md');
+    await install({ prune: true });
+    const manifest = await readManifest(dest);
+    expect(manifest!.skills.knowledge.source['body.md']).toBeUndefined();
+    // The skill itself survives — only the entry for the unshipped file goes.
+    expect(manifest!.skills.knowledge.source['SKILL.md']).toBeTruthy();
+    expect(await statusRows()).not.toContainEqual(expect.objectContaining({ file: 'body.md' }));
+  });
+
+  it('--prune removes the source directory of a skill the bundle dropped', async () => {
+    await install();
+    // Simulate a skill that shipped once and is gone from the current bundle:
+    // on disk under .agents/skills/, tracked in the manifest, unmodified.
+    const retiredDir = join(dest, '.agents/skills/tidy');
+    await fs.mkdir(retiredDir, { recursive: true });
+    const body = '# /tidy\n';
+    await fs.writeFile(join(retiredDir, 'SKILL.md'), body, 'utf8');
+    const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as {
+      skills: Record<string, { source: Record<string, unknown> }>;
+    };
+    manifest.skills.tidy = {
+      source: {
+        'SKILL.md': {
+          sha256: createHash('sha256').update(body).digest('hex'),
+          shippedVersion: '3.35.2',
+        },
+      },
+    };
+    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+    await install({ prune: true });
+
+    await expect(fs.access(retiredDir)).rejects.toThrow();
+    const after = await readManifest(dest);
+    expect(after!.skills.tidy).toBeUndefined();
+  });
+
+  it("--prune keeps a dropped skill's directory when a file in it was edited", async () => {
+    await install();
+    const retiredDir = join(dest, '.agents/skills/tidy');
+    await fs.mkdir(retiredDir, { recursive: true });
+    await fs.writeFile(join(retiredDir, 'SKILL.md'), '# /tidy — my own version\n', 'utf8');
+    const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as {
+      skills: Record<string, { source: Record<string, unknown> }>;
+    };
+    // Hash of the *shipped* content, not what is on disk → locally edited.
+    manifest.skills.tidy = {
+      source: { 'SKILL.md': { sha256: 'c'.repeat(64), shippedVersion: '3.35.2' } },
+    };
+    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+    await install({ prune: true });
+
+    // The edit survives; only the manifest entry is dropped.
+    const kept = await fs.readFile(join(retiredDir, 'SKILL.md'), 'utf8');
+    expect(kept).toContain('my own version');
+  });
+
+  it('leaves a conception-local skill alone', async () => {
+    // A skill the conception wrote itself is never in the manifest, so no
+    // prune path may reason from "absent from the shipped set".
+    await install();
+    const localDir = join(dest, '.agents/skills/toggl');
+    await fs.mkdir(localDir, { recursive: true });
+    await fs.writeFile(join(localDir, 'SKILL.md'), '# /toggl\n', 'utf8');
+    await install({ prune: true });
+    await expect(fs.access(join(localDir, 'SKILL.md'))).resolves.toBeUndefined();
   });
 
   it('ships a Claude overlay for every shipped skill that shells out to condash', async () => {

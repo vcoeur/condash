@@ -14,6 +14,7 @@ export const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'stale-verification',
   'check-knowledge',
   'check-knowledge-deferred',
+  'hooks',
 ];
 
 const KNOWN_FLAGS_AUDIT = ['include'] as const;

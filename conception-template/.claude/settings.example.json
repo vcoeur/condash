@@ -3,7 +3,9 @@
     "allow": [
       "Skill(projects)",
       "Skill(knowledge)",
-      "Skill(pr)"
+      "Skill(pr)",
+      "Skill(applications)",
+      "Skill(visual)"
     ]
   },
   "hooks": {
