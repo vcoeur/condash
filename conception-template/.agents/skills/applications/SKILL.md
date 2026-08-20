@@ -49,8 +49,8 @@ The directory name and the label are **not** identities — only the handle is.
 |------|---------|
 | `list` | `/applications list` — every registered app (live + retired) |
 | `add` | `/applications add <handle> --path <p> [--label <l>] [--purpose <text>]` — register a new app |
-| `set` | `/applications set <handle> [--label <l>] [--purpose <text>] [--path <p>]` — update one |
-| `rename` | `/applications rename <old> <new>` — rename a handle; cascades |
+| `set` | `/applications set <handle> [--label <l>] [--purpose <text>] [--path <p>]` — update one; any handle `list` shows, submodules included |
+| `rename` | `/applications rename <old> <new>` — rename a handle; cascades; submodules included |
 | `sync-docs` | `/applications sync-docs` — regenerate the AGENTS.md Apps table |
 | `validate` | `/applications validate` — check every README `apps:` resolves |
 

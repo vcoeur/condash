@@ -33,7 +33,9 @@ export interface RepoLookup {
    *  force_stop machinery keys on. */
   name: string;
   /** Canonical `#handle` (no leading `#`) — the public identity. Explicit
-   *  `entry.handle`, or `appHandle(name)` when unset. */
+   *  `entry.handle`, else the directory name, and **always** through
+   *  `appHandle`: an explicit handle is normalised too, not published as
+   *  written, so it stays reachable from a README reference. */
   handle: string;
   /** Legacy spellings that resolve to this handle, from `condash.json`. */
   aliases?: string[];
@@ -83,35 +85,83 @@ export function resolveCwd(
 }
 
 /**
+ * Where a raw entry physically sits: the array holding it and its index there.
+ * A mutating caller needs both — patching a field only needs the entry, but
+ * replacing one shape with another (a bare string widened to an object) has to
+ * rewrite the slot itself.
+ *
+ * This is a **writable reference into the config object you passed in**. Only
+ * ever resolve one against the raw object from `mutateConceptionConfig`; the
+ * memoised effective config from `getEffectiveConceptionConfig` is shared by
+ * reference and must be treated as immutable down to its nested
+ * `repositories[]` entries, so writing through a slot obtained from it would
+ * poison the cache for every reader.
+ */
+export interface RepoSlot {
+  container: (RawRepo | RawSubmoduleRepo)[];
+  index: number;
+}
+
+/**
  * Walk every repo entry in `config.repositories` (recursing into `submodules`)
  * in declaration order. Visitors that want to short-circuit the walk return
  * `false`; returning `true` (or `void`) keeps the walk going.
+ *
+ * The visitor also receives the entry's {@link RepoSlot}, so a caller that has
+ * to *write* the config resolves through this same walk rather than
+ * re-implementing the recursion — see {@link findRepoSlotByHandle}.
  */
-export function walkRepos(config: ConfigShape, visit: (entry: RepoLookup) => boolean | void): void {
+export function walkRepos(
+  config: ConfigShape,
+  visit: (entry: RepoLookup, slot: RepoSlot) => boolean | void,
+): void {
   const workspace = config.workspace_path;
   if (!config.repositories) return;
+  const repos = config.repositories;
   let currentSection: string | undefined;
-  for (const entry of config.repositories) {
+  for (let index = 0; index < repos.length; index += 1) {
+    const entry = repos[index];
     if (isSectionMarker(entry)) {
       currentSection = entry.section;
       continue;
     }
-    if (visitOne(entry, undefined, workspace, currentSection, visit)) return;
+    if (visitOne(repos, index, undefined, workspace, currentSection, visit)) return;
   }
 }
 
+/**
+ * Find the raw entry whose canonical handle is `handle`, in the declaration
+ * order {@link walkRepos} emits — so the entry a mutating verb edits is the
+ * same one `listApplications` reports first and `resolveReference` resolves to.
+ * Any other precedence lets `set` / `rename` edit one row while `validate`
+ * reads another (condash#532).
+ */
+export function findRepoSlotByHandle(config: ConfigShape, handle: string): RepoSlot | null {
+  const target = appHandle(handle);
+  let found: RepoSlot | null = null;
+  walkRepos(config, (entry, slot) => {
+    if (appHandle(entry.handle) !== target) return;
+    found = slot;
+    return false;
+  });
+  return found;
+}
+
 function visitOne(
-  entry: RawRepo | RawSubmoduleRepo,
+  container: (RawRepo | RawSubmoduleRepo)[],
+  index: number,
   parent: string | undefined,
   workspace: string | undefined,
   section: string | undefined,
-  visit: (entry: RepoLookup) => boolean | void,
+  visit: (entry: RepoLookup, slot: RepoSlot) => boolean | void,
   // Resolved cwd of the parent entry, set only on submodule recursion. A
   // submodule resolves under its parent's *resolved* directory — not under
   // `<workspace>/<parent name>` — so a path-configured parent's submodules
   // land in the right place.
   parentCwd?: string,
 ): boolean {
+  const entry = container[index];
+  const slot: RepoSlot = { container, index };
   if (typeof entry === 'string') {
     const lookup: RepoLookup = {
       display: parent ? `${parent}/${entry}` : entry,
@@ -121,7 +171,7 @@ function visitOne(
       cwd: resolveCwd(parentCwd ?? workspace, undefined, entry),
       section,
     };
-    return visit(lookup) === false;
+    return visit(lookup, slot) === false;
   }
   // Section markers are stripped by the caller. By construction this branch
   // only receives a repo-object variant.
@@ -133,7 +183,12 @@ function visitOne(
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${dirName}` : dirName,
     name: dirName,
-    handle: entry.handle ?? appHandle(dirName),
+    // Normalised even when written explicitly: `appHandle` is the single
+    // handle rule, and every reference resolves through it, so publishing a
+    // raw `handle: "Kasten"` here made the entry unreachable from any README
+    // (`validate` reported `#kasten` unknown) while `set kasten` still edited
+    // it — read and write disagreeing about one row again (condash#532).
+    handle: appHandle(entry.handle ?? dirName),
     aliases: entry.aliases,
     label: entry.label,
     purpose: entry.purpose,
@@ -143,12 +198,15 @@ function visitOne(
     forceStop: entry.force_stop,
     section,
   };
-  if (visit(lookup) === false) return true;
+  if (visit(lookup, slot) === false) return true;
   if ('submodules' in entry && entry.submodules?.length) {
-    for (const sub of entry.submodules) {
+    const submodules = entry.submodules;
+    for (let subIndex = 0; subIndex < submodules.length; subIndex += 1) {
       // `dirName` (not `entry.name`) so a path-only parent still prefixes its
       // submodules' display names; `lookup.cwd` anchors their resolution.
-      if (visitOne(sub, dirName, workspace, section, visit, lookup.cwd)) return true;
+      if (visitOne(submodules, subIndex, dirName, workspace, section, visit, lookup.cwd)) {
+        return true;
+      }
     }
   }
   return false;

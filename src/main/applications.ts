@@ -17,8 +17,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
 import { parseHeader } from '../shared/header';
-import { toPosix } from '../shared/path';
-import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
+import {
+  findRepoSlotByHandle,
+  walkRepos,
+  type ConfigShape,
+  type RepoLookup,
+  type RepoSlot,
+} from './config-walk';
 import { getEffectiveConceptionConfig, mutateConceptionConfig } from './effective-config';
 import { findProjectReadmes } from './walk';
 import { pathExists } from './fs-helpers';
@@ -432,10 +437,9 @@ export async function setApplication(
 ): Promise<void> {
   const target = appHandle(handle);
   await mutateConfig(conceptionPath, (config) => {
-    const repos = config.repositories ?? [];
-    const entry = repos.find((r) => isRepoWithHandle(r, target));
-    if (!entry || typeof entry !== 'object') throw new Error(`no live app #${target}`);
-    const obj = entry as Record<string, unknown>;
+    const slot = findRepoSlotByHandle(config as ConfigShape, target);
+    if (!slot) throw new Error(`no live app #${target}`);
+    const obj = asMutableEntry(slot);
     if (patch.label !== undefined) obj.label = patch.label || undefined;
     if (patch.path !== undefined) obj.path = patch.path;
     // An empty --purpose clears the cell rather than writing a blank string.
@@ -443,20 +447,29 @@ export async function setApplication(
   });
 }
 
-/** True when a raw repositories[] entry resolves to `handle`. */
-function isRepoWithHandle(raw: unknown, handle: string): boolean {
-  if (typeof raw === 'string') return appHandle(raw) === handle;
-  if (!raw || typeof raw !== 'object' || 'section' in raw) return false;
-  const obj = raw as { handle?: string; name?: string; path?: string };
-  const own = obj.handle ? appHandle(obj.handle) : appHandle(obj.name ?? basenameOf(obj.path));
-  return own === handle;
-}
-
-function basenameOf(p?: string): string {
-  if (!p) return '';
-  const normalised = toPosix(p);
-  const parts = normalised.replace(/\/+$/, '').split('/');
-  return parts[parts.length - 1] ?? '';
+/**
+ * The slot's entry as a mutable object, widening the bare-string form
+ * (`"condash"`) to `{ name: "condash" }` in place first.
+ *
+ * A string entry carries no field to patch, so `set` used to reject it with
+ * the same "no live app" error a genuinely absent handle gets — the #532
+ * contract break again, reached through entry shape rather than nesting depth.
+ * The widening preserves identity: the handle still derives from the same
+ * directory name, so nothing that resolved before resolves differently.
+ *
+ * `renameApplication` widens a string too, but to a *different* shape — it
+ * pins an explicit `handle` and records the old spelling as an alias, neither
+ * of which belongs on a plain field patch. The two are deliberately not one
+ * helper.
+ */
+function asMutableEntry(slot: RepoSlot): Record<string, unknown> {
+  const current = slot.container[slot.index];
+  if (typeof current === 'string') {
+    const widened: Record<string, unknown> = { name: current };
+    slot.container[slot.index] = widened;
+    return widened;
+  }
+  return current as Record<string, unknown>;
 }
 
 /** Outcome of a {@link renameApplication} run. */
@@ -491,19 +504,25 @@ export async function renameApplication(
   }
 
   await mutateConfig(conceptionPath, (config) => {
-    const repos = config.repositories ?? [];
-    const entry = repos.find((r) => isRepoWithHandle(r, oldHandle));
-    if (!entry) throw new Error(`no live app #${oldHandle}`);
+    const slot = findRepoSlotByHandle(config as ConfigShape, oldHandle);
+    if (!slot) throw new Error(`no live app #${oldHandle}`);
+    const entry = slot.container[slot.index];
     if (typeof entry === 'string') {
-      const idx = repos.indexOf(entry);
-      repos[idx] = { handle: newHandle, name: entry, aliases: [entry] };
-    } else if (typeof entry === 'object') {
+      slot.container[slot.index] = { handle: newHandle, name: entry, aliases: [entry] };
+    } else if (entry && typeof entry === 'object') {
       const obj = entry as Record<string, unknown>;
       const aliases = new Set<string>(Array.isArray(obj.aliases) ? (obj.aliases as string[]) : []);
       aliases.add(oldHandle);
       aliases.delete(newHandle);
       obj.handle = newHandle;
       obj.aliases = Array.from(aliases);
+    } else {
+      // Not reachable from any JSON-representable config — the walk that
+      // produced this slot would have thrown on such an entry first. Kept as
+      // a guard rather than a silent fall-through, because falling through
+      // would leave the registry untouched while the README cascade below
+      // still rewrote every reference to a handle no entry carries.
+      throw new Error(`registry entry for #${oldHandle} has an unusable shape`);
     }
   });
 
