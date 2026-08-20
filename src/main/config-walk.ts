@@ -33,7 +33,9 @@ export interface RepoLookup {
    *  force_stop machinery keys on. */
   name: string;
   /** Canonical `#handle` (no leading `#`) — the public identity. Explicit
-   *  `entry.handle`, or `appHandle(name)` when unset. */
+   *  `entry.handle`, else the directory name, and **always** through
+   *  `appHandle`: an explicit handle is normalised too, not published as
+   *  written, so it stays reachable from a README reference. */
   handle: string;
   /** Legacy spellings that resolve to this handle, from `condash.json`. */
   aliases?: string[];
