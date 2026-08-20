@@ -517,10 +517,11 @@ export async function renameApplication(
       obj.handle = newHandle;
       obj.aliases = Array.from(aliases);
     } else {
-      // Neither shape means the registry entry is not one we can rewrite.
-      // Falling through would leave the config untouched while the README
-      // cascade below still rewrote every reference to a handle no entry
-      // carries, so fail loudly instead.
+      // Not reachable from any JSON-representable config — the walk that
+      // produced this slot would have thrown on such an entry first. Kept as
+      // a guard rather than a silent fall-through, because falling through
+      // would leave the registry untouched while the README cascade below
+      // still rewrote every reference to a handle no entry carries.
       throw new Error(`registry entry for #${oldHandle} has an unusable shape`);
     }
   });

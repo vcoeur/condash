@@ -87,6 +87,13 @@ export function resolveCwd(
  * A mutating caller needs both — patching a field only needs the entry, but
  * replacing one shape with another (a bare string widened to an object) has to
  * rewrite the slot itself.
+ *
+ * This is a **writable reference into the config object you passed in**. Only
+ * ever resolve one against the raw object from `mutateConceptionConfig`; the
+ * memoised effective config from `getEffectiveConceptionConfig` is shared by
+ * reference and must be treated as immutable down to its nested
+ * `repositories[]` entries, so writing through a slot obtained from it would
+ * poison the cache for every reader.
  */
 export interface RepoSlot {
   container: (RawRepo | RawSubmoduleRepo)[];
@@ -174,7 +181,12 @@ function visitOne(
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${dirName}` : dirName,
     name: dirName,
-    handle: entry.handle ?? appHandle(dirName),
+    // Normalised even when written explicitly: `appHandle` is the single
+    // handle rule, and every reference resolves through it, so publishing a
+    // raw `handle: "Kasten"` here made the entry unreachable from any README
+    // (`validate` reported `#kasten` unknown) while `set kasten` still edited
+    // it — read and write disagreeing about one row again (condash#532).
+    handle: appHandle(entry.handle ?? dirName),
     aliases: entry.aliases,
     label: entry.label,
     purpose: entry.purpose,

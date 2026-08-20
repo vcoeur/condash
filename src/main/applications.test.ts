@@ -512,11 +512,25 @@ describe('add / set / rename round-trips', () => {
     expect(apps.find((a) => a.handle === 'shared' && !a.parent)!.label).toBe('Top');
   });
 
+  it('normalises an explicitly written handle, so read and write agree (#532)', async () => {
+    // A raw `handle: "Kasten"` used to be published un-normalised while every
+    // reference resolves through appHandle, so `list` showed #Kasten,
+    // `validate` called #kasten unknown, and `set kasten` edited it anyway.
+    writeConfig({ repositories: [{ handle: 'Kasten', path: 'notes' }] });
+    writeReadme('2026-05-06-uses-kasten', ['kasten']);
+    expect((await listApplications(tmp, emptyGlobal)).map((a) => a.handle)).toEqual(['kasten']);
+    expect(await validateApplications(tmp, emptyGlobal)).toEqual([]);
+    await setApplication(tmp, 'kasten', { label: 'Kasten notes' });
+    expect((await listApplications(tmp, emptyGlobal))[0].label).toBe('Kasten notes');
+  });
+
   it('reaches a handle nested more than one level deep (#532)', async () => {
-    // The zod schema forbids nesting a submodule under a submodule, but the
-    // mutation path reads raw JSON with no schema validation, and a
-    // hand-edited settings file is exactly the #532 scenario. The walk has no
-    // depth limit, so the resolver must not either.
+    // The zod schema forbids nesting a submodule under a submodule, and
+    // `{handle:'deep'}` alone would also fail the "needs a name or path"
+    // rule — this fixture is deliberately not a supported shape. It is here
+    // only to probe that the walk is depth-independent, which it must be
+    // because the mutation path reads raw JSON with no schema validation and
+    // a hand-edited settings file is exactly the #532 scenario.
     writeConfig({
       repositories: [
         {
