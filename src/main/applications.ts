@@ -432,15 +432,75 @@ export async function setApplication(
 ): Promise<void> {
   const target = appHandle(handle);
   await mutateConfig(conceptionPath, (config) => {
-    const repos = config.repositories ?? [];
-    const entry = repos.find((r) => isRepoWithHandle(r, target));
-    if (!entry || typeof entry !== 'object') throw new Error(`no live app #${target}`);
-    const obj = entry as Record<string, unknown>;
+    const located = locateRepoByHandle(config.repositories ?? [], target);
+    if (!located) throw new Error(`no live app #${target}`);
+    const obj = asMutableEntry(located);
     if (patch.label !== undefined) obj.label = patch.label || undefined;
     if (patch.path !== undefined) obj.path = patch.path;
     // An empty --purpose clears the cell rather than writing a blank string.
     if (patch.purpose !== undefined) obj.purpose = patch.purpose || undefined;
   });
+}
+
+/** A raw registry entry found in the config, together with the array that
+ *  holds it and its index there — so a caller can rewrite the slot in place,
+ *  which the string → object upgrade needs. */
+interface LocatedRepo {
+  container: unknown[];
+  index: number;
+}
+
+/**
+ * Find the raw `repositories[]` entry that resolves to `handle`, descending
+ * into `submodules[]`.
+ *
+ * The registry walk behind `list` / `validate` / `sync-docs` treats a
+ * submodule handle as first-class (#335), so the mutating verbs have to
+ * resolve the same set — otherwise a handle is listed but not editable
+ * (#532). Top-level entries are scanned before any submodule so a top-level
+ * handle always wins over a nested one of the same name, matching the
+ * precedence `findRepoEntry` applies in `config-walk.ts`.
+ */
+function locateRepoByHandle(repos: unknown[], handle: string): LocatedRepo | null {
+  for (let index = 0; index < repos.length; index += 1) {
+    if (isRepoWithHandle(repos[index], handle)) return { container: repos, index };
+  }
+  for (const entry of repos) {
+    const submodules = submodulesOf(entry);
+    if (!submodules) continue;
+    for (let index = 0; index < submodules.length; index += 1) {
+      if (isRepoWithHandle(submodules[index], handle)) return { container: submodules, index };
+    }
+  }
+  return null;
+}
+
+/** The mutable `submodules[]` array of a raw entry, when it declares one. */
+function submodulesOf(raw: unknown): unknown[] | null {
+  if (!raw || typeof raw !== 'object' || 'section' in raw) return null;
+  const submodules = (raw as { submodules?: unknown }).submodules;
+  return Array.isArray(submodules) ? submodules : null;
+}
+
+/**
+ * The located entry as a mutable object, upgrading the bare-string form
+ * (`"condash"`) to `{ name: "condash" }` in place first.
+ *
+ * A string entry carries no slot for a label, purpose or path, so `set` used
+ * to reject it with the same "no live app" error a genuinely absent handle
+ * gets — the #532 contract break again, by entry shape rather than by nesting
+ * depth. The upgrade preserves identity: the handle stays derived from the
+ * same directory name, so nothing that resolved before resolves differently.
+ * `renameApplication` performs the same widening.
+ */
+function asMutableEntry(located: LocatedRepo): Record<string, unknown> {
+  const current = located.container[located.index];
+  if (typeof current === 'string') {
+    const upgraded: Record<string, unknown> = { name: current };
+    located.container[located.index] = upgraded;
+    return upgraded;
+  }
+  return current as Record<string, unknown>;
 }
 
 /** True when a raw repositories[] entry resolves to `handle`. */
@@ -491,13 +551,12 @@ export async function renameApplication(
   }
 
   await mutateConfig(conceptionPath, (config) => {
-    const repos = config.repositories ?? [];
-    const entry = repos.find((r) => isRepoWithHandle(r, oldHandle));
-    if (!entry) throw new Error(`no live app #${oldHandle}`);
+    const located = locateRepoByHandle(config.repositories ?? [], oldHandle);
+    if (!located) throw new Error(`no live app #${oldHandle}`);
+    const entry = located.container[located.index];
     if (typeof entry === 'string') {
-      const idx = repos.indexOf(entry);
-      repos[idx] = { handle: newHandle, name: entry, aliases: [entry] };
-    } else if (typeof entry === 'object') {
+      located.container[located.index] = { handle: newHandle, name: entry, aliases: [entry] };
+    } else if (typeof entry === 'object' && entry !== null) {
       const obj = entry as Record<string, unknown>;
       const aliases = new Set<string>(Array.isArray(obj.aliases) ? (obj.aliases as string[]) : []);
       aliases.add(oldHandle);

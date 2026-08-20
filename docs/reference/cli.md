@@ -184,7 +184,7 @@ The app registry — one canonical `#handle` per app, with its `label` + `path`.
 |---|---|
 | `list` | List every registered app (live + retired), with handle, label, path; submodules render indented under their parent (`↳ #child`) |
 | `add <handle> --path <p> [--label <l>]` | Register a new live app |
-| `set <handle> [--label <l>] [--path <p>]` | Update a registered app |
+| `set <handle> [--label <l>] [--purpose <t>] [--path <p>]` | Update a registered app — any handle `list` shows, submodules included. An entry written as a bare string is widened to object form so it can hold the field; its handle is unchanged |
 | `rename <old> <new>` | Rename a handle; records the old as an alias and rewrites every project README `apps:` reference that pointed at it |
 | `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry — App, Repo, Purpose, AGENTS.md, Knowledge; submodule rows render right after their parent with a `↳`-prefixed App cell (agent-specific files like CLAUDE.md are virtual [agedum](skill.md#the-harness-launcher-agedum) renders of AGENTS.md — never written to disk) |
 | `validate [--fix]` | Every project README `apps:` value must resolve to a known `#handle` (live or retired) or an existing absolute path; unknown handles exit 3, alias hits are reported with a suggested rewrite. `--fix` canonicalises every resolvable value to its `#handle` (bare names and legacy aliases alike) and leaves only the unresolvable ones for a human |

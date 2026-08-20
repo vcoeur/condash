@@ -435,6 +435,91 @@ describe('add / set / rename round-trips', () => {
     expect(renamed.aliases).toContain('fovea-web');
     expect(renamed.aliases).not.toContain('fovea');
   });
+
+  it('sets label, purpose and path on a submodule handle (#532)', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'alpha', path: 'alpha', label: 'Alpha' },
+        {
+          handle: 'beta',
+          path: 'beta',
+          label: 'Beta',
+          submodules: [{ handle: 'gamma', path: 'gamma', label: 'Gamma' }],
+        },
+      ],
+    });
+    await setApplication(tmp, 'gamma', {
+      label: 'Gamma Renamed',
+      purpose: 'the nested one',
+      path: 'gamma-moved',
+    });
+    const apps = await listApplications(tmp, emptyGlobal);
+    const gamma = apps.find((a) => a.handle === 'gamma')!;
+    expect(gamma.label).toBe('Gamma Renamed');
+    expect(gamma.purpose).toBe('the nested one');
+    expect(gamma.parent).toBe('beta');
+    // The patch lands on the submodule, never on its parent.
+    expect(apps.find((a) => a.handle === 'beta')!.label).toBe('Beta');
+  });
+
+  it('renames a submodule handle in place, keeping it under its parent (#532)', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'beta', path: 'beta', submodules: [{ handle: 'gamma', path: 'gamma' }] },
+      ],
+    });
+    writeReadme('2026-05-05-uses-gamma', ['#gamma']);
+
+    const result = await renameApplication(tmp, 'gamma', 'delta');
+    expect(result.readmesRewritten).toHaveLength(1);
+
+    const apps = await listApplications(tmp, emptyGlobal);
+    const delta = apps.find((a) => a.handle === 'delta')!;
+    expect(delta.parent).toBe('beta');
+    expect(delta.aliases).toContain('gamma');
+    // Still nested — the rename must not promote it to a top-level entry.
+    expect(apps.map((a) => a.handle)).toEqual(['beta', 'delta']);
+  });
+
+  it('reports a genuinely absent handle, submodules searched (#532)', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'beta', path: 'beta', submodules: [{ handle: 'gamma', path: 'gamma' }] },
+      ],
+    });
+    await expect(setApplication(tmp, 'nope', { label: 'x' })).rejects.toThrow(/no live app #nope/);
+  });
+
+  it('prefers a top-level handle over a submodule of the same name (#532)', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'shared', path: 'top-level', label: 'Top' },
+        { handle: 'beta', path: 'beta', submodules: [{ name: 'shared', label: 'Nested' }] },
+      ],
+    });
+    await setApplication(tmp, 'shared', { label: 'Patched' });
+    const apps = await listApplications(tmp, emptyGlobal);
+    // The top-level entry took the patch; the nested namesake is untouched.
+    expect(apps.find((a) => a.handle === 'shared' && !a.parent)!.label).toBe('Patched');
+    expect(apps.find((a) => a.handle === 'shared' && a.parent)!.label).toBe('Nested');
+  });
+
+  it('upgrades a bare-string entry so set can reach it (#532)', async () => {
+    writeConfig({ repositories: ['delta'] });
+    await setApplication(tmp, 'delta', { label: 'Delta', purpose: 'was a bare string' });
+    const apps = await listApplications(tmp, emptyGlobal);
+    const delta = apps.find((a) => a.handle === 'delta')!;
+    expect(delta.label).toBe('Delta');
+    expect(delta.purpose).toBe('was a bare string');
+    // The handle is unchanged by the widening — it still derives from the name.
+    expect(apps.map((a) => a.handle)).toEqual(['delta']);
+    // Mutations land in the canonical `.condash/settings.json`, seeded from
+    // the legacy file writeConfig created.
+    const written = JSON.parse(readFileSync(join(tmp, '.condash', 'settings.json'), 'utf8')) as {
+      repositories: unknown[];
+    };
+    expect(written.repositories[0]).toMatchObject({ name: 'delta', label: 'Delta' });
+  });
 });
 
 describe('resolveReference tilde handling', () => {
