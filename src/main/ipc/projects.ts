@@ -325,7 +325,20 @@ export function registerProjectsIpc(): void {
   ipcMain.handle('pruneStarredProjects', async (event, doneSlugs: unknown) => {
     requireMainWindowSender(event);
     const slugs = requireStringArray('pruneStarredProjects', doneSlugs);
+    // `requireStringArray` checks the container, not the elements — the one
+    // other caller re-checks the same way rather than trusting it.
+    for (const slug of slugs) {
+      if (typeof slug !== 'string') {
+        throw new Error('pruneStarredProjects: expected an array of strings');
+      }
+    }
     return withConception(async (conceptionPath) => {
+      const config = await getEffectiveConceptionConfig(conceptionPath);
+      const current = normaliseStarredSlugs(config.starredProjects);
+      // Nothing to remove — return without a write. `mutateConceptionConfig`
+      // always rewrites the file, and a pointless rewrite bumps the mtime and
+      // fans a `config` watcher event out to four unrelated reloads.
+      if (pruneStarredSlugs(current, slugs).length === current.length) return current;
       let next: string[] = [];
       await mutateConceptionConfig(conceptionPath, (draft) => {
         next = pruneStarredSlugs(draft.starredProjects, slugs);

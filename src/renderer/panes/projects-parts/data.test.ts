@@ -211,8 +211,9 @@ describe('star flag ordering', () => {
   });
 
   it('has no star key in the Done band — a done item cannot be starred', () => {
-    // The starred set is pruned of done slugs on every read, so the Done
-    // band's Recent window and month subgroups sort by close date alone.
+    // A done item cannot be starred — the pane reconciles the set against the
+    // project list — so the Done band's Recent window and its month subgroups
+    // sort by close date alone.
     // Ordering here must not depend on the star store at all.
     const done = [
       doneAt('2026-05-01-recent-new', '2026-05-20'),

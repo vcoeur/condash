@@ -2,7 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
-import { starredSlugs, toggleStar } from '../star-store';
+import { restoreStar, starredSlugs, toggleStar } from '../star-store';
 import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../modal-types';
@@ -150,6 +150,10 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     if (project.status === newStatus) return;
 
     const previous = project.status;
+    // Read before the optimistic patch: patching to `done` flushes the
+    // reconcile effect, which drops the star — so by the time the write
+    // fails, the store no longer remembers there was one.
+    const wasStarred = starredSlugs().has(project.slug);
     deps.mutate((current) => applyStatus(current ?? [], path, newStatus));
     try {
       const result = await window.condash.setStatus(path, newStatus);
@@ -163,6 +167,13 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
       }
     } catch (err) {
       deps.mutate((current) => applyStatus(current ?? [], path, previous));
+      // A failed status change must change nothing. The optimistic patch has
+      // already driven the reconcile — restore the star after the rollback, so
+      // the effect sees the old status and leaves it alone. Issued after the
+      // prune it undoes, and the config queue is FIFO, so this write lands last.
+      if (wasStarred && newStatus === 'done') {
+        void restoreStar(project.slug, (message) => deps.flashToast(message, 'error'));
+      }
       deps.flashToast(`Status change failed: ${(err as Error).message}`, 'error');
     }
   };

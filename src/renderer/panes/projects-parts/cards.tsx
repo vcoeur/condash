@@ -283,9 +283,9 @@ export function Card(props: {
   // cross-cutting concern of every card, so it isn't threaded as a prop.
   const starred = (): boolean => isStarred(props.item.slug);
 
-  // A done item carries no star — the starred set is pruned of done slugs on
-  // every read — so the control is hidden rather than left to undo itself on
-  // the next load.
+  // A done item carries no star — the pane reconciles the starred set against
+  // the project list — so the control is hidden rather than left to undo
+  // itself on the next list change.
   const starrable = (): boolean => props.item.status !== 'done';
 
   const handleCardClick = (event: MouseEvent) => {

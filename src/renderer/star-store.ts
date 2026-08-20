@@ -115,8 +115,43 @@ export async function reconcileStarred(projects: readonly Project[]): Promise<vo
     // its result is the current truth, so drop ours.
     if (mine !== generation) return;
     setStarred(new Set(slugs));
-  } catch {
+  } catch (err) {
     // Leave the set as it is: showing a stale star is a smaller lie than
-    // blanking every star because one write failed.
+    // blanking every star because one write failed. Logged rather than
+    // toasted — nothing the user did caused this — but not swallowed: the
+    // retry only comes with the next list change, so a repeated failure has
+    // to be visible somewhere.
+    console.error('[star-store] could not prune done projects', err);
+  }
+}
+
+/**
+ * Star `slug` again after an optimistic status change was rolled back.
+ *
+ * The reconcile effect watches the project list, so an optimistic patch to
+ * `done` drops the star before the status write is confirmed. When that write
+ * then fails, the card goes back to its old status and the star has to follow
+ * it — the user was told nothing changed, and a reopen deliberately never
+ * restores a star, so leaving it dropped loses it for good.
+ *
+ * @param slug the project slug to star again
+ * @param onError called with a human-readable message when the write failed
+ */
+export async function restoreStar(
+  slug: string,
+  onError?: (message: string) => void,
+): Promise<void> {
+  const optimistic = new Set(starred());
+  optimistic.add(slug);
+  // Bumps the generation like `toggleStar`, so an in-flight prune that already
+  // decided this slug was done cannot land its result on top of this one.
+  const mine = ++generation;
+  setStarred(optimistic);
+  try {
+    const slugs = await window.condash.setProjectStar(slug, true);
+    if (mine !== generation) return;
+    setStarred(new Set(slugs));
+  } catch (err) {
+    onError?.(`Could not restore the star: ${(err as Error).message}`);
   }
 }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
@@ -12,9 +12,9 @@ import { bootApp } from './fixtures/electron-app';
  * (b) persist into the conception's `.condash/settings.json` and remove the key
  * again on unstar; (c) NOT open the card preview, since the whole card body
  * is clickable and the star only escapes that through the click-exclusion set;
- * and (d) disappear when the item reaches `done` — the prune lives in the main
- * process and the card only re-reads it on the done edge, so nothing below the
- * IPC boundary can prove the two halves are wired to each other.
+ * and (d) disappear when the item reaches `done` — the rule is a renderer
+ * effect over the project list feeding a main-process write, so nothing below
+ * the IPC boundary can prove the two halves are wired to each other.
  *
  * The fixture ships `2026-04-26-sample` in `now`; `prepare` adds an older
  * sibling so the section has a stable two-card order (slugs sort descending,
@@ -157,8 +157,8 @@ test('a pre-seeded starred slug is honoured on first paint', async () => {
 
 test('closing a starred card drops its star and the config entry', async () => {
   // The whole loop in one gesture: the status change writes `status: done`, the
-  // main process prunes done slugs out of `starredProjects` on the next read,
-  // and the card stops offering a control that can no longer hold.
+  // reconcile effect sees the patched list and prunes the slug out of
+  // `starredProjects`, and the card stops offering a control that cannot hold.
   //
   // Ctrl+<n> on a focused card is the keyboard half of the status change — it
   // calls the same handler the lane drop does. Driven from the keyboard on
@@ -250,6 +250,39 @@ test('a close from outside the app drops the star while it is open', async () =>
     await win.locator('.projects-filter-starred').click();
     await expect(win.locator('article.row')).toHaveCount(0);
   } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a failed close leaves the star exactly where it was', async () => {
+  // The star is dropped off the *optimistic* status patch, before the write is
+  // confirmed — so a write that then fails would silently take the star with
+  // it, on a path where the user is told nothing changed. And nothing gives it
+  // back: a reopen deliberately never restores a star.
+  const booted = await bootApp({ prepare: prepareSibling });
+  const dir = join(booted.conceptionDir, 'projects', '2026-04', '2026-04-20-alpha');
+  try {
+    const win = booted.window;
+    const alphaCard = win.locator('article.row', { hasText: 'Alpha project' });
+    await alphaCard.locator('.star-toggle').click();
+    await expect
+      .poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 })
+      .toEqual(['2026-04-20-alpha']);
+
+    // Make the README unwritable so the status write fails for real, rather
+    // than stubbing the IPC and testing the stub.
+    await chmod(dir, 0o555);
+    await alphaCard.press('Control+5');
+    await expect(win.locator('.toast')).toContainText('Status change failed');
+
+    // Status rolled back, and the star with it — on disk and on the card.
+    await expect(alphaCard).toHaveAttribute('data-status-card', 'now');
+    await expect
+      .poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 })
+      .toEqual(['2026-04-20-alpha']);
+    await expect(alphaCard.locator('.star-toggle')).toHaveClass(/starred/);
+  } finally {
+    await chmod(dir, 0o755).catch(() => undefined);
     await booted.cleanup();
   }
 });

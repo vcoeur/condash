@@ -113,9 +113,10 @@ export function applyStarredSlug(current: unknown, slug: string, starred: boolea
  * and *starred* are mutually exclusive: the pin outlives its purpose the
  * moment the item closes. Expressed as a filter over the whole list rather
  * than a removal on the close transition, which is what makes every close
- * path equivalent — the GUI status menu, `condash projects close`, and a
- * hand-edited README all come back unstarred on the next read, as do the
- * stars stranded on items closed before this rule existed.
+ * path equivalent — the pane's own status action, a `condash projects close`
+ * that arrives as a file-watcher patch, and a hand-edited README all come back
+ * unstarred, as do the stars stranded on items closed before this rule
+ * existed.
  *
  * A slug that resolves to no item at all is left alone: it is inert either
  * way, and nothing here can tell a deleted item from an unreadable one.

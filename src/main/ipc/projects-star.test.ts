@@ -164,7 +164,7 @@ describe('setProjectStar / getStarredProjects', () => {
     expect('starredProjects' in (await readConceptionConfig())).toBe(false);
   });
 
-  it('leaves a slug it was not handed alone, in one write', async () => {
+  it('leaves a slug it was not handed alone', async () => {
     // The caller passes the done slugs it knows about. A star it never
     // mentioned — an item it has not loaded, or one that resolves to nothing
     // at all — must survive: under-pruning is recoverable, over-pruning is not.
@@ -172,21 +172,31 @@ describe('setProjectStar / getStarredProjects', () => {
     await setStar('2026-08-18-gone', true);
 
     expect(await prune(['2026-08-18-alpha'])).toEqual(['2026-08-18-gone']);
+    expect((await readConceptionConfig()).starredProjects).toEqual(['2026-08-18-gone']);
   });
 
-  it('is a no-op for an empty batch and preserves unrelated config keys', async () => {
+  it('does not rewrite the file when the batch removes nothing', async () => {
+    // `mutateConceptionConfig` rewrites unconditionally, and a pointless
+    // rewrite bumps the mtime — which the watcher turns into a `config` event
+    // and four unrelated reloads. Asserted on the mtime rather than the
+    // returned value, which an early return and a no-op write share.
     await fs.mkdir(join(tmp, '.condash'), { recursive: true });
     await fs.writeFile(
       conceptionConfigPathValue,
       JSON.stringify({ workspace_path: '/home/alice/src', starredProjects: ['2026-08-18-kept'] }),
     );
+    const before = (await fs.stat(conceptionConfigPathValue)).mtimeMs;
 
     expect(await prune([])).toEqual(['2026-08-18-kept']);
+    expect(await prune(['2026-08-18-not-starred'])).toEqual(['2026-08-18-kept']);
+
+    expect((await fs.stat(conceptionConfigPathValue)).mtimeMs).toBe(before);
     expect((await readConceptionConfig()).workspace_path).toBe('/home/alice/src');
   });
 
-  it('rejects a non-array batch', async () => {
+  it('rejects a non-array batch and a non-string entry', async () => {
     await expect(prune('2026-08-18-alpha')).rejects.toThrow(/pruneStarredProjects/);
+    await expect(prune(['2026-08-18-alpha', 7])).rejects.toThrow(/pruneStarredProjects/);
   });
 
   it('treats a non-true `starred` argument as unstar and rejects a blank slug', async () => {
