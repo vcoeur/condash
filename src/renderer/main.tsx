@@ -33,7 +33,7 @@ import { createReposStore } from './repos-store';
 import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
 import { reloadPrIndex } from './pr-index-store';
-import { reloadStarred } from './star-store';
+import { reconcileStarred, reloadStarred, starredSlugs } from './star-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
@@ -207,6 +207,16 @@ function App() {
   createEffect(() => {
     conceptionPath();
     void reloadStarred();
+  });
+
+  // Keep `done` and *starred* mutually exclusive. Reads both signals on
+  // purpose: the list settles after the starred set on a cold boot, and a
+  // stranded star must still clear on whichever arrives last. Converges in one
+  // extra pass — the write updates the set, the re-run finds nothing stale.
+  createEffect(() => {
+    const list = projects();
+    starredSlugs();
+    void reconcileStarred(list);
   });
 
   const knowledgeStore = createTreeStore<KnowledgeNode>({

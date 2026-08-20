@@ -1,4 +1,5 @@
 import { createSignal } from 'solid-js';
+import type { Project } from '@shared/types';
 
 // Shared starred-project set behind the Projects-pane card stars.
 //
@@ -81,5 +82,41 @@ export async function toggleStar(
     if (mine === generation) setStarred(previous);
     onError?.(`Could not ${next ? 'star' : 'unstar'} project: ${(err as Error).message}`);
     return !next;
+  }
+}
+
+/**
+ * Drop the star of every done project in `projects`, persisting the removal.
+ *
+ * A star pins a live item to the top of its section, so `done` and *starred*
+ * are mutually exclusive. The rule is enforced here — against the list the
+ * pane already holds — rather than inside the starred read, so it costs no
+ * extra tree walk and covers every route to `done` alike: the pane's own
+ * status change, a `condash projects close` that reaches us as a watcher
+ * patch, and a star stranded on an item closed before this rule existed.
+ *
+ * A no-op unless something is actually starred *and* done, so it is safe to
+ * call on every list change. Never throws — a failed write leaves the star in
+ * place, and the next list change tries again.
+ *
+ * @param projects the current project list, in whatever state the store holds
+ */
+export async function reconcileStarred(projects: readonly Project[]): Promise<void> {
+  const current = starred();
+  if (current.size === 0) return;
+  const stale = projects
+    .filter((project) => project.status === 'done' && current.has(project.slug))
+    .map((project) => project.slug);
+  if (stale.length === 0) return;
+  const mine = ++generation;
+  try {
+    const slugs = await window.condash.pruneStarredProjects(stale);
+    // A toggle or conception switch started while the write was in flight —
+    // its result is the current truth, so drop ours.
+    if (mine !== generation) return;
+    setStarred(new Set(slugs));
+  } catch {
+    // Leave the set as it is: showing a stale star is a smaller lie than
+    // blanking every star because one write failed.
   }
 }

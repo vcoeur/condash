@@ -57,7 +57,7 @@ Need notes and knowledge too, or a ranked result with snippets? That is the [sea
 
 Each **live** card carries a **star** at the head of its first row. Click it to pin that item to the **top of its status section**; click again to unpin. The star is the section's first sort key, so a starred item leads regardless of its date, and the usual order (newest first) decides the rest.
 
-**A done item carries no star.** The pin marks what you are working on now, so it is dropped when the item closes — the card in the `done` band has no star button, and the `done` band sorts by close date alone. The removal is not tied to *how* the item closed: the set is pruned of done slugs every time the pane reads it, so a close through the pane, through `condash projects close` in a terminal, or through a README you edited by hand all come back unstarred, as do stars stranded on items closed before this rule existed. Reopening an item does not bring its star back — the slug is gone from the config, not hidden.
+**A done item carries no star.** The pin marks what you are working on now, so it is dropped when the item closes — the card in the `done` band has no star button, and the `done` band sorts by close date alone. The removal is not tied to *how* the item closed: the pane reconciles the starred set against the items it has loaded, so a close through the pane, through `condash projects close` in a terminal while the app is open, or through a README you edited by hand all come back unstarred, as do stars stranded on items closed before this rule existed. Reopening an item does not bring its star back — the slug is gone from the config, not hidden.
 
 Starring is **local and uncommitted**, and that is the point of it:
 

@@ -7,11 +7,12 @@
  * `settings.json` — a key in the wrong file is rejected by that file's strict
  * schema on the next save (the same trap `setTaskConfig` fell into). Second, the
  * empty case: unstarring the last project must remove the key rather than leave
- * `"starredProjects": []` behind in an otherwise-untouched config. Third, the
- * done prune: `getStarredProjects` is where "a done item carries no star" is
- * enforced, and it has to *persist* the shrunk list — a filter that only
- * narrowed the returned value would let the stale slugs sit in the config for
- * ever, and would resurrect the star the moment the item was reopened.
+ * `"starredProjects": []` behind in an otherwise-untouched config. Third,
+ * `pruneStarredProjects`, which enforces "a done item carries no star": it has
+ * to *persist* the shrunk list — a caller-side filter would let the stale slugs
+ * sit in the config for ever and resurrect the star on reopen — and it must
+ * touch only the slugs it was handed, so a caller holding a partial project
+ * list can under-prune but never over-prune.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -48,15 +49,8 @@ async function setStar(slug: unknown, starred: unknown): Promise<string[]> {
   return (await handlers.setProjectStar(trustedEvent, slug, starred)) as string[];
 }
 
-/** Write a minimal item README so `listProjects` sees the slug at `status`. */
-async function writeItem(slug: string, status: string): Promise<void> {
-  const dir = join(tmp, 'projects', slug.slice(0, 7), slug);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(
-    join(dir, 'README.md'),
-    `---\ndate: ${slug.slice(0, 10)}\nkind: project\nstatus: ${status}\n---\n\n# ${slug}\n`,
-    'utf8',
-  );
+async function prune(doneSlugs: unknown): Promise<string[]> {
+  return (await handlers.pruneStarredProjects(trustedEvent, doneSlugs)) as string[];
 }
 
 beforeEach(async () => {
@@ -152,47 +146,47 @@ describe('setProjectStar / getStarredProjects', () => {
     expect(await setStar('2026-08-18-b', true)).toEqual(['2026-08-18-a', '2026-08-18-b']);
   });
 
-  it('drops a starred slug once its item is done, and persists the shrunk list', async () => {
-    await writeItem('2026-08-18-alpha', 'now');
-    await writeItem('2026-08-18-beta', 'done');
+  it('drops the starred slugs it is handed and persists the shrunk list', async () => {
     await setStar('2026-08-18-alpha', true);
     await setStar('2026-08-18-beta', true);
 
-    expect(await getStarred()).toEqual(['2026-08-18-alpha']);
+    expect(await prune(['2026-08-18-beta'])).toEqual(['2026-08-18-alpha']);
     // Persisted, not merely filtered on the way out — a reopen must not
     // resurrect the star, and the config must not accumulate dead slugs.
-    const { drainSettingsQueue } = await import('../settings');
-    await drainSettingsQueue();
     expect((await readConceptionConfig()).starredProjects).toEqual(['2026-08-18-alpha']);
+    expect(await getStarred()).toEqual(['2026-08-18-alpha']);
   });
 
   it('removes the key when every starred item is done', async () => {
-    await writeItem('2026-08-18-alpha', 'done');
     await setStar('2026-08-18-alpha', true);
 
-    expect(await getStarred()).toEqual([]);
-    const { drainSettingsQueue } = await import('../settings');
-    await drainSettingsQueue();
+    expect(await prune(['2026-08-18-alpha', '2026-08-18-unstarred'])).toEqual([]);
     expect('starredProjects' in (await readConceptionConfig())).toBe(false);
   });
 
-  it('leaves the config untouched when no starred item is done', async () => {
-    await writeItem('2026-08-18-alpha', 'now');
-    await writeItem('2026-08-18-beta', 'review');
+  it('leaves a slug it was not handed alone, in one write', async () => {
+    // The caller passes the done slugs it knows about. A star it never
+    // mentioned — an item it has not loaded, or one that resolves to nothing
+    // at all — must survive: under-pruning is recoverable, over-pruning is not.
     await setStar('2026-08-18-alpha', true);
-    await setStar('2026-08-18-beta', true);
+    await setStar('2026-08-18-gone', true);
 
-    expect(await getStarred()).toEqual(['2026-08-18-alpha', '2026-08-18-beta']);
+    expect(await prune(['2026-08-18-alpha'])).toEqual(['2026-08-18-gone']);
   });
 
-  it('keeps a starred slug whose item does not exist', async () => {
-    // Inert, not done: nothing here can tell a deleted item from an unreadable
-    // one, so the slug survives until the next deliberate unstar.
-    await writeItem('2026-08-18-beta', 'done');
-    await setStar('2026-08-18-gone', true);
-    await setStar('2026-08-18-beta', true);
+  it('is a no-op for an empty batch and preserves unrelated config keys', async () => {
+    await fs.mkdir(join(tmp, '.condash'), { recursive: true });
+    await fs.writeFile(
+      conceptionConfigPathValue,
+      JSON.stringify({ workspace_path: '/home/alice/src', starredProjects: ['2026-08-18-kept'] }),
+    );
 
-    expect(await getStarred()).toEqual(['2026-08-18-gone']);
+    expect(await prune([])).toEqual(['2026-08-18-kept']);
+    expect((await readConceptionConfig()).workspace_path).toBe('/home/alice/src');
+  });
+
+  it('rejects a non-array batch', async () => {
+    await expect(prune('2026-08-18-alpha')).rejects.toThrow(/pruneStarredProjects/);
   });
 
   it('treats a non-true `starred` argument as unstar and rejects a blank slug', async () => {

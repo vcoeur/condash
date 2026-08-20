@@ -35,6 +35,7 @@ import {
   requireNonEmptyString,
   requireRecord,
   requireString,
+  requireStringArray,
   withConception,
 } from './utils';
 
@@ -310,24 +311,26 @@ export function registerProjectsIpc(): void {
     requireMainWindowSender(event);
     return withConception(async (conceptionPath) => {
       const config = await getEffectiveConceptionConfig(conceptionPath);
-      const current = normaliseStarredSlugs(config.starredProjects);
-      if (current.length === 0) return current;
-      // A star pins a live item to the top of its section, so it is dropped
-      // once the item is done. The prune lives on the *read* rather than on
-      // the close transition because that is the only place every close path
-      // meets: the GUI status menu, `condash projects close` (a separate
-      // process, which never touches this config), and a README edited by
-      // hand all converge here on the next load.
-      const done = (await listProjects())
-        .filter((project) => project.status === 'done')
-        .map((project) => project.slug);
-      if (pruneStarredSlugs(current, done).length === current.length) return current;
+      return normaliseStarredSlugs(config.starredProjects);
+    }, []);
+  });
+
+  // Drop the stars of items that are done. A star pins a live item to the top
+  // of its section, so it has no meaning past the close — and the caller hands
+  // over the done slugs rather than this handler deriving them, because the
+  // pane already holds the parsed project list. Deriving them here would walk
+  // and parse the whole tree a second time, racing the projects store's own
+  // load on boot and doubling exactly the cost `parseReadmeCached` exists to
+  // remove. One write for the whole batch, not one per slug.
+  ipcMain.handle('pruneStarredProjects', async (event, doneSlugs: unknown) => {
+    requireMainWindowSender(event);
+    const slugs = requireStringArray('pruneStarredProjects', doneSlugs);
+    return withConception(async (conceptionPath) => {
       let next: string[] = [];
       await mutateConceptionConfig(conceptionPath, (draft) => {
-        // Re-prune inside the mutation rather than writing the list computed
-        // above: the config queue may have run a `setProjectStar` in between,
-        // and that toggle must survive this write.
-        next = pruneStarredSlugs(draft.starredProjects, done);
+        next = pruneStarredSlugs(draft.starredProjects, slugs);
+        // Drop the key entirely once nothing is starred, matching
+        // `setProjectStar` — an untouched conception keeps no empty scaffolding.
         if (next.length > 0) draft.starredProjects = next;
         else delete draft.starredProjects;
       });

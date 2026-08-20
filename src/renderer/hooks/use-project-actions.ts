@@ -2,7 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
-import { reloadStarred, starredSlugs, toggleStar } from '../star-store';
+import { starredSlugs, toggleStar } from '../star-store';
 import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../modal-types';
@@ -155,13 +155,9 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
       const result = await window.condash.setStatus(path, newStatus);
       // Watcher fires a 'project' event for the README that patches the
       // card via `mutateProjects`. No explicit reload — reconcile updates
-      // the timeline / closedAt in place.
-      //
-      // The starred set is the exception: closing an item drops its star, and
-      // that rule lives in the main-process read (which prunes done slugs), so
-      // re-read it rather than mutating the store here. Only on the done edge —
-      // every other status keeps its star, and the read walks the tree.
-      if (newStatus === 'done') void reloadStarred();
+      // the timeline / closedAt in place. The star of an item that just closed
+      // is dropped by the reconcile effect in main.tsx, which watches the same
+      // list: nothing to do here, on this route or any other.
       if (result.branchWarning) {
         deps.flashToast(result.branchWarning, 'info');
       }

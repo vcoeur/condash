@@ -8,9 +8,9 @@
  * picker. Read-only towards the conception *tree*: render + screenshot only, no
  * mutating clicks (no sync-now, no new-project, no stop/run, and the settings
  * modal is opened but never saved). One exception, and it is the app's doing
- * rather than this spec's: booting reads the starred set, and that read prunes
- * done items out of the target tree's `.condash/settings.json` (see
- * `getStarredProjects`). No README is touched and `.condash/` is gitignored.
+ * rather than this spec's: booting loads the project list, and the pane then
+ * prunes any done item out of the target tree's `starredProjects` (see
+ * `reconcileStarred`). No README is touched and `.condash/` is gitignored.
  *
  * These are visual captures only — the picker's behavioural contract lives in
  * theme-picker.spec.ts, which runs against the standard fixture every time.

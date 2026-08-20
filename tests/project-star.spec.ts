@@ -219,3 +219,37 @@ test('a star stranded on a done item clears itself on the next launch', async ()
     await booted.cleanup();
   }
 });
+
+test('a close from outside the app drops the star while it is open', async () => {
+  // `condash projects close` runs in its own process and never touches the
+  // starred config; a hand-edited README does not even reach the app's code.
+  // Both arrive here as a watcher patch, so the star has to fall out of the
+  // list change itself rather than out of the pane's own status action.
+  const booted = await bootApp({ prepare: prepareSibling });
+  try {
+    const win = booted.window;
+    const alphaCard = win.locator('article.row', { hasText: 'Alpha project' });
+    await alphaCard.locator('.star-toggle').click();
+    await expect
+      .poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 })
+      .toEqual(['2026-04-20-alpha']);
+
+    // Close it behind the app's back — same bytes `condash projects close`
+    // would leave on disk.
+    await writeFile(
+      join(booted.conceptionDir, 'projects', '2026-04', '2026-04-20-alpha', 'README.md'),
+      `---\ndate: 2026-04-20\nkind: project\nstatus: done\n---\n\n# Alpha project\n\n## Timeline\n\n- 2026-04-22 — Closed.\n`,
+      'utf8',
+    );
+
+    await expect
+      .poll(() => starredOnDisk(booted.conceptionDir), { timeout: 10_000 })
+      .toBeUndefined();
+    // The starred filter must not keep listing it either — that was the way a
+    // stale star stayed reachable with no control left to clear it.
+    await win.locator('.projects-filter-starred').click();
+    await expect(win.locator('article.row')).toHaveCount(0);
+  } finally {
+    await booted.cleanup();
+  }
+});
