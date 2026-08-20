@@ -143,6 +143,7 @@ export async function restoreStar(
 ): Promise<void> {
   const optimistic = new Set(starred());
   optimistic.add(slug);
+  const previous = starred();
   // Bumps the generation like `toggleStar`, so an in-flight prune that already
   // decided this slug was done cannot land its result on top of this one.
   const mine = ++generation;
@@ -152,6 +153,10 @@ export async function restoreStar(
     if (mine !== generation) return;
     setStarred(new Set(slugs));
   } catch (err) {
+    // Both writes failed — the status change and now its undo. Put the set
+    // back rather than showing a star the config does not have, which the
+    // next reload would drop without a word.
+    if (mine === generation) setStarred(previous);
     onError?.(`Could not restore the star: ${(err as Error).message}`);
   }
 }

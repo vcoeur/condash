@@ -169,8 +169,14 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
       deps.mutate((current) => applyStatus(current ?? [], path, previous));
       // A failed status change must change nothing. The optimistic patch has
       // already driven the reconcile — restore the star after the rollback, so
-      // the effect sees the old status and leaves it alone. Issued after the
-      // prune it undoes, and the config queue is FIFO, so this write lands last.
+      // the effect sees the old status and leaves it alone.
+      //
+      // The two writes are ordered by timing, not by a guarantee: the config
+      // queue is FIFO on *entry*, and the prune enters it only after its own
+      // pre-flight read. The restore is gated behind a whole failed `setStatus`
+      // round trip, which is far longer, so it enters last — and if it ever
+      // did not, the renderer's set still holds the star and the next list
+      // change reconciles the disagreement.
       if (wasStarred && newStatus === 'done') {
         void restoreStar(project.slug, (message) => deps.flashToast(message, 'error'));
       }

@@ -337,7 +337,10 @@ export function registerProjectsIpc(): void {
       const current = normaliseStarredSlugs(config.starredProjects);
       // Nothing to remove — return without a write. `mutateConceptionConfig`
       // always rewrites the file, and a pointless rewrite bumps the mtime and
-      // fans a `config` watcher event out to four unrelated reloads.
+      // fans a `config` watcher event out to four unrelated reloads. This read
+      // is outside the file queue, so a `setProjectStar` landing between it and
+      // the decision leaves that star in place; it can only under-prune, and
+      // the caller's next list change reconciles it.
       if (pruneStarredSlugs(current, slugs).length === current.length) return current;
       let next: string[] = [];
       await mutateConceptionConfig(conceptionPath, (draft) => {
