@@ -104,3 +104,27 @@ export function applyStarredSlug(current: unknown, slug: string, starred: boolea
   else slugs.delete(slug);
   return [...slugs].sort();
 }
+
+/**
+ * Drop every done item's slug from a starred-slug list. Pure — the caller
+ * persists the result.
+ *
+ * A star pins an item to the top of its section while it is live, so `done`
+ * and *starred* are mutually exclusive: the pin outlives its purpose the
+ * moment the item closes. Expressed as a filter over the whole list rather
+ * than a removal on the close transition, which is what makes every close
+ * path equivalent — the GUI status menu, `condash projects close`, and a
+ * hand-edited README all come back unstarred on the next read, as do the
+ * stars stranded on items closed before this rule existed.
+ *
+ * A slug that resolves to no item at all is left alone: it is inert either
+ * way, and nothing here can tell a deleted item from an unreadable one.
+ *
+ * @param current the existing list (any raw shape; normalised first)
+ * @param doneSlugs slugs of the items currently at status `done`
+ * @returns the surviving slugs, deduped and sorted
+ */
+export function pruneStarredSlugs(current: unknown, doneSlugs: Iterable<string>): string[] {
+  const done = new Set(doneSlugs);
+  return normaliseStarredSlugs(current).filter((slug) => !done.has(slug));
+}

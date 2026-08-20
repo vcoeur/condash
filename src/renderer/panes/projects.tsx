@@ -282,7 +282,7 @@ export function ProjectsView(props: {
                     )
                   : undefined;
               if (group.status === 'done' && group.items.length > 0) {
-                const grouping = groupDone(group.items, todayIso(), starredSlugs());
+                const grouping = groupDone(group.items, todayIso());
                 return (
                   <GroupBlock
                     group={group}

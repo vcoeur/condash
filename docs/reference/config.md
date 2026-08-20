@@ -46,7 +46,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `long_lived_branches`   | conception  | array        | `["main", "master"]` | Branch glob patterns (`*` / `?`) protected from `condash worktrees remove`. Unset → `main` + `master`. [↓](#workspace-keys)                                                                                                |
 | `agents`                | global      | array        | `[]`     | Flat `{id,label,command}` terminal-launcher list shown in the tab-strip spawn dropdown. [↓](#agents)                                                                                                                       |
 | `taskConfig`            | conception  | object       | —        | Per-task `{schedule?, timeout?, runMode?, excludeFromLogs?, gateOnUpdatedTabs?}` keyed by slug — opt-in headless scheduling + run timeout + run mode (`--prompt`/`--run`) + run-log routing + activity gate. [↓](#tasks) |
-| `starredProjects`       | conception  | array        | `[]`     | Slugs starred on the Projects pane — a starred card shows a filled star and sorts to the top of its status section. Written by the card star, not by hand. [↓](#starredprojects)                                          |
+| `starredProjects`       | conception  | array        | `[]`     | Slugs starred on the Projects pane — a starred card shows a filled star and sorts to the top of its status section. Written by the card star, not by hand; done items are pruned out on every read. [↓](#starredprojects)  |
 | `open_with`             | global      | object       | —        | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with)                                                                                                                           |
 | `pdf_viewer`            | global      | array        | —        | Ordered fallback chain of external PDF viewers.                                                                                                                                                                          |
 | `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, `memory` containment, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
@@ -238,6 +238,8 @@ Defunct app handles that closed-project READMEs still reference but whose repos 
 ### `starredProjects`
 
 Slugs of the projects starred on the Projects pane. A starred card shows a filled star and sorts to the top of its status section (the star is the first sort key; the section's usual date order is the tie-break). Written by the star button on each card — the list is deduped and sorted on every write, and the key is removed entirely once nothing is starred.
+
+**Done items are pruned out of the list on every read.** A star pins what is live, so it does not survive the close — and because the prune happens where the list is *read* rather than where a status is written, it covers every route to `done`: the pane, `condash projects close`, a hand-edited README, and the stars already stranded on items closed before the rule existed. The shrunk list is written back, so a reopened item comes back unstarred.
 
 ```json
 {

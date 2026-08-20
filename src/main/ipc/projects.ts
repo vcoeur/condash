@@ -6,6 +6,7 @@ import {
   applyStarredSlug,
   compareByStatusThenSlug,
   normaliseStarredSlugs,
+  pruneStarredSlugs,
 } from '../../shared/projects';
 import type {
   Project,
@@ -309,7 +310,28 @@ export function registerProjectsIpc(): void {
     requireMainWindowSender(event);
     return withConception(async (conceptionPath) => {
       const config = await getEffectiveConceptionConfig(conceptionPath);
-      return normaliseStarredSlugs(config.starredProjects);
+      const current = normaliseStarredSlugs(config.starredProjects);
+      if (current.length === 0) return current;
+      // A star pins a live item to the top of its section, so it is dropped
+      // once the item is done. The prune lives on the *read* rather than on
+      // the close transition because that is the only place every close path
+      // meets: the GUI status menu, `condash projects close` (a separate
+      // process, which never touches this config), and a README edited by
+      // hand all converge here on the next load.
+      const done = (await listProjects())
+        .filter((project) => project.status === 'done')
+        .map((project) => project.slug);
+      if (pruneStarredSlugs(current, done).length === current.length) return current;
+      let next: string[] = [];
+      await mutateConceptionConfig(conceptionPath, (draft) => {
+        // Re-prune inside the mutation rather than writing the list computed
+        // above: the config queue may have run a `setProjectStar` in between,
+        // and that toggle must survive this write.
+        next = pruneStarredSlugs(draft.starredProjects, done);
+        if (next.length > 0) draft.starredProjects = next;
+        else delete draft.starredProjects;
+      });
+      return next;
     }, []);
   });
 

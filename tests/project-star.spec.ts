@@ -6,12 +6,15 @@ import { bootApp } from './fixtures/electron-app';
 /**
  * Projects-pane card star, end to end through the real UI.
  *
- * Three behaviours are worth an app-level spec rather than a unit test. The
+ * Four behaviours are worth an app-level spec rather than a unit test. The
  * star must (a) re-order its section immediately — the pane's sort reads the
  * store's signal, so a broken dependency chain shows up only in a live render;
  * (b) persist into the conception's `.condash/settings.json` and remove the key
- * again on unstar; and (c) NOT open the card preview, since the whole card body
- * is clickable and the star only escapes that through the click-exclusion set.
+ * again on unstar; (c) NOT open the card preview, since the whole card body
+ * is clickable and the star only escapes that through the click-exclusion set;
+ * and (d) disappear when the item reaches `done` — the prune lives in the main
+ * process and the card only re-reads it on the done edge, so nothing below the
+ * IPC boundary can prove the two halves are wired to each other.
  *
  * The fixture ships `2026-04-26-sample` in `now`; `prepare` adds an older
  * sibling so the section has a stable two-card order (slugs sort descending,
@@ -23,6 +26,17 @@ const prepareSibling = async (conceptionDir: string): Promise<void> => {
   await writeFile(
     join(dir, 'README.md'),
     `---\ndate: 2026-04-20\nkind: project\nstatus: now\n---\n\n# Alpha project\n\n## Goal\n\nOlder sibling fixture.\n`,
+    'utf8',
+  );
+};
+
+/** Same sibling, already closed — for the prune paths. */
+const prepareDoneSibling = async (conceptionDir: string): Promise<void> => {
+  const dir = join(conceptionDir, 'projects', '2026-04', '2026-04-20-alpha');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, 'README.md'),
+    `---\ndate: 2026-04-20\nkind: project\nstatus: done\n---\n\n# Alpha project\n\n## Timeline\n\n- 2026-04-22 — Closed.\n`,
     'utf8',
   );
 };
@@ -136,6 +150,71 @@ test('a pre-seeded starred slug is honoured on first paint', async () => {
     await expect(
       win.locator('article.row', { hasText: 'Alpha project' }).locator('.star-toggle'),
     ).toHaveClass(/starred/);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('closing a starred card drops its star and the config entry', async () => {
+  // The whole loop in one gesture: the status change writes `status: done`, the
+  // main process prunes done slugs out of `starredProjects` on the next read,
+  // and the card stops offering a control that can no longer hold.
+  //
+  // Ctrl+<n> on a focused card is the keyboard half of the status change — it
+  // calls the same handler the lane drop does. Driven from the keyboard on
+  // purpose: the pointer drag is covered by `status-drag.spec.ts`, and `done`
+  // is the last of five stacked lanes, so its drop point needs the pane
+  // scrolled and is worth nothing to this assertion.
+  const booted = await bootApp({ prepare: prepareSibling });
+  try {
+    const win = booted.window;
+    const alphaCard = win.locator('article.row', { hasText: 'Alpha project' });
+    await alphaCard.locator('.star-toggle').click();
+    await expect
+      .poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 })
+      .toEqual(['2026-04-20-alpha']);
+
+    // 5 = the index of `done` in KNOWN_STATUSES.
+    await alphaCard.press('Control+5');
+
+    await expect
+      .poll(
+        () =>
+          readFile(
+            join(booted.conceptionDir, 'projects', '2026-04', '2026-04-20-alpha', 'README.md'),
+            'utf8',
+          ),
+        { timeout: 5000 },
+      )
+      .toContain('status: done');
+    await expect.poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 }).toBeUndefined();
+
+    // Done renders collapsed by default — open it to read the card back.
+    await win.locator('.projects-stack > .group-block[data-status="done"] > .group-header').click();
+    await expect(alphaCard).toHaveAttribute('data-status-card', 'done');
+    await expect(alphaCard.locator('.star-toggle')).toHaveCount(0);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a star stranded on a done item clears itself on the next launch', async () => {
+  // The self-heal path: stars pinned before this rule existed (or set by a
+  // close that happened outside the app) are gone by first paint, config
+  // included — the prune is a write, not a display-time filter.
+  const booted = await bootApp({
+    prepare: prepareDoneSibling,
+    extraConfig: { starredProjects: ['2026-04-20-alpha'] },
+  });
+  try {
+    const win = booted.window;
+    await expect.poll(() => starredOnDisk(booted.conceptionDir), { timeout: 5000 }).toBeUndefined();
+
+    const lane = win.locator('.projects-stack > .group-block[data-status="done"]');
+    await lane.locator('> .group-header').click();
+    const alphaCard = win.locator('article.row', { hasText: 'Alpha project' });
+    await expect(alphaCard).toHaveCount(1);
+    await expect(alphaCard.locator('.star-toggle')).toHaveCount(0);
   } finally {
     await booted.cleanup();
   }

@@ -283,6 +283,11 @@ export function Card(props: {
   // cross-cutting concern of every card, so it isn't threaded as a prop.
   const starred = (): boolean => isStarred(props.item.slug);
 
+  // A done item carries no star — the starred set is pruned of done slugs on
+  // every read — so the control is hidden rather than left to undo itself on
+  // the next load.
+  const starrable = (): boolean => props.item.status !== 'done';
+
   const handleCardClick = (event: MouseEvent) => {
     // A click synthesised at the end of a drag must not also open the card.
     if (draggedThisGesture) {
@@ -557,21 +562,26 @@ export function Card(props: {
         <div class="head-row">
           {/* Star: first thing on the card, so the eye reads "is this one of
               mine?" before anything else. Filled when starred, dim outline when
-              not — a starred card also sorts to the top of its section. */}
-          <button
-            type="button"
-            class="star-toggle"
-            classList={{ starred: starred() }}
-            title={starred() ? 'Unstar — stop pinning to the top' : 'Star — pin to top of section'}
-            aria-label={starred() ? `Unstar ${props.item.title}` : `Star ${props.item.title}`}
-            aria-pressed={starred()}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onToggleStar(props.item);
-            }}
-          >
-            <StarIcon filled={starred()} />
-          </button>
+              not — a starred card also sorts to the top of its section. Gone
+              once the item is done, which nothing can be starred at. */}
+          <Show when={starrable()}>
+            <button
+              type="button"
+              class="star-toggle"
+              classList={{ starred: starred() }}
+              title={
+                starred() ? 'Unstar — stop pinning to the top' : 'Star — pin to top of section'
+              }
+              aria-label={starred() ? `Unstar ${props.item.title}` : `Star ${props.item.title}`}
+              aria-pressed={starred()}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onToggleStar(props.item);
+              }}
+            >
+              <StarIcon filled={starred()} />
+            </button>
+          </Show>
           {/* The item's own identifier, written exactly as its directory name
               — dated slug, `YYYY-MM-DD-` prefix included. The date is part of
               the identifier here rather than a second stamp beside it; the
