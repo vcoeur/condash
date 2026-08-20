@@ -6,6 +6,7 @@ import {
   applyStarredSlug,
   compareByStatusThenSlug,
   normaliseStarredSlugs,
+  pruneStarredSlugs,
 } from '../../shared/projects';
 import type {
   Project,
@@ -34,6 +35,7 @@ import {
   requireNonEmptyString,
   requireRecord,
   requireString,
+  requireStringArray,
   withConception,
 } from './utils';
 
@@ -310,6 +312,45 @@ export function registerProjectsIpc(): void {
     return withConception(async (conceptionPath) => {
       const config = await getEffectiveConceptionConfig(conceptionPath);
       return normaliseStarredSlugs(config.starredProjects);
+    }, []);
+  });
+
+  // Drop the stars of items that are done. A star pins a live item to the top
+  // of its section, so it has no meaning past the close — and the caller hands
+  // over the done slugs rather than this handler deriving them, because the
+  // pane already holds the parsed project list. Deriving them here would walk
+  // and parse the whole tree a second time, racing the projects store's own
+  // load on boot and doubling exactly the cost `parseReadmeCached` exists to
+  // remove. One write for the whole batch, not one per slug.
+  ipcMain.handle('pruneStarredProjects', async (event, doneSlugs: unknown) => {
+    requireMainWindowSender(event);
+    const slugs = requireStringArray('pruneStarredProjects', doneSlugs);
+    // `requireStringArray` checks the container, not the elements — the one
+    // other caller re-checks the same way rather than trusting it.
+    for (const slug of slugs) {
+      if (typeof slug !== 'string') {
+        throw new Error('pruneStarredProjects: expected an array of strings');
+      }
+    }
+    return withConception(async (conceptionPath) => {
+      const config = await getEffectiveConceptionConfig(conceptionPath);
+      const current = normaliseStarredSlugs(config.starredProjects);
+      // Nothing to remove — return without a write. `mutateConceptionConfig`
+      // always rewrites the file, and a pointless rewrite bumps the mtime and
+      // fans a `config` watcher event out to four unrelated reloads. This read
+      // is outside the file queue, so a `setProjectStar` landing between it and
+      // the decision leaves that star in place; it can only under-prune, and
+      // the caller's next list change reconciles it.
+      if (pruneStarredSlugs(current, slugs).length === current.length) return current;
+      let next: string[] = [];
+      await mutateConceptionConfig(conceptionPath, (draft) => {
+        next = pruneStarredSlugs(draft.starredProjects, slugs);
+        // Drop the key entirely once nothing is starred, matching
+        // `setProjectStar` — an untouched conception keeps no empty scaffolding.
+        if (next.length > 0) draft.starredProjects = next;
+        else delete draft.starredProjects;
+      });
+      return next;
     }, []);
   });
 

@@ -2,7 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
-import { starredSlugs, toggleStar } from '../star-store';
+import { restoreStar, starredSlugs, toggleStar } from '../star-store';
 import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../modal-types';
@@ -150,17 +150,36 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     if (project.status === newStatus) return;
 
     const previous = project.status;
+    // Read before the optimistic patch: patching to `done` flushes the
+    // reconcile effect, which drops the star — so by the time the write
+    // fails, the store no longer remembers there was one.
+    const wasStarred = starredSlugs().has(project.slug);
     deps.mutate((current) => applyStatus(current ?? [], path, newStatus));
     try {
       const result = await window.condash.setStatus(path, newStatus);
       // Watcher fires a 'project' event for the README that patches the
       // card via `mutateProjects`. No explicit reload — reconcile updates
-      // the timeline / closedAt in place.
+      // the timeline / closedAt in place. The star of an item that just closed
+      // is dropped by the reconcile effect in main.tsx, which watches the same
+      // list: nothing to do here, on this route or any other.
       if (result.branchWarning) {
         deps.flashToast(result.branchWarning, 'info');
       }
     } catch (err) {
       deps.mutate((current) => applyStatus(current ?? [], path, previous));
+      // A failed status change must change nothing. The optimistic patch has
+      // already driven the reconcile — restore the star after the rollback, so
+      // the effect sees the old status and leaves it alone.
+      //
+      // The two writes are ordered by timing, not by a guarantee: the config
+      // queue is FIFO on *entry*, and the prune enters it only after its own
+      // pre-flight read. The restore is gated behind a whole failed `setStatus`
+      // round trip, which is far longer, so it enters last — and if it ever
+      // did not, the renderer's set still holds the star and the next list
+      // change reconciles the disagreement.
+      if (wasStarred && newStatus === 'done') {
+        void restoreStar(project.slug, (message) => deps.flashToast(message, 'error'));
+      }
       deps.flashToast(`Status change failed: ${(err as Error).message}`, 'error');
     }
   };

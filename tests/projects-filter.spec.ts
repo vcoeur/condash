@@ -108,22 +108,25 @@ test('the README search narrows the cards and forces matching sections open, kee
 });
 
 test('the starred toggle keeps only starred cards and combines with the search', async () => {
+  // The `backlog` item stands in for the collapsed-section case: a done item
+  // cannot be starred (the set is pruned of done slugs on every read), so
+  // `backlog` is the only default-collapsed section a star can reach.
   const booted = await bootApp({
     prepare,
-    extraConfig: { starredProjects: ['2026-04-26-sample', '2026-04-23-both-done'] },
+    extraConfig: { starredProjects: ['2026-04-26-sample', '2026-04-22-condash-backlog'] },
   });
   try {
     const win = booted.window;
     const starred = win.locator('.projects-filter-starred');
     await starred.click();
     await expect(starred).toHaveAttribute('aria-pressed', 'true');
-    // Both starred cards, the done one pulled out of its fold.
-    await expect(visibleTitles(win)).toHaveText(['Sample project', 'Both done']);
+    // Both starred cards, the backlog one pulled out of its fold.
+    await expect(visibleTitles(win)).toHaveText(['Sample project', 'Condash backlog']);
     await expect(win.locator('.projects-filter-count')).toHaveText('2 of 5');
 
-    // AND with the search: only the starred item whose README says orchid.
-    await win.fill('.projects-filter-input', 'orchid');
-    await expect(visibleTitles(win)).toHaveText(['Both done']);
+    // AND with the search: only the starred item whose README says flower.
+    await win.fill('.projects-filter-input', 'flower');
+    await expect(visibleTitles(win)).toHaveText(['Condash backlog']);
 
     // Clear filters resets every control at once.
     await win.click('.projects-filter-reset');

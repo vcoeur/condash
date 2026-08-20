@@ -291,6 +291,17 @@ export interface CondashApi {
    * the caller can reconcile without a second read.
    */
   setProjectStar(slug: string, starred: boolean): Promise<string[]>;
+  /**
+   * Drop the stars of the given done items, in one config write, and return
+   * the surviving slug list. A star pins a live item to the top of its
+   * section, so it does not outlive the close.
+   *
+   * The caller passes the done slugs because the Projects pane already holds
+   * the parsed project list — deriving them in main would walk and parse the
+   * whole tree again. A slug that is starred but absent from the argument is
+   * left alone, so a partial list can only under-prune, never over-prune.
+   */
+  pruneStarredProjects(doneSlugs: string[]): Promise<string[]>;
   readNote(path: string): Promise<string>;
   /**
    * Atomically write `newContent` if disk still matches `expectedContent`.

@@ -91,6 +91,7 @@ const api: CondashApi = {
   createProject: (input) => ipcRenderer.invoke('createProject', input),
   getStarredProjects: () => ipcRenderer.invoke('getStarredProjects'),
   setProjectStar: (slug, starred) => ipcRenderer.invoke('setProjectStar', slug, starred),
+  pruneStarredProjects: (doneSlugs) => ipcRenderer.invoke('pruneStarredProjects', doneSlugs),
   readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
     ipcRenderer.invoke('writeNote', path, expectedContent, newContent),

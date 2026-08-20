@@ -4,6 +4,7 @@ import {
   compareByStatusThenSlug,
   countSteps,
   normaliseStarredSlugs,
+  pruneStarredSlugs,
   shortSlug,
   statusOrder,
 } from './projects';
@@ -109,6 +110,34 @@ describe('applyStarredSlug', () => {
 
   it('normalises a corrupt current value before applying', () => {
     expect(applyStarredSlug('nonsense', 'a', true)).toEqual(['a']);
+  });
+});
+
+describe('pruneStarredSlugs', () => {
+  it('drops every done slug and keeps the rest sorted', () => {
+    expect(pruneStarredSlugs(['c', 'a', 'b'], ['b'])).toEqual(['a', 'c']);
+  });
+
+  it('is a no-op when nothing starred is done', () => {
+    expect(pruneStarredSlugs(['a', 'b'], ['c'])).toEqual(['a', 'b']);
+    expect(pruneStarredSlugs(['a', 'b'], [])).toEqual(['a', 'b']);
+  });
+
+  it('empties the list when every starred item is done', () => {
+    expect(pruneStarredSlugs(['a', 'b'], ['a', 'b', 'c'])).toEqual([]);
+  });
+
+  it('keeps a slug that resolves to no item — inert, not done', () => {
+    // A deleted or renamed item is absent from the done list *and* from every
+    // other status, so it must survive: pruning it here would be a guess.
+    expect(pruneStarredSlugs(['2026-01-01-gone'], ['2026-02-02-closed'])).toEqual([
+      '2026-01-01-gone',
+    ]);
+  });
+
+  it('normalises a corrupt current value before pruning', () => {
+    expect(pruneStarredSlugs([' a ', '', 7, 'b', 'a'], ['b'])).toEqual(['a']);
+    expect(pruneStarredSlugs('nonsense', ['a'])).toEqual([]);
   });
 });
 

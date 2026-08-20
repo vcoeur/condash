@@ -210,28 +210,26 @@ describe('star flag ordering', () => {
     expect(buckets.get('later')!.map((p) => p.slug)).toEqual(['2026-05-02-b']);
   });
 
-  it('applies inside the Done recent window and month subgroups too', () => {
+  it('has no star key in the Done band — a done item cannot be starred', () => {
+    // A done item cannot be starred — the pane reconciles the set against the
+    // project list — so the Done band's Recent window and its month subgroups
+    // sort by close date alone.
+    // Ordering here must not depend on the star store at all.
     const done = [
       doneAt('2026-05-01-recent-new', '2026-05-20'),
       doneAt('2026-05-02-recent-old', '2026-05-18'),
       doneAt('2026-04-01-month-new', '2026-04-20'),
       doneAt('2026-04-02-month-old', '2026-04-10'),
     ];
-    const grouping = groupDone(
-      done,
-      '2026-05-21',
-      new Set(['2026-05-02-recent-old', '2026-04-02-month-old']),
-    );
-    // Recent window: the starred (older) item leads despite the date sort.
+    const grouping = groupDone(done, '2026-05-21');
     expect(grouping.recent.map((p) => p.slug)).toEqual([
-      '2026-05-02-recent-old',
       '2026-05-01-recent-new',
+      '2026-05-02-recent-old',
     ]);
-    // Same rule one level down, inside the close-month subgroup.
     expect(grouping.byMonth[0].month).toBe('2026-04');
     expect(grouping.byMonth[0].projects.map((p) => p.slug)).toEqual([
-      '2026-04-02-month-old',
       '2026-04-01-month-new',
+      '2026-04-02-month-old',
     ]);
   });
 });

@@ -11,16 +11,16 @@ const CLICK_CYCLE: readonly StepMarker[] = [' ', '~', 'x', '-'];
 
 export const UNKNOWN = '?';
 
-/** Shared default for the `starred` parameter of the grouping helpers, so a
- *  caller that doesn't care (and every test that predates the star flag) needn't
- *  allocate an empty set per call. */
+/** Default for `groupByStatus`'s `starred` parameter, so a caller that doesn't
+ *  care (and every test that predates the star flag) needn't allocate an empty
+ *  set per call. */
 const EMPTY_STARRED: ReadonlySet<string> = new Set<string>();
 
 /** Star-first comparator fragment: -1 / 1 when exactly one of the two is
- *  starred, 0 when they tie so the caller's own ordering decides. Kept as a
- *  fragment rather than a full comparator because the star is the *first* key of
- *  two different sorts (slug-descending in a status bucket, close-date-descending
- *  in a Done subgroup) — one rule, both places. */
+ *  starred, 0 when they tie so the caller's own ordering decides. A fragment
+ *  rather than a full comparator because the star is only the *first* key of
+ *  the section sort — slug-descending decides the rest. The Done band has no
+ *  star key at all: a done item can't be starred. */
 function starFirst(a: Project, b: Project, starred: ReadonlySet<string>): number {
   const aStarred = starred.has(a.slug);
   const bStarred = starred.has(b.slug);
@@ -133,14 +133,10 @@ export interface DoneGrouping {
 }
 
 /** Split a Done bucket into the Recent window + per-close-month subgroups.
- * `today` is injected so tests can pin time without mocking Date. `starred`
- * keeps the star as the first sort key inside every subgroup, matching the
- * non-done sections. */
-export function groupDone(
-  done: readonly Project[],
-  today: string,
-  starred: ReadonlySet<string> = EMPTY_STARRED,
-): DoneGrouping {
+ * `today` is injected so tests can pin time without mocking Date. Unlike the
+ * live sections there is no star key here — a star is dropped when its item
+ * closes — so close-date-descending is the whole order. */
+export function groupDone(done: readonly Project[], today: string): DoneGrouping {
   const sevenDaysAgo = (() => {
     const d = new Date(today + 'T00:00:00Z');
     d.setUTCDate(d.getUTCDate() - 7);
@@ -163,8 +159,6 @@ export function groupDone(
     bucket.push(p);
   }
   const sortDesc = (a: Project, b: Project): number => {
-    const byStar = starFirst(a, b, starred);
-    if (byStar !== 0) return byStar;
     const da = cardDate(a);
     const db = cardDate(b);
     if (da !== db) return da < db ? 1 : -1;

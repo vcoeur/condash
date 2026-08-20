@@ -1,4 +1,5 @@
 import { createSignal } from 'solid-js';
+import type { Project } from '@shared/types';
 
 // Shared starred-project set behind the Projects-pane card stars.
 //
@@ -81,5 +82,81 @@ export async function toggleStar(
     if (mine === generation) setStarred(previous);
     onError?.(`Could not ${next ? 'star' : 'unstar'} project: ${(err as Error).message}`);
     return !next;
+  }
+}
+
+/**
+ * Drop the star of every done project in `projects`, persisting the removal.
+ *
+ * A star pins a live item to the top of its section, so `done` and *starred*
+ * are mutually exclusive. The rule is enforced here — against the list the
+ * pane already holds — rather than inside the starred read, so it costs no
+ * extra tree walk and covers every route to `done` alike: the pane's own
+ * status change, a `condash projects close` that reaches us as a watcher
+ * patch, and a star stranded on an item closed before this rule existed.
+ *
+ * A no-op unless something is actually starred *and* done, so it is safe to
+ * call on every list change. Never throws — a failed write leaves the star in
+ * place, and the next list change tries again.
+ *
+ * @param projects the current project list, in whatever state the store holds
+ */
+export async function reconcileStarred(projects: readonly Project[]): Promise<void> {
+  const current = starred();
+  if (current.size === 0) return;
+  const stale = projects
+    .filter((project) => project.status === 'done' && current.has(project.slug))
+    .map((project) => project.slug);
+  if (stale.length === 0) return;
+  const mine = ++generation;
+  try {
+    const slugs = await window.condash.pruneStarredProjects(stale);
+    // A toggle or conception switch started while the write was in flight —
+    // its result is the current truth, so drop ours.
+    if (mine !== generation) return;
+    setStarred(new Set(slugs));
+  } catch (err) {
+    // Leave the set as it is: showing a stale star is a smaller lie than
+    // blanking every star because one write failed. Logged rather than
+    // toasted — nothing the user did caused this — but not swallowed: the
+    // retry only comes with the next list change, so a repeated failure has
+    // to be visible somewhere.
+    console.error('[star-store] could not prune done projects', err);
+  }
+}
+
+/**
+ * Star `slug` again after an optimistic status change was rolled back.
+ *
+ * The reconcile effect watches the project list, so an optimistic patch to
+ * `done` drops the star before the status write is confirmed. When that write
+ * then fails, the card goes back to its old status and the star has to follow
+ * it — the user was told nothing changed, and a reopen deliberately never
+ * restores a star, so leaving it dropped loses it for good.
+ *
+ * @param slug the project slug to star again
+ * @param onError called with a human-readable message when the write failed
+ */
+export async function restoreStar(
+  slug: string,
+  onError?: (message: string) => void,
+): Promise<void> {
+  const optimistic = new Set(starred());
+  optimistic.add(slug);
+  const previous = starred();
+  // Bumps the generation like `toggleStar`, so an in-flight prune that already
+  // decided this slug was done cannot land its result on top of this one.
+  const mine = ++generation;
+  setStarred(optimistic);
+  try {
+    const slugs = await window.condash.setProjectStar(slug, true);
+    if (mine !== generation) return;
+    setStarred(new Set(slugs));
+  } catch (err) {
+    // Both writes failed — the status change and now its undo. Put the set
+    // back rather than showing a star the config does not have, which the
+    // next reload would drop without a word.
+    if (mine === generation) setStarred(previous);
+    onError?.(`Could not restore the star: ${(err as Error).message}`);
   }
 }

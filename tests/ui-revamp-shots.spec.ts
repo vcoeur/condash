@@ -5,9 +5,12 @@
  * tree (set CONDASH_SHOTS_CONCEPTION) so each theme is judged against real data
  * rather than a fixture. Skipped when that is unset. Boots once per preset and
  * captures the dashboard in it, then captures the Settings → Appearance theme
- * picker. Strictly read-only towards the conception: render + screenshot only,
- * no mutating clicks (no sync-now, no new-project, no stop/run, and the
- * settings modal is opened but never saved).
+ * picker. Read-only towards the conception *tree*: render + screenshot only, no
+ * mutating clicks (no sync-now, no new-project, no stop/run, and the settings
+ * modal is opened but never saved). One exception, and it is the app's doing
+ * rather than this spec's: booting loads the project list, and the pane then
+ * prunes any done item out of the target tree's `starredProjects` (see
+ * `reconcileStarred`). No README is touched and `.condash/` is gitignored.
  *
  * These are visual captures only — the picker's behavioural contract lives in
  * theme-picker.spec.ts, which runs against the standard fixture every time.
