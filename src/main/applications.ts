@@ -17,8 +17,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
 import { parseHeader } from '../shared/header';
-import { toPosix } from '../shared/path';
-import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
+import {
+  findRepoSlotByHandle,
+  walkRepos,
+  type ConfigShape,
+  type RepoLookup,
+  type RepoSlot,
+} from './config-walk';
 import { getEffectiveConceptionConfig, mutateConceptionConfig } from './effective-config';
 import { findProjectReadmes } from './walk';
 import { pathExists } from './fs-helpers';
@@ -432,9 +437,9 @@ export async function setApplication(
 ): Promise<void> {
   const target = appHandle(handle);
   await mutateConfig(conceptionPath, (config) => {
-    const located = locateRepoByHandle(config.repositories ?? [], target);
-    if (!located) throw new Error(`no live app #${target}`);
-    const obj = asMutableEntry(located);
+    const slot = findRepoSlotByHandle(config as ConfigShape, target);
+    if (!slot) throw new Error(`no live app #${target}`);
+    const obj = asMutableEntry(slot);
     if (patch.label !== undefined) obj.label = patch.label || undefined;
     if (patch.path !== undefined) obj.path = patch.path;
     // An empty --purpose clears the cell rather than writing a blank string.
@@ -442,81 +447,29 @@ export async function setApplication(
   });
 }
 
-/** A raw registry entry found in the config, together with the array that
- *  holds it and its index there — so a caller can rewrite the slot in place,
- *  which the string → object upgrade needs. */
-interface LocatedRepo {
-  container: unknown[];
-  index: number;
-}
-
 /**
- * Find the raw `repositories[]` entry that resolves to `handle`, descending
- * into `submodules[]`.
- *
- * The registry walk behind `list` / `validate` / `sync-docs` treats a
- * submodule handle as first-class (#335), so the mutating verbs have to
- * resolve the same set — otherwise a handle is listed but not editable
- * (#532). Top-level entries are scanned before any submodule so a top-level
- * handle always wins over a nested one of the same name, matching the
- * precedence `findRepoEntry` applies in `config-walk.ts`.
- */
-function locateRepoByHandle(repos: unknown[], handle: string): LocatedRepo | null {
-  for (let index = 0; index < repos.length; index += 1) {
-    if (isRepoWithHandle(repos[index], handle)) return { container: repos, index };
-  }
-  for (const entry of repos) {
-    const submodules = submodulesOf(entry);
-    if (!submodules) continue;
-    for (let index = 0; index < submodules.length; index += 1) {
-      if (isRepoWithHandle(submodules[index], handle)) return { container: submodules, index };
-    }
-  }
-  return null;
-}
-
-/** The mutable `submodules[]` array of a raw entry, when it declares one. */
-function submodulesOf(raw: unknown): unknown[] | null {
-  if (!raw || typeof raw !== 'object' || 'section' in raw) return null;
-  const submodules = (raw as { submodules?: unknown }).submodules;
-  return Array.isArray(submodules) ? submodules : null;
-}
-
-/**
- * The located entry as a mutable object, upgrading the bare-string form
+ * The slot's entry as a mutable object, widening the bare-string form
  * (`"condash"`) to `{ name: "condash" }` in place first.
  *
- * A string entry carries no slot for a label, purpose or path, so `set` used
- * to reject it with the same "no live app" error a genuinely absent handle
- * gets — the #532 contract break again, by entry shape rather than by nesting
- * depth. The upgrade preserves identity: the handle stays derived from the
- * same directory name, so nothing that resolved before resolves differently.
- * `renameApplication` performs the same widening.
+ * A string entry carries no field to patch, so `set` used to reject it with
+ * the same "no live app" error a genuinely absent handle gets — the #532
+ * contract break again, reached through entry shape rather than nesting depth.
+ * The widening preserves identity: the handle still derives from the same
+ * directory name, so nothing that resolved before resolves differently.
+ *
+ * `renameApplication` widens a string too, but to a *different* shape — it
+ * pins an explicit `handle` and records the old spelling as an alias, neither
+ * of which belongs on a plain field patch. The two are deliberately not one
+ * helper.
  */
-function asMutableEntry(located: LocatedRepo): Record<string, unknown> {
-  const current = located.container[located.index];
+function asMutableEntry(slot: RepoSlot): Record<string, unknown> {
+  const current = slot.container[slot.index];
   if (typeof current === 'string') {
-    const upgraded: Record<string, unknown> = { name: current };
-    located.container[located.index] = upgraded;
-    return upgraded;
+    const widened: Record<string, unknown> = { name: current };
+    slot.container[slot.index] = widened;
+    return widened;
   }
   return current as Record<string, unknown>;
-}
-
-/** True when a raw repositories[] entry resolves to `handle`. */
-function isRepoWithHandle(raw: unknown, handle: string): boolean {
-  if (typeof raw === 'string') return appHandle(raw) === handle;
-  if (!raw || typeof raw !== 'object' || 'section' in raw) return false;
-  const obj = raw as { handle?: string; name?: string; path?: string };
-  const own = obj.handle ? appHandle(obj.handle) : appHandle(obj.name ?? basenameOf(obj.path));
-  return own === handle;
-}
-
-function basenameOf(p?: string): string {
-  if (!p) return '';
-  const normalised = toPosix(p);
-  const parts = normalised.replace(/\/+$/, '').split('/');
-  return parts[parts.length - 1] ?? '';
 }
 
 /** Outcome of a {@link renameApplication} run. */
@@ -551,18 +504,24 @@ export async function renameApplication(
   }
 
   await mutateConfig(conceptionPath, (config) => {
-    const located = locateRepoByHandle(config.repositories ?? [], oldHandle);
-    if (!located) throw new Error(`no live app #${oldHandle}`);
-    const entry = located.container[located.index];
+    const slot = findRepoSlotByHandle(config as ConfigShape, oldHandle);
+    if (!slot) throw new Error(`no live app #${oldHandle}`);
+    const entry = slot.container[slot.index];
     if (typeof entry === 'string') {
-      located.container[located.index] = { handle: newHandle, name: entry, aliases: [entry] };
-    } else if (typeof entry === 'object' && entry !== null) {
+      slot.container[slot.index] = { handle: newHandle, name: entry, aliases: [entry] };
+    } else if (entry && typeof entry === 'object') {
       const obj = entry as Record<string, unknown>;
       const aliases = new Set<string>(Array.isArray(obj.aliases) ? (obj.aliases as string[]) : []);
       aliases.add(oldHandle);
       aliases.delete(newHandle);
       obj.handle = newHandle;
       obj.aliases = Array.from(aliases);
+    } else {
+      // Neither shape means the registry entry is not one we can rewrite.
+      // Falling through would leave the config untouched while the README
+      // cascade below still rewrote every reference to a handle no entry
+      // carries, so fail loudly instead.
+      throw new Error(`registry entry for #${oldHandle} has an unusable shape`);
     }
   });
 

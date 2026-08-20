@@ -47,6 +47,7 @@ The registry is your config's **`repositories[]`** array — a conception-owned 
 - **`aliases`** — legacy spellings that still resolve to this handle. `validate` flags a README `apps:` value matching an alias and suggests the `#handle` rewrite; `rename` records the old handle here for you.
 - **`label`** — an optional human title rendered as a secondary subtitle; the primary pill is always the `#handle`.
 - **`submodules`** — nested repo entries are apps in their own right: each gets a handle by the same rules and resolves everywhere a handle is expected (a project may depend on a single submodule of a repo). `list` and the generated Apps table render them under their parent, prefixed `↳`.
+  > **A submodule's `path` is relative to its parent, but `list` prints it relative to the workspace.** `{ "handle": "gamma", "path": "gamma" }` under parent `beta` resolves to `<workspace>/beta/gamma`, which `list` shows as `beta/gamma`. Do **not** feed that displayed value back to `set --path` — `beta/gamma` under `beta` resolves to `<workspace>/beta/beta/gamma`. Pass the path as it is written in the file, relative to the parent directory.
 
 > **Not every array element is a repo.** `repositories[]` also accepts **section markers** — `{ "section": "Services" }` — which group the Code pane's cards and the Settings modal's rows under a heading. They carry no identity and no behaviour, and the config walker strips them before any consumer sees the list, so `applications list` will never show one. Expect them if you hand-edit a registry someone else wrote.
 
@@ -85,7 +86,7 @@ condash applications sync-docs           # regenerate the AGENTS.md Apps table
 | Verb | What it does |
 |------|--------------|
 | `list` | List every registered app (live + retired) with handle, label, path; submodules render indented under their parent (`↳ #child`). |
-| `add <handle> --path <p> [--label <l>]` | Register a new live app. |
+| `add <handle> --path <p> [--label <l>] [--purpose <t>]` | Register a new live app (top-level only — there is no parent flag, so a submodule cannot be created here). |
 | `set <handle> [--label <l>] [--purpose <t>] [--path <p>]` | Update a registered app — any handle `list` shows, submodules included. An entry written as a bare string is widened to object form so it can hold the field; its handle is unchanged. |
 | `rename <old> <new>` | Rename a handle; records the old as an alias **and** rewrites every project README `apps:` reference that pointed at it. |
 | `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry, including each app's one-line `purpose`. (Agent-specific files like `CLAUDE.md` are virtual renders of `AGENTS.md` and are never written to disk.) |

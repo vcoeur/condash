@@ -490,18 +490,78 @@ describe('add / set / rename round-trips', () => {
     await expect(setApplication(tmp, 'nope', { label: 'x' })).rejects.toThrow(/no live app #nope/);
   });
 
-  it('prefers a top-level handle over a submodule of the same name (#532)', async () => {
+  it('edits the namesake declaration order resolves to, nested first (#532)', async () => {
+    // The nested namesake is declared FIRST, so it is the row `list` reports
+    // first and `resolveReference` resolves `#shared` to. `set` must edit that
+    // same row — a top-level-first rule would silently patch the other one.
     writeConfig({
       repositories: [
-        { handle: 'shared', path: 'top-level', label: 'Top' },
         { handle: 'beta', path: 'beta', submodules: [{ name: 'shared', label: 'Nested' }] },
+        { handle: 'shared', path: 'top-level', label: 'Top' },
       ],
     });
+    const before = await listApplications(tmp, emptyGlobal);
+    expect((await resolveReference('#shared', before, aliasIndex(before))).canonical).toBe(
+      'shared',
+    );
+    expect(before.find((a) => a.handle === 'shared')!.parent).toBe('beta');
+
     await setApplication(tmp, 'shared', { label: 'Patched' });
     const apps = await listApplications(tmp, emptyGlobal);
-    // The top-level entry took the patch; the nested namesake is untouched.
-    expect(apps.find((a) => a.handle === 'shared' && !a.parent)!.label).toBe('Patched');
-    expect(apps.find((a) => a.handle === 'shared' && a.parent)!.label).toBe('Nested');
+    expect(apps.find((a) => a.handle === 'shared' && a.parent)!.label).toBe('Patched');
+    expect(apps.find((a) => a.handle === 'shared' && !a.parent)!.label).toBe('Top');
+  });
+
+  it('reaches a handle nested more than one level deep (#532)', async () => {
+    // The zod schema forbids nesting a submodule under a submodule, but the
+    // mutation path reads raw JSON with no schema validation, and a
+    // hand-edited settings file is exactly the #532 scenario. The walk has no
+    // depth limit, so the resolver must not either.
+    writeConfig({
+      repositories: [
+        {
+          handle: 'beta',
+          path: 'beta',
+          submodules: [{ handle: 'gamma', path: 'gamma', submodules: [{ handle: 'deep' }] }],
+        },
+      ],
+    });
+    expect((await listApplications(tmp, emptyGlobal)).map((a) => a.handle)).toContain('deep');
+    await setApplication(tmp, 'deep', { label: 'Deep' });
+    expect((await listApplications(tmp, emptyGlobal)).find((a) => a.handle === 'deep')!.label).toBe(
+      'Deep',
+    );
+  });
+
+  it('sets and renames a bare-string entry nested in submodules[] (#532)', async () => {
+    writeConfig({ repositories: [{ handle: 'beta', path: 'beta', submodules: ['gamma'] }] });
+    await setApplication(tmp, 'gamma', { label: 'Gamma' });
+    let apps = await listApplications(tmp, emptyGlobal);
+    expect(apps.find((a) => a.handle === 'gamma')!.label).toBe('Gamma');
+    expect(apps.find((a) => a.handle === 'gamma')!.parent).toBe('beta');
+
+    await renameApplication(tmp, 'gamma', 'delta');
+    apps = await listApplications(tmp, emptyGlobal);
+    const delta = apps.find((a) => a.handle === 'delta')!;
+    expect(delta.parent).toBe('beta');
+    expect(delta.aliases).toContain('gamma');
+  });
+
+  it('interprets a submodule --path against its parent directory (#532)', async () => {
+    // resolveCwd anchors a submodule's relative path on the parent's resolved
+    // cwd, so `--path gamma-moved` means <workspace>/beta/gamma-moved. `list`
+    // then prints that workspace-relative, which is NOT the value to feed back
+    // to --path. Pinned so the asymmetry cannot drift unnoticed.
+    writeConfig({
+      repositories: [
+        { handle: 'beta', path: 'beta', submodules: [{ handle: 'gamma', path: 'gamma' }] },
+      ],
+    });
+    await setApplication(tmp, 'gamma', { path: 'gamma-moved' });
+    const apps = await listApplications(tmp, emptyGlobal);
+    const gamma = apps.find((a) => a.handle === 'gamma')!;
+    expect(gamma.cwd).toBe(join(tmp, 'beta', 'gamma-moved'));
+    expect(gamma.path).toBe('beta/gamma-moved');
   });
 
   it('upgrades a bare-string entry so set can reach it (#532)', async () => {
