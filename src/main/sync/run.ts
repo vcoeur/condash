@@ -149,6 +149,12 @@ export async function syncRun(
     const unsettledTrees = new Set<SyncTree>();
     const heldBackTrees = new Set<SyncTree>();
     const heldBackPaths: string[] = [];
+    // Index paths already modified BEFORE this sweep touched anything — i.e.
+    // by a hand-run `condash knowledge index` or another external writer.
+    // Sync cannot subject its own regenerated indexes to the quiet period,
+    // but these pre-existing changes are exactly what the quiet period is
+    // for, so they are remembered here and gated below.
+    const preExistingIndexChanges = new Set<string>();
     // Trees whose content this sweep commits. Their indexes are regenerated in
     // the same sweep whether or not a marker is set, so an index never trails
     // the content it describes by more than the quiet period — and a deleted
@@ -156,7 +162,10 @@ export async function syncRun(
     const committingTrees = new Set<SyncTree>();
     for (const { path, newToHead } of changed) {
       const cls = classifyPath(path);
-      if (cls.kind === 'index') continue;
+      if (cls.kind === 'index') {
+        preExistingIndexChanges.add(path);
+        continue;
+      }
       if (cls.kind === 'unresolved') {
         skipped.push({ path, reason: 'unresolved' });
         continue;
@@ -191,6 +200,14 @@ export async function syncRun(
     // describing it never did. A tracked file mid-write is safe to regenerate
     // over: its bullet may describe text one tick stale, and the marker kept
     // below guarantees the next tick re-derives it.
+    // Sync itself writes index files during regeneration, so index paths
+    // cannot simply be subject to the quiet period — its own writes would
+    // never commit. Instead: a candidate index path commits when it was
+    // already settled before this sweep (mtime at or before the cutoff), or
+    // when the change is NEW since the sweep started (authored by this
+    // tick's regeneration). A pre-existing change that is still inside the
+    // quiet period — the hand-run index rewrite mid-write — waits for the
+    // next tick, like every other path.
     const regeneratedTrees = await regenerateDirtyTrees(conceptionPath, options.dryRun, {
       heldBackTrees,
       forceTrees: committingTrees,
@@ -206,11 +223,10 @@ export async function syncRun(
       }
     }
 
-    // Re-read: regeneration just rewrote index.md files, and they are exempt
-    // from the quiet period precisely because sync itself set their mtime.
-    // A deferred tree's index.md changes are left uncommitted even when they
-    // are already on disk — an agent that ran `condash knowledge index` by
-    // hand clears the marker, so the marker alone doesn't cover them.
+    // Re-read: regeneration just rewrote index.md files. A deferred tree's
+    // index.md changes are left uncommitted even when they are already on
+    // disk — an agent that ran `condash knowledge index` by hand clears the
+    // marker, so the marker alone doesn't cover them.
     const indexPathsByTree = new Map<SyncTree, string[]>();
     for (const { path } of await readChangedPaths(conceptionPath)) {
       const cls = classifyPath(path);
@@ -219,9 +235,19 @@ export async function syncRun(
       if (bucket) bucket.push(path);
       else indexPathsByTree.set(cls.tree, [path]);
     }
-    const indexPaths = TREES.filter(([tree]) => !heldBackTrees.has(tree))
-      .flatMap(([tree]) => indexPathsByTree.get(tree) ?? [])
-      .sort();
+    const indexPaths: string[] = [];
+    for (const [tree, paths] of indexPathsByTree) {
+      if (heldBackTrees.has(tree)) continue;
+      for (const path of paths) {
+        const stat = await fs.stat(join(conceptionPath, path)).catch(() => null);
+        const mtimeMs = stat?.mtimeMs ?? 0;
+        const settled = mtimeMs <= cutoffMs;
+        const syncAuthored = !preExistingIndexChanges.has(path);
+        if (settled || syncAuthored) indexPaths.push(path);
+        else skipped.push({ path, reason: 'quiet-period' });
+      }
+    }
+    indexPaths.sort();
 
     // Only a tree with index work actually waiting counts as deferred, so the
     // flag means "a structural inconsistency is sitting uncommitted", not
