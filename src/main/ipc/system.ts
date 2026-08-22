@@ -11,11 +11,7 @@ import {
   updateSettings,
 } from '../settings';
 import { resolveConceptionConfigPath } from '../effective-config';
-import {
-  assertInitTargetAllowed,
-  detectConceptionState,
-  initConception,
-} from '../conception-init';
+import { assertInitTargetAllowed, detectConceptionState, initConception } from '../conception-init';
 import { htmlToPdf } from '../export-pdf';
 import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';

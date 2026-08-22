@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initConception, substituteTemplateTokens, assertInitTargetAllowed } from './conception-init';
+import {
+  initConception,
+  substituteTemplateTokens,
+  assertInitTargetAllowed,
+} from './conception-init';
 
 /** Where the fake bundled template lives — set per test. */
 const mockAppPath = vi.hoisted(() => ({ value: '' }));

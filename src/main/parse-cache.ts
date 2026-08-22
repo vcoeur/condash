@@ -51,8 +51,7 @@ export async function parseReadmeCached(path: string): Promise<Project> {
   const key = keyFor(path);
   const stat = await fs.stat(path);
   const cached = cache.get(key);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size)
-    return cached.project;
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.project;
   const project = await parseReadme(path);
   cache.set(key, { mtimeMs: stat.mtimeMs, size: stat.size, project });
   return project;
