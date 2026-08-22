@@ -70,6 +70,28 @@ describe('redactSecrets', () => {
     );
   });
 
+  it('masks the password in a credentialed URL, keeping scheme and user', () => {
+    expect(redactSecrets('postgres://alice:hunter2hunter2@db.example.com:5432/prod')).toBe(
+      'postgres://alice:«redacted:url-password»@db.example.com:5432/prod',
+    );
+    expect(redactSecrets('https://user:s3cr3tvalue@example.com/path?q=1')).toBe(
+      'https://user:«redacted:url-password»@example.com/path?q=1',
+    );
+  });
+
+  it('does not over-redact URLs without credentials', () => {
+    const plain = 'https://example.com:5432/path?query=1';
+    expect(redactSecrets(plain)).toBe(plain);
+    expect(redactSecrets('postgres://db.example.com:5432/prod')).toBe(
+      'postgres://db.example.com:5432/prod',
+    );
+  });
+
+  it('leaves userinfo without a password untouched', () => {
+    const ssh = 'ssh://git@github.com/vcoeur/condash.git';
+    expect(redactSecrets(ssh)).toBe(ssh);
+  });
+
   it('masks a PEM private-key block', () => {
     const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIabc123\nDEF456\n-----END RSA PRIVATE KEY-----';
     expect(redactSecrets(`before\n${pem}\nafter`)).toBe('before\n«redacted:private-key»\nafter');
