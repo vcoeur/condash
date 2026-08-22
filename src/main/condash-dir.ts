@@ -91,12 +91,15 @@ export function isConceptionSettingsPath(path: string): boolean {
 
 /**
  * True when a parsed config object looks like a migrator-written tombstone:
- * non-empty and made up exclusively of `_`-prefixed marker keys (`_moved_to`,
- * `_moved_at`, …). The migrator leaves these in place of a lifted legacy file;
- * readers treat them as absent so a tombstone never shadows the primary.
+ * non-empty and made up exclusively of the marker keys the migrator writes
+ * (`_`, `_moved_to`, `_moved_at`). The migrator leaves these in place of a
+ * lifted legacy file; readers treat them as absent so a tombstone never
+ * shadows the primary. Keyed by exact prefix rather than any `_`-leading
+ * name, so a config that legitimately uses its own `_`-prefixed keys is
+ * still read as config.
  */
 export function isTombstone(obj: Record<string, unknown>): boolean {
   const keys = Object.keys(obj);
   if (keys.length === 0) return false;
-  return keys.every((key) => key.startsWith('_'));
+  return keys.every((key) => key === '_' || key.startsWith('_moved_'));
 }

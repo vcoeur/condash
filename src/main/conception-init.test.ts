@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initConception, substituteTemplateTokens } from './conception-init';
+import {
+  initConception,
+  substituteTemplateTokens,
+  assertInitTargetAllowed,
+} from './conception-init';
 
 /** Where the fake bundled template lives — set per test. */
 const mockAppPath = vi.hoisted(() => ({ value: '' }));
@@ -71,5 +75,38 @@ describe('initConception', () => {
     expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe(
       '# Hand-made AGENTS.md — {{ conception_name }}\n',
     );
+  });
+});
+
+describe('assertInitTargetAllowed', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'condash-init-guard-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('allows the dialog-picked existing directory', async () => {
+    await expect(assertInitTargetAllowed(dir, dir)).resolves.toBeUndefined();
+  });
+
+  it('rejects when no dialog pick is outstanding', async () => {
+    await expect(assertInitTargetAllowed(dir, null)).rejects.toThrow(
+      /not picked via the conception dialog/,
+    );
+  });
+
+  it('rejects a path other than the dialog pick', async () => {
+    await expect(assertInitTargetAllowed(dir, join(dir, 'other'))).rejects.toThrow(
+      /not picked via the conception dialog/,
+    );
+  });
+
+  it('rejects a picked path that does not exist as a directory', async () => {
+    const missing = join(dir, 'nope');
+    await expect(assertInitTargetAllowed(missing, missing)).rejects.toThrow(/not a directory/);
   });
 });

@@ -28,6 +28,7 @@ description: Every environment variable condash reads — the GUI, the CLI, and 
 | `CONDASH_TEMPLATE_ROOT`             | Override the shipped `conception-template/` root                                                | bundled     | Any absolute path                     |
 | `CONDASH_USER_SKILLS_ROOT`          | Override the user-scope skills root the Skills pane reads (test seam)                           | `~/.config/agents/skills` | Any absolute path       |
 | `CONDASH_USER_AGENTS_MD`            | Override the user-scope `AGENTS.md` the Skills pane reads (test seam)                           | `~/.config/agents/AGENTS.md` | Any absolute path    |
+| `CONDASH_BENCH`                     | **Test only** — run the opt-in terminal-logger benchmark assertions                            | unset       | `1` or unset                          |
 
 condash reads few environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The vars above either feed Electron's startup, back the embedded terminal, or exist as CLI ergonomics and test seams.
 
@@ -116,6 +117,16 @@ Override hatches, primarily for tests. Nothing in normal use needs them.
 
 - **`CONDASH_TEMPLATE_ROOT`** replaces the bundled `conception-template/` root that the **CLI** ships skills and marker regions from ([`condash skills install`](cli.md#skills)). Point it at a checkout to test skill sources without rebuilding the bundle. The GUI resolves its own copy from `app.getAppPath()` and ignores this variable.
 - **`CONDASH_USER_SKILLS_ROOT`** and **`CONDASH_USER_AGENTS_MD`** relocate the two paths the Skills pane reads in its **user** scope — by default `~/.config/agents/skills/` and `~/.config/agents/AGENTS.md`, the [agedum](skill.md#the-harness-launcher-agedum) sources. The pane is read-only in that scope either way.
+
+## `CONDASH_BENCH`
+
+**Test only — never set it in normal use.** The terminal-logger benchmark suite (`src/main/terminal-logger-bench.test.ts`) is skipped by default because its arms are sized to measure, not to assert quickly. Set `CONDASH_BENCH=1` to opt in:
+
+```
+CONDASH_BENCH=1 npm run test:unit -- src/main/terminal-logger-bench.test.ts
+```
+
+The benchmark compares the incremental grid-body flush against a pinned copy of the pre-change flush and asserts both arms still produce the right bytes — see the terminal-logging notes in `AGENTS.md` for what the ratios mean and which ones are real.
 
 ## Not read from the environment
 

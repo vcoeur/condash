@@ -105,6 +105,30 @@ export async function initConception(targetPath: string): Promise<string[]> {
   return created;
 }
 
+/**
+ * Guard for the renderer-initiated `initConception` IPC: the renderer may only
+ * scaffold a directory the user actually picked in the native dialog this
+ * session, and only when it exists as a directory. Without this the handler is
+ * the one unbounded write in the IPC surface — a compromised renderer could
+ * scaffold the template at any path (and `initConception` mkdir -p's its
+ * target). The CLI's `condash init` deliberately creates its target and does
+ * not go through this guard.
+ *
+ * @throws when no dialog pick is outstanding, `candidate` differs from it, or
+ * `candidate` does not exist as a directory.
+ */
+export async function assertInitTargetAllowed(
+  candidate: string,
+  allowedPath: string | null,
+): Promise<void> {
+  if (allowedPath === null || candidate !== allowedPath) {
+    throw new Error('initConception: path was not picked via the conception dialog');
+  }
+  if (!(await isDirectory(candidate))) {
+    throw new Error(`initConception: not a directory — ${candidate}`);
+  }
+}
+
 /** Per-conception values for the `{{ token }}` substitutions in AGENTS.md. */
 interface TemplateTokens {
   name: string;

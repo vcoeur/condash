@@ -3,7 +3,8 @@ import { toPosix } from '../shared/path';
 import type { Project } from '../shared/types';
 import { parseReadme } from './parse';
 
-// Process-wide memo for parseReadme, keyed on the README path + its mtime.
+// Process-wide memo for parseReadme, keyed on the README path + its mtime
+// and size.
 //
 // `listProjects` re-parses every project README on each call — an unconditional
 // readFile + ~6-pass parse per file. On a large tree (hundreds of READMEs) a
@@ -25,6 +26,11 @@ import { parseReadme } from './parse';
 
 interface CacheEntry {
   mtimeMs: number;
+  /** File size in bytes. Keyed alongside `mtimeMs` — matching the disk cache
+   *  in `parse-cache-disk.ts` and the sibling memos in `settings.ts` /
+   *  `effective-config.ts` — so an edit that changes content but lands on the
+   *  same mtime tick still invalidates the entry. */
+  size: number;
   project: Project;
 }
 
@@ -45,9 +51,9 @@ export async function parseReadmeCached(path: string): Promise<Project> {
   const key = keyFor(path);
   const stat = await fs.stat(path);
   const cached = cache.get(key);
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached.project;
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.project;
   const project = await parseReadme(path);
-  cache.set(key, { mtimeMs: stat.mtimeMs, project });
+  cache.set(key, { mtimeMs: stat.mtimeMs, size: stat.size, project });
   return project;
 }
 

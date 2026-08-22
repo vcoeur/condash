@@ -176,6 +176,35 @@ describe('syncRun', () => {
     expect(await subjects(root)).toEqual(['init']);
   });
 
+  it('leaves a hand-run index.md rewrite inside the quiet period for the next tick', async () => {
+    // First sweep commits an item and its regenerated index, giving HEAD a
+    // settled baseline.
+    const readme = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+
+    // An agent runs `condash knowledge index` by hand right now — the index
+    // path used to bypass the quiet period entirely and would be swept into a
+    // commit mid-write.
+    const index = join(root, 'projects', 'index.md');
+    await fs.writeFile(index, '# projects\n\n- hand edit\n');
+    const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
+
+    expect(report.commits).toEqual([]);
+    expect(report.skipped).toEqual([{ path: 'projects/index.md', reason: 'quiet-period' }]);
+    expect(await git(root, 'status', '--porcelain')).toContain('M projects/index.md');
+
+    // Settled, the next tick commits it as ordinary index work.
+    await settle(index);
+    const second = await syncRun(root, RUN_DEFAULTS);
+    expect(second.commits.map((c) => c.subject)).toEqual(['indexes: sync']);
+  });
+
   it('defers index regeneration while any item is still inside the quiet period', async () => {
     // Regression: the index is fan-in over every item, so regenerating it here
     // would commit a `projects/index.md` whose bullets point at an item

@@ -100,6 +100,21 @@ describe('parseReadmeCached', () => {
     expect(fresh.stepCounts.done).toBe(2);
   });
 
+  it('re-parses when content changes but the mtime lands on the same tick', async () => {
+    // Pin a fixed integer-ms mtime so `utimes` round-trips it exactly.
+    const pinned = new Date(1_700_000_000_000);
+    await utimes(readme, pinned, pinned);
+    const first = await parseReadmeCached(readme);
+    expect(first.stepCounts.todo).toBe(1);
+    // Edit the file (different size) but restore the same mtime — matching
+    // the disk cache's mtime+size key, this must NOT serve the stale parse.
+    await writeFile(readme, README.replace('- [ ] two', ''), 'utf8');
+    await utimes(readme, pinned, pinned);
+    const second = await parseReadmeCached(readme);
+    expect(second).not.toBe(first);
+    expect(second.stepCounts.todo).toBe(0);
+  });
+
   it('clearReadmeCache drops every entry', async () => {
     await parseReadmeCached(readme);
     expect(readmeCacheSize()).toBe(1);
