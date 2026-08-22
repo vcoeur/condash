@@ -7,6 +7,7 @@ import {
   condashLogsRoot,
   condashSettingsPath,
   isConceptionSettingsPath,
+  isTombstone,
   legacyCondashJsonPath,
   legacyConfigurationJsonPath,
 } from './condash-dir';
@@ -53,5 +54,27 @@ describe('isConceptionSettingsPath', () => {
   it('returns false for the legacy conception-root files', () => {
     expect(isConceptionSettingsPath('/x/condash.json')).toBe(false);
     expect(isConceptionSettingsPath('/x/configuration.json')).toBe(false);
+  });
+});
+
+describe('isTombstone', () => {
+  it('matches the exact marker set the migrator writes', () => {
+    expect(
+      isTombstone({
+        _: 'Settings moved to .condash/settings.json.',
+        _moved_to: '.condash/settings.json',
+        _moved_at: '2026-08-22T00:00:00.000Z',
+      }),
+    ).toBe(true);
+    expect(isTombstone({ _moved_to: '.condash/settings.json' })).toBe(true);
+  });
+
+  it('does not match an empty object', () => {
+    expect(isTombstone({})).toBe(false);
+  });
+
+  it('does not match a config that merely uses its own `_`-prefixed keys', () => {
+    expect(isTombstone({ _custom: 'mine', _other: 1 })).toBe(false);
+    expect(isTombstone({ _moved_to: '.condash/settings.json', workspace_path: '/x' })).toBe(false);
   });
 });
