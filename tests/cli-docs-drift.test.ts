@@ -20,10 +20,16 @@ import { humanCtx, captureStdout } from '../src/cli/commands/test-helpers';
 import type { ParsedArgs } from '../src/cli/parser';
 import { runProjects } from '../src/cli/commands/projects';
 import { runKnowledge } from '../src/cli/commands/knowledge';
+import { runRepos } from '../src/cli/commands/repos';
+import { runApplications } from '../src/cli/commands/applications';
 import { runWorktrees } from '../src/cli/commands/worktrees';
+import { runDirty } from '../src/cli/commands/dirty';
+import { runLogs } from '../src/cli/commands/logs';
+import { runSync } from '../src/cli/commands/sync';
 import { runSkills } from '../src/cli/commands/skills';
 import { runConfig } from '../src/cli/commands/config';
 import { runMdx } from '../src/cli/commands/mdx';
+import { ALL_AUDIT_CHECKS } from '../src/cli/commands/audit';
 
 const DOCS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'docs');
 
@@ -83,13 +89,21 @@ function verbsFromOverview(helpText: string): string[] {
 // prints the noun's `Verbs:` block on a null verb or its default-verb case.
 const OVERVIEW_SENTINEL = '__overview__';
 
-// The sampled nouns cover the day-to-day CLI surface. The remaining TOP_HELP
-// nouns are checked for section presence only; every noun's verb list is
-// already drift-checked against TOP_HELP itself by top-help.test.ts.
+// Every verbed noun TOP_HELP lists, mirroring NOUN_RUNNERS in
+// src/cli/top-help.test.ts: each runner prints the noun's `Verbs:` block on a
+// null verb or its default-verb case. The verbless nouns (`search`, `help`)
+// and the single-verb `init` have no `Verbs:` block to capture — their docs
+// coverage is the noun-section check below; `audit` is verbless and is
+// checked against ALL_AUDIT_CHECKS like top-help.test.ts does.
 const SAMPLE_NOUNS: Record<string, (verb: string | null) => Promise<void> | void> = {
   projects: (v) => runProjects(v, emptyArgs('projects'), humanCtx(), '', true),
   knowledge: (v) => runKnowledge(v, emptyArgs('knowledge'), humanCtx(), '', true),
+  repos: (v) => runRepos(v, emptyArgs('repos'), humanCtx(), '', true),
+  applications: (v) => runApplications(v, emptyArgs('applications'), humanCtx(), '', true),
   worktrees: (v) => runWorktrees(v, emptyArgs('worktrees'), humanCtx(), '', true),
+  dirty: (v) => runDirty(v, emptyArgs('dirty'), humanCtx(), '', true),
+  logs: (v) => runLogs(v, emptyArgs('logs'), humanCtx(), '', true),
+  sync: (v) => runSync(v, emptyArgs('sync'), humanCtx(), '', true),
   skills: (v) => runSkills(v, emptyArgs('skills'), humanCtx(), true),
   mdx: (v) => runMdx(v, emptyArgs('mdx'), humanCtx(), '', true),
   config: (v) => runConfig(v, emptyArgs('config'), humanCtx(), '', true),
@@ -125,6 +139,15 @@ describe('docs/reference/cli.md keeps up with the CLI surface', () => {
     for (const noun of nouns.keys()) {
       expect(reference, `reference/cli.md should carry a '### \`${noun}\`' section`).toContain(
         `### \`${noun}\``,
+      );
+    }
+  });
+
+  it('documents every audit check on the audit section', () => {
+    const section = referenceSection(reference, 'audit');
+    for (const check of ALL_AUDIT_CHECKS) {
+      expect(section, `reference/cli.md 'audit' section should mention check '${check}'`).toContain(
+        check,
       );
     }
   });
