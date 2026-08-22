@@ -18,7 +18,9 @@ const DEFAULT_TIMEOUT_MS = 60_000;
  * aligned: no shell, 10 MB `maxBuffer`, 60 s `timeout` (both overridable
  * per call). For git invocations, `GIT_TERMINAL_PROMPT=0` is set unless the
  * caller's env already carries it, so a credential prompt fails fast instead
- * of hanging a background lookup.
+ * of hanging a background lookup, and `LC_ALL=C` is forced so git's stderr is
+ * always English — error classification pattern-matches on message text and
+ * must not break under a localized git.
  */
 export async function exec(
   file: string,
@@ -26,8 +28,11 @@ export async function exec(
   options: ExecFileOptions = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const env: NodeJS.ProcessEnv = { ...(options.env ?? process.env) };
-  if (file === 'git' && env.GIT_TERMINAL_PROMPT === undefined) {
-    env.GIT_TERMINAL_PROMPT = '0';
+  if (file === 'git') {
+    if (env.GIT_TERMINAL_PROMPT === undefined) {
+      env.GIT_TERMINAL_PROMPT = '0';
+    }
+    env.LC_ALL = 'C';
   }
   return execFileAsync(file, [...args], {
     maxBuffer: DEFAULT_MAX_BUFFER,
