@@ -13,13 +13,17 @@ import { exec } from './exec';
 describe('exec git locale pinning', () => {
   let binDir: string;
   let savedPath: string | undefined;
+  let savedLocale: string | undefined;
 
   beforeEach(() => {
     savedPath = process.env.PATH;
+    savedLocale = process.env.LC_ALL;
   });
 
   afterEach(async () => {
     process.env.PATH = savedPath;
+    if (savedLocale === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = savedLocale;
     if (binDir) await fs.rm(binDir, { recursive: true, force: true });
   });
 
