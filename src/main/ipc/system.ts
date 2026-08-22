@@ -11,7 +11,11 @@ import {
   updateSettings,
 } from '../settings';
 import { resolveConceptionConfigPath } from '../effective-config';
-import { detectConceptionState, initConception } from '../conception-init';
+import {
+  assertInitTargetAllowed,
+  detectConceptionState,
+  initConception,
+} from '../conception-init';
 import { htmlToPdf } from '../export-pdf';
 import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';
@@ -166,9 +170,15 @@ export function registerSystemIpc(opts: {
     return detectConceptionState(path);
   });
 
+  // The renderer may only scaffold the directory it most recently picked via
+  // the native dialog — the trust anchor for `initConception`, which would
+  // otherwise be the one unbounded write in this IPC surface.
+  let lastPickedConceptionPath: string | null = null;
+
   ipcMain.handle('initConception', async (event, path: string) => {
     requireMainWindowSender(event);
     requireNonEmptyString('initConception', path);
+    await assertInitTargetAllowed(path, lastPickedConceptionPath);
     const created = await initConception(path);
     return { created };
   });
@@ -201,6 +211,7 @@ export function registerSystemIpc(opts: {
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const picked = toPosix(result.filePaths[0]);
+    lastPickedConceptionPath = picked;
     await switchConception(picked);
     return picked;
   });
