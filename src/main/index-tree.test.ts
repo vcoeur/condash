@@ -765,6 +765,52 @@ describe('hand-written non-child bullets pass through verbatim', () => {
   });
 });
 
+describe('fenced code blocks in hand-written prose are not structure', () => {
+  it('leaves fenced engine-looking lines untouched and never parses them as headings or bullets', async () => {
+    const fenceBlock = [
+      '```sh',
+      '## Current files',
+      '',
+      '- [`fake.md`](fake.md) — *Curated.* `[x]`',
+      '- [`gone-dir/`](gone-dir/index.md) — *Curated.* `[y]`',
+      '```',
+    ].join('\n');
+    await writeFile(
+      'knowledge/topics/index.md',
+      [
+        '# Topics',
+        '',
+        'Intro.',
+        '',
+        '## Current files',
+        '',
+        '- [`a-file.md`](a-file.md) — *Curated.* `[a]`',
+        '',
+        fenceBlock,
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/topics/a-file.md', '# A\n\nBody A.\n');
+    // `fake.md` does NOT exist on disk — if the fenced bullet were parsed as
+    // an engine-owned entry it would be dropped as stale; `gone-dir/` would
+    // be dropped too; the fenced `##` line would split a phantom section.
+    await regenerateIndex(conceptionDir, knowledgeStrategy);
+
+    const index = await readFile('knowledge/topics/index.md');
+    expect(index).toContain(fenceBlock);
+    expect(index).toContain('- [`fake.md`](fake.md)');
+    expect(index).toContain('- [`gone-dir/`](gone-dir/index.md)');
+    // No phantom section was split off, and the fenced heading line survived
+    // verbatim inside the fence.
+    expect(index.match(/^## .+$/gm)).toEqual(['## Current files', '## Current files']);
+
+    // Second run: byte-identical convergence.
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/topics/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+});
+
 describe('stale dir-like bullet convergence', () => {
   it('drops a stale subdir bullet whose name lacks the trailing slash, and converges on run 2', async () => {
     // The bullet spells the dir `gone-dir` while the map keys the canonical

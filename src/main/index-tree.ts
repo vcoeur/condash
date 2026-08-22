@@ -53,6 +53,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { toPosix } from '../shared/path';
+import { iterUnfencedLines } from '../shared/header';
 import { atomicWrite } from './atomic-write';
 import { isLowQualityTag } from './index-tag-filter';
 import { detectEol, withFileQueue } from './mutate-shared';
@@ -744,9 +745,15 @@ function parseIndex(raw: string): IndexFileShape {
   const bullets = new Map<string, BulletEntry>();
   let hadDuplicates = false;
 
+  // Fenced code blocks are prose, not structure: a ```/~~~ block in
+  // hand-written index prose must not contribute headings or engine-owned
+  // bullets. Same fence tracking as every other reader.
+  const unfenced = new Set(Array.from(iterUnfencedLines(lines), ({ index }) => index));
+
   // Walk the file collecting heading offsets.
   const headingPositions: { line: number; heading: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
+    if (!unfenced.has(i)) continue;
     const m = lines[i].match(HEADING2_RE);
     if (m) headingPositions.push({ line: i, heading: m[1].trim() });
   }
@@ -786,6 +793,7 @@ function parseIndex(raw: string): IndexFileShape {
     let dirCount = 0;
     let fileCount = 0;
     for (let i = section.contentStart; i < section.contentEnd; i++) {
+      if (!unfenced.has(i)) continue;
       const line = lines[i];
       const m = matchBullet(line);
       if (!m) continue;
