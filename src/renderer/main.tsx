@@ -316,6 +316,12 @@ function App() {
   const bridge = createTerminalBridge({
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
+    // Same shape as TerminalPane's onShowTerminalBand: the band must flip to
+    // the terminal body for a focused linked tab, not just open the pane.
+    showTerminalBand: () => {
+      setBottomView('terminal');
+      ensureTerminalOpen();
+    },
     terminalPrefs,
     agents,
     flashToast,
@@ -688,6 +694,7 @@ function App() {
                             onDropProject={handleDropOnColumn}
                             onWorkOn={(p) => void bridge.handleWorkOn(p)}
                             onToggleStar={(p) => void handleToggleStar(p)}
+                            onFocusTab={(sid) => void bridge.handleFocusLinkedTab(sid)}
                             projectActions={projectActionItems()}
                             onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
                             onNewProject={() => setNewProjectOpen(true)}

@@ -29,6 +29,10 @@ export function ProjectsFilterBar(props: {
    *  filter is active so an empty result reads as "0 of N", not as a bug. */
   matchCount: number;
   totalCount: number;
+  /** True while a terminal tab is focused — enables the Active-tab filter.
+   *  Linking never spawns a tab, so without a focused one the toggle is
+   *  disabled with a hint. */
+  activeTabAvailable: boolean;
   onChange: (next: ProjectFilter) => void;
 }) {
   const appsMenu = createDropdownMenu({ align: 'left' });
@@ -87,6 +91,24 @@ export function ProjectsFilterBar(props: {
       >
         <StarIcon filled={props.filter.starredOnly} />
         <span>Starred</span>
+      </Button>
+
+      <Button
+        size="sm"
+        class="projects-filter-active-tab"
+        classList={{ 'btn--active': props.filter.linkedOnly }}
+        aria-pressed={props.filter.linkedOnly}
+        disabled={!props.activeTabAvailable}
+        title={
+          props.activeTabAvailable
+            ? props.filter.linkedOnly
+              ? 'Showing projects linked to the focused tab only'
+              : 'Show projects linked to the focused tab only'
+            : 'Open a terminal tab first, then filter by it'
+        }
+        onClick={() => patch({ linkedOnly: !props.filter.linkedOnly })}
+      >
+        <span>Active tab</span>
       </Button>
 
       <Button

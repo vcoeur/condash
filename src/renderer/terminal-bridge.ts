@@ -18,6 +18,10 @@ export interface TerminalBridgeDeps {
   /** Open the terminal pane if it isn't already (visual-only; the pane stays
    *  mounted whenever a session exists). */
   ensureTerminalOpen: () => void;
+  /** Flip the bottom band to the terminal body (and open the pane) — the
+   *  focus-linked-tab path, because `ensureTerminalOpen` alone can leave the
+   *  Dashboard body up. */
+  showTerminalBand: () => void;
   /** Read terminal preferences (for the screenshot directory). */
   terminalPrefs: () => TerminalPrefs | undefined;
   /** Read the configured agents (the `agents` settings list), for action
@@ -43,6 +47,12 @@ export interface TerminalBridge {
   handleNewProjectAction: (action: ActionTemplate) => Promise<void>;
   /** Open a project-scoped shell in the pane at the given worktree. */
   handleOpenInTerm: (repo: RepoEntry, worktree: Worktree) => Promise<void>;
+  /** Focus the terminal tab with session `sid` from a card's linked-tab row:
+   *  `switchTo('my', sid)` (a no-op when the tab died meanwhile — prune has
+   *  already cleared the row), then open the pane and flip the band to the
+   *  terminal body. Never "Work on", which types into the focused tab instead
+   *  of targeting a specific one. */
+  handleFocusLinkedTab: (sid: string) => Promise<void>;
   /** Paste the most recent screenshot path (under `screenshot_dir`) into
    *  the active terminal. Triggered by the configured shortcut. */
   handleScreenshotPaste: () => Promise<void>;
@@ -265,6 +275,20 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
   };
 
+  /** Focus a linked terminal tab from a card row's arrow. `switchTo` is the
+   *  exposed jump-to-tab primitive and no-ops when the tab died meanwhile
+   *  (prune has already cleared the row by then); the band flip is what makes
+   *  the focus visible — `ensureTerminalOpen` alone would leave the Dashboard
+   *  body up. Deliberately not the "open a shell if none active" dance: the
+   *  tab being focused exists, and this action must never spawn one. */
+  const handleFocusLinkedTab = async (sid: string): Promise<void> => {
+    const handle = deps.terminalHandle();
+    if (!handle) return;
+    handle.switchTo('my', sid);
+    deps.ensureTerminalOpen();
+    deps.showTerminalBand();
+  };
+
   const handleOpenInTerm = async (repo: RepoEntry, worktree: Worktree): Promise<void> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -401,6 +425,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handleProjectAction,
     handleNewProjectAction,
     handleOpenInTerm,
+    handleFocusLinkedTab,
     handleScreenshotPaste,
     handlePasteToTerm,
     runShellCommand,

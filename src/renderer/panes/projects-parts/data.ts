@@ -277,16 +277,25 @@ export function projectsTabGroups(
  * is done in the main process, the renderer only receives the matched paths. */
 export interface ProjectFilter {
   starredOnly: boolean;
+  /** Only projects linked to the currently focused terminal tab. */
+  linkedOnly: boolean;
   apps: string[];
   query: string;
 }
 
-export const EMPTY_PROJECT_FILTER: ProjectFilter = { starredOnly: false, apps: [], query: '' };
+export const EMPTY_PROJECT_FILTER: ProjectFilter = {
+  starredOnly: false,
+  linkedOnly: false,
+  apps: [],
+  query: '',
+};
 
-/** Whether any of the three filters is set — drives the force-open of collapsed
+/** Whether any of the filters is set — drives the force-open of collapsed
  * sections and the "N of M · Clear filters" affordance. */
 export function projectFilterActive(filter: ProjectFilter): boolean {
-  return filter.starredOnly || filter.apps.length > 0 || filter.query.trim() !== '';
+  return (
+    filter.starredOnly || filter.linkedOnly || filter.apps.length > 0 || filter.query.trim() !== ''
+  );
 }
 
 /** Every distinct app handle the project list mentions, sorted — the apps
@@ -308,26 +317,31 @@ export function collectAppHandles(buckets: Map<string, Project[]>): string[] {
 }
 
 /**
- * Apply the filter bar's three predicates to every bucket, keeping the bucket
+ * Apply the filter bar's predicates to every bucket, keeping the bucket
  * shape so `projectsTabGroups` runs unchanged on the result. Predicates AND
  * together; the apps predicate is any-of (an item tagged with any selected app
  * passes). `matchedPaths` is the README-search result — `null` while no query
  * is active (nothing filtered on it), otherwise the set of `Project.path`
  * values the main process matched, so an in-flight search that has not
  * answered yet leaves the previous answer in force rather than blanking the
- * pane. Every bucket survives (possibly empty) — hiding a section that
- * filtered down to nothing is the view's call, not this function's.
+ * pane. `linkedToActive` is the set of slugs linked to the focused terminal
+ * tab, derived from the link store by the pane — null/empty while nothing is
+ * focused or the flag is off. Every bucket survives (possibly empty) — hiding
+ * a section that filtered down to nothing is the view's call, not this
+ * function's.
  */
 export function applyProjectFilter(
   buckets: Map<string, Project[]>,
   filter: ProjectFilter,
   starred: ReadonlySet<string>,
   matchedPaths: ReadonlySet<string> | null,
+  linkedToActive: ReadonlySet<string>,
 ): Map<string, Project[]> {
   if (!projectFilterActive(filter)) return buckets;
   const wantedApps = new Set(filter.apps);
   const passes = (item: Project): boolean => {
     if (filter.starredOnly && !starred.has(item.slug)) return false;
+    if (filter.linkedOnly && !linkedToActive.has(item.slug)) return false;
     if (wantedApps.size > 0 && !item.apps.some((app) => wantedApps.has(appHandle(app)))) {
       return false;
     }

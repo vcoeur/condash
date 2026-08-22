@@ -6,6 +6,7 @@ import { RefreshIcon } from '../icons';
 import { createDropdownMenu } from '../dropdown-menu';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
 import type { DragDropController } from './drag-drop';
+import { linkedProjectsOf, unlinkAllForTab, unlinkProjectFromTab } from '../link-store';
 import { type Column, displayName, type Tab } from './types';
 
 /** Compact memory label for the per-tab meter. Tab scopes are GB-scale, so this
@@ -131,16 +132,27 @@ export function TerminalColumn(props: TerminalColumnProps) {
   // which tab it was opened on so the action targets the right session.
   const ctxMenu = createDropdownMenu({ align: 'left' });
   const [ctxTabId, setCtxTabId] = createSignal<string | null>(null);
+  // Projects linked to the menu's tab — reactive to both the open-tab choice
+  // and the store, so the unlink items stay current while the menu is up.
+  const ctxProjects = (): { slug: string; label: string }[] => {
+    const id = ctxTabId();
+    return id ? linkedProjectsOf(id) : [];
+  };
 
   // Hover popover showing the dashboard summary (current action + context) for
-  // the tab under the cursor. Only the tabs that carry a dashboard summary
-  // trigger it; the rest keep the plain native title tooltip.
+  // the tab under the cursor, plus the projects the tab is linked to. A tab
+  // triggers it when it carries either — the linked-projects list is shown
+  // even when the Dashboard summary is absent, so the manual link is readable
+  // without the opt-in LLM feature. Tabs with neither keep the plain native
+  // title tooltip.
   const [hovered, setHovered] = createSignal<Tab | null>(null);
   const [hoverAt, setHoverAt] = createSignal<{ top: number; left: number } | null>(null);
   const hasSummary = (tab: Tab): boolean =>
     Boolean(tab.currentAction || (tab.contextLines && tab.contextLines.length > 0));
+  const popoverRelevant = (tab: Tab): boolean =>
+    hasSummary(tab) || linkedProjectsOf(tab.id).length > 0;
   const openTabPopover = (tab: Tab, el: HTMLElement): void => {
-    if (!hasSummary(tab)) return;
+    if (!popoverRelevant(tab)) return;
     const rect = el.getBoundingClientRect();
     setHovered(tab);
     setHoverAt({ top: rect.bottom + 4, left: rect.left });
@@ -219,12 +231,13 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 onDblClick={() => props.onRequestRename(tab.id)}
                 onMouseEnter={(e) => openTabPopover(tab, e.currentTarget)}
                 onMouseLeave={() => setHovered(null)}
-                // When the dashboard has a summary for this tab, the rich hover
-                // popover replaces the native tooltip (showing both would stack two
-                // tooltips). Otherwise lead with the full title so a hover reveals
-                // truncated text, and append the cwd when the shell reported one.
+                // When the tab carries a dashboard summary or linked projects,
+                // the rich hover popover replaces the native tooltip (showing
+                // both would stack two tooltips). Otherwise lead with the full
+                // title so a hover reveals truncated text, and append the cwd
+                // when the shell reported one.
                 title={
-                  hasSummary(tab)
+                  popoverRelevant(tab)
                     ? undefined
                     : tab.cwd
                       ? `${displayName(tab)} — ${tab.cwd}`
@@ -344,6 +357,16 @@ export function TerminalColumn(props: TerminalColumnProps) {
                       <For each={tab().contextLines}>{(line) => <li>{line}</li>}</For>
                     </ul>
                   </Show>
+                  <Show when={linkedProjectsOf(tab().id).length > 0}>
+                    <div class="terminal-tab-popover-links">
+                      <div class="terminal-tab-popover-links-head">Linked projects</div>
+                      <ul class="terminal-tab-popover-links-list">
+                        <For each={linkedProjectsOf(tab().id)}>
+                          {(project) => <li>{project.slug}</li>}
+                        </For>
+                      </ul>
+                    </div>
+                  </Show>
                   <Show when={tab().cwd}>
                     <div class="terminal-tab-popover-cwd">{tab().cwd}</div>
                   </Show>
@@ -421,6 +444,43 @@ export function TerminalColumn(props: TerminalColumnProps) {
             >
               Refresh
             </button>
+            {/* Linked projects — one danger item per project, plus an "Unlink
+                all" item when there are several. Reads the store for the tab
+                the menu was opened on (reactively), so a change re-renders the
+                block. A single-linked tab shows just its one item. */}
+            <Show when={ctxProjects().length > 0}>
+              <div class="terminal-tab-context-menu-separator" role="separator" />
+              <div class="terminal-tab-context-menu-label">Linked projects</div>
+              <For each={ctxProjects()}>
+                {(project) => (
+                  <button
+                    class="terminal-tab-context-menu-item danger"
+                    role="menuitem"
+                    onClick={() => {
+                      const id = ctxTabId();
+                      ctxMenu.close();
+                      if (id) unlinkProjectFromTab(project.slug, id);
+                    }}
+                  >
+                    Unlink from {project.slug}
+                  </button>
+                )}
+              </For>
+              <Show when={ctxProjects().length > 1}>
+                <button
+                  class="terminal-tab-context-menu-item danger"
+                  role="menuitem"
+                  onClick={() => {
+                    const id = ctxTabId();
+                    ctxMenu.close();
+                    if (id) unlinkAllForTab(id);
+                  }}
+                >
+                  Unlink all projects ({ctxProjects().length})
+                </button>
+              </Show>
+              <div class="terminal-tab-context-menu-separator" role="separator" />
+            </Show>
             <button
               class="terminal-tab-context-menu-item danger"
               role="menuitem"
