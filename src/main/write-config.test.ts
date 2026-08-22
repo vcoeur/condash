@@ -124,4 +124,35 @@ describe('writeNote config dispatch by directory (B4)', () => {
     const saved = await writeNote(notePath, '', UNKNOWN_KEY_BODY);
     expect(saved).toBe(UNKNOWN_KEY_BODY);
   });
+
+  it('saves an in-tree sample `.condash/settings.json` as a plain note', async () => {
+    const { writeNote } = await import('./write-config');
+    // A second tree nested inside the conception that merely shares the
+    // canonical layout — an exported sample — must not be canonicalised.
+    const sampleDir = join(conceptionDir, 'docs', 'examples', 'sample-tree', '.condash');
+    await fs.mkdir(sampleDir, { recursive: true });
+    const samplePath = join(sampleDir, 'settings.json');
+    const saved = await writeNote(samplePath, '', UNKNOWN_KEY_BODY);
+    expect(saved).toBe(UNKNOWN_KEY_BODY);
+    expect(await fs.readFile(samplePath, 'utf8')).toBe(UNKNOWN_KEY_BODY);
+  });
+
+  it('still treats the ACTIVE conception `.condash/settings.json` as config', async () => {
+    const { writeNote } = await import('./write-config');
+    const canonicalPath = join(conceptionDir, '.condash', 'settings.json');
+    await fs.mkdir(join(conceptionDir, '.condash'), { recursive: true });
+    // Config path: the strict schema rejects the unknown key and throws.
+    await expect(writeNote(canonicalPath, '', UNKNOWN_KEY_BODY)).rejects.toThrow(
+      /totallyUnknownKey123/,
+    );
+  });
+
+  it('treats a `.condash/settings.json` of another conception as a plain note', async () => {
+    const { writeNote } = await import('./write-config');
+    const otherRoot = join(tmp, 'other-conception');
+    const otherPath = join(otherRoot, '.condash', 'settings.json');
+    await fs.mkdir(join(otherRoot, '.condash'), { recursive: true });
+    const saved = await writeNote(otherPath, '', UNKNOWN_KEY_BODY);
+    expect(saved).toBe(UNKNOWN_KEY_BODY);
+  });
 });

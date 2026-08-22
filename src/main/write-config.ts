@@ -25,15 +25,19 @@ export async function writeNote(
   // being canonicalised against — and rejected by — the global schema (B4).
   const isGlobalSettings = path === settingsPath();
   // The canonical conception config lives at `<conception>/.condash/settings.json`
-  // (dir-gated by `isConceptionSettingsPath`). The two legacy names at the
-  // conception root (`condash.json`, `configuration.json`) are still recognised
-  // — keeps `condash config set` working against an unmigrated file — but ONLY
-  // when the file sits directly at the conception root. A sample/exported
-  // `configuration.json` edited elsewhere in the tree is a plain note, not
-  // config (which would either throw a baffling `Unrecognized key` or silently
+  // of the ACTIVE conception — matched by directory layout AND by sitting under
+  // the configured conception root, so a sample/exported `.condash/settings.json`
+  // elsewhere in the tree saves as a plain note instead of being canonicalised
+  // against — and rejected by — the conception schema. The two legacy names at
+  // the conception root (`condash.json`, `configuration.json`) are still
+  // recognised — keeps `condash config set` working against an unmigrated file
+  // — but ONLY when the file sits directly at the conception root, for the same
+  // reason (which would either throw a baffling `Unrecognized key` or silently
   // reformat it — B4).
+  const isCanonicalConceptionConfig =
+    isConceptionSettingsPath(path) && (await isAtConceptionRoot(dirname(path)));
   const isConceptionConfig =
-    isConceptionSettingsPath(path) ||
+    isCanonicalConceptionConfig ||
     ((baseName === 'condash.json' || baseName === 'configuration.json') &&
       (await isAtConceptionRoot(path)));
 
@@ -67,7 +71,7 @@ export async function writeNote(
     // yet when the user saves Settings for the first time on a fresh
     // conception. Ensure the parent dir before atomicWrite — cheap, and
     // covers any other future write to a not-yet-created subdir too.
-    if (isConceptionSettingsPath(path)) {
+    if (isCanonicalConceptionConfig) {
       await fs.mkdir(dirname(path), { recursive: true });
     }
     await atomicWrite(path, finalContent);
