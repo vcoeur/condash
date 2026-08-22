@@ -59,6 +59,10 @@ const RULES: RedactRule[] = [
     kind: 'secret',
     group: 1,
   },
+  // Userinfo credentials in URLs (postgres://user:pass@host, https://…),
+  // connection strings included. Mask only the password; scheme, user and
+  // host survive so the line stays debuggable.
+  { re: /\b([a-z][a-z0-9+.-]*:\/\/[^/\s:@]*:)([^@\s/]+)(?=@)/gi, kind: 'url-password', group: 1 },
 ];
 
 /**
