@@ -17,6 +17,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
 import { parseHeader } from '../shared/header';
+import { atomicWrite } from './atomic-write';
 import {
   findRepoSlotByHandle,
   walkRepos,
@@ -279,7 +280,7 @@ export async function fixAppsReferences(
     if (canonical.size === 0) continue;
     const next = rewriteAppsRefs(raw, (ref) => canonical.get(ref.trim()) ?? ref);
     if (next !== raw) {
-      await fs.writeFile(readme, next, 'utf8');
+      await atomicWrite(readme, next);
       rewritten.push(readme);
     }
   }
@@ -382,7 +383,7 @@ export async function syncAppsDocs(conceptionPath: string): Promise<SyncDocsResu
   const after = raw.slice(endIdx);
   const next = `${before}\n\n${table}\n\n${after}`;
   if (next === raw) return { changed: false, file };
-  await fs.writeFile(file, next, 'utf8');
+  await atomicWrite(file, next);
   return { changed: true, file };
 }
 
@@ -539,7 +540,7 @@ export async function renameApplication(
       appHandle(ref) === oldHandle && !ref.includes('/') ? `#${newHandle}` : ref,
     );
     if (next !== raw) {
-      await fs.writeFile(readme, next, 'utf8');
+      await atomicWrite(readme, next);
       rewritten.push(readme);
     }
   }
