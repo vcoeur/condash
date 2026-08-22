@@ -31,6 +31,17 @@ Two head rows, then a meta row. The first row is the card's chrome: a **star** (
 
 The card frame is **neutral** — colour on this pane means "belongs together" and nothing else. A parent and its subprojects share one hue on their frame and a hint of it in the title, so a plan and its spin-offs read as one group at a glance; every other card keeps the plain frame (including a card whose only relation is a `parent:` that no longer resolves — there is nothing for a hue to tie it to), and status stays on the section, not the card. A card in a family also grows a **Part of ↑** banner (child) or a **Subprojects** fold (parent) — collapsed by default, one row per child once opened; the open/closed state is remembered per parent. See [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
 
+### Linking a card to terminal tabs { #card-tab-links }
+
+Cards can be **linked** to the embedded terminal's tabs (see [Use the embedded terminal](terminal.md)): click the **Link** button in the card's chrome to bind the card to the currently focused tab. Each click adds one relation — many-to-many, never a replace, so one card can link any number of tabs and one tab any number of cards, and re-linking an already-linked pair changes nothing. The button is **disabled until a tab is focused** — linking never spawns a tab you didn't ask for; open one first.
+
+A linked card shows:
+
+- a **"n tabs" chip** in the meta row and an accent strip on the card's flat left edge — **subtle** (a thin edge + bordered chip) while any linked tab is live, **stronger** (the edge grows to the card's full height, the chip fills) while the currently focused tab is among them. The family frame hue is untouched in either state — the link accent is the neutral UI accent.
+- a **Linked tabs** block in the relations zone at the bottom: one row per linked tab (the label captured at link time), each with a **focus** arrow — activates that tab in the terminal — and an **×** that unlinks exactly that one.
+
+Links are **manual and session-lifetime**: they are stored locally (a versioned `localStorage` key, never the tree or `settings.json`), they survive an app reload while their tabs are alive, and they **die with their tab** — closing a tab removes every relation of it, so the rows, chip, and decoration clear reactively (re-linking is one click). Restarting a tab re-points its links onto the new session. A card row's label is captured when the link is made and stays until the pair is unlinked and re-linked; the tab itself always shows its true name. On the tab side, the linked projects appear in the tab's hover popover and can be unlinked from its context menu — the tab itself is never decorated. See [Use the embedded terminal → Tab links](terminal.md#tab-links).
+
 ## Change an item's status
 
 Three ways, all equivalent:
@@ -43,10 +54,11 @@ All three rewrite the README's `status:` line in place — `status:` for YAML-fr
 
 ## Search and filter the pane { #filter }
 
-A bar between the pane title and the sections narrows the cards in place — no result list, no modal — with three controls that **AND** together:
+A bar between the pane title and the sections narrows the cards in place — no result list, no modal — with four controls that **AND** together:
 
 - **Search READMEs…** — every term (same query grammar as the [search modal](search.md), served from the same in-memory index) must occur in the item's `README.md` — title, goal, steps, timeline — or in its dated slug; `notes/` are not consulted, and the rest of the path never counts, so `readme` or `md` match nothing by themselves while a month like `2026-07` matches that month's items. Two characters minimum. Cards whose README does not match drop out. `Esc` in the field clears the query.
 - **Starred** — a toggle: only [starred](#star) items.
+- **Active tab** — a toggle: only items [linked to the currently focused terminal tab](#card-tab-links). Disabled while no tab is focused (linking never spawns one, so there is nothing to filter by); with the toggle on and an unlinked tab focused, everything hides — **0 of N** is a true result, not a bug, and the usual **Clear filters** affordance resets it.
 - **Apps** — a multiselect over every app handle the current items mention, **any-of**: an item tagged with any selected app passes. The trigger shows how many are picked; **Clear apps** inside the menu resets it.
 
 While a filter is active the bar shows **N of M** and a **Clear filters** link. Every section stays in place — one that filtered down to nothing shows as its empty header, still a drop lane for a card you drag — and any section that has matches is forced open — including the collapsed-by-default `backlog` and `done` (and its month subgroups) — so a match is never behind a fold; its header stops being a toggle for the duration. Drop the filter and the folds you set come back exactly as they were. The filter is a lens on the current session: it is not persisted, and it never touches the tree.

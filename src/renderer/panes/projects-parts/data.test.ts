@@ -259,13 +259,15 @@ describe('filter bar — collectAppHandles + applyProjectFilter', () => {
 
   it('is the identity when no filter is set', () => {
     expect(projectFilterActive(EMPTY_PROJECT_FILTER)).toBe(false);
-    expect(applyProjectFilter(buckets, EMPTY_PROJECT_FILTER, new Set(), null)).toBe(buckets);
+    expect(applyProjectFilter(buckets, EMPTY_PROJECT_FILTER, new Set(), null, new Set())).toBe(
+      buckets,
+    );
   });
 
   it('keeps only starred items when starredOnly is set, in every bucket', () => {
     const filter = { ...EMPTY_PROJECT_FILTER, starredOnly: true };
     const starred = new Set(['2026-05-02-b', '2026-04-01-d']);
-    expect(slugsOf(applyProjectFilter(buckets, filter, starred, null))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, starred, null, new Set()))).toEqual({
       now: ['2026-05-02-b'],
       done: ['2026-04-01-d'],
     });
@@ -273,7 +275,7 @@ describe('filter bar — collectAppHandles + applyProjectFilter', () => {
 
   it('matches apps any-of, through the canonical handle', () => {
     const filter = { ...EMPTY_PROJECT_FILTER, apps: ['painting-manager', 'conception'] };
-    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, new Set()))).toEqual({
       now: ['2026-05-03-a', '2026-05-02-b'],
       done: ['2026-04-01-d'],
     });
@@ -281,7 +283,7 @@ describe('filter bar — collectAppHandles + applyProjectFilter', () => {
 
   it('keeps every bucket (possibly empty) so the section order is unchanged', () => {
     const filter = { ...EMPTY_PROJECT_FILTER, apps: ['nothing-has-this'] };
-    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, new Set()))).toEqual({
       now: [],
       done: [],
     });
@@ -291,23 +293,28 @@ describe('filter bar — collectAppHandles + applyProjectFilter', () => {
     const filter = { ...EMPTY_PROJECT_FILTER, query: 'anything' };
     expect(projectFilterActive(filter)).toBe(true);
     // In flight (null): the query alone filters nothing yet.
-    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, new Set()))).toEqual({
       now: ['2026-05-03-a', '2026-05-02-b', '2026-05-01-c'],
       done: ['2026-04-01-d'],
     });
     // Answered: only the matched paths survive.
     const matched = new Set(['/p/2026-05-01-c', '/p/2026-04-01-d']);
-    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), matched))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), matched, new Set()))).toEqual({
       now: ['2026-05-01-c'],
       done: ['2026-04-01-d'],
     });
   });
 
   it('ANDs the three predicates', () => {
-    const filter = { starredOnly: true, apps: ['painting-manager'], query: 'x' };
+    const filter = {
+      ...EMPTY_PROJECT_FILTER,
+      starredOnly: true,
+      apps: ['painting-manager'],
+      query: 'x',
+    };
     const starred = new Set(['2026-05-02-b', '2026-04-01-d']);
     const matched = new Set(['/p/2026-04-01-d']);
-    expect(slugsOf(applyProjectFilter(buckets, filter, starred, matched))).toEqual({
+    expect(slugsOf(applyProjectFilter(buckets, filter, starred, matched, new Set()))).toEqual({
       now: [],
       done: ['2026-04-01-d'],
     });
@@ -316,6 +323,43 @@ describe('filter bar — collectAppHandles + applyProjectFilter', () => {
   it('treats a whitespace-only query as no filter', () => {
     const filter = { ...EMPTY_PROJECT_FILTER, query: '   ' };
     expect(projectFilterActive(filter)).toBe(false);
-    expect(applyProjectFilter(buckets, filter, new Set(), null)).toBe(buckets);
+    expect(applyProjectFilter(buckets, filter, new Set(), null, new Set())).toBe(buckets);
+  });
+
+  it('keeps only active-tab-linked slugs when linkedOnly is set, in every bucket', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, linkedOnly: true };
+    const linkedToActive = new Set(['2026-05-02-b', '2026-04-01-d']);
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, linkedToActive))).toEqual({
+      now: ['2026-05-02-b'],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('linkedOnly with nothing linked to the active tab hides everything', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, linkedOnly: true };
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, new Set()))).toEqual({
+      now: [],
+      done: [],
+    });
+  });
+
+  it('ANDs linkedOnly with star, apps, and the README search', () => {
+    const filter = { ...EMPTY_PROJECT_FILTER, linkedOnly: true, apps: ['painting-manager'] };
+    const linkedToActive = new Set(['2026-05-02-b', '2026-04-01-d']);
+    expect(slugsOf(applyProjectFilter(buckets, filter, new Set(), null, linkedToActive))).toEqual({
+      now: ['2026-05-02-b'],
+      done: ['2026-04-01-d'],
+    });
+    const starred = new Set(['2026-04-01-d']);
+    const matched = new Set(['/p/2026-04-01-d']);
+    const all = { ...EMPTY_PROJECT_FILTER, linkedOnly: true, apps: [], query: 'x' };
+    expect(slugsOf(applyProjectFilter(buckets, all, starred, matched, linkedToActive))).toEqual({
+      now: [],
+      done: ['2026-04-01-d'],
+    });
+  });
+
+  it('projectFilterActive counts linkedOnly', () => {
+    expect(projectFilterActive({ ...EMPTY_PROJECT_FILTER, linkedOnly: true })).toBe(true);
   });
 });

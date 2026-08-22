@@ -194,6 +194,7 @@ function installGlobals(): void {
       termWrite: () => Promise.resolve(),
       termClose: () => Promise.resolve(),
       termSpawn: () => Promise.resolve({ id: 'x' }),
+      termRestart: (id: string) => Promise.resolve({ id: `${id}-reborn` }),
     },
     localStorage: undefined,
   };
@@ -218,7 +219,9 @@ function installGlobals(): void {
 // --------------------------------------------------------------- the harness
 
 interface Harness {
-  sessions(ids: string[]): void;
+  /** Push a snapshot of live `my`-side sessions — plain ids, or objects
+   *  carrying `exited` for the dead-row / restart path. */
+  sessions(ids: (string | { id: string; exited?: number })[]): void;
   data(id: string, chunk: string): void;
   term(id: string): FakeTerm | undefined;
   activeIdWrites: { left: string | null; right: string | null }[];
@@ -226,6 +229,7 @@ interface Harness {
     activeIdIn(col: Column): string | null;
     setActiveIn(col: Column, id: string | null): void;
     refreshSession(id: string | null, opts?: { onlyIfAltBuffer?: boolean; auto?: boolean }): void;
+    restartTab(id: string): void;
     registerHost(col: Column, el: HTMLDivElement): void;
   };
   setOpen(open: boolean): void;
@@ -235,6 +239,10 @@ interface Harness {
 }
 
 async function createHarness(opts: { autoRefreshOnTabSwitch?: boolean } = {}): Promise<Harness> {
+  // A fresh module graph per harness: the link store reads localStorage at
+  // module load and holds module-scope signals, so resetting the cache keeps
+  // every test (link wiring included) on a clean store.
+  vi.resetModules();
   const { createSignal, createEffect } = await import('solid-js');
   const { createTerminalController } = await import('./controller');
 
@@ -280,7 +288,18 @@ async function createHarness(opts: { autoRefreshOnTabSwitch?: boolean } = {}): P
     controller.registerHost('right', fakeElement());
 
     harness = {
-      sessions: (ids) => sessionListener?.(ids.map((id) => ({ id, side: 'my' as const }))),
+      sessions: (ids) =>
+        sessionListener?.(
+          ids.map((entry) =>
+            typeof entry === 'string'
+              ? { id: entry, side: 'my' as const }
+              : {
+                  id: entry.id,
+                  side: 'my' as const,
+                  ...(entry.exited !== undefined ? { exited: entry.exited } : {}),
+                },
+          ),
+        ),
       data: (id, chunk) => dataListener?.({ id, data: chunk }),
       term: (id) => mountedTerms.filter((m) => m.id === id).at(-1)?.term,
       activeIdWrites,
@@ -608,5 +627,128 @@ describe('controller: hydrate geometry composes with the widened repaint (#466 +
     await settle();
 
     expect(harness.term('a')!.resizes.some(([, rows]) => rows === 29)).toBe(true);
+  });
+});
+
+describe('controller: link-store wiring (focus mirror, prune, restart re-point)', () => {
+  it('mirrors the focused session into the store and clears it on the last close', async () => {
+    const harness = await createHarness();
+    // Import AFTER createHarness: it resets the module graph so every harness
+    // (and the store it wires to) is fresh — the import must share that
+    // instance, not a pre-reset one.
+    const { activeSession } = await import('../link-store');
+    expect(activeSession()).toBeNull();
+
+    harness.sessions(['a', 'b']);
+    await settle();
+    // The last inserted tab is the active one — the mirror follows it.
+    expect(harness.controller.activeIdIn('left')).toBe('b');
+    expect(activeSession()).toEqual({ sid: 'b', label: 'shell' });
+
+    // Every session gone: the mirror clears (and prune drops the relations —
+    // covered by the next test).
+    harness.sessions([]);
+    await settle();
+    expect(activeSession()).toBeNull();
+  });
+
+  it('prunes every relation of a session that leaves the roster', async () => {
+    const harness = await createHarness();
+    const { linkProject, linkedTabsOf, linkedProjectsOf } = await import('../link-store');
+    linkProject('slug-x', 'a', 'shell');
+
+    harness.sessions(['a']);
+    await settle();
+    // The link survives the insert pass — 'a' is live.
+    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'a', label: 'shell' }]);
+
+    // 'a' closes: the end-of-reconcile prune drops the relation both ways.
+    harness.sessions([]);
+    await settle();
+    expect(linkedTabsOf('slug-x')).toEqual([]);
+    expect(linkedProjectsOf('a')).toEqual([]);
+  });
+
+  it('re-points every relation onto the new sid on a Restart', async () => {
+    const harness = await createHarness();
+    const { linkProject, linkedTabsOf, linkedProjectsOf } = await import('../link-store');
+    linkProject('slug-x', 'a', 'shell');
+    harness.sessions([{ id: 'a', exited: 1 }]);
+    await settle();
+
+    harness.controller.restartTab('a');
+    await settle();
+
+    // The fake termRestart resolves `{ id: 'a-reborn' }` — the restartTab
+    // success path re-points the old sid's relations onto it.
+    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'a-reborn', label: 'shell' }]);
+    expect(linkedProjectsOf('a')).toEqual([]);
+  });
+
+  it('restart links survive a prune racing the repoint (broadcast beats the IPC reply)', async () => {
+    const harness = await createHarness();
+    const { linkProject, linkedTabsOf, linkedProjectsOf } = await import('../link-store');
+    linkProject('slug-x', 'a', 'shell');
+    harness.sessions([{ id: 'a', exited: 1 }]);
+    await settle();
+
+    // Hold the termRestart reply: main spawns the replacement and broadcasts
+    // the replacement-only roster BEFORE answering the IPC.
+    let release!: (value: { id: string }) => void;
+    const held = new Promise<{ id: string }>((resolve) => {
+      release = resolve;
+    });
+    (
+      globalThis as unknown as {
+        window: { condash: { termRestart: () => Promise<{ id: string }> } };
+      }
+    ).window.condash.termRestart = () => held;
+
+    harness.controller.restartTab('a');
+    await settle();
+    // The replacement-only snapshot arrives while the reply is still held: the
+    // old sid is gone from the roster, but its relations must NOT be pruned
+    // yet — repointSid in the success path is what moves them.
+    harness.sessions(['a-reborn']);
+    await settle();
+    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'a', label: 'shell' }]);
+
+    release({ id: 'a-reborn' });
+    await settle();
+    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'a-reborn', label: 'shell' }]);
+    expect(linkedProjectsOf('a')).toEqual([]);
+  });
+
+  it('a failed restart whose row was replaced clears the stranded relations', async () => {
+    const harness = await createHarness();
+    const { linkProject, linkedTabsOf, linkedProjectsOf } = await import('../link-store');
+    linkProject('slug-x', 'a', 'shell');
+    harness.sessions([{ id: 'a', exited: 1 }]);
+    await settle();
+
+    // Hold the reply, broadcast the replacement-only roster (so the old row is
+    // replaced and its relations sit behind the restart protection), then let
+    // the restart FAIL: the protection lifts with no repoint, and the cleanup
+    // must drop the old sid's relations rather than strand them.
+    let reject!: (reason: Error) => void;
+    const held = new Promise<{ id: string }>((_resolve, rej) => {
+      reject = rej;
+    });
+    (
+      globalThis as unknown as {
+        window: { condash: { termRestart: () => Promise<{ id: string }> } };
+      }
+    ).window.condash.termRestart = () => held;
+
+    harness.controller.restartTab('a');
+    await settle();
+    harness.sessions(['a-reborn']);
+    await settle();
+    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'a', label: 'shell' }]);
+
+    reject(new Error('respawn failed'));
+    await settle();
+    expect(linkedTabsOf('slug-x')).toEqual([]);
+    expect(linkedProjectsOf('a')).toEqual([]);
   });
 });

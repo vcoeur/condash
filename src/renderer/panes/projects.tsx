@@ -24,6 +24,7 @@ import {
 import { compareByStatusThenSlug } from '@shared/projects';
 import { familyRootOf } from '@shared/project-color';
 import { starredSlugs } from '../star-store';
+import { activeSession, linkedProjectsOf } from '../link-store';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import { ActionDropdownButton } from '../action-dropdown-button';
 
@@ -57,6 +58,9 @@ export function ProjectsView(props: {
    * star store by each Card; only the write is threaded, like every other card
    * action. */
   onToggleStar: (project: Project) => void;
+  /** Focus a linked terminal tab from a card row's arrow. Goes through the
+   * terminal bridge (switchTo + band flip), never "Work on". */
+  onFocusTab: (sid: string) => void;
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
   /** Open the "+ New project" modal. Rendered as a top-of-pane button when
@@ -144,12 +148,22 @@ export function ProjectsView(props: {
   const filterActive = createMemo(() => {
     const current = filter();
     return (
-      current.starredOnly || current.apps.length > 0 || (searchQuery() !== '' && !searchPending())
+      current.starredOnly ||
+      current.linkedOnly ||
+      current.apps.length > 0 ||
+      (searchQuery() !== '' && !searchPending())
     );
   });
   const appOptions = createMemo(() => collectAppHandles(props.buckets));
+  // Slugs linked to the focused terminal tab — the Active-tab filter's input.
+  // The mirror in the controller keeps `activeSession` current; with nothing
+  // focused the set is empty, which the toggle's disabled state mirrors.
+  const linkedToActive = createMemo<ReadonlySet<string>>(
+    () =>
+      new Set((activeSession() ? linkedProjectsOf(activeSession()!.sid) : []).map((p) => p.slug)),
+  );
   const filteredBuckets = createMemo(() =>
-    applyProjectFilter(props.buckets, filter(), starredSlugs(), matchedPaths()),
+    applyProjectFilter(props.buckets, filter(), starredSlugs(), matchedPaths(), linkedToActive()),
   );
   const countItems = (buckets: Map<string, Project[]>): number => {
     let n = 0;
@@ -234,6 +248,7 @@ export function ProjectsView(props: {
           appOptions={appOptions()}
           matchCount={matchCount()}
           totalCount={totalCount()}
+          activeTabAvailable={activeSession() !== null}
           onChange={setFilter}
         />
         <div class="projects-stack" ref={scrollRef}>
@@ -292,6 +307,7 @@ export function ProjectsView(props: {
                     onDropProject={props.onDropProject}
                     onWorkOn={props.onWorkOn}
                     onToggleStar={props.onToggleStar}
+                    onFocusTab={props.onFocusTab}
                     projectActions={props.projectActions}
                     onProjectAction={props.onProjectAction}
                     headerAction={headerAction}
@@ -308,6 +324,7 @@ export function ProjectsView(props: {
                             onOpen={props.onOpen}
                             onWorkOn={props.onWorkOn}
                             onToggleStar={props.onToggleStar}
+                            onFocusTab={props.onFocusTab}
                             onChangeStatus={props.onDropProject}
                             projectActions={props.projectActions}
                             onProjectAction={props.onProjectAction}
@@ -324,6 +341,7 @@ export function ProjectsView(props: {
                               onOpen={props.onOpen}
                               onWorkOn={props.onWorkOn}
                               onToggleStar={props.onToggleStar}
+                              onFocusTab={props.onFocusTab}
                               onChangeStatus={props.onDropProject}
                               projectActions={props.projectActions}
                               onProjectAction={props.onProjectAction}
@@ -344,6 +362,7 @@ export function ProjectsView(props: {
                   onDropProject={props.onDropProject}
                   onWorkOn={props.onWorkOn}
                   onToggleStar={props.onToggleStar}
+                  onFocusTab={props.onFocusTab}
                   projectActions={props.projectActions}
                   onProjectAction={props.onProjectAction}
                   headerAction={headerAction}

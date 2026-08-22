@@ -34,6 +34,7 @@ import {
 import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import { rendererPerf } from '../perf-renderer';
+import { pruneLinks, repointSid, setActiveSession } from '../link-store';
 import type {
   AgentChoice,
   SpawnOptions,
@@ -723,6 +724,14 @@ export function createTerminalController(props: TerminalPaneProps) {
       setActiveIds((prev) => activeIdsAfterDrop(prev, remaining, dropped));
       queueMicrotask(focusActive);
     }
+    // Every relation of a sid that left the roster dies with it — a closed
+    // tab and a fresh boot (no live sessions) both clear their links in one
+    // write. Runs on every pass because the broadcast IS the roster truth;
+    // pruneLinks is idempotent and only writes when a sid actually left.
+    // `restartingTabs` is exempt: a Restart's replacement-only broadcast can
+    // beat the `termRestart` IPC reply, and the old sid's relations must
+    // survive until repointSid moves them in the reply's success path.
+    pruneLinks(new Set(snap.filter((s) => s.side === 'my').map((s) => s.id)), restartingTabs);
   };
 
   // Serialise reconcile passes through a promise queue: the onTermSessions
@@ -740,6 +749,21 @@ export function createTerminalController(props: TerminalPaneProps) {
 
   onMount(() => {
     void window.condash.termList().then((snap) => queueReconcile(snap));
+  });
+
+  // ---- link-store focus mirror ----
+  // The handle exposes only imperative `hasActive()` / `getActiveSessionId()`
+  // and is a plain `let` in main.tsx, so the reactive source of truth for
+  // "which tab is focused" is this controller's own signals. One effect
+  // mirrors the focused session (id + display name) into the link store;
+  // every consumer — the card's Link button, the Active-tab filter, the strong
+  // card decoration — reads the store, nothing reaches for the handle.
+  // `setActiveSession` is equality-guarded and reconcile preserves tab object
+  // identity, so the 2.5 s memory-sampler broadcast does not ripple through.
+  createEffect(() => {
+    const sid = activeIdIn(activeColumn());
+    const activeTab = sid ? tabs().find((t) => t.id === sid) : undefined;
+    setActiveSession(activeTab ? { sid: activeTab.id, label: displayName(activeTab) } : null);
   });
 
   // ---- spawn helpers ----
@@ -1132,11 +1156,29 @@ export function createTerminalController(props: TerminalPaneProps) {
         // doesn't lose its pinned name and reappear as a bare cwd basename.
         pendingSpawnIntent.set(newId, { label: tab.label, pinned: tab.pinned });
         setMeta(newId, { label: tab.label, column: tab.column, pinned: tab.pinned });
+        // A Restart spawns a fresh session id — re-point every link relation
+        // of the dead sid onto the new one so the links survive the restart.
+        repointSid(id, newId);
       })
       .catch((err: unknown) => {
         // Main leaves the dead row in place when the respawn fails, so the
         // evidence stays on screen; surface why rather than failing silently.
         props.onError?.(`Could not restart the session: ${String(err)}`);
+        // Reconcile's prune exempted the restarting sid, and `repointSid` (the
+        // success path) is what normally ends the protection. A failure lifts
+        // it with no repoint: prune against the current roster right here so
+        // the old sid's relations die with a row that was actually replaced,
+        // and stay with a dead row main kept. (Not in .finally: on success the
+        // replacement broadcast may not have arrived yet, and pruning then
+        // would drop the relations repoint just moved onto the new sid.)
+        restartingTabs.delete(id);
+        pruneLinks(
+          new Set(
+            tabs()
+              .filter((t) => t.side === 'my')
+              .map((t) => t.id),
+          ),
+        );
       })
       .finally(() => restartingTabs.delete(id));
   };

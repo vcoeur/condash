@@ -29,6 +29,7 @@ function makeDeps(handle: FakeHandle | null = null, agents: Agent[] = []) {
   return {
     terminalHandle: () => handle as unknown as TerminalPaneHandle | null,
     ensureTerminalOpen: vi.fn(),
+    showTerminalBand: vi.fn(),
     terminalPrefs: (): TerminalPrefs => ({}),
     agents: () => agents,
     flashToast: vi.fn(),
@@ -379,5 +380,32 @@ describe('runTask with promptFlags agent', () => {
       'agedum · claude•Review docs',
     );
     vi.useRealTimers();
+  });
+});
+
+describe('handleFocusLinkedTab', () => {
+  it('switches to the tab and flips the band to the terminal body', async () => {
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    await bridge.handleFocusLinkedTab('t-1');
+    expect(handle.switchTo).toHaveBeenCalledWith('my', 't-1');
+    expect(deps.ensureTerminalOpen).toHaveBeenCalled();
+    expect(deps.showTerminalBand).toHaveBeenCalled();
+  });
+
+  it('is a no-op when the terminal handle is missing', async () => {
+    const deps = makeDeps(null);
+    const bridge = createTerminalBridge(deps);
+    await bridge.handleFocusLinkedTab('t-1');
+    expect(deps.ensureTerminalOpen).not.toHaveBeenCalled();
+    expect(deps.showTerminalBand).not.toHaveBeenCalled();
+  });
+
+  it('never spawns a shell — the tab to focus exists by construction', async () => {
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    await bridge.handleFocusLinkedTab('t-1');
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
   });
 });

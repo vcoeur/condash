@@ -17,6 +17,13 @@ import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import { prsForProject } from '../../pr-index-store';
 import { isStarred } from '../../star-store';
+import {
+  activeSession,
+  isLinkedToActiveTab,
+  linkProject,
+  linkedTabsOf,
+  unlinkProjectFromTab,
+} from '../../link-store';
 import { Group, firstDate, lastDate, readCollapseMap, writeCollapseEntry } from './data';
 import { KindGlyph, StarIcon, StepProgress, WarnIcon } from './icons';
 
@@ -84,6 +91,8 @@ export function GroupBlock(props: {
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
   onToggleStar: (project: Project) => void;
+  /** Focus a linked terminal tab from a card row's arrow. */
+  onFocusTab: (sid: string) => void;
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
@@ -158,6 +167,7 @@ export function GroupBlock(props: {
                     onOpen={props.onOpen}
                     onWorkOn={props.onWorkOn}
                     onToggleStar={props.onToggleStar}
+                    onFocusTab={props.onFocusTab}
                     onChangeStatus={onChangeStatus}
                     projectActions={props.projectActions}
                     onProjectAction={props.onProjectAction}
@@ -193,6 +203,8 @@ export function SubGroup(props: {
   onOpen: (project: Project) => void;
   onWorkOn: (project: Project) => void;
   onToggleStar: (project: Project) => void;
+  /** Focus a linked terminal tab from a card row's arrow. */
+  onFocusTab: (sid: string) => void;
   /** Same shape as GroupBlock.onDropProject — threaded so cards in done
    * subgroups still respond to the Cmd/Ctrl+1..N keyboard shortcut. */
   onChangeStatus?: (path: string, newStatus: string) => void;
@@ -242,6 +254,7 @@ export function SubGroup(props: {
                 onOpen={props.onOpen}
                 onWorkOn={props.onWorkOn}
                 onToggleStar={props.onToggleStar}
+                onFocusTab={props.onFocusTab}
                 onChangeStatus={props.onChangeStatus}
                 projectActions={props.projectActions}
                 onProjectAction={props.onProjectAction}
@@ -261,6 +274,8 @@ export function Card(props: {
   /** Flip this card's star. The starred state is read from the star store, not
    * passed in — only the write is threaded. */
   onToggleStar: (project: Project) => void;
+  /** Focus a linked terminal tab from a card row's arrow. */
+  onFocusTab: (sid: string) => void;
   /** Keyboard alternative for the status drag: Cmd/Ctrl+1..N, where N is
    * KNOWN_STATUSES.length, sets the focused card's status. Wired only when
    * the parent group can also accept a drop (otherwise we'd let the user
@@ -276,8 +291,10 @@ export function Card(props: {
   // fold toggle, or the clickable relation banners (which open a *different*
   // project). `button.parent-banner` stays element-qualified so a dangling
   // parent's non-clickable <div> fallback still opens the card itself.
+  // `.link-button` and the linked-row controls are the same story: they write
+  // the link store / focus a tab, never open the card.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, button.parent-banner, button.child-row, button.children-toggle';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, .link-row-focus, .link-row-unlink, button.parent-banner, button.child-row, button.children-toggle';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.
@@ -497,6 +514,15 @@ export function Card(props: {
     if (target) props.onOpen(target);
   };
 
+  // Link-store reads: which tabs this card is linked to, and whether the
+  // focused one is among them. Reactive at the leaf like `isStarred()` — a
+  // link / unlink / focus change re-renders exactly the cards it affects.
+  const linkedTabs = (): { sid: string; label: string }[] => linkedTabsOf(props.item.slug);
+  const linkedToActive = (): boolean => isLinkedToActiveTab(props.item.slug);
+  // The Link button binds the card to the *focused* session; without one it is
+  // disabled (linking must never spawn a tab the user didn't ask for).
+  const canLink = (): boolean => activeSession() !== null;
+
   // Subprojects list fold. Collapsed by default so a plan with many spin-offs
   // stays a normal-height card; the expanded state persists per parent in the
   // same localStorage collapse map the status sections and Done subgroups use
@@ -543,6 +569,11 @@ export function Card(props: {
         // .row.is-parent / .row.is-subproject in the CSS.
         'is-parent': children().length > 0,
         'is-subproject': !!props.item.parent,
+        // Link decoration, keyed off the neutral --accent token (never the
+        // family hue): subtle while any linked tab is live, strong while the
+        // focused tab is among them — see .row.linked-any / .row.linked-active.
+        'linked-any': linkedTabs().length > 0,
+        'linked-active': linkedToActive(),
       }}
       title={props.item.path}
       aria-label={`${props.item.title}, ${props.item.status}`}
@@ -591,6 +622,30 @@ export function Card(props: {
             {props.item.slug}
           </span>
           <div class="title-actions">
+            {/* Link — bind this card to the currently focused terminal tab.
+                Each click adds one relation (many-to-many, never a replace);
+                unlink lives on the per-tab rows below and in the tab's
+                context menu. Disabled without a focused tab: linking never
+                spawns one. */}
+            <button
+              type="button"
+              class="link-button"
+              disabled={!canLink()}
+              title={
+                canLink()
+                  ? `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
+                  : 'Open a terminal tab first, then link this project'
+              }
+              aria-label="Link this project to the focused terminal tab"
+              onClick={(event) => {
+                event.stopPropagation();
+                const active = activeSession();
+                if (!active) return;
+                linkProject(props.item.slug, active.sid, active.label);
+              }}
+            >
+              Link
+            </button>
             <ActionDropdownButton
               trigger={<TerminalIcon />}
               triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
@@ -661,6 +716,17 @@ export function Card(props: {
               {props.item.status}
             </span>
           </Show>
+          {/* "n tabs" chip — the card's link state at a glance. Bordered in the
+              subtle strength, accent-filled while the focused tab is linked
+              (see .row.linked-any / .row.linked-active). */}
+          <Show when={linkedTabs().length > 0}>
+            <span
+              class="meta-icon linked-tabs-chip"
+              title={`Linked to ${linkedTabs().length} live tab${linkedTabs().length === 1 ? '' : 's'}`}
+            >
+              {linkedTabs().length} {linkedTabs().length === 1 ? 'tab' : 'tabs'}
+            </span>
+          </Show>
           <span class="meta-spacer" />
           <StepProgress counts={props.item.stepCounts} />
           <span
@@ -675,8 +741,10 @@ export function Card(props: {
           head so parent/subproject links read as a distinct area rather than
           part of the title. The "Part of" banner (↑) and the subproject rows
           (↓) are real buttons that open the referenced project — except a
-          dangling parent slug, which keeps a non-clickable raw-slug fallback. */}
-      <Show when={props.item.parent || children().length > 0}>
+          dangling parent slug, which keeps a non-clickable raw-slug fallback.
+          The Linked-tabs block (one row per linked terminal tab, focus arrow +
+          unlink ×) lives here too. */}
+      <Show when={props.item.parent || children().length > 0 || linkedTabs().length > 0}>
         <div class="row-relations">
           <Show when={props.item.parent}>
             <Show
@@ -763,6 +831,47 @@ export function Card(props: {
                   )}
                 </For>
               </Show>
+            </div>
+          </Show>
+          {/* Linked tabs — one row per terminal tab this card is linked to,
+              with a focus arrow (activates that tab) and an unlink × (removes
+              exactly that relation). The labels are captured at link time and
+              stay until the pair is unlinked and re-linked — session-lifetime,
+              matching the tab side. */}
+          <Show when={linkedTabs().length > 0}>
+            <div class="linked-tabs">
+              <span class="linked-tabs-head">Linked tabs</span>
+              <For each={linkedTabs()}>
+                {(tab) => (
+                  <div class="link-row">
+                    <span class="link-row-label">{tab.label}</span>
+                    <button
+                      type="button"
+                      class="link-row-focus"
+                      title={`Focus ${tab.label}`}
+                      aria-label={`Focus ${tab.label}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        props.onFocusTab(tab.sid);
+                      }}
+                    >
+                      →
+                    </button>
+                    <button
+                      type="button"
+                      class="link-row-unlink"
+                      title={`Unlink ${tab.label}`}
+                      aria-label={`Unlink ${tab.label}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        unlinkProjectFromTab(props.item.slug, tab.sid);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </For>
             </div>
           </Show>
         </div>
