@@ -77,6 +77,28 @@ describe('redactSecrets', () => {
     expect(redactSecrets('https://user:s3cr3tvalue@example.com/path?q=1')).toBe(
       'https://user:«redacted:url-password»@example.com/path?q=1',
     );
+    // Empty user (redis style), percent-encoded password, uppercase scheme,
+    // and two credentialed URLs on one line.
+    expect(redactSecrets('redis://:p4ssw0rd12@cache.internal:6379')).toBe(
+      'redis://:«redacted:url-password»@cache.internal:6379',
+    );
+    expect(redactSecrets('postgres://u:P%40ssw0rd@db')).toBe(
+      'postgres://u:«redacted:url-password»@db',
+    );
+    expect(redactSecrets('HTTP://User:Passw0rd1@host/')).toBe(
+      'HTTP://User:«redacted:url-password»@host/',
+    );
+    expect(redactSecrets('a postgres://u1:pass12345@h1 and https://u2:pass67890@h2')).toContain(
+      'postgres://u1:«redacted:url-password»@h1',
+    );
+    expect(redactSecrets('a postgres://u1:pass12345@h1 and https://u2:pass67890@h2')).toContain(
+      'https://u2:«redacted:url-password»@h2',
+    );
+  });
+
+  it('is idempotent for URL passwords', () => {
+    const once = redactSecrets('postgres://alice:hunter2hunter2@db.example.com:5432/prod');
+    expect(redactSecrets(once)).toBe(once);
   });
 
   it('does not over-redact URLs without credentials', () => {
