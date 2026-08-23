@@ -47,7 +47,7 @@ test('clicking the parent banner on a child card opens the parent preview', asyn
   try {
     const win = booted.window;
 
-    // The dashed-frame class only lands when the README's `parent:` header
+    // The dashed-left-edge class only lands when the README's `parent:` header
     // parsed; the clickable banner additionally needs the slug to resolve
     // against the project list (a dangling slug renders a non-button <div>).
     const childCard = win.locator('article.row.is-subproject');
@@ -117,7 +117,7 @@ test('only family cards carry a family colour class; every known kind shows its 
   const booted = await bootApp({
     prepare: async (conceptionDir) => {
       await prepareFamily(conceptionDir);
-      // A `parent:` that resolves to nothing: dashed frame, raw-slug banner,
+      // A `parent:` that resolves to nothing: dashed left edge, raw-slug banner,
       // but no colour — there is no second card for a hue to tie it to.
       const orphanDir = join(conceptionDir, 'projects', '2026-04', '2026-04-22-orphan-impl');
       await mkdir(orphanDir, { recursive: true });
