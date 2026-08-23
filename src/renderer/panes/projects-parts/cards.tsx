@@ -497,8 +497,8 @@ export function Card(props: {
   const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
   // A card is "in a family" — and so wears the family colour — when it has
   // children, or when its `parent:` resolves to a real item. A dangling
-  // parent slug keeps the dashed subproject frame (it does declare a parent)
-  // but no colour: there is no second card for the hue to tie it to.
+  // parent slug keeps the dashed subproject left edge (it does declare a
+  // parent) but no colour: there is no second card for the hue to tie it to.
   const inFamily = (): boolean => children().length > 0 || !!parentProject();
   // The family colour hashes the family *root* — the topmost item the
   // `parent:` chain resolves to — so root, middle nodes and leaves of one
@@ -563,10 +563,11 @@ export function Card(props: {
         // `in-family` is what the CSS keys the title tint on.
         'in-family': inFamily(),
         [familyColorClass()]: inFamily(),
-        // Relationship decoration: a parent (has spin-off children) gets a
-        // solid frame with a thick left edge, a subproject (has a `parent:`) a
-        // dashed frame; a standalone card keeps the solid default frame — see
-        // .row.is-parent / .row.is-subproject in the CSS.
+        // Relationship decoration: the family frame is reduced to the left
+        // edge only — a solid 6px spine for a parent (has spin-off children),
+        // a dashed 6px edge for a subproject (has a `parent:`); a standalone
+        // card keeps the full neutral frame — see .row.is-parent /
+        // .row.is-subproject in the CSS.
         'is-parent': children().length > 0,
         'is-subproject': !!props.item.parent,
         // Link decoration, keyed off the neutral --accent token (never the
