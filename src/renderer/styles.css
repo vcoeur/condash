@@ -493,9 +493,9 @@
   --accent: #4ade80;
   --accent-hover: #6ee79b;
   --accent-soft: rgba(74, 222, 128, 0.14);
-  /* Ink to print ON the accent. Console is the only preset whose accent is a
-   * light phosphor, so its ink is a near-black where the other presets use a
-   * near-black that contrasts with their darker accents. */
+  /* Ink to print ON the accent. Console's accent is the one light phosphor,
+   * so its ink is the green-tinted near-black #08110b rather than the other
+   * presets' near-blacks. */
   --accent-ink: #08110b;
   --shadow-card: none;
   --shadow-lift: none;
