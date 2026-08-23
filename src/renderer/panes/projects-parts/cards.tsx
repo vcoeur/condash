@@ -1,6 +1,5 @@
 import {
   createContext,
-  createEffect,
   createMemo,
   createSignal,
   For,
@@ -8,10 +7,8 @@ import {
   Show,
   useContext,
 } from 'solid-js';
-import { Portal } from 'solid-js/web';
 import type { Accessor } from 'solid-js';
 import type { ActionTemplate, Project } from '@shared/types';
-import { createPositionedPopover } from '../../popover';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
 import { projectColorClass } from '@shared/project-color';
@@ -291,15 +288,16 @@ export function Card(props: {
 }) {
   // Interactive children keep their own click behaviour — the whole-card
   // open must not swallow the work-on dropdown, PR badge, the subprojects
-  // fold toggle, or the clickable relation banners (which open a *different*
-  // project). `button.parent-banner` stays element-qualified so a dangling
-  // parent's non-clickable <div> fallback still opens the card itself.
-  // `.link-button` and the linked-tabs chip are the same story: they write
-  // the link store / open the popover, never open the card. (The popover's
-  // own `.link-row-focus` / `.link-row-unlink` are portaled to document.body,
-  // so they can never be targets inside the card and need no exclusion.)
+  // fold toggle, the linked-tabs fold toggle, or the clickable relation
+  // banners (which open a *different* project). `button.parent-banner` stays
+  // element-qualified so a dangling parent's non-clickable <div> fallback
+  // still opens the card itself. `.link-button` is the same story: it writes
+  // the link store, never opens the card. The fold's own `.link-row-focus` /
+  // `.link-row-unlink` and the fold toggle sit INSIDE the card, so they need
+  // the exclusion too — both the click-open path and the pointer-drag press
+  // path check this set.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, .linked-tabs-chip, button.parent-banner, button.child-row, button.children-toggle';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, button.parent-banner, button.child-row, button.children-toggle, button.linked-tabs-toggle, .link-row-focus, .link-row-unlink';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.
@@ -528,44 +526,33 @@ export function Card(props: {
   // disabled (linking must never spawn a tab the user didn't ask for).
   const canLink = (): boolean => activeSession() !== null;
 
-  // Linked-tabs popover — the meta-row chip is the card's single link control:
-  // click opens a small portaled list of the linked tabs carrying the per-tab
-  // actions the relations zone used to hold (focus →, unlink ×).
-  // createPositionedPopover handles anchoring, outside-click and Escape; the
-  // Portal escapes `.row`'s `contain: layout paint`, which would clip an
-  // inline overlay (AGENTS.md: overlays are real portals).
-  let chipRef: HTMLButtonElement | undefined;
-  let tabsPopoverRef: HTMLDivElement | undefined;
-  const tabsPopover = createPositionedPopover({
-    popoverRef: () => tabsPopoverRef,
-    triggerRefs: () => [chipRef],
-    onClose: () => tabsPopover.setOpen(false),
-  });
-  const toggleTabsPopover = (event: MouseEvent): void => {
-    event.stopPropagation();
-    if (tabsPopover.open()) {
-      tabsPopover.setOpen(false);
-      return;
-    }
-    tabsPopover.reposition();
-    tabsPopover.setOpen(true);
+  // Linked-tabs fold in the relations zone — the card's link signal AND
+  // control (2026-08 v2: replaces the meta-row chip + portaled popover, which
+  // the user's visual review rejected; the fold also carries the accent the
+  // chip used to — see .row.linked-any / .row.linked-active in the CSS).
+  // Collapsed by default; the expanded state persists per card in the same
+  // localStorage collapse map the children fold uses (key `links.<slug>`), so
+  // a watcher-driven list refresh — which remounts the card — doesn't snap an
+  // open fold shut mid-use.
+  //
+  // Same reactive shape as the children fold: the stored value is a memo on
+  // `linkedTabs()`, not a mount-time read — the Link button can add the first
+  // link, and a prune can remove the last, without remounting this card, and
+  // the fold must then pick up its persisted state rather than freeze on the
+  // linkless-time answer. The `&&` keeps the localStorage read off unlinked
+  // cards — the vast majority — entirely. A user toggle overrides the stored
+  // value for the life of the mount and writes it back for the next one.
+  const linksStorageKey = `links.${props.item.slug}`;
+  const storedLinksExpanded = createMemo(
+    (): boolean => linkedTabs().length > 0 && readCollapseMap()[linksStorageKey] === true,
+  );
+  const [linksToggled, setLinksToggled] = createSignal<boolean | null>(null);
+  const linksExpanded = (): boolean => linksToggled() ?? storedLinksExpanded();
+  const toggleLinks = (): void => {
+    const next = !linksExpanded();
+    setLinksToggled(next);
+    writeCollapseEntry(linksStorageKey, next);
   };
-  // Unlink from inside the popover (focus stays open — the user may want to
-  // focus several tabs).
-  const unlinkFromPopover = (sid: string): void => {
-    unlinkProjectFromTab(props.item.slug, sid);
-  };
-  // The last linked tab can also vanish from OUTSIDE the popover — a linked
-  // tab's process exits on its own, and the controller's reconcile prunes the
-  // relation (`pruneLinks`) with no click involved. Then the chip unmounts
-  // (`Show when={linkedTabs().length > 0}`) while `open()` is still true, and
-  // an empty popover would float at a stale anchor and teleport to the
-  // viewport corner on the next scroll/resize (reposition measures the
-  // detached trigger). Close it whenever the list empties, so `open()` never
-  // disagrees with what is on screen.
-  createEffect(() => {
-    if (tabsPopover.open() && linkedTabs().length === 0) tabsPopover.setOpen(false);
-  });
 
   // Subprojects list fold. Collapsed by default so a plan with many spin-offs
   // stays a normal-height card; the expanded state persists per parent in the
@@ -595,365 +582,349 @@ export function Card(props: {
   };
 
   return (
-    <>
-      <article
-        class="row"
-        classList={{
-          draggable: isDraggable(),
-          // Family colour class (proj-family-<n>) — only on a card that is in a
-          // family: it sets --row-stripe to a stable hue shared by a parent and
-          // its subprojects, so the pair reads as one group. A standalone card
-          // takes no class and keeps the neutral frame; colour on this pane
-          // means "belongs together", nothing else. See project-color.ts.
-          // `in-family` is what the CSS keys the title tint on.
-          'in-family': inFamily(),
-          [familyColorClass()]: inFamily(),
-          // Relationship decoration: the family frame is reduced to the left
-          // edge only — a solid 6px spine for a parent (has spin-off children),
-          // a dashed 6px edge for a subproject (has a `parent:`); a standalone
-          // card keeps the full neutral frame — see .row.is-parent /
-          // .row.is-subproject in the CSS.
-          'is-parent': children().length > 0,
-          'is-subproject': !!props.item.parent,
-          // Link decoration, keyed off the neutral --accent token (never the
-          // family hue): subtle while any linked tab is live, strong while the
-          // focused tab is among them — see .row.linked-any / .row.linked-active.
-          'linked-any': linkedTabs().length > 0,
-          'linked-active': linkedToActive(),
-        }}
-        title={props.item.path}
-        aria-label={`${props.item.title}, ${props.item.status}`}
-        data-status-card={props.item.status}
-        tabIndex={0}
-        onClick={handleCardClick}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onKeyDown={handleKeyDown}
-      >
-        <div class="row-head">
-          {/* Row 1 — the chrome line: star, the item's dated slug, and the
+    <article
+      class="row"
+      classList={{
+        draggable: isDraggable(),
+        // Family colour class (proj-family-<n>) — only on a card that is in a
+        // family: it sets --row-stripe to a stable hue shared by a parent and
+        // its subprojects, so the pair reads as one group. A standalone card
+        // takes no class and keeps the neutral frame; colour on this pane
+        // means "belongs together", nothing else. See project-color.ts.
+        // `in-family` is what the CSS keys the title tint on.
+        'in-family': inFamily(),
+        [familyColorClass()]: inFamily(),
+        // Relationship decoration: the family frame is reduced to the left
+        // edge only — a solid 6px spine for a parent (has spin-off children),
+        // a dashed 6px edge for a subproject (has a `parent:`); a standalone
+        // card keeps the full neutral frame — see .row.is-parent /
+        // .row.is-subproject in the CSS.
+        'is-parent': children().length > 0,
+        'is-subproject': !!props.item.parent,
+        // Link decoration: `linked-any` while any linked tab is live,
+        // `linked-active` while the focused tab is among them. The two
+        // strengths key the Linked-tabs fold's accent (subtle / strong) in
+        // the CSS — never a left-edge bar (v1's strips were removed by the
+        // user's review: the left edge carries only the family frame).
+        'linked-any': linkedTabs().length > 0,
+        'linked-active': linkedToActive(),
+      }}
+      title={props.item.path}
+      aria-label={`${props.item.title}, ${props.item.status}`}
+      data-status-card={props.item.status}
+      tabIndex={0}
+      onClick={handleCardClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onKeyDown={handleKeyDown}
+    >
+      <div class="row-head">
+        {/* Row 1 — the chrome line: star, the item's dated slug, and the
             work-on action pinned to the right. Kept to one line: the slug
             ellipsises before the action can move. */}
-          <div class="head-row">
-            {/* Star: first thing on the card, so the eye reads "is this one of
+        <div class="head-row">
+          {/* Star: first thing on the card, so the eye reads "is this one of
               mine?" before anything else. Filled when starred, dim outline when
               not — a starred card also sorts to the top of its section. Gone
               once the item is done, which nothing can be starred at. */}
-            <Show when={starrable()}>
-              <button
-                type="button"
-                class="star-toggle"
-                classList={{ starred: starred() }}
-                title={
-                  starred() ? 'Unstar — stop pinning to the top' : 'Star — pin to top of section'
-                }
-                aria-label={starred() ? `Unstar ${props.item.title}` : `Star ${props.item.title}`}
-                aria-pressed={starred()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  props.onToggleStar(props.item);
-                }}
-              >
-                <StarIcon filled={starred()} />
-              </button>
-            </Show>
-            {/* The item's own identifier, written exactly as its directory name
+          <Show when={starrable()}>
+            <button
+              type="button"
+              class="star-toggle"
+              classList={{ starred: starred() }}
+              title={
+                starred() ? 'Unstar — stop pinning to the top' : 'Star — pin to top of section'
+              }
+              aria-label={starred() ? `Unstar ${props.item.title}` : `Star ${props.item.title}`}
+              aria-pressed={starred()}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onToggleStar(props.item);
+              }}
+            >
+              <StarIcon filled={starred()} />
+            </button>
+          </Show>
+          {/* The item's own identifier, written exactly as its directory name
               — dated slug, `YYYY-MM-DD-` prefix included. The date is part of
               the identifier here rather than a second stamp beside it; the
               last-activity date stays on the meta row. The tooltip repeats the
               slug for a card narrow enough to ellipsise it. */}
-            <span class="slug" title={`slug: ${props.item.slug}`}>
-              {props.item.slug}
-            </span>
-            <div class="title-actions">
-              {/* Link — bind this card to the currently focused terminal tab.
+          <span class="slug" title={`slug: ${props.item.slug}`}>
+            {props.item.slug}
+          </span>
+          <div class="title-actions">
+            {/* Link — bind this card to the currently focused terminal tab.
                 Each click adds one relation (many-to-many, never a replace);
-                unlink lives on the per-tab rows below and in the tab's
-                context menu. Disabled without a focused tab: linking never
-                spawns one. */}
-              <button
-                type="button"
-                class="link-button"
-                disabled={!canLink()}
-                title={
-                  canLink()
-                    ? `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
-                    : 'Open a terminal tab first, then link this project'
+                unlink lives on the Linked-tabs fold's per-tab rows below and
+                in the tab's context menu. Disabled without a focused tab:
+                linking never spawns one. */}
+            <button
+              type="button"
+              class="link-button"
+              disabled={!canLink()}
+              title={
+                canLink()
+                  ? `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
+                  : 'Open a terminal tab first, then link this project'
+              }
+              aria-label="Link this project to the focused terminal tab"
+              onClick={(event) => {
+                event.stopPropagation();
+                const active = activeSession();
+                if (!active) return;
+                linkProject(props.item.slug, active.sid, active.label);
+              }}
+            >
+              Link
+            </button>
+            <ActionDropdownButton
+              trigger={<TerminalIcon />}
+              triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+              defaultLabel={`Work on ${shortSlug(props.item.slug)}`}
+              items={props.projectActions ?? []}
+              onItem={(idx) => {
+                if (idx === -1) {
+                  props.onWorkOn(props.item);
+                } else {
+                  const action = props.projectActions?.[idx];
+                  if (action) props.onProjectAction?.(props.item, action);
                 }
-                aria-label="Link this project to the focused terminal tab"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  const active = activeSession();
-                  if (!active) return;
-                  linkProject(props.item.slug, active.sid, active.label);
-                }}
-              >
-                Link
-              </button>
-              <ActionDropdownButton
-                trigger={<TerminalIcon />}
-                triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-                defaultLabel={`Work on ${shortSlug(props.item.slug)}`}
-                items={props.projectActions ?? []}
-                onItem={(idx) => {
-                  if (idx === -1) {
-                    props.onWorkOn(props.item);
-                  } else {
-                    const action = props.projectActions?.[idx];
-                    if (action) props.onProjectAction?.(props.item, action);
-                  }
-                }}
-                class="row-action work-on"
-              />
-            </div>
+              }}
+              class="row-action work-on"
+            />
           </div>
+        </div>
 
-          {/* Row 2 — kind glyph + title. The glyph is inline at the head of the
+        {/* Row 2 — kind glyph + title. The glyph is inline at the head of the
             title so the text flows on under it; the title is never clamped —
             a long title takes the lines it needs. An `unknown` kind is a
             README the parser couldn't type; that gets no glyph rather than a
             made-up one. */}
-          <h3 class="title">
-            <Show when={props.item.kind !== 'unknown'}>
-              <KindGlyph kind={props.item.kind} />
-            </Show>
-            <span class="title-text">{props.item.title}</span>
-          </h3>
+        <h3 class="title">
+          <Show when={props.item.kind !== 'unknown'}>
+            <KindGlyph kind={props.item.kind} />
+          </Show>
+          <span class="title-text">{props.item.title}</span>
+        </h3>
 
-          {/* Single compact meta row: app pills, branch/PR/warn, a spacer, then
+        {/* Single compact meta row: app pills, branch/PR/warn, a spacer, then
             a mini progress indicator and the last-activity date. The status is
             shown in the section header, so it is omitted here; the head row's
             slug carries the item's *creation* date, which is a different
             stamp. */}
-          <div class="meta meta-bottom">
-            <Show when={props.item.apps.length > 0}>
-              <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-                <For each={props.item.apps}>
-                  {(app) => (
-                    <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>
-                  )}
-                </For>
-              </span>
-            </Show>
-            <Show when={props.item.branch}>
-              <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
-                {props.item.branch}
-              </span>
-            </Show>
-            <For each={prsForProject(props.item)}>
-              {(pr) => (
-                <button
-                  class="meta-icon pr-badge"
-                  classList={{ draft: pr.isDraft }}
-                  title={`${pr.isDraft ? 'Draft PR' : 'Open PR'} #${pr.number}: ${pr.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void window.condash.openExternal(pr.url);
-                  }}
-                >
-                  <IconExternal />
-                  <span>#{pr.number}</span>
-                </button>
-              )}
-            </For>
-            <Show when={statusUnknown()}>
-              <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
-                <WarnIcon />
-                {props.item.status}
-              </span>
-            </Show>
-            {/* "n tabs" chip — the card's link state at a glance AND the control:
-              a real button that opens the portaled linked-tabs list (focus →
-              unlink × per row). Bordered in the subtle strength, accent-filled
-              while the focused tab is linked (see .row.linked-any /
-              .row.linked-active). */}
-            <Show when={linkedTabs().length > 0}>
-              <button
-                ref={(el) => {
-                  chipRef = el;
-                  tabsPopover.setActiveTrigger(el);
-                }}
-                type="button"
-                class="meta-icon linked-tabs-chip"
-                aria-haspopup="dialog"
-                aria-expanded={tabsPopover.open()}
-                title={`Linked to ${linkedTabs().length} live tab${linkedTabs().length === 1 ? '' : 's'}`}
-                onClick={toggleTabsPopover}
-              >
-                {linkedTabs().length} {linkedTabs().length === 1 ? 'tab' : 'tabs'}
-              </button>
-            </Show>
-            <span class="meta-spacer" />
-            <StepProgress counts={props.item.stepCounts} />
-            <span
-              class="meta-icon date"
-              title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
-            >
-              {lastDate(props.item)}
+        <div class="meta meta-bottom">
+          <Show when={props.item.apps.length > 0}>
+            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
+              <For each={props.item.apps}>
+                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>}
+              </For>
             </span>
-          </div>
+          </Show>
+          <Show when={props.item.branch}>
+            <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
+              {props.item.branch}
+            </span>
+          </Show>
+          <For each={prsForProject(props.item)}>
+            {(pr) => (
+              <button
+                class="meta-icon pr-badge"
+                classList={{ draft: pr.isDraft }}
+                title={`${pr.isDraft ? 'Draft PR' : 'Open PR'} #${pr.number}: ${pr.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void window.condash.openExternal(pr.url);
+                }}
+              >
+                <IconExternal />
+                <span>#{pr.number}</span>
+              </button>
+            )}
+          </For>
+          <Show when={statusUnknown()}>
+            <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
+              <WarnIcon />
+              {props.item.status}
+            </span>
+          </Show>
+          <span class="meta-spacer" />
+          <StepProgress counts={props.item.stepCounts} />
+          <span
+            class="meta-icon date"
+            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
+          >
+            {lastDate(props.item)}
+          </span>
         </div>
-        {/* Relations zone at the bottom of the card, hairline-separated from the
+      </div>
+      {/* Relations zone at the bottom of the card, hairline-separated from the
           head so parent/subproject links read as a distinct area rather than
           part of the title. The "Part of" banner (↑) and the subproject rows
           (↓) are real buttons that open the referenced project — except a
           dangling parent slug, which keeps a non-clickable raw-slug fallback.
-          The linked-tabs list moved into the chip popover (above), so the
-          zone holds only the hierarchy now. */}
-        <Show when={props.item.parent || children().length > 0}>
-          <div class="row-relations">
-            <Show when={props.item.parent}>
-              <Show
-                when={parentProject()}
-                fallback={
-                  <div class="parent-banner" title={`Part of: ${props.item.parent}`}>
-                    <span class="parent-banner-icon" aria-hidden="true">
-                      ↑
-                    </span>
-                    <span class="parent-banner-name">{props.item.parent}</span>
-                  </div>
-                }
-              >
-                <button
-                  type="button"
-                  class="parent-banner"
-                  classList={{
-                    warn: !!parentStatus() && !isKnownStatus(parentStatus()!),
-                    [`status-${parentStatus()}`]:
-                      !!parentStatus() && isKnownStatus(parentStatus()!),
-                  }}
-                  title={`Part of: ${parentProject()?.title}${parentStatus() ? ` (${parentStatus()})` : ''} — click to open`}
-                  aria-label={`Open parent project: ${parentProject()?.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openSlug(props.item.parent!);
-                  }}
-                >
+          The Linked-tabs fold (the card's link signal AND control) closes the
+          zone. */}
+      <Show when={props.item.parent || children().length > 0 || linkedTabs().length > 0}>
+        <div class="row-relations">
+          <Show when={props.item.parent}>
+            <Show
+              when={parentProject()}
+              fallback={
+                <div class="parent-banner" title={`Part of: ${props.item.parent}`}>
                   <span class="parent-banner-icon" aria-hidden="true">
                     ↑
                   </span>
-                  <span class="parent-banner-name">{parentProject()?.title}</span>
-                  <Show when={parentStatus()}>
-                    <span class="rel-status-pill">{parentStatus()}</span>
-                  </Show>
-                </button>
-              </Show>
+                  <span class="parent-banner-name">{props.item.parent}</span>
+                </div>
+              }
+            >
+              <button
+                type="button"
+                class="parent-banner"
+                classList={{
+                  warn: !!parentStatus() && !isKnownStatus(parentStatus()!),
+                  [`status-${parentStatus()}`]: !!parentStatus() && isKnownStatus(parentStatus()!),
+                }}
+                title={`Part of: ${parentProject()?.title}${parentStatus() ? ` (${parentStatus()})` : ''} — click to open`}
+                aria-label={`Open parent project: ${parentProject()?.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSlug(props.item.parent!);
+                }}
+              >
+                <span class="parent-banner-icon" aria-hidden="true">
+                  ↑
+                </span>
+                <span class="parent-banner-name">{parentProject()?.title}</span>
+                <Show when={parentStatus()}>
+                  <span class="rel-status-pill">{parentStatus()}</span>
+                </Show>
+              </button>
             </Show>
-            <Show when={children().length > 0}>
-              <div class="children-banner">
-                {/* Fold header: caret + label + count. Collapsed by default; a
+          </Show>
+          <Show when={children().length > 0}>
+            <div class="children-banner">
+              {/* Fold header: caret + label + count. Collapsed by default; a
                   click only toggles the list (never opens the card — the
                   toggle is in CARD_CLICK_EXCLUDE and stops propagation). */}
-                <button
-                  type="button"
-                  class="children-toggle"
-                  aria-expanded={childrenExpanded()}
-                  title={
-                    childrenExpanded()
-                      ? 'Collapse subprojects'
-                      : `Expand ${children().length} subproject${children().length === 1 ? '' : 's'}`
-                  }
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleChildren();
-                  }}
-                >
-                  <Caret expanded={childrenExpanded()} />
-                  <span class="children-toggle-label">Subprojects</span>
-                  <span class="children-toggle-count">{children().length}</span>
-                </button>
-                <Show when={childrenExpanded()}>
-                  <For each={children()}>
-                    {(child) => (
+              <button
+                type="button"
+                class="children-toggle"
+                aria-expanded={childrenExpanded()}
+                title={
+                  childrenExpanded()
+                    ? 'Collapse subprojects'
+                    : `Expand ${children().length} subproject${children().length === 1 ? '' : 's'}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleChildren();
+                }}
+              >
+                <Caret expanded={childrenExpanded()} />
+                <span class="children-toggle-label">Subprojects</span>
+                <span class="children-toggle-count">{children().length}</span>
+              </button>
+              <Show when={childrenExpanded()}>
+                <For each={children()}>
+                  {(child) => (
+                    <button
+                      type="button"
+                      class="child-row"
+                      classList={{
+                        warn: !isKnownStatus(child.status),
+                        [`status-${child.status}`]: isKnownStatus(child.status),
+                      }}
+                      title={`Subproject: ${child.title} (${child.status}) — click to open`}
+                      aria-label={`Open subproject: ${child.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSlug(child.slug);
+                      }}
+                    >
+                      <span class="child-row-icon" aria-hidden="true">
+                        ↓
+                      </span>
+                      <span class="child-row-name">{child.title}</span>
+                      <span class="rel-status-pill">{child.status}</span>
+                    </button>
+                  )}
+                </For>
+              </Show>
+            </div>
+          </Show>
+          {/* Linked-tabs fold — the card's link signal AND control (2026-08
+              v2: replaces the meta-row chip + portaled popover, rejected by
+              the user's visual review). Collapsed by default, persisted per
+              card (key `links.<slug>`) exactly like the Subprojects fold. The
+              header is accent-tinted with a full-width underline — subtle
+              (linked-any) vs strong (linked-active) — see the CSS. The
+              expanded body reuses the .link-row* vocabulary: glyph + label +
+              focus → + unlink ×. When the last link goes, the fold disappears
+              entirely — no popover-style close logic needed. */}
+          <Show when={linkedTabs().length > 0}>
+            <div class="linked-tabs-banner">
+              <button
+                type="button"
+                class="linked-tabs-toggle"
+                aria-expanded={linksExpanded()}
+                title={
+                  linksExpanded()
+                    ? 'Collapse linked tabs'
+                    : `Expand ${linkedTabs().length} linked tab${linkedTabs().length === 1 ? '' : 's'}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleLinks();
+                }}
+              >
+                <Caret expanded={linksExpanded()} />
+                <span class="linked-tabs-toggle-label">Linked tabs</span>
+                <span class="linked-tabs-toggle-count">{linkedTabs().length}</span>
+              </button>
+              <Show when={linksExpanded()}>
+                <For each={linkedTabs()}>
+                  {(tab) => (
+                    <div class="link-row">
+                      <span class="link-row-glyph" aria-hidden="true">
+                        <TerminalIcon />
+                      </span>
+                      <span class="link-row-label">{tab.label}</span>
                       <button
                         type="button"
-                        class="child-row"
-                        classList={{
-                          warn: !isKnownStatus(child.status),
-                          [`status-${child.status}`]: isKnownStatus(child.status),
-                        }}
-                        title={`Subproject: ${child.title} (${child.status}) — click to open`}
-                        aria-label={`Open subproject: ${child.title}`}
+                        class="link-row-focus"
+                        title={`Focus ${tab.label}`}
+                        aria-label={`Focus ${tab.label}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          openSlug(child.slug);
+                          props.onFocusTab(tab.sid);
                         }}
                       >
-                        <span class="child-row-icon" aria-hidden="true">
-                          ↓
-                        </span>
-                        <span class="child-row-name">{child.title}</span>
-                        <span class="rel-status-pill">{child.status}</span>
+                        →
                       </button>
-                    )}
-                  </For>
-                </Show>
-              </div>
-            </Show>
-          </div>
-        </Show>
-      </article>
-      {/* The linked-tabs popover, portaled to document.body: the `.row` card
-        sets `contain: layout paint`, which makes it a containing block for
-        `position: fixed` descendants and clips them to its padding box — an
-        inline overlay would be mispositioned and unpaintable. Same recipe as
-        the branch popovers (branch-badges.tsx). Left-anchored to the chip,
-        like those popovers: the chip sits left of the meta spacer, so a
-        left-aligned popover cannot run past the right edge of a narrow card. */}
-      <Show when={tabsPopover.open() && tabsPopover.anchor()}>
-        <Portal>
-          <div
-            ref={(el) => {
-              tabsPopoverRef = el;
-              if (el) requestAnimationFrame(tabsPopover.reposition);
-            }}
-            class="linked-tabs-popover"
-            role="dialog"
-            aria-label={`Linked tabs for ${props.item.title}`}
-            style={{
-              top: `${tabsPopover.anchor()!.top}px`,
-              left: `${tabsPopover.anchor()!.left}px`,
-            }}
-          >
-            <For each={linkedTabs()}>
-              {(tab) => (
-                <div class="link-row">
-                  <span class="link-row-glyph" aria-hidden="true">
-                    <TerminalIcon />
-                  </span>
-                  <span class="link-row-label">{tab.label}</span>
-                  <button
-                    type="button"
-                    class="link-row-focus"
-                    title={`Focus ${tab.label}`}
-                    aria-label={`Focus ${tab.label}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      props.onFocusTab(tab.sid);
-                    }}
-                  >
-                    →
-                  </button>
-                  <button
-                    type="button"
-                    class="link-row-unlink"
-                    title={`Unlink ${tab.label}`}
-                    aria-label={`Unlink ${tab.label}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      unlinkFromPopover(tab.sid);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
-        </Portal>
+                      <button
+                        type="button"
+                        class="link-row-unlink"
+                        title={`Unlink ${tab.label}`}
+                        aria-label={`Unlink ${tab.label}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          unlinkProjectFromTab(props.item.slug, tab.sid);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </For>
+              </Show>
+            </div>
+          </Show>
+        </div>
       </Show>
-    </>
+    </article>
   );
 }

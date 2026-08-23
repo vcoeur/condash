@@ -606,61 +606,13 @@ body[data-dragging='project'] .row {
 /* Link decoration (manual card ↔ terminal-tab links). Keyed off the neutral
  * --accent token — never --row-stripe / .proj-family-<n> / .in-family, which
  * are the family's: a card can link tabs of many hues, and the link accent is
- * the UI accent, not a project hue. Two strengths per the contract:
- *   • .row.linked-any    — subtle: a 3px accent edge inset on the flat left
- *     side (same silhouette as the parent spine) and a bordered "n tabs" chip
- *   • .row.linked-active — strong: the edge grows to the full card height and
- *     the chip fills with the accent (matching .projects-filter-chip-count)
+ * the UI accent, not a project hue. The two strengths tint the Linked-tabs
+ * fold in the relations zone (see .linked-tabs-toggle below), not the card
+ * edge — the v2 review removed v1's left-edge accent strips entirely, so a
+ * linked family card never shows two left bars:
+ *   • .row.linked-any    — subtle: accent tint + 1.5px underline
+ *   • .row.linked-active — strong: 3px underline, accent-filled count
  * The tab itself stays undecorated — see the tab-strip CSS. */
-.row.linked-any::before,
-.row.linked-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  background: var(--accent);
-  border-radius: 0 3px 3px 0;
-}
-.row.linked-any::before {
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-}
-.row.linked-active::before {
-  top: 0;
-  bottom: 0;
-  width: 6px;
-}
-
-/* The "n tabs" chip — a real <button> since 2026-08: the card's single link
- * signal AND control (click opens the portaled linked-tabs popover). The UA
- * button chrome (font, background, border, cursor) is reset first, then the
- * pill look is re-declared on top so the chip reads exactly as the old span
- * did. Scoped `.meta-icon.linked-tabs-chip` (higher specificity than the base
- * `.row .meta-icon` rule below) so the base's `border: none` / faint color /
- * square radius can't clobber the pill. */
-.row .meta-icon.linked-tabs-chip {
-  font: inherit;
-  background: none;
-  cursor: pointer;
-  color: var(--text-body);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-  border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  border: 1.4px solid var(--accent);
-}
-.row .meta-icon.linked-tabs-chip:hover {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-.row .meta-icon.linked-tabs-chip:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.row.linked-active .meta-icon.linked-tabs-chip {
-  background: var(--accent);
-  color: var(--bg-elevated);
-  border-color: var(--accent);
-}
 
 /* The Link button in the title-actions cluster: a quiet text action that
  * reads as part of the card chrome (like the work-on glyph beside it), not a
@@ -1273,6 +1225,69 @@ body[data-dragging='project'] .row {
   font-variant-numeric: tabular-nums;
 }
 
+/* Linked-tabs fold in a card's relations zone — the card's link signal AND
+ * control (2026-08 v2: replaces the meta-row chip + portaled popover, which
+ * the user's visual review rejected). The header is accent-tinted (caret,
+ * label, count) and carries a full-width horizontal accent underline under
+ * the header row; expanded, it opens to one .link-row per linked tab (glyph +
+ * label + focus → + unlink ×). Collapsed by default (cards.tsx), persisted
+ * per card in the same localStorage collapse map as the children fold.
+ * Strength follows the .row.linked-any / .row.linked-active classes above:
+ * subtle = 1.5px underline, strong = 3px underline + accent-filled count
+ * (matching .projects-filter-chip-count). The accent is var(--accent) only —
+ * never the family hue. */
+.row .linked-tabs-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Fold header — full-width so the underline spans the card; quiet meta-text
+ * chrome like the children toggle, but accent-tinted to read as the link
+ * signal. The bottom border IS the accent underline. */
+.row .linked-tabs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 4px 4px 2px;
+  border: none;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.row .linked-tabs-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.row .linked-tabs-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.row .linked-tabs-toggle-count {
+  font-variant-numeric: tabular-nums;
+}
+.row.linked-active .linked-tabs-toggle {
+  border-bottom-width: 3px;
+  border-bottom-color: var(--accent);
+}
+.row.linked-active .linked-tabs-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--bg-elevated);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+}
+
 /* Resolved banner rows are real <button>s that open the referenced project —
  * strip the UA button chrome back to the shared pill look, then add the
  * clickable affordances (deeper tint on hover, focus ring for the keyboard
@@ -1357,32 +1372,13 @@ body[data-dragging='project'] .row {
   --col-status: var(--warn);
 }
 
-/* Linked-tabs popover — the portaled list a card's "n tabs" chip opens
- * (2026-08: the chip replaced the relations-zone Linked-tabs block). The rows
- * keep the old block's `.link-row` vocabulary — they changed container, not
- * class names — polished to the shared row language (design contract): ≥ 24px
- * rows, hover background, :focus-visible rings, ≥ 20px action hit areas.
- * Rendered through a <Portal> because the `.row` card's `contain: layout
- * paint` would clip an inline overlay (AGENTS.md: overlays are real portals).
- * Left-anchored to the chip like the branch popovers: the chip sits left of
- * the meta spacer, so a left-aligned popover cannot run past the right edge
- * of a narrow card. The accent edge strip and chip strength are driven by
+/* Linked-tab rows in the fold — the shared row language (design contract),
+ * scoped inside the card now that the fold replaced the portaled popover:
+ * ≥ 24px rows, accent hover, ellipsised label, ≥ 20px action hit areas,
+ * :focus-visible rings. The .link-row* vocabulary is unchanged — the rows
+ * changed container, not class names. The accent strength is driven by
  * .row.linked-any / .row.linked-active above. */
-.linked-tabs-popover {
-  position: fixed;
-  min-width: 180px;
-  max-width: 280px;
-  padding: 4px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lift);
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.linked-tabs-popover .link-row {
+.row .link-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1391,19 +1387,19 @@ body[data-dragging='project'] .row {
   padding: 2px 6px;
   border-radius: 6px;
 }
-.linked-tabs-popover .link-row:hover {
+.row .link-row:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
-.linked-tabs-popover .link-row-glyph {
+.row .link-row-glyph {
   flex-shrink: 0;
   display: inline-flex;
   color: var(--text-muted);
 }
-.linked-tabs-popover .link-row-glyph svg {
+.row .link-row-glyph svg {
   width: 14px;
   height: 14px;
 }
-.linked-tabs-popover .link-row-label {
+.row .link-row-label {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1412,8 +1408,8 @@ body[data-dragging='project'] .row {
   color: var(--text-body);
   font-size: var(--text-2xs);
 }
-.linked-tabs-popover .link-row-focus,
-.linked-tabs-popover .link-row-unlink {
+.row .link-row-focus,
+.row .link-row-unlink {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -1429,13 +1425,13 @@ body[data-dragging='project'] .row {
   line-height: 1;
   cursor: pointer;
 }
-.linked-tabs-popover .link-row-focus:hover,
-.linked-tabs-popover .link-row-unlink:hover {
+.row .link-row-focus:hover,
+.row .link-row-unlink:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-.linked-tabs-popover .link-row-focus:focus-visible,
-.linked-tabs-popover .link-row-unlink:focus-visible {
+.row .link-row-focus:focus-visible,
+.row .link-row-unlink:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
