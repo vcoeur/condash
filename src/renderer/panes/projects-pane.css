@@ -1233,9 +1233,9 @@ body[data-dragging='project'] .row {
  * label + focus → + unlink ×). Collapsed by default (cards.tsx), persisted
  * per card in the same localStorage collapse map as the children fold.
  * Strength follows the .row.linked-any / .row.linked-active classes above:
- * subtle = 1.5px underline, strong = 3px underline + accent-filled count
- * (matching .projects-filter-chip-count). The accent is var(--accent) only —
- * never the family hue. */
+ * subtle = washed-out underline + plain count, strong = solid underline +
+ * accent-filled count (matching .projects-filter-chip-count). The accent is
+ * var(--accent) only — never the family hue. */
 .row .linked-tabs-banner {
   display: flex;
   flex-direction: column;
@@ -1270,18 +1270,20 @@ body[data-dragging='project'] .row {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* The count is a fixed 16px-tall flex box in BOTH strengths — the strong
+ * state's pill reuses this height, so the row's total height never shifts
+ * when focus crosses a linked tab. */
 .row .linked-tabs-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
   font-variant-numeric: tabular-nums;
 }
 .row.linked-active .linked-tabs-toggle {
   border-bottom-color: var(--accent);
 }
 .row.linked-active .linked-tabs-toggle-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   min-width: 16px;
-  height: 16px;
   padding: 0 4px;
   border-radius: var(--radius-pill);
   background: var(--accent);
