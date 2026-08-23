@@ -98,6 +98,10 @@ test('Console paints the four mockup-F surface rules', async () => {
     //    with the accent-ink surface printed on top (base rule, every theme).
     expect(seen.railActiveBg).toBe(accent);
     expect(seen.railActiveColor).toBe(await resolvedColor(booted, '--accent-ink'));
+    // The ink assertion alone would pass vacuously if the theme's `--accent-ink`
+    // mapping were dropped — both sides would fall back to the inherited body
+    // colour. The ink must differ from the body text to prove it is mapped.
+    expect(seen.railActiveColor).not.toBe(await resolvedColor(booted, '--text'));
     // 2. `› TITLE ────` — the accent caret in front of the pane title.
     expect(seen.paneTitleCaret).toBe('"›"');
     // 3. Square status blocks.
@@ -122,6 +126,8 @@ test('none of them leak into Warm Gallery', async () => {
     // are the console-only shapes below (caret, square dots, progress bars).
     expect(seen.railActiveBg).toBe(await resolvedColor(booted, '--accent'));
     expect(seen.railActiveColor).toBe(await resolvedColor(booted, '--accent-ink'));
+    // Non-vacuous ink check — see the console pair's note.
+    expect(seen.railActiveColor).not.toBe(await resolvedColor(booted, '--text'));
     expect(seen.paneTitleCaret).toBe('none');
     expect(seen.laneDotRadius).not.toBe('0px');
     expect(seen.progressFill).toBe('none');

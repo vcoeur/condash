@@ -283,16 +283,14 @@
  * printed on top — the same reverse-video treatment the Console theme
  * pioneered, now the rail's active signature in every theme. A soft wash
  * and an inset accent bar read as "barely different" on a dark rail, so
- * the active pane is now unmistakable at a glance. */
+ * the active pane is now unmistakable at a glance. No hover rule: a
+ * lifted hover would shift the pill's hue in the light theme (its
+ * accent-hover is the pink CTA token), so the active item keeps its fill. */
 .rail-item.active {
   background: var(--accent);
   color: var(--accent-ink);
   /* The inset accent bar is invisible against an accent fill. */
   box-shadow: none;
-}
-
-.rail-item.active:hover {
-  background: var(--accent-hover);
 }
 
 .rail-item:focus-visible {

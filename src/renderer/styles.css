@@ -493,9 +493,9 @@
   --accent: #4ade80;
   --accent-hover: #6ee79b;
   --accent-soft: rgba(74, 222, 128, 0.14);
-  /* Ink to print ON the accent. Console is the only preset that fills a surface
-   * with the accent (the reverse-video rail / tab actives in
-   * `theme-console.css`), so the token lives here rather than on `:root`. */
+  /* Ink to print ON the accent. Console is the only preset whose accent is a
+   * light phosphor, so its ink is a near-black where the other presets use a
+   * near-black that contrasts with their darker accents. */
   --accent-ink: #08110b;
   --shadow-card: none;
   --shadow-lift: none;

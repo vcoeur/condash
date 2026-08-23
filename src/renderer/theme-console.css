@@ -3,7 +3,8 @@
  * The Console preset's colour, radius and type live where every preset's do: one
  * `[data-theme='console']` token block in `styles.css`. This file is the rest of
  * it — the mockup-F signatures that are *shapes*, not values, and so cannot be
- * expressed by re-pointing a token: reverse-video actives, `› TITLE ────`
+ * expressed by re-pointing a token: the terminal tab's reverse-video active
+ * (the rail's is the base rule now, in app-shell.css), `› TITLE ────`
  * hairline section heads, square status blocks, and segmented progress bars.
  *
  * Two rules keep this from becoming a second stylesheet for the whole app:
