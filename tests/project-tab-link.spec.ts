@@ -9,10 +9,12 @@ import { bootApp } from './fixtures/electron-app';
  * What warrants an app-level spec: the link is a renderer-only feature, but
  * its wiring crosses surfaces — the controller's focus mirror (a createEffect
  * over controller signals feeding a module store), the card's Link button
- * (disabled/enabled by that mirror), the decoration classes, the Active-tab
- * filter, the tab hover popover, the context menu, and the prune/re-point
- * lifecycle hooks. Unit tests pin the store and the controller pieces; these
- * tests drive the real gestures against the built app.
+ * (disabled/enabled by that mirror), the chip-as-button that opens the
+ * portaled linked-tabs popover (where the per-tab focus/unlink rows now
+ * live), the decoration classes, the Active-tab filter, the tab hover
+ * popover, the context menu, and the prune/re-point lifecycle hooks. Unit
+ * tests pin the store and the controller pieces; these tests drive the real
+ * gestures against the built app.
  *
  * The fixture ships `2026-04-26-sample` in `now`; `prepare` adds an older
  * sibling so "one tab links two projects" has a second card.
@@ -69,7 +71,7 @@ test('the Link button is disabled with no focused tab and enabled once a tab is 
   }
 });
 
-test('linking adds one relation — the card gains the row, the chip, and the decoration', async () => {
+test('linking adds one relation — the card gains the chip, the popover row, and the decoration', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
@@ -82,21 +84,67 @@ test('linking adds one relation — the card gains the row, the chip, and the de
     await expect(card).toHaveClass(/linked-active/);
     await expect(card).toHaveClass(/linked-any/);
     await expect(card.locator('.linked-tabs-chip')).toHaveText('1 tab');
-    await expect(card.locator('.link-row')).toHaveCount(1);
+
+    // The chip opens the portaled linked-tabs popover, which carries the
+    // per-tab rows the relations zone used to hold.
+    await card.locator('.linked-tabs-chip').click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.link-row')).toHaveCount(1);
     // A plain spawned shell carries no OSC 7 / repo, so the label captured at
     // link time is the generic 'shell'.
-    await expect(card.locator('.link-row-label')).toHaveText('shell');
+    await expect(popover.locator('.link-row-label')).toHaveText('shell');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
       .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
 
     // Re-linking the same pair is a no-op — one row, one record.
+    await win.keyboard.press('Escape');
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    await sampleCard(win).locator('.linked-tabs-chip').click();
+    await expect(win.locator('.linked-tabs-popover .link-row')).toHaveCount(1);
     await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
       .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the chip is a button that opens the popover; outside-click and Escape close it', async () => {
+  const booted = await bootApp();
+  try {
+    const win = booted.window;
+    await spawnTab(win, 'printf "READY\n"; sleep 30');
+    await sampleCard(win).locator('.link-button').click();
+
+    const chip = sampleCard(win).locator('.linked-tabs-chip');
+    await expect(chip).toHaveText('1 tab');
+    // The chip is a real button carrying the disclosure state.
+    expect(await chip.evaluate((el) => el.tagName)).toBe('BUTTON');
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+    await expect(chip).toHaveAttribute('aria-haspopup', 'dialog');
+
+    // Click opens the portaled popover.
+    await chip.click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await expect(chip).toHaveAttribute('aria-expanded', 'true');
+    // The popover escaped the card: `.row` sets `contain: layout paint`,
+    // which would clip an inline overlay — it must sit in document.body.
+    expect(await popover.evaluate((el) => el.closest('.row') === null)).toBe(true);
+
+    // Outside-click closes it.
+    await win.locator('.pane-header-title').click();
+    await expect(popover).toHaveCount(0);
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+
+    // Re-open, then Escape closes it.
+    await chip.click();
+    await expect(win.locator('.linked-tabs-popover')).toBeVisible();
+    await win.keyboard.press('Escape');
+    await expect(win.locator('.linked-tabs-popover')).toHaveCount(0);
   } finally {
     await booted.cleanup();
   }
@@ -117,13 +165,18 @@ test('many-to-many — one project links two tabs; both rows survive, decoration
     await spawnTab(win, 'printf "C\n"; sleep 30');
 
     const card = sampleCard(win);
-    await expect(card.locator('.link-row')).toHaveCount(2);
     await expect(card.locator('.linked-tabs-chip')).toHaveText('2 tabs');
-    await expect(card.locator('.link-row-label')).toHaveText(['shell', 'shell']);
+    // Open the popover: both rows, in link order.
+    await card.locator('.linked-tabs-chip').click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.link-row')).toHaveCount(2);
+    await expect(popover.locator('.link-row-label')).toHaveText(['shell', 'shell']);
     await expect(card).toHaveClass(/linked-any/);
     await expect(card).not.toHaveClass(/linked-active/);
 
-    // Focus the first linked tab again → strong state returns.
+    // Focus the first linked tab again → strong state returns. (Clicking the
+    // tab is also an outside-click, which closes the popover.)
     await win.locator(`[data-sid="${a}"]`).click();
     await expect(card).toHaveClass(/linked-active/);
   } finally {
@@ -140,7 +193,11 @@ test('the focus arrow activates the linked tab', async () => {
     const b = await spawnTab(win, 'printf "B\n"; sleep 30');
     await expect(win.locator(`[data-sid="${b}"]`)).toHaveClass(/active/);
 
-    await sampleCard(win).locator('.link-row-focus').first().click();
+    // The focus arrow lives in the chip popover now — open it first.
+    await sampleCard(win).locator('.linked-tabs-chip').click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await popover.locator('.link-row-focus').first().click();
 
     await expect(win.locator(`[data-sid="${a}"]`)).toHaveClass(/active/);
     await expect(win.locator(`[data-sid="${b}"]`)).not.toHaveClass(/active/);
@@ -149,7 +206,7 @@ test('the focus arrow activates the linked tab', async () => {
   }
 });
 
-test('unlink one from the card row clears exactly that relation', async () => {
+test('unlink one from the popover clears exactly that relation', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
@@ -157,11 +214,15 @@ test('unlink one from the card row clears exactly that relation', async () => {
     await sampleCard(win).locator('.link-button').click();
     const b = await spawnTab(win, 'printf "B\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(2);
+    // Unlink lives in the chip popover now — open it and remove the first row.
+    await sampleCard(win).locator('.linked-tabs-chip').click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.link-row')).toHaveCount(2);
+    await popover.locator('.link-row-unlink').first().click();
 
-    await sampleCard(win).locator('.link-row-unlink').first().click();
-
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    // One row left → the popover stays open; the chip drops to "1 tab".
+    await expect(popover.locator('.link-row')).toHaveCount(1);
     await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
@@ -192,14 +253,17 @@ test('the tab context menu unlinks one project, and unlink-all clears every rela
       menu.locator('.terminal-tab-context-menu-item', { hasText: 'Unlink all projects (2)' }),
     ).toHaveCount(1);
 
-    // Unlink ALL — both cards lose their rows in one write.
+    // Unlink ALL — both cards lose their link surface in one write. The chip
+    // is the card's only signal now, so its disappearance is the "no rows"
+    // assertion.
     await menu
       .locator('.terminal-tab-context-menu-item', { hasText: 'Unlink all projects (2)' })
       .click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveCount(0);
     await expect(
-      win.locator('article.row', { hasText: 'Alpha project' }).locator('.link-row'),
+      win.locator('article.row', { hasText: 'Alpha project' }).locator('.linked-tabs-chip'),
     ).toHaveCount(0);
+    await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
 
     // Unlink ONE from the menu — re-link just the sample card first. With a
@@ -220,7 +284,7 @@ test('the tab context menu unlinks one project, and unlink-all clears every rela
     await menu2
       .locator('.terminal-tab-context-menu-item', { hasText: 'Unlink from 2026-04-26-sample' })
       .click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveCount(0);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
   } finally {
     await booted.cleanup();
@@ -291,17 +355,18 @@ test('hovering a linked tab lists its projects in the popover (no Dashboard need
   }
 });
 
-test('closing a tab clears every relation of it — rows, chip, and decoration go away', async () => {
+test('closing a tab clears every relation of it — chip and decoration go away', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
     const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
 
     await win.evaluate((sid) => window.condash.termClose(sid), tab);
 
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+    // The chip is the card's only link surface now — its disappearance is the
+    // "rows gone" signal, and with it the decoration.
     await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveCount(0);
     await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
@@ -324,7 +389,7 @@ test('a Restart re-points the links onto the new session id', async () => {
       timeout: 15_000,
     });
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
 
     await win.locator(`[data-sid="${session.id}"] .terminal-tab-restart`).click();
 
@@ -345,9 +410,13 @@ test('a Restart re-points the links onto the new session id', async () => {
       return raw ? Object.keys(JSON.parse(raw)['2026-04-26-sample'] ?? {}) : [];
     });
     expect(sids[0]).not.toBe(session.id);
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
-    // The label captured at link time ('shell') rides the re-point untouched.
-    await expect(sampleCard(win).locator('.link-row-label')).toHaveText('shell');
+    // The chip opens the popover: the re-pointed relation is one row, and the
+    // label captured at link time ('shell') rides the re-point untouched.
+    await sampleCard(win).locator('.linked-tabs-chip').click();
+    const popover = win.locator('.linked-tabs-popover');
+    await expect(popover).toBeVisible();
+    await expect(popover.locator('.link-row')).toHaveCount(1);
+    await expect(popover.locator('.link-row-label')).toHaveText('shell');
   } finally {
     await booted.cleanup();
   }

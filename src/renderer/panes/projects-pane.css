@@ -631,7 +631,17 @@ body[data-dragging='project'] .row {
   width: 6px;
 }
 
-.row .linked-tabs-chip {
+/* The "n tabs" chip — a real <button> since 2026-08: the card's single link
+ * signal AND control (click opens the portaled linked-tabs popover). The UA
+ * button chrome (font, background, border, cursor) is reset first, then the
+ * pill look is re-declared on top so the chip reads exactly as the old span
+ * did. Scoped `.meta-icon.linked-tabs-chip` (higher specificity than the base
+ * `.row .meta-icon` rule below) so the base's `border: none` / faint color /
+ * square radius can't clobber the pill. */
+.row .meta-icon.linked-tabs-chip {
+  font: inherit;
+  background: none;
+  cursor: pointer;
   color: var(--text-body);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
@@ -639,7 +649,14 @@ body[data-dragging='project'] .row {
   padding: 1px 7px;
   border: 1.4px solid var(--accent);
 }
-.row.linked-active .linked-tabs-chip {
+.row .meta-icon.linked-tabs-chip:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.row .meta-icon.linked-tabs-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.row.linked-active .meta-icon.linked-tabs-chip {
   background: var(--accent);
   color: var(--bg-elevated);
   border-color: var(--accent);
@@ -1333,35 +1350,53 @@ body[data-dragging='project'] .row {
   --col-status: var(--warn);
 }
 
-/* Linked tabs block in a card's relations zone — the manual card ↔ terminal
- * tab links. Same zone vocabulary as the relationship banners: a quiet head
- * (like the children fold header) over one full-width row per linked tab.
- * Each row: the label captured at link time, a focus arrow, and an unlink × —
- * the two controls are real buttons (Tab-focusable, aria-labelled) and sit in
- * CARD_CLICK_EXCLUDE so they never open the card. The accent edge strip and
- * the chip are driven by .row.linked-any / .row.linked-active above. */
-.row .linked-tabs {
+/* Linked-tabs popover — the portaled list a card's "n tabs" chip opens
+ * (2026-08: the chip replaced the relations-zone Linked-tabs block). The rows
+ * keep the old block's `.link-row` vocabulary — they changed container, not
+ * class names — polished to the shared row language (design contract): ≥ 24px
+ * rows, hover background, :focus-visible rings, ≥ 20px action hit areas.
+ * Rendered through a <Portal> because the `.row` card's `contain: layout
+ * paint` would clip an inline overlay (AGENTS.md: overlays are real portals).
+ * Left-anchored to the chip like the branch popovers: the chip sits left of
+ * the meta spacer, so a left-aligned popover cannot run past the right edge
+ * of a narrow card. The accent edge strip and chip strength are driven by
+ * .row.linked-any / .row.linked-active above. */
+.linked-tabs-popover {
+  position: fixed;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+  z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
-.row .linked-tabs-head {
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-.row .link-row {
+.linked-tabs-popover .link-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 2px 4px;
+  min-height: 24px;
+  padding: 2px 6px;
   border-radius: 6px;
 }
-.row .link-row:hover {
+.linked-tabs-popover .link-row:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
-.row .link-row-label {
+.linked-tabs-popover .link-row-glyph {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.linked-tabs-popover .link-row-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+.linked-tabs-popover .link-row-label {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1370,14 +1405,14 @@ body[data-dragging='project'] .row {
   color: var(--text-body);
   font-size: var(--text-2xs);
 }
-.row .link-row-focus,
-.row .link-row-unlink {
+.linked-tabs-popover .link-row-focus,
+.linked-tabs-popover .link-row-unlink {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   border-radius: 4px;
   background: transparent;
@@ -1387,13 +1422,13 @@ body[data-dragging='project'] .row {
   line-height: 1;
   cursor: pointer;
 }
-.row .link-row-focus:hover,
-.row .link-row-unlink:hover {
+.linked-tabs-popover .link-row-focus:hover,
+.linked-tabs-popover .link-row-unlink:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-.row .link-row-focus:focus-visible,
-.row .link-row-unlink:focus-visible {
+.linked-tabs-popover .link-row-focus:focus-visible,
+.linked-tabs-popover .link-row-unlink:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
