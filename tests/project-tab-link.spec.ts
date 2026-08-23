@@ -363,8 +363,16 @@ test('closing a tab clears every relation of it — chip and decoration go away'
     await sampleCard(win).locator('.link-button').click();
     await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
 
+    // Open the popover, then close the tab from the terminal side — an
+    // external removal (the reconcile's prune, not an in-popover unlink)
+    // while the popover is open must close it too, or an empty popover
+    // would float at a stale anchor.
+    await sampleCard(win).locator('.linked-tabs-chip').click();
+    await expect(win.locator('.linked-tabs-popover')).toBeVisible();
+
     await win.evaluate((sid) => window.condash.termClose(sid), tab);
 
+    await expect(win.locator('.linked-tabs-popover')).toHaveCount(0);
     // The chip is the card's only link surface now — its disappearance is the
     // "rows gone" signal, and with it the decoration.
     await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveCount(0);

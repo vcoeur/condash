@@ -1,5 +1,6 @@
 import {
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   For,
@@ -549,13 +550,22 @@ export function Card(props: {
     tabsPopover.reposition();
     tabsPopover.setOpen(true);
   };
-  // Unlink from inside the popover; when the last row goes, the chip unmounts
-  // with it — close the popover too, or an empty popover would float with no
-  // trigger to anchor to.
+  // Unlink from inside the popover (focus stays open — the user may want to
+  // focus several tabs).
   const unlinkFromPopover = (sid: string): void => {
     unlinkProjectFromTab(props.item.slug, sid);
-    if (linkedTabs().length === 0) tabsPopover.setOpen(false);
   };
+  // The last linked tab can also vanish from OUTSIDE the popover — a linked
+  // tab's process exits on its own, and the controller's reconcile prunes the
+  // relation (`pruneLinks`) with no click involved. Then the chip unmounts
+  // (`Show when={linkedTabs().length > 0}`) while `open()` is still true, and
+  // an empty popover would float at a stale anchor and teleport to the
+  // viewport corner on the next scroll/resize (reposition measures the
+  // detached trigger). Close it whenever the list empties, so `open()` never
+  // disagrees with what is on screen.
+  createEffect(() => {
+    if (tabsPopover.open() && linkedTabs().length === 0) tabsPopover.setOpen(false);
+  });
 
   // Subprojects list fold. Collapsed by default so a plan with many spin-offs
   // stays a normal-height card; the expanded state persists per parent in the
