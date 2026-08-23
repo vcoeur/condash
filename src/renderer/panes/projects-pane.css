@@ -461,14 +461,14 @@ body[data-dragging='project'] .row {
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px 10px 16px;
-  /* Full frame in --row-stripe: neutral for a standalone card, the family
-   * colour for a parent/subproject (status lives on the section's left rail).
-   * Border-style and a thicker left edge encode the relationship: solid =
-   * standalone/parent, dashed = subproject, thick left = parent (see
-   * .row.is-* below). */
+  /* Full frame in --row-stripe: neutral for a standalone card. A family card
+   * (parent/subproject) drops the top/right/bottom sides and wears only the
+   * left edge in the family colour (status lives on the section's left rail);
+   * that edge encodes the relationship — solid 6px spine for a parent, dashed
+   * 6px for a subproject (see .row.is-* below). */
   border: 2px solid var(--row-stripe);
-  /* Asymmetric card — flat left edge (carries the family frame / thick parent
-   * spine) + rounded right, the vcoeur project-card silhouette. */
+  /* Asymmetric card — flat left edge (carries the family frame / parent spine)
+   * + rounded right, the vcoeur project-card silhouette. */
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -688,39 +688,46 @@ body[data-dragging='project'] .row {
   border-color: var(--border);
 }
 
-/* Relationship / hierarchy decoration (2026-07). A family card wears a full
- * family-coloured frame (see .row above, --row-stripe = the family colour set
- * by its .proj-family-<n> class); this varies that frame to encode the
- * parent/subproject edge and tints the title with the same hue:
- *   • standalone project     → neutral solid frame (the .row default)
- *   • subproject (`parent:`)  → dashed top/right/bottom with the same thick
- *     solid left edge as its parent, tying the child to the family root while
- *     the dashed sides keep it reading as the child of a pair
- *   • parent (has children)   → solid frame with a thick left edge, marking it
- *     as the family root the subprojects belong to
+/* Relationship / hierarchy decoration (2026-07, left-edge revision 2026-08).
+ * A family card wears only the LEFT edge of its family-coloured frame (see
+ * .row above, --row-stripe = the family colour set by its .proj-family-<n>
+ * class) and tints the title with the same hue:
+ *   • standalone project     → full neutral solid frame (the .row default)
+ *   • subproject (`parent:`)  → dashed 6px left edge in the family colour,
+ *     marking it as the child of a family pair
+ *   • parent (has children)   → solid 6px left edge in the family colour, the
+ *     spine that marks it as the family root the subprojects belong to
  * A mid-tree node that is both parent and subproject reads as a parent: the
  * .row.is-parent rule follows .row.is-subproject at equal specificity, so its
- * solid border-style wins for all four sides (both already share the thick left
- * edge). Hover/focus keep the family frame via the base .row:hover /
- * :focus-visible rules (both use --row-stripe). */
+ * solid border-left-style wins. Hover/focus keep the family colour on the
+ * left edge via the base .row:hover / :focus-visible rules (both use
+ * --row-stripe). */
 .row.in-family {
   /* A hint of the family colour mixed into the near-white title, so the title
    * reads as belonging to its family. `in-family` is set by cards.tsx alongside
    * the .proj-family-<n> class (has children, or a parent that resolves), so
-   * tint and frame hue always move together; standalone cards — and a card
+   * tint and left-edge hue always move together; standalone cards — and a card
    * whose `parent:` dangles — keep plain text ink. */
   --row-title-color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
 }
+.row.is-parent,
 .row.is-subproject {
-  border-style: dashed;
-  /* Left edge matches the parent's thick solid spine — declared after the
-   * border-style shorthand so it overrides the dashed left. */
-  border-left-style: solid;
+  /* Family cards drop the neutral full frame and keep only the left edge —
+   * solid 6px spine for a parent (family root), dashed 6px edge for a
+   * subproject. Colour is inherited from the base .row border declaration,
+   * so hover/focus (border-color: var(--row-stripe)) keep recolouring it. */
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
   border-left-width: 6px;
 }
+.row.is-subproject {
+  border-left-style: dashed;
+}
 .row.is-parent {
-  border-style: solid;
-  border-left-width: 6px;
+  /* Follows .row.is-subproject at equal specificity, so a mid-tree node that
+   * is both parent and subproject reads as a parent (solid left edge). */
+  border-left-style: solid;
 }
 
 .projects-empty {
