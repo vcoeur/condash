@@ -23,19 +23,13 @@
 
 /* ── 1. Reverse-video actives ────────────────────────────────────────────────
  * A TUI marks the active item by inverting it, not by tinting it. The rail's
- * accent-soft wash + inset bar and the tab's underline both become a solid
- * accent fill with the surface colour printed on top.
+ * reverse-video fill (solid accent + ink icon) is now the BASE rule in
+ * app-shell.css for every theme, so only the terminal tab's inversion remains
+ * a Console signature here.
  *
  * Tabs invert within their OWN colour channel rather than all going green: an
  * app-pill-coloured tab swaps its hue pair, so which app a session belongs to
  * survives the treatment. */
-
-[data-theme='console'] .rail-item.active {
-  background: var(--accent);
-  color: var(--accent-ink);
-  /* The inset accent bar is invisible against an accent fill. */
-  box-shadow: none;
-}
 
 [data-theme='console'] .terminal-tab.active {
   background: var(--accent);
