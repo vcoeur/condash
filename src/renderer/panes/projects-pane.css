@@ -1272,10 +1272,12 @@ body[data-dragging='project'] .row {
 }
 /* The count is a fixed 16px-tall flex box in BOTH strengths — the strong
  * state's pill reuses this height, so the row's total height never shifts
- * when focus crosses a linked tab. */
+ * when focus crosses a linked tab. justify-content centers the pill's digits
+ * (a no-op in the subtle state, where the box hugs its content). */
 .row .linked-tabs-toggle-count {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 16px;
   font-variant-numeric: tabular-nums;
 }
