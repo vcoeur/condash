@@ -295,9 +295,12 @@ export function Card(props: {
   // the link store, never opens the card. The fold's own `.link-row-focus` /
   // `.link-row-unlink` and the fold toggle sit INSIDE the card, so they need
   // the exclusion too — both the click-open path and the pointer-drag press
-  // path check this set.
+  // path check this set. `.link-row` itself (the row's label/glyph dead
+  // area) is excluded as well: a click there must not open the card's
+  // preview, and a press must not start a card drag — the row's only actions
+  // are its two buttons.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, button.parent-banner, button.child-row, button.children-toggle, button.linked-tabs-toggle, .link-row-focus, .link-row-unlink';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, button.parent-banner, button.child-row, button.children-toggle, button.linked-tabs-toggle, .link-row, .link-row-focus, .link-row-unlink';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.

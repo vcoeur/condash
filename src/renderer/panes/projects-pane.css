@@ -610,8 +610,8 @@ body[data-dragging='project'] .row {
  * fold in the relations zone (see .linked-tabs-toggle below), not the card
  * edge — the v2 review removed v1's left-edge accent strips entirely, so a
  * linked family card never shows two left bars:
- *   • .row.linked-any    — subtle: accent tint + 1.5px underline
- *   • .row.linked-active — strong: 3px underline, accent-filled count
+ *   • .row.linked-any    — subtle: washed-out underline, plain count
+ *   • .row.linked-active — strong: solid underline, accent-filled count
  * The tab itself stays undecorated — see the tab-strip CSS. */
 
 /* The Link button in the title-actions cluster: a quiet text action that
@@ -1244,7 +1244,10 @@ body[data-dragging='project'] .row {
 
 /* Fold header — full-width so the underline spans the card; quiet meta-text
  * chrome like the children toggle, but accent-tinted to read as the link
- * signal. The bottom border IS the accent underline. */
+ * signal. The bottom border IS the accent underline. The border width is a
+ * constant 3px in BOTH strengths so the strong state never shifts the
+ * expanded rows below by a weight delta — the subtle/strong pair is carried
+ * by underline saturation (55% mix vs solid) and the count fill instead. */
 .row .linked-tabs-toggle {
   display: flex;
   align-items: center;
@@ -1252,7 +1255,7 @@ body[data-dragging='project'] .row {
   width: 100%;
   padding: 2px 4px 4px 2px;
   border: none;
-  border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-bottom: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
   background: transparent;
   color: var(--accent);
   font: inherit;
@@ -1271,7 +1274,6 @@ body[data-dragging='project'] .row {
   font-variant-numeric: tabular-nums;
 }
 .row.linked-active .linked-tabs-toggle {
-  border-bottom-width: 3px;
   border-bottom-color: var(--accent);
 }
 .row.linked-active .linked-tabs-toggle-count {

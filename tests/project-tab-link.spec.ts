@@ -139,6 +139,14 @@ test('the Linked tabs fold is collapsed by default, expands on click, and persis
     await win.waitForTimeout(300);
     await expect(win.locator('.modal.project-preview')).toHaveCount(0);
 
+    // The row's dead area (the label/glyph, not the focus/unlink buttons) is
+    // excluded too: clicking it must not open the card's preview, nor would
+    // a press there start a card drag.
+    await sampleCard(win).locator('.link-row-label').click();
+    await win.waitForTimeout(300);
+    await expect(win.locator('.modal.project-preview')).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
     // The expanded state is persisted in the same localStorage collapse map
     // the Subprojects fold uses, under `links.<slug>`.
     await expect
@@ -235,7 +243,7 @@ test('unlink one from the fold clears exactly that relation; the last row remove
   const booted = await bootApp();
   try {
     const win = booted.window;
-    const a = await spawnTab(win, 'printf "A\n"; sleep 30');
+    await spawnTab(win, 'printf "A\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
     const b = await spawnTab(win, 'printf "B\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
