@@ -9,10 +9,17 @@ import { bootApp } from './fixtures/electron-app';
  * What warrants an app-level spec: the link is a renderer-only feature, but
  * its wiring crosses surfaces — the controller's focus mirror (a createEffect
  * over controller signals feeding a module store), the card's Link button
- * (disabled/enabled by that mirror), the decoration classes, the Active-tab
+ * (disabled/enabled by that mirror), the "Linked tabs" fold in the card's
+ * relations zone (caret + count + per-tab focus/unlink rows, collapsed by
+ * default and persisted per card), the decoration classes, the Active-tab
  * filter, the tab hover popover, the context menu, and the prune/re-point
  * lifecycle hooks. Unit tests pin the store and the controller pieces; these
  * tests drive the real gestures against the built app.
+ *
+ * The card-side surface was reworked per the user's v2 review of the built
+ * render: the meta-row chip + portaled popover are gone, replaced by the
+ * relations-zone fold; the left-edge accent strips are gone too, so the two
+ * decoration classes now only key the fold's subtle/strong accent.
  *
  * The fixture ships `2026-04-26-sample` in `now`; `prepare` adds an older
  * sibling so "one tab links two projects" has a second card.
@@ -69,7 +76,7 @@ test('the Link button is disabled with no focused tab and enabled once a tab is 
   }
 });
 
-test('linking adds one relation — the card gains the row, the chip, and the decoration', async () => {
+test('linking adds one relation — the card gains the fold header, its row, and the decoration', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
@@ -81,10 +88,19 @@ test('linking adds one relation — the card gains the row, the chip, and the de
     const card = sampleCard(win);
     await expect(card).toHaveClass(/linked-active/);
     await expect(card).toHaveClass(/linked-any/);
-    await expect(card.locator('.linked-tabs-chip')).toHaveText('1 tab');
+
+    // The Linked-tabs fold lives in the relations zone — collapsed by
+    // default: the header carries the count, no rows are mounted yet.
+    const toggle = card.locator('button.linked-tabs-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('1');
+    await expect(card.locator('.link-row')).toHaveCount(0);
+
+    // Expanding opens the per-tab rows. A plain spawned shell carries no
+    // OSC 7 / repo, so the label captured at link time is the generic 'shell'.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(card.locator('.link-row')).toHaveCount(1);
-    // A plain spawned shell carries no OSC 7 / repo, so the label captured at
-    // link time is the generic 'shell'.
     await expect(card.locator('.link-row-label')).toHaveText('shell');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
@@ -92,11 +108,80 @@ test('linking adds one relation — the card gains the row, the chip, and the de
 
     // Re-linking the same pair is a no-op — one row, one record.
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
-    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
+    await expect(card.locator('.link-row')).toHaveCount(1);
+    await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('1');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
       .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the Linked tabs fold is collapsed by default, expands on click, and persists per card', async () => {
+  const booted = await bootApp();
+  try {
+    const win = booted.window;
+    await spawnTab(win, 'printf "READY\n"; sleep 30');
+    await sampleCard(win).locator('.link-button').click();
+
+    const toggle = sampleCard(win).locator('button.linked-tabs-toggle');
+    // A real button carrying the disclosure state; collapsed → no rows.
+    expect(await toggle.evaluate((el) => el.tagName)).toBe('BUTTON');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+
+    // The toggle is in the card's click-exclusion set: expanding must not
+    // also open the card's own preview.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    await win.waitForTimeout(300);
+    await expect(win.locator('.modal.project-preview')).toHaveCount(0);
+
+    // The row's dead area (the label/glyph, not the focus/unlink buttons) is
+    // excluded too: clicking it must not open the card's preview, nor would
+    // a press there start a card drag.
+    await sampleCard(win).locator('.link-row-label').click();
+    await win.waitForTimeout(300);
+    await expect(win.locator('.modal.project-preview')).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    // The expanded state is persisted in the same localStorage collapse map
+    // the Subprojects fold uses, under `links.<slug>`.
+    await expect
+      .poll(
+        () =>
+          win.evaluate(() => {
+            const raw = localStorage.getItem('condash:projects:section-collapse');
+            return raw ? JSON.parse(raw)['links.2026-04-26-sample'] : undefined;
+          }),
+        { timeout: 5000 },
+      )
+      .toBe(true);
+
+    // A renderer reload remounts the card — the fold must come back open, not
+    // snap shut (the link itself survives too: both maps live in localStorage,
+    // and the pty outlives the reload in the main process).
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
+    const toggleAfterReload = sampleCard(win).locator('button.linked-tabs-toggle');
+    await expect(toggleAfterReload).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 });
+    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+
+    // And it folds back — the stored value flips to false.
+    await toggleAfterReload.click();
+    await expect(toggleAfterReload).toHaveAttribute('aria-expanded', 'false');
+    await expect
+      .poll(
+        () =>
+          win.evaluate(() => {
+            const raw = localStorage.getItem('condash:projects:section-collapse');
+            return raw ? JSON.parse(raw)['links.2026-04-26-sample'] : undefined;
+          }),
+        { timeout: 5000 },
+      )
+      .toBe(false);
   } finally {
     await booted.cleanup();
   }
@@ -117,8 +202,11 @@ test('many-to-many — one project links two tabs; both rows survive, decoration
     await spawnTab(win, 'printf "C\n"; sleep 30');
 
     const card = sampleCard(win);
+    const toggle = card.locator('button.linked-tabs-toggle');
+    await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('2');
+    // Open the fold: both rows, in link order.
+    await toggle.click();
     await expect(card.locator('.link-row')).toHaveCount(2);
-    await expect(card.locator('.linked-tabs-chip')).toHaveText('2 tabs');
     await expect(card.locator('.link-row-label')).toHaveText(['shell', 'shell']);
     await expect(card).toHaveClass(/linked-any/);
     await expect(card).not.toHaveClass(/linked-active/);
@@ -140,6 +228,8 @@ test('the focus arrow activates the linked tab', async () => {
     const b = await spawnTab(win, 'printf "B\n"; sleep 30');
     await expect(win.locator(`[data-sid="${b}"]`)).toHaveClass(/active/);
 
+    // The focus arrow lives in the fold now — expand it first.
+    await sampleCard(win).locator('button.linked-tabs-toggle').click();
     await sampleCard(win).locator('.link-row-focus').first().click();
 
     await expect(win.locator(`[data-sid="${a}"]`)).toHaveClass(/active/);
@@ -149,23 +239,33 @@ test('the focus arrow activates the linked tab', async () => {
   }
 });
 
-test('unlink one from the card row clears exactly that relation', async () => {
+test('unlink one from the fold clears exactly that relation; the last row removes the fold', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
-    const a = await spawnTab(win, 'printf "A\n"; sleep 30');
+    await spawnTab(win, 'printf "A\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
     const b = await spawnTab(win, 'printf "B\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
+    // Unlink lives in the fold — expand it and remove the first row.
+    const toggle = sampleCard(win).locator('button.linked-tabs-toggle');
+    await toggle.click();
     await expect(sampleCard(win).locator('.link-row')).toHaveCount(2);
-
     await sampleCard(win).locator('.link-row-unlink').first().click();
 
+    // One row left → the fold stays open; the header drops to "1".
     await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
-    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveText('1 tab');
+    await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('1');
     await expect
       .poll(() => linksOnDisk(win), { timeout: 5000 })
       .toMatchObject({ '2026-04-26-sample': { [b]: { label: 'shell' } } });
+
+    // Unlink the last tab → the whole fold disappears (no links, no fold —
+    // no popover-style close logic needed), and the decoration with it.
+    await sampleCard(win).locator('.link-row-unlink').click();
+    await expect(sampleCard(win).locator('button.linked-tabs-toggle')).toHaveCount(0);
+    await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
+    await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
   } finally {
     await booted.cleanup();
   }
@@ -192,14 +292,17 @@ test('the tab context menu unlinks one project, and unlink-all clears every rela
       menu.locator('.terminal-tab-context-menu-item', { hasText: 'Unlink all projects (2)' }),
     ).toHaveCount(1);
 
-    // Unlink ALL — both cards lose their rows in one write.
+    // Unlink ALL — both cards lose their link surface in one write. The fold
+    // toggle is the card's only signal now, so its disappearance is the "no
+    // rows" assertion.
     await menu
       .locator('.terminal-tab-context-menu-item', { hasText: 'Unlink all projects (2)' })
       .click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+    await expect(sampleCard(win).locator('button.linked-tabs-toggle')).toHaveCount(0);
     await expect(
-      win.locator('article.row', { hasText: 'Alpha project' }).locator('.link-row'),
+      win.locator('article.row', { hasText: 'Alpha project' }).locator('button.linked-tabs-toggle'),
     ).toHaveCount(0);
+    await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
 
     // Unlink ONE from the menu — re-link just the sample card first. With a
@@ -220,7 +323,7 @@ test('the tab context menu unlinks one project, and unlink-all clears every rela
     await menu2
       .locator('.terminal-tab-context-menu-item', { hasText: 'Unlink from 2026-04-26-sample' })
       .click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
+    await expect(sampleCard(win).locator('button.linked-tabs-toggle')).toHaveCount(0);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
   } finally {
     await booted.cleanup();
@@ -291,18 +394,20 @@ test('hovering a linked tab lists its projects in the popover (no Dashboard need
   }
 });
 
-test('closing a tab clears every relation of it — rows, chip, and decoration go away', async () => {
+test('closing a tab clears every relation of it — the fold and decoration go away', async () => {
   const booted = await bootApp();
   try {
     const win = booted.window;
     const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    const toggle = sampleCard(win).locator('button.linked-tabs-toggle');
+    await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('1');
 
     await win.evaluate((sid) => window.condash.termClose(sid), tab);
 
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(0);
-    await expect(sampleCard(win).locator('.linked-tabs-chip')).toHaveCount(0);
+    // The fold is the card's only link surface — its disappearance is the
+    // "rows gone" signal, and with it the decoration.
+    await expect(sampleCard(win).locator('button.linked-tabs-toggle')).toHaveCount(0);
     await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
     await expect.poll(() => linksOnDisk(win), { timeout: 5000 }).toEqual({});
   } finally {
@@ -324,7 +429,9 @@ test('a Restart re-points the links onto the new session id', async () => {
       timeout: 15_000,
     });
     await sampleCard(win).locator('.link-button').click();
-    await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
+    await expect(
+      sampleCard(win).locator('button.linked-tabs-toggle .linked-tabs-toggle-count'),
+    ).toHaveText('1');
 
     await win.locator(`[data-sid="${session.id}"] .terminal-tab-restart`).click();
 
@@ -345,8 +452,10 @@ test('a Restart re-points the links onto the new session id', async () => {
       return raw ? Object.keys(JSON.parse(raw)['2026-04-26-sample'] ?? {}) : [];
     });
     expect(sids[0]).not.toBe(session.id);
+    // The fold opens to the re-pointed relation: one row, and the label
+    // captured at link time ('shell') rides the re-point untouched.
+    await sampleCard(win).locator('button.linked-tabs-toggle').click();
     await expect(sampleCard(win).locator('.link-row')).toHaveCount(1);
-    // The label captured at link time ('shell') rides the re-point untouched.
     await expect(sampleCard(win).locator('.link-row-label')).toHaveText('shell');
   } finally {
     await booted.cleanup();

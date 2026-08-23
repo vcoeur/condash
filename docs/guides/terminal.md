@@ -49,12 +49,12 @@ The full title precedence is **manual rename → cwd basename (unpinned) → win
 
 ### Tab links { #tab-links }
 
-A tab can be **linked** to project cards — see [The Projects pane → Linking a card to terminal tabs](projects-pane.md#card-tab-links) for the card side (the **Link** button, the two decoration strengths, the Linked-tabs block with focus and unlink, and the Active-tab filter). On the tab side, links surface in two places, and the tab itself stays **undecorated** — its zebra colour, label, and tooltip are exactly as they would be unlinked:
+A tab can be **linked** to project cards — see [The Projects pane → Linking a card to terminal tabs](projects-pane.md#card-tab-links) for the card side (the **Link** button, the two decoration strengths, the "Linked tabs" fold with its focus and unlink rows, and the Active-tab filter). On the tab side, links surface in two places, and the tab itself stays **undecorated** — its zebra colour, label, and tooltip are exactly as they would be unlinked:
 
 - **Hover popover** — hovering a linked tab lists its linked projects (by dated slug) under a **Linked projects** heading. The list shows even when the Dashboard summarisation is off and no summary exists — the manual link is readable without the opt-in LLM feature. The popover replaces the plain title tooltip while it is up.
 - **Context menu** — right-clicking a linked tab shows a **Linked projects** block between Refresh and Close: one **Unlink from `<slug>`** item per project and, when there are several, an **Unlink all projects (n)** item. A single-linked tab shows just its one item — unlink-one and unlink-all coincide.
 
-Links are **session-lifetime**: closing the tab removes every relation of it (the card rows, chip, and decoration clear on their own), and a **Restart** re-points them onto the new session, so a restarted tab keeps its links. A renderer reload keeps them while the tab is alive. The label a card row shows was captured when the link was made; the tab itself always shows its true name.
+Links are **session-lifetime**: closing the tab removes every relation of it (the card's Linked-tabs fold and decoration clear on their own), and a **Restart** re-points them onto the new session, so a restarted tab keeps its links. A renderer reload keeps them while the tab is alive. The label a card row shows was captured when the link was made; the tab itself always shows its true name.
 
 ### Window-title tabs { #window-title-tabs }
 

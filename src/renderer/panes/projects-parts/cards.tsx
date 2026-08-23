@@ -288,13 +288,19 @@ export function Card(props: {
 }) {
   // Interactive children keep their own click behaviour — the whole-card
   // open must not swallow the work-on dropdown, PR badge, the subprojects
-  // fold toggle, or the clickable relation banners (which open a *different*
-  // project). `button.parent-banner` stays element-qualified so a dangling
-  // parent's non-clickable <div> fallback still opens the card itself.
-  // `.link-button` and the linked-row controls are the same story: they write
-  // the link store / focus a tab, never open the card.
+  // fold toggle, the linked-tabs fold toggle, or the clickable relation
+  // banners (which open a *different* project). `button.parent-banner` stays
+  // element-qualified so a dangling parent's non-clickable <div> fallback
+  // still opens the card itself. `.link-button` is the same story: it writes
+  // the link store, never opens the card. The fold's own `.link-row-focus` /
+  // `.link-row-unlink` and the fold toggle sit INSIDE the card, so they need
+  // the exclusion too — both the click-open path and the pointer-drag press
+  // path check this set. `.link-row` itself (the row's label/glyph dead
+  // area) is excluded as well: a click there must not open the card's
+  // preview, and a press must not start a card drag — the row's only actions
+  // are its two buttons.
   const CARD_CLICK_EXCLUDE =
-    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, .link-row-focus, .link-row-unlink, button.parent-banner, button.child-row, button.children-toggle';
+    '.row-action, .pr-badge, .title-actions, .star-toggle, .link-button, button.parent-banner, button.child-row, button.children-toggle, button.linked-tabs-toggle, .link-row, .link-row-focus, .link-row-unlink';
 
   // Reactive read straight from the star store — the starred set is a
   // cross-cutting concern of every card, so it isn't threaded as a prop.
@@ -523,6 +529,34 @@ export function Card(props: {
   // disabled (linking must never spawn a tab the user didn't ask for).
   const canLink = (): boolean => activeSession() !== null;
 
+  // Linked-tabs fold in the relations zone — the card's link signal AND
+  // control (2026-08 v2: replaces the meta-row chip + portaled popover, which
+  // the user's visual review rejected; the fold also carries the accent the
+  // chip used to — see .row.linked-any / .row.linked-active in the CSS).
+  // Collapsed by default; the expanded state persists per card in the same
+  // localStorage collapse map the children fold uses (key `links.<slug>`), so
+  // a watcher-driven list refresh — which remounts the card — doesn't snap an
+  // open fold shut mid-use.
+  //
+  // Same reactive shape as the children fold: the stored value is a memo on
+  // `linkedTabs()`, not a mount-time read — the Link button can add the first
+  // link, and a prune can remove the last, without remounting this card, and
+  // the fold must then pick up its persisted state rather than freeze on the
+  // linkless-time answer. The `&&` keeps the localStorage read off unlinked
+  // cards — the vast majority — entirely. A user toggle overrides the stored
+  // value for the life of the mount and writes it back for the next one.
+  const linksStorageKey = `links.${props.item.slug}`;
+  const storedLinksExpanded = createMemo(
+    (): boolean => linkedTabs().length > 0 && readCollapseMap()[linksStorageKey] === true,
+  );
+  const [linksToggled, setLinksToggled] = createSignal<boolean | null>(null);
+  const linksExpanded = (): boolean => linksToggled() ?? storedLinksExpanded();
+  const toggleLinks = (): void => {
+    const next = !linksExpanded();
+    setLinksToggled(next);
+    writeCollapseEntry(linksStorageKey, next);
+  };
+
   // Subprojects list fold. Collapsed by default so a plan with many spin-offs
   // stays a normal-height card; the expanded state persists per parent in the
   // same localStorage collapse map the status sections and Done subgroups use
@@ -570,9 +604,11 @@ export function Card(props: {
         // .row.is-subproject in the CSS.
         'is-parent': children().length > 0,
         'is-subproject': !!props.item.parent,
-        // Link decoration, keyed off the neutral --accent token (never the
-        // family hue): subtle while any linked tab is live, strong while the
-        // focused tab is among them — see .row.linked-any / .row.linked-active.
+        // Link decoration: `linked-any` while any linked tab is live,
+        // `linked-active` while the focused tab is among them. The two
+        // strengths key the Linked-tabs fold's accent (subtle / strong) in
+        // the CSS — never a left-edge bar (v1's strips were removed by the
+        // user's review: the left edge carries only the family frame).
         'linked-any': linkedTabs().length > 0,
         'linked-active': linkedToActive(),
       }}
@@ -625,9 +661,9 @@ export function Card(props: {
           <div class="title-actions">
             {/* Link — bind this card to the currently focused terminal tab.
                 Each click adds one relation (many-to-many, never a replace);
-                unlink lives on the per-tab rows below and in the tab's
-                context menu. Disabled without a focused tab: linking never
-                spawns one. */}
+                unlink lives on the Linked-tabs fold's per-tab rows below and
+                in the tab's context menu. Disabled without a focused tab:
+                linking never spawns one. */}
             <button
               type="button"
               class="link-button"
@@ -717,17 +753,6 @@ export function Card(props: {
               {props.item.status}
             </span>
           </Show>
-          {/* "n tabs" chip — the card's link state at a glance. Bordered in the
-              subtle strength, accent-filled while the focused tab is linked
-              (see .row.linked-any / .row.linked-active). */}
-          <Show when={linkedTabs().length > 0}>
-            <span
-              class="meta-icon linked-tabs-chip"
-              title={`Linked to ${linkedTabs().length} live tab${linkedTabs().length === 1 ? '' : 's'}`}
-            >
-              {linkedTabs().length} {linkedTabs().length === 1 ? 'tab' : 'tabs'}
-            </span>
-          </Show>
           <span class="meta-spacer" />
           <StepProgress counts={props.item.stepCounts} />
           <span
@@ -743,8 +768,8 @@ export function Card(props: {
           part of the title. The "Part of" banner (↑) and the subproject rows
           (↓) are real buttons that open the referenced project — except a
           dangling parent slug, which keeps a non-clickable raw-slug fallback.
-          The Linked-tabs block (one row per linked terminal tab, focus arrow +
-          unlink ×) lives here too. */}
+          The Linked-tabs fold (the card's link signal AND control) closes the
+          zone. */}
       <Show when={props.item.parent || children().length > 0 || linkedTabs().length > 0}>
         <div class="row-relations">
           <Show when={props.item.parent}>
@@ -834,45 +859,71 @@ export function Card(props: {
               </Show>
             </div>
           </Show>
-          {/* Linked tabs — one row per terminal tab this card is linked to,
-              with a focus arrow (activates that tab) and an unlink × (removes
-              exactly that relation). The labels are captured at link time and
-              stay until the pair is unlinked and re-linked — session-lifetime,
-              matching the tab side. */}
+          {/* Linked-tabs fold — the card's link signal AND control (2026-08
+              v2: replaces the meta-row chip + portaled popover, rejected by
+              the user's visual review). Collapsed by default, persisted per
+              card (key `links.<slug>`) exactly like the Subprojects fold. The
+              header is accent-tinted with a full-width underline — subtle
+              (linked-any) vs strong (linked-active) — see the CSS. The
+              expanded body reuses the .link-row* vocabulary: glyph + label +
+              focus → + unlink ×. When the last link goes, the fold disappears
+              entirely — no popover-style close logic needed. */}
           <Show when={linkedTabs().length > 0}>
-            <div class="linked-tabs">
-              <span class="linked-tabs-head">Linked tabs</span>
-              <For each={linkedTabs()}>
-                {(tab) => (
-                  <div class="link-row">
-                    <span class="link-row-label">{tab.label}</span>
-                    <button
-                      type="button"
-                      class="link-row-focus"
-                      title={`Focus ${tab.label}`}
-                      aria-label={`Focus ${tab.label}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        props.onFocusTab(tab.sid);
-                      }}
-                    >
-                      →
-                    </button>
-                    <button
-                      type="button"
-                      class="link-row-unlink"
-                      title={`Unlink ${tab.label}`}
-                      aria-label={`Unlink ${tab.label}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        unlinkProjectFromTab(props.item.slug, tab.sid);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </For>
+            <div class="linked-tabs-banner">
+              <button
+                type="button"
+                class="linked-tabs-toggle"
+                aria-expanded={linksExpanded()}
+                title={
+                  linksExpanded()
+                    ? 'Collapse linked tabs'
+                    : `Expand ${linkedTabs().length} linked tab${linkedTabs().length === 1 ? '' : 's'}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleLinks();
+                }}
+              >
+                <Caret expanded={linksExpanded()} />
+                <span class="linked-tabs-toggle-label">Linked tabs</span>
+                <span class="linked-tabs-toggle-count">{linkedTabs().length}</span>
+              </button>
+              <Show when={linksExpanded()}>
+                <For each={linkedTabs()}>
+                  {(tab) => (
+                    <div class="link-row">
+                      <span class="link-row-glyph" aria-hidden="true">
+                        <TerminalIcon />
+                      </span>
+                      <span class="link-row-label">{tab.label}</span>
+                      <button
+                        type="button"
+                        class="link-row-focus"
+                        title={`Focus ${tab.label}`}
+                        aria-label={`Focus ${tab.label}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          props.onFocusTab(tab.sid);
+                        }}
+                      >
+                        →
+                      </button>
+                      <button
+                        type="button"
+                        class="link-row-unlink"
+                        title={`Unlink ${tab.label}`}
+                        aria-label={`Unlink ${tab.label}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          unlinkProjectFromTab(props.item.slug, tab.sid);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </For>
+              </Show>
             </div>
           </Show>
         </div>

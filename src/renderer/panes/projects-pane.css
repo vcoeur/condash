@@ -606,44 +606,13 @@ body[data-dragging='project'] .row {
 /* Link decoration (manual card ↔ terminal-tab links). Keyed off the neutral
  * --accent token — never --row-stripe / .proj-family-<n> / .in-family, which
  * are the family's: a card can link tabs of many hues, and the link accent is
- * the UI accent, not a project hue. Two strengths per the contract:
- *   • .row.linked-any    — subtle: a 3px accent edge inset on the flat left
- *     side (same silhouette as the parent spine) and a bordered "n tabs" chip
- *   • .row.linked-active — strong: the edge grows to the full card height and
- *     the chip fills with the accent (matching .projects-filter-chip-count)
+ * the UI accent, not a project hue. The two strengths tint the Linked-tabs
+ * fold in the relations zone (see .linked-tabs-toggle below), not the card
+ * edge — the v2 review removed v1's left-edge accent strips entirely, so a
+ * linked family card never shows two left bars:
+ *   • .row.linked-any    — subtle: washed-out underline, plain count
+ *   • .row.linked-active — strong: solid underline, accent-filled count
  * The tab itself stays undecorated — see the tab-strip CSS. */
-.row.linked-any::before,
-.row.linked-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  background: var(--accent);
-  border-radius: 0 3px 3px 0;
-}
-.row.linked-any::before {
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-}
-.row.linked-active::before {
-  top: 0;
-  bottom: 0;
-  width: 6px;
-}
-
-.row .linked-tabs-chip {
-  color: var(--text-body);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-  border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  border: 1.4px solid var(--accent);
-}
-.row.linked-active .linked-tabs-chip {
-  background: var(--accent);
-  color: var(--bg-elevated);
-  border-color: var(--accent);
-}
 
 /* The Link button in the title-actions cluster: a quiet text action that
  * reads as part of the card chrome (like the work-on glyph beside it), not a
@@ -1256,6 +1225,75 @@ body[data-dragging='project'] .row {
   font-variant-numeric: tabular-nums;
 }
 
+/* Linked-tabs fold in a card's relations zone — the card's link signal AND
+ * control (2026-08 v2: replaces the meta-row chip + portaled popover, which
+ * the user's visual review rejected). The header is accent-tinted (caret,
+ * label, count) and carries a full-width horizontal accent underline under
+ * the header row; expanded, it opens to one .link-row per linked tab (glyph +
+ * label + focus → + unlink ×). Collapsed by default (cards.tsx), persisted
+ * per card in the same localStorage collapse map as the children fold.
+ * Strength follows the .row.linked-any / .row.linked-active classes above:
+ * subtle = washed-out underline + plain count, strong = solid underline +
+ * accent-filled count (matching .projects-filter-chip-count). The accent is
+ * var(--accent) only — never the family hue. */
+.row .linked-tabs-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Fold header — full-width so the underline spans the card; quiet meta-text
+ * chrome like the children toggle, but accent-tinted to read as the link
+ * signal. The bottom border IS the accent underline. The border width is a
+ * constant 3px in BOTH strengths so the strong state never shifts the
+ * expanded rows below by a weight delta — the subtle/strong pair is carried
+ * by underline saturation (55% mix vs solid) and the count fill instead. */
+.row .linked-tabs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 4px 4px 2px;
+  border: none;
+  border-bottom: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.row .linked-tabs-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.row .linked-tabs-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* The count is a fixed 16px-tall flex box in BOTH strengths — the strong
+ * state's pill reuses this height, so the row's total height never shifts
+ * when focus crosses a linked tab. justify-content centers the pill's digits
+ * (a no-op in the subtle state, where the box hugs its content). */
+.row .linked-tabs-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.row.linked-active .linked-tabs-toggle {
+  border-bottom-color: var(--accent);
+}
+.row.linked-active .linked-tabs-toggle-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--bg-elevated);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+}
+
 /* Resolved banner rows are real <button>s that open the referenced project —
  * strip the UA button chrome back to the shared pill look, then add the
  * clickable affordances (deeper tint on hover, focus ring for the keyboard
@@ -1340,33 +1378,32 @@ body[data-dragging='project'] .row {
   --col-status: var(--warn);
 }
 
-/* Linked tabs block in a card's relations zone — the manual card ↔ terminal
- * tab links. Same zone vocabulary as the relationship banners: a quiet head
- * (like the children fold header) over one full-width row per linked tab.
- * Each row: the label captured at link time, a focus arrow, and an unlink × —
- * the two controls are real buttons (Tab-focusable, aria-labelled) and sit in
- * CARD_CLICK_EXCLUDE so they never open the card. The accent edge strip and
- * the chip are driven by .row.linked-any / .row.linked-active above. */
-.row .linked-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.row .linked-tabs-head {
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-}
+/* Linked-tab rows in the fold — the shared row language (design contract),
+ * scoped inside the card now that the fold replaced the portaled popover:
+ * ≥ 24px rows, accent hover, ellipsised label, ≥ 20px action hit areas,
+ * :focus-visible rings. The .link-row* vocabulary is unchanged — the rows
+ * changed container, not class names. The accent strength is driven by
+ * .row.linked-any / .row.linked-active above. */
 .row .link-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 2px 4px;
+  min-height: 24px;
+  padding: 2px 6px;
   border-radius: 6px;
 }
 .row .link-row:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.row .link-row-glyph {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.row .link-row-glyph svg {
+  width: 14px;
+  height: 14px;
 }
 .row .link-row-label {
   flex: 1;
@@ -1383,8 +1420,8 @@ body[data-dragging='project'] .row {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   border-radius: 4px;
   background: transparent;
