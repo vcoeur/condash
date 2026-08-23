@@ -362,7 +362,11 @@ export function TerminalColumn(props: TerminalColumnProps) {
                       <div class="terminal-tab-popover-links-head">Linked projects</div>
                       <ul class="terminal-tab-popover-links-list">
                         <For each={linkedProjectsOf(tab().id)}>
-                          {(project) => <li>{project.slug}</li>}
+                          {(project) => (
+                            <li>
+                              <span class="terminal-tab-popover-links-slug">{project.slug}</span>
+                            </li>
+                          )}
                         </For>
                       </ul>
                     </div>
