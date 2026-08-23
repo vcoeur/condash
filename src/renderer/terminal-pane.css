@@ -765,8 +765,10 @@
 /* One row per linked project, speaking the shared card-popover row language
  * (.row .link-row* in projects-pane.css): ≈24px min row height, accent hover,
  * ellipsised label, breathing room. The row carries no actions — the slug is
- * the content. The popover is display-only (pointer-events: none on
- * .terminal-tab-popover.portal), so the hover background is language parity
+ * the content — so its horizontal inset (6px vs the card row's 4px) is a touch
+ * wider to balance the absent glyph/action columns. The popover is display-only
+ * (pointer-events: none on .terminal-tab-popover.portal), so the hover
+ * background — required by the shared-row-language spec — is language parity
  * with the card rows, latent until the popover ever becomes interactive. */
 .terminal-tab-popover-links-list li {
   display: flex;
