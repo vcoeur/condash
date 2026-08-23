@@ -3,7 +3,8 @@
  * The Console preset's colour, radius and type live where every preset's do: one
  * `[data-theme='console']` token block in `styles.css`. This file is the rest of
  * it — the mockup-F signatures that are *shapes*, not values, and so cannot be
- * expressed by re-pointing a token: reverse-video actives, `› TITLE ────`
+ * expressed by re-pointing a token: the terminal tab's reverse-video active
+ * (the rail's is the base rule now, in app-shell.css), `› TITLE ────`
  * hairline section heads, square status blocks, and segmented progress bars.
  *
  * Two rules keep this from becoming a second stylesheet for the whole app:
@@ -23,19 +24,13 @@
 
 /* ── 1. Reverse-video actives ────────────────────────────────────────────────
  * A TUI marks the active item by inverting it, not by tinting it. The rail's
- * accent-soft wash + inset bar and the tab's underline both become a solid
- * accent fill with the surface colour printed on top.
+ * reverse-video fill (solid accent + ink icon) is now the BASE rule in
+ * app-shell.css for every theme, so only the terminal tab's inversion remains
+ * a Console signature here.
  *
  * Tabs invert within their OWN colour channel rather than all going green: an
  * app-pill-coloured tab swaps its hue pair, so which app a session belongs to
  * survives the treatment. */
-
-[data-theme='console'] .rail-item.active {
-  background: var(--accent);
-  color: var(--accent-ink);
-  /* The inset accent bar is invisible against an accent fill. */
-  box-shadow: none;
-}
 
 [data-theme='console'] .terminal-tab.active {
   background: var(--accent);

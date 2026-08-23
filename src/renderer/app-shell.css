@@ -242,10 +242,10 @@
   font-weight: 600;
 }
 
-/* Activity rail — single 56 px left strip with icon buttons,
+/* Activity rail — single 48 px left strip with icon buttons,
  * tooltips, and an active accent indicator. */
 .rail {
-  width: 56px;
+  width: 48px;
   flex-shrink: 0;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
@@ -266,7 +266,7 @@
   background: transparent;
   border: none;
   border-radius: 12px;
-  color: var(--text-muted);
+  color: var(--text-body);
   cursor: pointer;
   transition:
     background 120ms ease,
@@ -279,10 +279,18 @@
   color: var(--text);
 }
 
+/* The active item inverts to a solid accent pill with the surface ink
+ * printed on top — the same reverse-video treatment the Console theme
+ * pioneered, now the rail's active signature in every theme. A soft wash
+ * and an inset accent bar read as "barely different" on a dark rail, so
+ * the active pane is now unmistakable at a glance. No hover rule: a
+ * lifted hover would shift the pill's hue in the light theme (its
+ * accent-hover is the pink CTA token), so the active item keeps its fill. */
 .rail-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: inset 3px 0 0 0 var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  /* The inset accent bar is invisible against an accent fill. */
+  box-shadow: none;
 }
 
 .rail-item:focus-visible {
@@ -298,7 +306,7 @@
 .rail-item svg {
   width: 20px;
   height: 20px;
-  stroke-width: 1.8;
+  stroke-width: 2;
 }
 
 .rail-item .rail-tooltip {

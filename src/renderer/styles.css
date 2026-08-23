@@ -79,6 +79,9 @@
   /* Pink accent — the vcoeur hover/CTA hue, used where a warmer accent reads. */
   --accent-hover: #e04e88;
   --accent-soft: #f6e4ef;
+  /* Ink to print ON the accent — backs the rail's reverse-video active
+   * (solid accent pill + ink icon) and any other filled-accent surface. */
+  --accent-ink: #ffffff;
   --warn: #b03020;
 
   /* Status palette — a saturated green→blue→gray temperature scale so the
@@ -283,6 +286,7 @@
    * accent's 8.2:1), the same brighten-on-hover step the other themes take. */
   --dark-accent-hover: #d6bc9c;
   --dark-accent-soft: rgba(200, 168, 130, 0.14);
+  --dark-accent-ink: #151412;
   --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --dark-shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
   --dark-col-now: #6cc47e;
@@ -330,6 +334,7 @@
     --accent: var(--dark-accent);
     --accent-hover: var(--dark-accent-hover);
     --accent-soft: var(--dark-accent-soft);
+    --accent-ink: var(--dark-accent-ink);
     --shadow-card: var(--dark-shadow-card);
     --shadow-lift: var(--dark-shadow-lift);
     --col-now: var(--dark-col-now);
@@ -367,6 +372,7 @@
   --accent: var(--dark-accent);
   --accent-hover: var(--dark-accent-hover);
   --accent-soft: var(--dark-accent-soft);
+  --accent-ink: var(--dark-accent-ink);
   --shadow-card: var(--dark-shadow-card);
   --shadow-lift: var(--dark-shadow-lift);
   --col-now: var(--dark-col-now);
@@ -487,9 +493,9 @@
   --accent: #4ade80;
   --accent-hover: #6ee79b;
   --accent-soft: rgba(74, 222, 128, 0.14);
-  /* Ink to print ON the accent. Console is the only preset that fills a surface
-   * with the accent (the reverse-video rail / tab actives in
-   * `theme-console.css`), so the token lives here rather than on `:root`. */
+  /* Ink to print ON the accent. Console's accent is the one light phosphor,
+   * so its ink is the green-tinted near-black #08110b rather than the other
+   * presets' near-blacks. */
   --accent-ink: #08110b;
   --shadow-card: none;
   --shadow-lift: none;
@@ -556,6 +562,7 @@
   --accent: #91a7f2;
   --accent-hover: #aebff7;
   --accent-soft: rgba(145, 167, 242, 0.15);
+  --accent-ink: #10131d;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.42), 0 2px 4px rgba(0, 0, 0, 0.3);
   --col-now: #5dcb8c;
