@@ -462,13 +462,14 @@ body[data-dragging='project'] .row {
   gap: 6px;
   padding: 10px 12px 10px 16px;
   /* Full frame in --row-stripe: neutral for a standalone card. A family card
-   * (parent/subproject) drops the top/right/bottom sides and wears only the
-   * left edge in the family colour (status lives on the section's left rail);
-   * that edge encodes the relationship — solid 6px spine for a parent, dashed
-   * 6px for a subproject (see .row.is-* below). */
+   * (parent/subproject) drops the top/bottom sides and wears only its
+   * directional edge(s) in the family colour (status lives on the section's
+   * left rail); the edges encode the relationship — narrow solid LEFT for a
+   * parent, narrow dashed RIGHT for a subproject, both for a mid-tree node
+   * (see .row.is-* below). */
   border: 2px solid var(--row-stripe);
-  /* Asymmetric card — flat left edge (carries the family frame / parent spine)
-   * + rounded right, the vcoeur project-card silhouette. */
+  /* Asymmetric card — flat left edge (carries the family frame) + rounded
+   * right, the vcoeur project-card silhouette. */
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -607,12 +608,38 @@ body[data-dragging='project'] .row {
  * --accent token — never --row-stripe / .proj-family-<n> / .in-family, which
  * are the family's: a card can link tabs of many hues, and the link accent is
  * the UI accent, not a project hue. The two strengths tint the Linked-tabs
- * fold in the relations zone (see .linked-tabs-toggle below), not the card
- * edge — the v2 review removed v1's left-edge accent strips entirely, so a
- * linked family card never shows two left bars:
+ * fold in the relations zone (see .linked-tabs-toggle below):
  *   • .row.linked-any    — subtle: washed-out underline, plain count
- *   • .row.linked-active — strong: solid underline, accent-filled count
+ *   • .row.linked-active — strong: solid underline, accent-filled count, plus
+ *     a prominent whole-card highlight (accent-tinted background + accent
+ *     inset ring — see .row.linked-active below)
  * The tab itself stays undecorated — see the tab-strip CSS. */
+
+/* Whole-card highlight for the active-tab relation (2026-08-24). A card
+ * linked to the FOCUSED terminal tab keeps the strong fold accent above and
+ * adds a prominent whole-card treatment: an accent-tinted background and an
+ * accent ring around the whole card (an inset box-shadow, so it coexists with
+ * the family directional borders — a linked mid-tree card keeps its solid
+ * left / dashed right edges AND the ring). Deliberately distinct from every
+ * other surface signal: the hierarchy edges stay the family colour
+ * (--row-stripe); hover keeps its lift/bloom (defined here too, so the tint
+ * holds under the pointer); the keyboard focus ring is an OUTER outline
+ * (offset 2px) while this ring is INNER; and the star is a glyph, never a
+ * surface wash. The tint rides the theme tokens (--accent, --bg-elevated,
+ * --bg-hover), so it resolves in every preset and both theme kinds. */
+.row.linked-active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.row.linked-active:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-hover));
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    var(--shadow-lift),
+    0 0 28px -6px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 
 /* The Link button in the title-actions cluster: a quiet text action that
  * reads as part of the card chrome (like the work-on glyph beside it), not a
@@ -640,46 +667,66 @@ body[data-dragging='project'] .row {
   border-color: var(--border);
 }
 
-/* Relationship / hierarchy decoration (2026-07, left-edge revision 2026-08).
- * A family card wears only the LEFT edge of its family-coloured frame (see
- * .row above, --row-stripe = the family colour set by its .proj-family-<n>
- * class) and tints the title with the same hue:
+/* Relationship / hierarchy decoration (2026-07 left-edge frame; directional-
+ * border semantics 2026-08-24). A family card wears only the directional
+ * edge(s) of its family-coloured frame (see .row above,
+ * --row-stripe = the family colour set by its .proj-family-<n> class) and
+ * tints the title with the same hue:
  *   • standalone project     → full neutral solid frame (the .row default)
- *   • subproject (`parent:`)  → dashed 6px left edge in the family colour,
- *     marking it as the child of a family pair
- *   • parent (has children)   → solid 6px left edge in the family colour, the
- *     spine that marks it as the family root the subprojects belong to
- * A mid-tree node that is both parent and subproject reads as a parent: the
- * .row.is-parent rule follows .row.is-subproject at equal specificity, so its
- * solid border-left-style wins. Hover/focus keep the family colour on the
- * left edge via the base .row:hover / :focus-visible rules (both use
- * --row-stripe). */
+ *   • parent (has children)  → narrow 3px SOLID LEFT edge in the family
+ *     colour, marking the family root
+ *   • subproject (`parent:`) → narrow 3px DASHED RIGHT edge in the family
+ *     colour, marking it as the child of a family pair
+ *   • both                    → solid left AND dashed right, shown together
+ * Direction is load-bearing — left = has children, right = has a parent —
+ * so a mid-tree node wears both at once (the .row.is-parent.is-subproject
+ * rule below), and hierarchy stays pure card decoration: cards are never
+ * reordered, indented or nested to express it. Hover/focus keep the family
+ * colour on the edges via the base .row:hover / :focus-visible rules (both
+ * use --row-stripe). */
 .row.in-family {
   /* A hint of the family colour mixed into the near-white title, so the title
    * reads as belonging to its family. `in-family` is set by cards.tsx alongside
    * the .proj-family-<n> class (has children, or a parent that resolves), so
-   * tint and left-edge hue always move together; standalone cards — and a card
+   * tint and edge hue always move together; standalone cards — and a card
    * whose `parent:` dangles — keep plain text ink. */
   --row-title-color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
 }
 .row.is-parent,
 .row.is-subproject {
-  /* Family cards drop the neutral full frame and keep only the left edge —
-   * solid 6px spine for a parent (family root), dashed 6px edge for a
-   * subproject. Colour is inherited from the base .row border declaration,
-   * so hover/focus (border-color: var(--row-stripe)) keep recolouring it. */
+  /* Family cards drop the neutral full frame (top/bottom) and keep only their
+   * directional edge(s). Colour is inherited from the base .row border
+   * declaration, so hover/focus (border-color: var(--row-stripe)) keep
+   * recolouring the edges. */
   border-top: none;
-  border-right: none;
   border-bottom: none;
-  border-left-width: 6px;
 }
 .row.is-subproject {
-  border-left-style: dashed;
+  /* A card with a `parent:` — the narrow dashed RIGHT edge. The left
+   * longhands zero the inherited frame side, so a child-only card wears no
+   * left border at all. */
+  border-left-width: 0;
+  border-left-style: none;
+  border-right-width: 3px;
+  border-right-style: dashed;
 }
 .row.is-parent {
-  /* Follows .row.is-subproject at equal specificity, so a mid-tree node that
-   * is both parent and subproject reads as a parent (solid left edge). */
+  /* A card with one or more children — the narrow solid LEFT edge. Follows
+   * .row.is-subproject at equal specificity, so a mid-tree node keeps the
+   * solid left; the right longhands zero the child edge, restored by the
+   * .is-parent.is-subproject rule below. */
+  border-right-width: 0;
+  border-right-style: none;
+  border-left-width: 3px;
   border-left-style: solid;
+}
+.row.is-parent.is-subproject {
+  /* Both: the mid-tree node wears its parent's edge AND its own children's
+   * edge together — dashed right (its parent) + solid left (its children).
+   * Higher specificity than the two single-class rules, so neither side's
+   * zeroing above can eat the other's edge. */
+  border-right-width: 3px;
+  border-right-style: dashed;
 }
 
 .projects-empty {
