@@ -18,8 +18,10 @@ import { bootApp } from './fixtures/electron-app';
  *
  * The card-side surface was reworked per the user's v2 review of the built
  * render: the meta-row chip + portaled popover are gone, replaced by the
- * relations-zone fold; the left-edge accent strips are gone too, so the two
- * decoration classes now only key the fold's subtle/strong accent.
+ * relations-zone fold; the left-edge accent strips are gone too, so the
+ * decoration classes key the fold's subtle/strong accent — and, since the
+ * 2026-08-24 hierarchy-highlight project, `linked-active` additionally wears
+ * the whole-card highlight (see card-decoration.spec.ts).
  *
  * The fixture ships `2026-04-26-sample` in `now`; `prepare` adds an older
  * sibling so "one tab links two projects" has a second card.

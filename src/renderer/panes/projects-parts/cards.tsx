@@ -503,7 +503,7 @@ export function Card(props: {
   const children = (): ChildRow[] => parentInfo?.().childrenOf(props.item.slug) ?? [];
   // A card is "in a family" — and so wears the family colour — when it has
   // children, or when its `parent:` resolves to a real item. A dangling
-  // parent slug keeps the dashed subproject left edge (it does declare a
+  // parent slug keeps the dashed subproject right edge (it does declare a
   // parent) but no colour: there is no second card for the hue to tie it to.
   const inFamily = (): boolean => children().length > 0 || !!parentProject();
   // The family colour hashes the family *root* — the topmost item the
@@ -597,18 +597,23 @@ export function Card(props: {
         // `in-family` is what the CSS keys the title tint on.
         'in-family': inFamily(),
         [familyColorClass()]: inFamily(),
-        // Relationship decoration: the family frame is reduced to the left
-        // edge only — a solid 6px spine for a parent (has spin-off children),
-        // a dashed 6px edge for a subproject (has a `parent:`); a standalone
+        // Relationship decoration: the family frame is reduced to directional
+        // edges only — a narrow solid LEFT edge for a parent (has spin-off
+        // children), a narrow dashed RIGHT edge for a subproject (has a
+        // `parent:`); a mid-tree node wears both at once, and a standalone
         // card keeps the full neutral frame — see .row.is-parent /
-        // .row.is-subproject in the CSS.
+        // .row.is-subproject in the CSS. Cards are never reordered, indented
+        // or nested to express hierarchy — it is decoration only.
         'is-parent': children().length > 0,
         'is-subproject': !!props.item.parent,
         // Link decoration: `linked-any` while any linked tab is live,
         // `linked-active` while the focused tab is among them. The two
         // strengths key the Linked-tabs fold's accent (subtle / strong) in
-        // the CSS — never a left-edge bar (v1's strips were removed by the
-        // user's review: the left edge carries only the family frame).
+        // the CSS; `linked-active` additionally wears the whole-card
+        // highlight (accent-tinted background + accent inset ring — see
+        // .row.linked-active in the CSS). Never a border-edge bar: the card
+        // edges carry only the family frame (v1's left-edge strips were
+        // removed by the user's review).
         'linked-any': linkedTabs().length > 0,
         'linked-active': linkedToActive(),
       }}
