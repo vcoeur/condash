@@ -464,7 +464,8 @@ describe('linking the tab an action landed on', () => {
     handle.spawnUserShell.mockResolvedValue('ghost');
     const bridge = createTerminalBridge(makeDeps(handle));
     const promise = bridge.handleWorkOn(sampleProject);
-    await vi.advanceTimersByTimeAsync(3200);
+    // The spawn settle (350 ms) plus the full roster-wait ceiling (3 s).
+    await vi.advanceTimersByTimeAsync(3600);
     await promise;
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
     vi.useRealTimers();

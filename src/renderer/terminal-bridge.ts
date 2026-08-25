@@ -130,24 +130,29 @@ interface ActionTarget {
 const SPAWN_WAIT_POLL_MS = 50;
 const SPAWN_WAIT_MAX_MS = 3000;
 
-/** Wait for a freshly spawned `sid` to become the pane's active session, which
- *  is the one condition both things an action does depend on.
+/** Wait for a freshly spawned `sid` to appear in the tab roster.
  *
  *  A spawn resolves as soon as main has the pty, but the tab joins the renderer
- *  only on the next reconcile pass — which awaits an IPC attach and a dynamic
- *  xterm import before it activates the tab. Until then `typeIntoActive` targets
- *  the active id and finds none, so the text is silently dropped; and a link
- *  written for the sid would be pruned by any pass still in flight over a
- *  pre-spawn snapshot, since that pass prunes against a roster that cannot
- *  contain the new id. Waiting on the condition removes both, and removes the
- *  need for the controller to protect anything.
+ *  only on the next reconcile pass, which awaits an IPC attach and a dynamic
+ *  xterm import first. A link written before that would be deleted by any pass
+ *  still in flight over a pre-spawn snapshot, because such a pass prunes
+ *  against a roster that cannot contain the new id. Waiting removes the race —
+ *  and with it the need for the controller to protect anything.
+ *
+ *  The condition is roster membership, not "is this tab active": activation is
+ *  last-writer-wins within a pass, so a second tab inserted in the same tick
+ *  would leave an active-id wait spinning to its ceiling on a tab that exists
+ *  and works. Membership only ever goes from false to true.
  *
  *  Bounded and non-throwing: on timeout the caller carries on and simply gets
  *  no link, rather than claiming a tab that never appeared. */
 async function awaitSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise<void> {
+  // A spawn that answered with no id has nothing to wait for — without this the
+  // caller would sit out the whole ceiling before carrying on.
+  if (!sid) return;
   const steps = Math.ceil(SPAWN_WAIT_MAX_MS / SPAWN_WAIT_POLL_MS);
   for (let i = 0; i < steps; i++) {
-    if (handle.getActiveSessionId() === sid) return;
+    if (handle.sessionLabel(sid) !== null) return;
     await new Promise<void>((resolve) => setTimeout(resolve, SPAWN_WAIT_POLL_MS));
   }
 }
@@ -192,6 +197,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         // one on the next reconcile pass, so reading the active id back off
         // the handle here can still answer with the tab that just left.
         const sid = await handle.spawnUserShell(null, 'my');
+        // Both waits, same pair `spawnAgentTab` takes: the settle is for the
+        // shell to finish init and start accepting input (typing during it
+        // drops leading characters), the roster wait is for the tab to exist.
+        await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
         await awaitSpawnedTab(handle, sid);
         return { handle, sid };
       } catch (err) {
@@ -243,7 +252,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
     // The settle above is for the launched program's prompt, not for reconcile,
     // and a cold app's first tab can outlast it. Returns immediately once the
-    // tab is there, which it normally already is by now.
+    // tab is in the roster, which it normally already is by now.
     await awaitSpawnedTab(handle, sid);
     return { handle, sid };
   };
