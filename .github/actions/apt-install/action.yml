@@ -11,10 +11,15 @@ description: >-
 # the tag with no Release. Four steps across three workflows run apt the same
 # unbounded way, so the bound belongs in one place they all call.
 #
-# Pair every caller with a step-level `timeout-minutes:`. That is the platform's
-# own ceiling and it also covers apt run by something else (`npx playwright
-# install --with-deps`); this action covers the named-package installs and adds
-# the retry, the dpkg repair, and the skip probe that a bare timeout cannot.
+# THE BOUND THAT ACTUALLY BINDS HERE IS THE `timeout -k` BELOW, not a caller's
+# `timeout-minutes:`. A step-level `timeout-minutes` on a `uses:` step does NOT
+# propagate into a composite action's internal steps (actions/runner#1979,
+# #2415, both open as of 2026-08-25), so callers keep it only as a backstop for
+# the day that is fixed. The enforceable outer net for these steps is the JOB's
+# `timeout-minutes`, which is why every job that calls this action now declares
+# one. For a plain `run:` step — e.g. `npx playwright install --with-deps`,
+# which shells out to apt itself and so cannot use this action — step-level
+# `timeout-minutes` does work and is the right tool.
 
 inputs:
   packages:

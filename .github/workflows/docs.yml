@@ -95,6 +95,9 @@ jobs:
       # signed apt repo behind condash.vcoeur.com/apt/, so a stall here means a
       # published release silently never reaches the apt index.
       - name: Install aptly + gnupg
+      # Step-level ceiling is a backstop (it does not reach inside a composite
+      # action); the job's 20-minute ceiling and the action's own `timeout -k`
+      # are what enforce.
         timeout-minutes: 10
         uses: ./.github/actions/apt-install
         with:

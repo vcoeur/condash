@@ -58,8 +58,10 @@ jobs:
       # wraps each invocation), so xvfb only needs to be present here.
       # ubuntu-latest ships it, so the probe is the normal path and apt never
       # runs; the action's fallback covers an image that later drops it.
-      # `timeout-minutes` is the outer guarantee — see the action for why an
-      # unbounded apt step cost the v4.111.0 release.
+      # The bound comes from the action's own `timeout -k`; the step-level
+      # `timeout-minutes` is a backstop only, because it does not reach inside
+      # a composite action (actions/runner#1979). The job's 25-minute ceiling
+      # is the enforceable outer net. See the action for why this matters.
       - name: Ensure xvfb
         timeout-minutes: 10
         uses: ./.github/actions/apt-install
@@ -75,8 +77,9 @@ jobs:
         run: npm ci
 
       # `--with-deps` shells out to apt itself, so the bounded-install action
-      # cannot wrap it — a step-level ceiling is the only bound available, and
-      # this is the lane's remaining apt exposure. Healthy runs take ~80 s.
+      # cannot wrap it. This is a plain `run:` step, so step-level
+      # `timeout-minutes` genuinely applies here — unlike on a composite
+      # `uses:` step. Healthy runs take ~80 s.
       - name: Install Playwright browsers
         timeout-minutes: 10
         run: npx playwright install --with-deps chromium
