@@ -119,9 +119,13 @@ interface ActionTarget {
   sid: string;
 }
 
-/** Name to record for a tab that has not joined the roster yet on the plain
- *  path. `spawnUserShell` labels an agent-less spawn `shell`, and that branch
- *  only runs when the pane is empty, so no uniquifying suffix can apply. */
+/** Last-resort name for a tab still absent from the roster when its link is
+ *  written — `spawnUserShell` labels an agent-less spawn `shell`. It is a
+ *  best-effort name, not a guarantee: `uniqueLabel` appends a suffix when
+ *  another tab already holds the name (`hasActive()` is per active column, not
+ *  per pane, so the pane need not be empty for this branch to run). The label
+ *  is a snapshot either way — the store records the name at link time and the
+ *  tab strip always shows the tab's true, current one. */
 const DEFAULT_SHELL_LABEL = 'shell';
 
 /** Look up an agent by id from the current agent list. Returns null for an
@@ -164,6 +168,13 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         // one on the next reconcile pass, so reading the active id back off
         // the handle here can still answer with the tab that just left.
         const sid = await handle.spawnUserShell(null, 'my');
+        // Main broadcasts the session list before the spawn reply resolves, so
+        // reconcile is already running — but it awaits an IPC attach and a
+        // dynamic xterm import before it marks the tab active, and until then
+        // `typeIntoActive` no-ops. Same settle `runShellCommand` takes for the
+        // same reason: without it the caller's text goes nowhere, and the link
+        // would claim a tab that was never typed into.
+        await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
         return { handle, sid };
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');

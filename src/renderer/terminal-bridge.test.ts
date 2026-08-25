@@ -433,7 +433,7 @@ describe('linking the tab an action landed on', () => {
     ]);
   });
 
-  it('names a shell it had to spawn, since the fresh tab is not in the roster yet', async () => {
+  it("falls back to the spawn's own label when the tab is not in the roster", async () => {
     const handle = makeFakeHandle();
     handle.hasActive.mockReturnValue(false);
     handle.spawnUserShell.mockResolvedValue('session-new');
