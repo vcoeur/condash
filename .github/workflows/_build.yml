@@ -123,11 +123,11 @@ jobs:
       # Playwright lane's, the package really is absent from the image, so it
       # cannot be probed away — and this is the job whose installers `publish`
       # uploads, so a stall here ships nothing.
+      # The step-level ceiling here is a backstop only — it does not reach into
+      # a composite action (actions/runner#1979). The job's 25-minute ceiling
+      # above is what enforces, alongside the action's own `timeout -k`.
       - name: Install desktop-file-utils (for appimagetool repack)
         if: matrix.os == 'ubuntu-latest'
-      # The step-level ceiling below is a backstop only — it does not reach into
-      # a composite action (actions/runner#1979). The job's 25-minute ceiling
-      # above is what actually enforces, alongside the action's own `timeout -k`.
         timeout-minutes: 10
         uses: ./.github/actions/apt-install
         with:

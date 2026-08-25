@@ -76,12 +76,31 @@ jobs:
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: npm ci
 
-      # `--with-deps` shells out to apt itself, so the bounded-install action
-      # cannot wrap it. This is a plain `run:` step, so step-level
-      # `timeout-minutes` genuinely applies here — unlike on a composite
-      # `uses:` step. Healthy runs take ~80 s.
+      # `npx playwright install --with-deps` runs apt *inside* itself, so
+      # neither the bounded-install action nor any argument of ours reaches
+      # that apt. Global config is the only lever, which is why this is a
+      # visible step of its own rather than a side effect of another one —
+      # the step below depends on it, and that dependency should be legible.
+      #
+      # Both settings are unset by default (`apt-config dump` emits neither),
+      # so apt ships with `Acquire::Retries` at 0: today a dropped index fetch
+      # is simply lost, with no retry at all. Three retries at a 30 s stall
+      # window keeps the same ~120 s per-URI ceiling as apt's built-in default
+      # while giving four chances instead of one.
+      - name: Bound the apt that Playwright runs internally
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-ci-timeouts >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          DPkg::Lock::Timeout "60";
+          APTCONF
+
+      # A plain `run:` step, so step-level `timeout-minutes` genuinely applies
+      # here — unlike on a composite `uses:` step. Healthy runs take ~80 s, so
+      # 6 min is 4.5x the observed cost and leaves the suite its budget.
       - name: Install Playwright browsers
-        timeout-minutes: 10
+        timeout-minutes: 6
         run: npx playwright install --with-deps chromium
 
       - name: Build renderer + main

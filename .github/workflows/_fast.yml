@@ -20,6 +20,9 @@ jobs:
   fast:
     name: Fast checks (typecheck + unit)
     runs-on: ubuntu-latest
+    # Same 360-minute-default exposure as the other lanes. Measured at
+    # 1-2 min across recent releases; 20 leaves an order of magnitude.
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5

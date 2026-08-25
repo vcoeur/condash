@@ -94,10 +94,10 @@ jobs:
       # Same unbounded-apt exposure as the release lanes. This job rebuilds the
       # signed apt repo behind condash.vcoeur.com/apt/, so a stall here means a
       # published release silently never reaches the apt index.
-      - name: Install aptly + gnupg
       # Step-level ceiling is a backstop (it does not reach inside a composite
       # action); the job's 20-minute ceiling and the action's own `timeout -k`
       # are what enforce.
+      - name: Install aptly + gnupg
         timeout-minutes: 10
         uses: ./.github/actions/apt-install
         with:
@@ -235,6 +235,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # `actions/deploy-pages` polls for a deployment that can stall; with no
+    # ceiling that poll runs for six hours. Measured at ~0.3 min.
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
