@@ -13,6 +13,10 @@ export function ActionTemplateSection(props: {
   subgroupId?: string;
   /** Extra search keywords (e.g. "project action template launcher"). */
   keywords?: string;
+  /** Offer the per-entry "Link tab" checkbox. Project actions only — a
+   *  new-project action fires before any project exists, so there is nothing
+   *  for its tab to link to. */
+  showLink?: boolean;
   bindText: (
     id: string,
     persisted: () => string | undefined,
@@ -78,6 +82,16 @@ export function ActionTemplateSection(props: {
               />
               <span>Submit (press Enter after pasting)</span>
             </label>
+            <Show when={props.showLink}>
+              <label class="settings-checkbox">
+                <input
+                  type="checkbox"
+                  checked={action.link === true}
+                  onChange={(e) => void props.patch(idx(), { link: e.currentTarget.checked })}
+                />
+                <span>Link tab (link the target tab to the project)</span>
+              </label>
+            </Show>
             <div class="settings-launcher-actions">
               <button type="button" title="Remove" onClick={() => props.remove(idx())}>
                 ×

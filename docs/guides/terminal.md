@@ -200,7 +200,7 @@ Plus six nested blocks:
 | `terminal.logging` | Session capture: on/off, retention, directory cap, marker cadence — [Session logging](#session-logging) below. |
 | `terminal.memory` | Per-tab `MemoryHigh` / `MemoryMax` / swap caps, plus an `appScope` set for condash itself — [reference](../reference/config.md#terminal-memory). |
 | `terminal.perf` | Main-process performance recording — [The Performance pane](performance-pane.md). |
-| `terminal.projectActions` | Per-project action buttons — [reference](../reference/config.md#terminalprojectactions). |
+| `terminal.projectActions` | Per-project action buttons, each able to link the tab it fires in — [reference](../reference/config.md#terminalprojectactions). |
 | `terminal.newProjectActions` | Actions offered when a project is created — [reference](../reference/config.md#terminalnewprojectactions). |
 
 See the [config reference](../reference/config.md) for the full key table with defaults.

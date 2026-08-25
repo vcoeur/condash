@@ -463,3 +463,61 @@ test('a Restart re-points the links onto the new session id', async () => {
     await booted.cleanup();
   }
 });
+
+test('firing Work on links the focused tab — no Link click involved', async () => {
+  const booted = await bootApp();
+  try {
+    const win = booted.window;
+    const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
+
+    const card = sampleCard(win);
+    await card.locator('.action-dropdown-button').click();
+    const menu = win.locator('.action-dropdown-menu');
+    await menu.waitFor({ state: 'visible' });
+    await menu.locator('.action-dropdown-menu-item').filter({ hasText: 'Work on' }).click();
+
+    await expect(card).toHaveClass(/linked-active/);
+    await expect
+      .poll(() => linksOnDisk(win), { timeout: 5000 })
+      .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a configured action links only when it sets the link flag', async () => {
+  const booted = await bootApp({
+    extraConfig: {
+      terminal: {
+        projectActions: [
+          { label: 'Plain review', template: 'echo review {shortSlug}' },
+          { label: 'Linking review', template: 'echo review {shortSlug}', link: true },
+        ],
+      },
+    },
+  });
+  try {
+    const win = booted.window;
+    const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
+    const card = sampleCard(win);
+    const menu = win.locator('.action-dropdown-menu');
+
+    // The entry without the flag types and leaves the map untouched.
+    await card.locator('.action-dropdown-button').click();
+    await menu.waitFor({ state: 'visible' });
+    await menu.locator('.action-dropdown-menu-item').filter({ hasText: 'Plain review' }).click();
+    await expect(card).not.toHaveClass(/linked-any/);
+    expect(await linksOnDisk(win)).toEqual({});
+
+    // The entry with it writes exactly the relation the Link button would.
+    await card.locator('.action-dropdown-button').click();
+    await menu.waitFor({ state: 'visible' });
+    await menu.locator('.action-dropdown-menu-item').filter({ hasText: 'Linking review' }).click();
+    await expect(card).toHaveClass(/linked-active/);
+    await expect
+      .poll(() => linksOnDisk(win), { timeout: 5000 })
+      .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
+  } finally {
+    await booted.cleanup();
+  }
+});

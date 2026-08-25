@@ -690,7 +690,7 @@ export function Card(props: {
             </button>
             <ActionDropdownButton
               trigger={<TerminalIcon />}
-              triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+              triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal and link that tab`}
               defaultLabel={`Work on ${shortSlug(props.item.slug)}`}
               items={props.projectActions ?? []}
               onItem={(idx) => {

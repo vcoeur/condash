@@ -323,13 +323,18 @@ const terminalMemorySettings = z
  *  agent then types the template into it — lets users bind, e.g., "Start new
  *  project" to a specific agent instead of typing into whatever shell happens
  *  to be focused. Empty / missing keeps the legacy behaviour (type into the
- *  focused tab; spawn a plain shell only if no tab exists). */
+ *  focused tab; spawn a plain shell only if no tab exists).
+ *
+ *  `link`, when true, also links the tab the action typed into to the project
+ *  — only meaningful for `projectActions`, since a new-project action fires
+ *  before any project exists. */
 const actionTemplateSchema = z
   .object({
     label: z.string(),
     template: z.string(),
     submit: z.boolean().optional(),
     agent: z.string().optional(),
+    link: z.boolean().optional(),
   } satisfies Record<keyof ActionTemplate, z.ZodTypeAny>)
   .strict();
 

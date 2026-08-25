@@ -155,9 +155,10 @@ export function TerminalFields(props: {
       <ActionTemplateSection
         title="Project actions"
         subgroupId={subgroupId('project-actions')}
-        keywords="project action template agent submit work-on"
-        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help). Agent (when set) spawns a fresh tab running that agent instead of typing into the focused tab."
+        keywords="project action template agent submit link tab work-on"
+        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help). Agent (when set) spawns a fresh tab running that agent instead of typing into the focused tab. Link tab records the tab↔project link the card's Link button writes — the built-in Work-on row always does."
         idPrefix={`${idPrefix}.projectActions`}
+        showLink
         bindText={props.bindText}
         items={props.projectActions}
         patch={props.patchProjectAction}

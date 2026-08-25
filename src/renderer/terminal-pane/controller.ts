@@ -1404,6 +1404,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     },
     hasActive: () => Boolean(activeIdIn(activeColumn())),
     getActiveSessionId: () => activeIdIn(activeColumn()),
+    sessionLabel: (sid) => {
+      const tab = tabs().find((t) => t.id === sid);
+      return tab ? displayName(tab) : null;
+    },
   };
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
