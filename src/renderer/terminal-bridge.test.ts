@@ -16,30 +16,39 @@ type FakeHandle = {
   /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
    *  is a tab the renderer has not inserted yet. */
   labels: Record<string, string>;
+  /** Every `typeIntoActive` call with the sid that was active when it ran, so a
+   *  test can assert *which* tab the text reached, not just that it was typed. */
+  typedInto: { sid: string | null; text: string }[];
 };
 
 /** The id every fake spawn answers with. */
 const SPAWNED_SID = 'session-new';
 
 function makeFakeHandle(): FakeHandle {
-  // A spawn makes its tab the active one and puts it in the roster under the
-  // name `spawnUserShell` would give it — what reconcile does for real, and
-  // what `awaitSpawnedTab` polls for.
+  // Modelled on what reconcile actually does, and deliberately in two separate
+  // steps: a spawn puts the tab in the roster under the name `spawnUserShell`
+  // would give it, and NOTHING activates it. Activation is `switchTo`'s job —
+  // which is the distinction the bridge turns on, so the double has to make it
+  // observable rather than collapse the two into one assignment.
   let activeId: string | null = 'session-1';
   const handle: FakeHandle = {
     spawn: vi.fn().mockResolvedValue(''),
-    switchTo: vi.fn(),
+    switchTo: vi.fn((_side: string, id?: string) => {
+      if (id) activeId = id;
+    }),
     spawnUserShell: vi.fn(async (agent?: Agent | null, _side?: string, titleOverride?: string) => {
-      activeId = SPAWNED_SID;
       handle.labels[SPAWNED_SID] = titleOverride ?? agent?.label ?? 'shell';
       return SPAWNED_SID;
     }),
     moveActiveTab: vi.fn(),
-    typeIntoActive: vi.fn(),
+    typeIntoActive: vi.fn((text: string) => {
+      handle.typedInto.push({ sid: activeId, text });
+    }),
     hasActive: vi.fn().mockReturnValue(true),
     getActiveSessionId: vi.fn(() => activeId),
     sessionLabel: vi.fn((sid: string) => handle.labels[sid] ?? null),
     labels: { 'session-1': 'conception · main' },
+    typedInto: [],
   };
   return handle;
 }
@@ -525,6 +534,33 @@ describe('linking the tab an action landed on', () => {
       { sid: SPAWNED_SID, label: 'agedum · claude' },
     ]);
     vi.useRealTimers();
+  });
+
+  it('types into the tab it spawned, not the one that held focus', async () => {
+    // The roster insert and the activation are separate steps in reconcile, and
+    // `typeIntoActive` follows the active tab — so an action that spawned a tab
+    // has to activate it before typing or the text lands somewhere else.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.handleProjectAction(sampleProject, {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'claude-deepseek-v4-pro',
+      link: true,
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'review foo-bar' }]);
+    vi.useRealTimers();
+  });
+
+  it('types into the shell it spawned when the pane was empty', async () => {
+    const handle = makeFakeHandle();
+    handle.hasActive.mockReturnValue(false);
+    const bridge = createTerminalBridge(makeDeps(handle));
+    await bridge.handleWorkOn(sampleProject);
+    expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'work on 2026-05-17-foo-bar' }]);
   });
 
   it('never links a new-project action — no project exists to link to', async () => {
