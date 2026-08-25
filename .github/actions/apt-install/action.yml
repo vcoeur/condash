@@ -1,0 +1,89 @@
+name: Bounded apt install
+description: >-
+  Install apt packages under a hard, external time bound with retries — so a
+  stalled runner mirror costs a retry instead of the job's whole budget.
+
+# Why this exists, and why it is an action rather than a copied shell block:
+# on release run 32231104488 (v4.111.0) an unbounded `apt-get update` in the
+# Playwright lane went silent for 23 m 53 s when the runner's azure mirror
+# went down and the archive.ubuntu.com fallback stalled mid-index. That ate a
+# job budget sized for the test suite and skipped `build`/`publish`, leaving
+# the tag with no Release. Four steps across three workflows run apt the same
+# unbounded way, so the bound belongs in one place they all call.
+#
+# Pair every caller with a step-level `timeout-minutes:`. That is the platform's
+# own ceiling and it also covers apt run by something else (`npx playwright
+# install --with-deps`); this action covers the named-package installs and adds
+# the retry, the dpkg repair, and the skip probe that a bare timeout cannot.
+
+inputs:
+  packages:
+    description: Space-separated package names to install.
+    required: true
+  skip-if-command:
+    description: >-
+      If this command is already on PATH, skip apt entirely and succeed. Name
+      the binary the consumer actually executes, not a sibling from the same
+      package — the probe is the contract, so it should fail when the thing
+      that gets run is missing.
+    required: false
+    default: ''
+  attempts:
+    description: How many times to try the update+install pair.
+    required: false
+    default: '3'
+  timeout-seconds:
+    description: >-
+      Hard bound on each individual apt-get invocation. Worst-case wall clock
+      is roughly attempts x 2 x this, plus the backoff sleeps.
+    required: false
+    default: '120'
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        SKIP_IF_COMMAND: ${{ inputs.skip-if-command }}
+        ATTEMPTS: ${{ inputs.attempts }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$SKIP_IF_COMMAND" ] && command -v "$SKIP_IF_COMMAND" >/dev/null; then
+          echo "$SKIP_IF_COMMAND already on the image at $(command -v "$SKIP_IF_COMMAND") — skipping apt"
+          exit 0
+        fi
+
+        # `sudo timeout`, not `timeout sudo`, so timeout runs as root and
+        # signals apt-get directly rather than relying on sudo to forward it.
+        # `-k 30` is load-bearing: without it timeout sends SIGTERM and then
+        # waits forever, and apt-get traps SIGTERM to release the dpkg lock —
+        # so a child wedged on a dead mirror would never be reaped and the
+        # "bound" would not bind. Verified 2026-08-25 against a SIGTERM-
+        # trapping child, which outlived a bare `timeout` indefinitely.
+        apt() { sudo timeout -k 30 "$TIMEOUT_SECONDS" apt-get "$@"; }
+
+        for attempt in $(seq 1 "$ATTEMPTS"); do
+          echo "::group::apt-get install $PACKAGES (attempt $attempt/$ATTEMPTS)"
+          # Killing apt-get mid-unpack leaves dpkg half-configured, and every
+          # later apt in the job — including one from an unrelated step — then
+          # aborts with "dpkg was interrupted". Repair before each retry so a
+          # timed-out attempt cannot poison the next one, or the rest of the job.
+          if [ "$attempt" -gt 1 ]; then
+            sudo dpkg --configure -a || true
+          fi
+          if apt update && apt install -y $PACKAGES; then
+            echo "::endgroup::"
+            exit 0
+          fi
+          echo "::endgroup::"
+          echo "apt failed on attempt $attempt/$ATTEMPTS" >&2
+          if [ "$attempt" -lt "$ATTEMPTS" ]; then
+            sleep 10
+          fi
+        done
+
+        echo "could not install $PACKAGES after $ATTEMPTS attempts" >&2
+        exit 1

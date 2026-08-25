@@ -26,6 +26,13 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Without this the matrix inherits GitHub's 360-minute default, so a hung
+    # step burns six hours before `publish` is skipped. Measured over the eight
+    # most recent releases the legs run 1.4-5.9 min (windows slowest), so 25
+    # leaves >4x headroom on the worst observed run. It also auto-kills the
+    # v4.109.0 failure mode: an ubuntu leg wedged at 27 m 48 s that a human had
+    # to cancel by hand.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -112,9 +119,16 @@ jobs:
       # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle
       # contents during repack and aborts if it's missing. Not on the
       # default ubuntu-latest image.
+      # This is the release chain's most exposed apt call: unlike the
+      # Playwright lane's, the package really is absent from the image, so it
+      # cannot be probed away — and this is the job whose installers `publish`
+      # uploads, so a stall here ships nothing.
       - name: Install desktop-file-utils (for appimagetool repack)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-install
+        with:
+          packages: desktop-file-utils
 
       - name: Inject --no-sandbox into AppImage AppRun
         if: matrix.os == 'ubuntu-latest'
