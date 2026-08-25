@@ -123,14 +123,34 @@ interface ActionTarget {
   sid: string;
 }
 
-/** Last-resort name for a tab still absent from the roster when its link is
- *  written — `spawnUserShell` labels an agent-less spawn `shell`. It is a
- *  best-effort name, not a guarantee: `uniqueLabel` appends a suffix when
- *  another tab already holds the name (`hasActive()` is per active column, not
- *  per pane, so the pane need not be empty for this branch to run). The label
- *  is a snapshot either way — the store records the name at link time and the
- *  tab strip always shows the tab's true, current one. */
-const DEFAULT_SHELL_LABEL = 'shell';
+/** Poll cadence and ceiling for {@link awaitSpawnedTab}. The ceiling only ever
+ *  elapses when the tab genuinely never arrives; the wait returns the moment it
+ *  does. Generous because the first tab of a cold app pays for the dynamic
+ *  xterm import, which can outlast any flat settle. */
+const SPAWN_WAIT_POLL_MS = 50;
+const SPAWN_WAIT_MAX_MS = 3000;
+
+/** Wait for a freshly spawned `sid` to become the pane's active session, which
+ *  is the one condition both things an action does depend on.
+ *
+ *  A spawn resolves as soon as main has the pty, but the tab joins the renderer
+ *  only on the next reconcile pass — which awaits an IPC attach and a dynamic
+ *  xterm import before it activates the tab. Until then `typeIntoActive` targets
+ *  the active id and finds none, so the text is silently dropped; and a link
+ *  written for the sid would be pruned by any pass still in flight over a
+ *  pre-spawn snapshot, since that pass prunes against a roster that cannot
+ *  contain the new id. Waiting on the condition removes both, and removes the
+ *  need for the controller to protect anything.
+ *
+ *  Bounded and non-throwing: on timeout the caller carries on and simply gets
+ *  no link, rather than claiming a tab that never appeared. */
+async function awaitSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise<void> {
+  const steps = Math.ceil(SPAWN_WAIT_MAX_MS / SPAWN_WAIT_POLL_MS);
+  for (let i = 0; i < steps; i++) {
+    if (handle.getActiveSessionId() === sid) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, SPAWN_WAIT_POLL_MS));
+  }
+}
 
 /** Look up an agent by id from the current agent list. Returns null for an
  *  empty/missing id or when no agent matches. */
@@ -172,13 +192,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         // one on the next reconcile pass, so reading the active id back off
         // the handle here can still answer with the tab that just left.
         const sid = await handle.spawnUserShell(null, 'my');
-        // Main broadcasts the session list before the spawn reply resolves, so
-        // reconcile is already running — but it awaits an IPC attach and a
-        // dynamic xterm import before it marks the tab active, and until then
-        // `typeIntoActive` no-ops. Same settle `runShellCommand` takes for the
-        // same reason: without it the caller's text goes nowhere, and the link
-        // would claim a tab that was never typed into.
-        await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+        await awaitSpawnedTab(handle, sid);
         return { handle, sid };
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
@@ -227,6 +241,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       return null;
     }
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+    // The settle above is for the launched program's prompt, not for reconcile,
+    // and a cold app's first tab can outlast it. Returns immediately once the
+    // tab is there, which it normally already is by now.
+    await awaitSpawnedTab(handle, sid);
     return { handle, sid };
   };
 
@@ -265,18 +283,18 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   };
 
   /** Write the tab↔project relation the card's Link button writes, naming the
-   *  tab as the tab strip does. `fallbackLabel` covers the tab that has not
-   *  joined the roster yet — the label the spawn asked for. Idempotent: the
-   *  store no-ops when the pair already exists. */
-  const linkTargetToProject = (
-    target: ActionTarget,
-    project: Project,
-    fallbackLabel: string,
-  ): void => {
-    // A spawn that answered with no id leaves nothing to link — the action
-    // still typed, so this stays silent rather than toasting.
-    if (!target.sid) return;
-    linkProject(project.slug, target.sid, target.handle.sessionLabel(target.sid) ?? fallbackLabel);
+   *  tab as the tab strip does. Idempotent: the store no-ops when the pair
+   *  already exists.
+   *
+   *  A null label means the tab is not in the roster — the spawn's `sid` never
+   *  showed up, or answered empty. That is exactly when the relation must NOT
+   *  be written: the reconcile prune runs against the roster, so it would
+   *  delete the record moments later, and the action's text did not land in
+   *  that tab either. Silent rather than a toast: the action itself succeeded. */
+  const linkTargetToProject = (target: ActionTarget, project: Project): void => {
+    const label = target.handle.sessionLabel(target.sid);
+    if (!label) return;
+    linkProject(project.slug, target.sid, label);
   };
 
   const handleWorkOn = async (project: Project): Promise<void> => {
@@ -286,7 +304,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     target.handle.typeIntoActive(text);
     // The built-in row links unconditionally and carries no flag: starting
     // work on a project is exactly the moment its tab belongs to it.
-    linkTargetToProject(target, project, DEFAULT_SHELL_LABEL);
+    linkTargetToProject(target, project);
   };
 
   const handleProjectAction = async (project: Project, action: ActionTemplate): Promise<void> => {
@@ -300,7 +318,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       const spawned = await runAgentTask(agent, text, action.submit === true);
       // An agent-bound action links the tab the agent runs in, not the one
       // that held focus at click time — that is where the work happens.
-      if (spawned && action.link) linkTargetToProject(spawned, project, agent.label);
+      if (spawned && action.link) linkTargetToProject(spawned, project);
       return;
     }
     const target = await ensureTermAndShell();
@@ -312,7 +330,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       await new Promise((r) => setTimeout(r, 50));
       target.handle.typeIntoActive('\r');
     }
-    if (action.link) linkTargetToProject(target, project, DEFAULT_SHELL_LABEL);
+    if (action.link) linkTargetToProject(target, project);
   };
 
   const handleNewProjectAction = async (action: ActionTemplate): Promise<void> => {

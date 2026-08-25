@@ -13,28 +13,42 @@ type FakeHandle = {
   hasActive: ReturnType<typeof vi.fn>;
   getActiveSessionId: ReturnType<typeof vi.fn>;
   sessionLabel: ReturnType<typeof vi.fn>;
+  /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
+   *  is a tab the renderer has not inserted yet. */
+  labels: Record<string, string>;
 };
 
+/** The id every fake spawn answers with. */
+const SPAWNED_SID = 'session-new';
+
 function makeFakeHandle(): FakeHandle {
-  return {
+  // A spawn makes its tab the active one and puts it in the roster under the
+  // name `spawnUserShell` would give it — what reconcile does for real, and
+  // what `awaitSpawnedTab` polls for.
+  let activeId: string | null = 'session-1';
+  const handle: FakeHandle = {
     spawn: vi.fn().mockResolvedValue(''),
     switchTo: vi.fn(),
-    spawnUserShell: vi.fn().mockResolvedValue(''),
+    spawnUserShell: vi.fn(async (agent?: Agent | null, _side?: string, titleOverride?: string) => {
+      activeId = SPAWNED_SID;
+      handle.labels[SPAWNED_SID] = titleOverride ?? agent?.label ?? 'shell';
+      return SPAWNED_SID;
+    }),
     moveActiveTab: vi.fn(),
     typeIntoActive: vi.fn(),
     hasActive: vi.fn().mockReturnValue(true),
-    getActiveSessionId: vi.fn().mockReturnValue('session-1'),
-    // Default to "the tab is not in the roster yet" so a test that cares about
-    // the recorded name has to say which name it expects.
-    sessionLabel: vi.fn().mockReturnValue(null),
+    getActiveSessionId: vi.fn(() => activeId),
+    sessionLabel: vi.fn((sid: string) => handle.labels[sid] ?? null),
+    labels: { 'session-1': 'conception · main' },
   };
+  return handle;
 }
 
 // The link store is a module singleton, so relations written by one test would
 // otherwise be visible to the next. Both sids the fakes hand out get cleared.
 afterEach(() => {
   unlinkAllForTab('session-1');
-  unlinkAllForTab('session-new');
+  unlinkAllForTab(SPAWNED_SID);
 });
 
 function makeDeps(handle: FakeHandle | null = null, agents: Agent[] = []) {
@@ -425,7 +439,6 @@ describe('handleFocusLinkedTab', () => {
 describe('linking the tab an action landed on', () => {
   it('links the focused tab from the built-in Work-on row, with no flag involved', async () => {
     const handle = makeFakeHandle();
-    handle.sessionLabel.mockReturnValue('conception · main');
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleWorkOn(sampleProject);
     expect(linkedTabsOf(sampleProject.slug)).toEqual([
@@ -433,13 +446,28 @@ describe('linking the tab an action landed on', () => {
     ]);
   });
 
-  it("falls back to the spawn's own label when the tab is not in the roster", async () => {
+  it('names a shell it had to spawn exactly as the tab strip does', async () => {
     const handle = makeFakeHandle();
     handle.hasActive.mockReturnValue(false);
-    handle.spawnUserShell.mockResolvedValue('session-new');
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleWorkOn(sampleProject);
-    expect(linkedTabsOf(sampleProject.slug)).toEqual([{ sid: 'session-new', label: 'shell' }]);
+    expect(linkedTabsOf(sampleProject.slug)).toEqual([{ sid: SPAWNED_SID, label: 'shell' }]);
+  });
+
+  it('writes no link when the spawned tab never joins the roster', async () => {
+    // The relation would be pruned against a roster that never carried the sid,
+    // and the typed text never landed in that tab either — so nothing is
+    // recorded rather than a link to a tab the user cannot see.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.hasActive.mockReturnValue(false);
+    handle.spawnUserShell.mockResolvedValue('ghost');
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.handleWorkOn(sampleProject);
+    await vi.advanceTimersByTimeAsync(3200);
+    await promise;
+    expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+    vi.useRealTimers();
   });
 
   it('leaves a configured action unlinked when it does not set link', async () => {
@@ -451,7 +479,6 @@ describe('linking the tab an action landed on', () => {
 
   it('links the focused tab when a configured action sets link', async () => {
     const handle = makeFakeHandle();
-    handle.sessionLabel.mockReturnValue('conception · main');
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleProjectAction(sampleProject, {
       label: 'Review',
@@ -466,7 +493,6 @@ describe('linking the tab an action landed on', () => {
   it('links the tab the agent spawned, not the one that held focus', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.spawnUserShell.mockResolvedValue('session-new');
     const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
     const promise = bridge.handleProjectAction(sampleProject, {
       label: 'Review',
@@ -476,9 +502,8 @@ describe('linking the tab an action landed on', () => {
     });
     await vi.advanceTimersByTimeAsync(400);
     await promise;
-    expect(handle.getActiveSessionId).not.toHaveBeenCalled();
     expect(linkedTabsOf(sampleProject.slug)).toEqual([
-      { sid: 'session-new', label: 'DeepSeek v4 Pro' },
+      { sid: SPAWNED_SID, label: 'DeepSeek v4 Pro' },
     ]);
     vi.useRealTimers();
   });
@@ -486,7 +511,6 @@ describe('linking the tab an action landed on', () => {
   it('links the spawned tab for a promptFlags agent too', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.spawnUserShell.mockResolvedValue('session-new');
     const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
     const promise = bridge.handleProjectAction(sampleProject, {
       label: 'Review',
@@ -497,7 +521,7 @@ describe('linking the tab an action landed on', () => {
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(linkedTabsOf(sampleProject.slug)).toEqual([
-      { sid: 'session-new', label: 'agedum · claude' },
+      { sid: SPAWNED_SID, label: 'agedum · claude' },
     ]);
     vi.useRealTimers();
   });

@@ -728,20 +728,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     // tab and a fresh boot (no live sessions) both clear their links in one
     // write. Runs on every pass because the broadcast IS the roster truth;
     // pruneLinks is idempotent and only writes when a sid actually left.
-    // Two exemptions, both for a sid this pass's snapshot cannot know about:
-    // `restartingTabs`, because a Restart's replacement-only broadcast can beat
-    // the `termRestart` IPC reply and the old sid's relations must survive until
-    // repointSid moves them; and `pendingSpawnIntent`, which holds exactly the
-    // sids spawned but not yet inserted — a project action links the tab it
-    // spawned as soon as the spawn resolves, and a pass already in flight over a
-    // pre-spawn snapshot would otherwise prune that relation moments after it
-    // was written. The intent is deleted by the pass that inserts the tab, and
-    // that pass's own snapshot does contain the sid, so the protection ends
-    // exactly when the roster can speak for it.
-    pruneLinks(
-      new Set(snap.filter((s) => s.side === 'my').map((s) => s.id)),
-      new Set([...restartingTabs, ...pendingSpawnIntent.keys()]),
-    );
+    // `restartingTabs` is exempt: a Restart's replacement-only broadcast can
+    // beat the `termRestart` IPC reply, and the old sid's relations must
+    // survive until repointSid moves them in the reply's success path.
+    pruneLinks(new Set(snap.filter((s) => s.side === 'my').map((s) => s.id)), restartingTabs);
   };
 
   // Serialise reconcile passes through a promise queue: the onTermSessions
@@ -1188,12 +1178,6 @@ export function createTerminalController(props: TerminalPaneProps) {
               .filter((t) => t.side === 'my')
               .map((t) => t.id),
           ),
-          // Same exemptions the end-of-reconcile prune carries, minus this
-          // sid (deleted just above, so its relations do die here): another
-          // tab's restart still in flight, and a tab spawned but not yet
-          // inserted. This prune reads the live roster rather than a snapshot,
-          // but neither of those sids is in the roster either.
-          new Set([...restartingTabs, ...pendingSpawnIntent.keys()]),
         );
       })
       .finally(() => restartingTabs.delete(id));

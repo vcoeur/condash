@@ -231,7 +231,6 @@ interface Harness {
     refreshSession(id: string | null, opts?: { onlyIfAltBuffer?: boolean; auto?: boolean }): void;
     restartTab(id: string): void;
     registerHost(col: Column, el: HTMLDivElement): void;
-    spawnUserShell(): Promise<string>;
   };
   setOpen(open: boolean): void;
   setBottomView(view: 'terminal' | 'dashboard'): void;
@@ -668,36 +667,6 @@ describe('controller: link-store wiring (focus mirror, prune, restart re-point)'
     await settle();
     expect(linkedTabsOf('slug-x')).toEqual([]);
     expect(linkedProjectsOf('a')).toEqual([]);
-  });
-
-  it('a link on a just-spawned tab survives a prune from a pre-spawn snapshot', async () => {
-    const harness = await createHarness();
-    const { linkProject, linkedTabsOf } = await import('../link-store');
-    harness.sessions(['a']);
-    await settle();
-
-    // The spawn reply has landed — `pendingSpawnIntent` records the new sid —
-    // but no roster broadcast has carried it yet. That is the window a project
-    // action writes its link in.
-    const sid = await harness.controller.spawnUserShell();
-    expect(sid).toBe('x');
-    linkProject('slug-x', sid, 'shell');
-
-    // A pass over the pre-spawn roster reaches its prune: without the pending
-    // exemption it would drop the relation moments after it was written.
-    harness.sessions(['a']);
-    await settle();
-    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'x', label: 'shell' }]);
-
-    // The insert pass clears the intent; the relation now stands on the roster.
-    harness.sessions(['a', 'x']);
-    await settle();
-    expect(linkedTabsOf('slug-x')).toEqual([{ sid: 'x', label: 'shell' }]);
-
-    // And the protection is not permanent — a real close still prunes.
-    harness.sessions(['a']);
-    await settle();
-    expect(linkedTabsOf('slug-x')).toEqual([]);
   });
 
   it('re-points every relation onto the new sid on a Restart', async () => {

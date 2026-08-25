@@ -507,7 +507,10 @@ test('a configured action links only when it sets the link flag', async () => {
     await menu.waitFor({ state: 'visible' });
     await menu.locator('.action-dropdown-menu-item').filter({ hasText: 'Plain review' }).click();
     await expect(card).not.toHaveClass(/linked-any/);
-    expect(await linksOnDisk(win)).toEqual({});
+    // Poll, not a single read: the action is still an in-flight promise at this
+    // point, so an immediate assertion would pass even on a regression that
+    // linked a flagless action a tick later.
+    await expect.poll(() => linksOnDisk(win), { timeout: 3000 }).toEqual({});
 
     // The entry with it writes exactly the relation the Link button would.
     await card.locator('.action-dropdown-button').click();
