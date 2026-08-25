@@ -54,12 +54,64 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('package-lock.json') }}
 
-      - name: Install xvfb
+      - name: Ensure xvfb
         # Electron Playwright needs a display server on Linux. `npm test`
         # (scripts/run-playwright.mjs) wraps the suite in its own
         # `xvfb-run -a` so each invocation gets an isolated virtual display
-        # — xvfb only needs to be installed here, not invoked.
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        # — xvfb only needs to be *present* here, not invoked.
+        #
+        # This was an unconditional `apt-get update && apt-get install -y
+        # xvfb` until v4.111.0 lost a release to it. Two things were wrong
+        # with that. It never installed anything: ubuntu-latest ships Xvfb
+        # (image 20260729.566 carried 2:21.1.12-1ubuntu1.6, and apt reported
+        # `0 newly installed`), so the step's 34 s was pure `apt-get update`
+        # fetching 11.4 MB of package lists for a package already on disk.
+        # And it was unbounded: on run 32231104488 the runner's azure mirror
+        # went down, apt failed over to archive.ubuntu.com via the image's
+        # mirrorlist, then went silent mid-index for 23 m 53 s — eating the
+        # job's whole `timeout-minutes: 25`, which is sized for the suite,
+        # and skipping `build`/`publish` so the tag shipped nothing.
+        #
+        # Hence: probe first, apt only as a fallback for an image that drops
+        # xvfb, and then under an external `timeout`. apt's own knobs are not
+        # a sufficient bound on their own — v4.111.0 had already burned four
+        # connection retries and its mirror failover before it stalled.
+        shell: bash
+        run: |
+          # Bounds every apt in this job, not just the fallback below — most
+          # importantly the one `npx playwright install --with-deps` runs a
+          # few steps down, which has the same exposure. Acquire::Retries
+          # defaults to 0, so today a dropped index fetch is simply lost.
+          # Caveat: these bound a *stalled* connection, not a slow-drip
+          # mirror that keeps trickling bytes under the inactivity timer.
+          sudo tee /etc/apt/apt.conf.d/99-ci-timeouts >/dev/null <<'APTCONF'
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          Acquire::Retries "3";
+          APTCONF
+
+          if command -v Xvfb >/dev/null; then
+            echo "Xvfb already on the image at $(command -v Xvfb) — skipping apt"
+            exit 0
+          fi
+
+          echo "Xvfb missing from this runner image; falling back to apt" >&2
+          # `sudo timeout`, not `timeout sudo`: this way timeout runs as root
+          # and signals apt-get directly instead of relying on sudo to
+          # forward SIGTERM. Worst case is 3 x 240 s, well inside the budget.
+          for attempt in 1 2 3; do
+            echo "::group::apt-get xvfb (attempt $attempt)"
+            if sudo timeout 120 apt-get update \
+               && sudo timeout 120 apt-get install -y xvfb; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "apt failed on attempt $attempt" >&2
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
+          done
+          echo "could not install xvfb after 3 attempts" >&2
+          exit 1
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
