@@ -1188,6 +1188,12 @@ export function createTerminalController(props: TerminalPaneProps) {
               .filter((t) => t.side === 'my')
               .map((t) => t.id),
           ),
+          // Same exemptions the end-of-reconcile prune carries, minus this
+          // sid (deleted just above, so its relations do die here): another
+          // tab's restart still in flight, and a tab spawned but not yet
+          // inserted. This prune reads the live roster rather than a snapshot,
+          // but neither of those sids is in the roster either.
+          new Set([...restartingTabs, ...pendingSpawnIntent.keys()]),
         );
       })
       .finally(() => restartingTabs.delete(id));

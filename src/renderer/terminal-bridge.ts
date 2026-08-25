@@ -37,10 +37,14 @@ export interface TerminalBridgeDeps {
 export interface TerminalBridge {
   /** Per-card "work on" — paste "work on <slug>" into the focused
    *  terminal. Opens the pane and spawns a shell first if neither
-   *  exists, so the action never silently no-ops. Does not press Enter. */
+   *  exists, so the action never silently no-ops. Does not press Enter.
+   *  Always links that tab to the project (see `linkProject`): a persisted
+   *  relation that outlives a reload and dies with the tab. */
   handleWorkOn: (project: Project) => Promise<void>;
   /** Execute a configured project action — substitute template, type into
-   *  the focused terminal, and press Enter when `submit` is true. */
+   *  the focused terminal, and press Enter when `submit` is true. When the
+   *  action sets `link`, also links the tab it typed into to the project —
+   *  the freshly spawned one for an `agent`-bound action. */
   handleProjectAction: (project: Project, action: ActionTemplate) => Promise<void>;
   /** Execute a configured "+ New project" starter action — substitute
    *  global template, type into the focused terminal, and press Enter
