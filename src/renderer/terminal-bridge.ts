@@ -148,20 +148,23 @@ const SPAWN_WAIT_MAX_MS = 3000;
  *  `switchTo` no-ops on an id it does not know, which is why membership has to
  *  come first.
  *
- *  Bounded and non-throwing: a tab that never arrives leaves the caller exactly
- *  as it was — no focus change, and `sessionLabel` still null, so no link. */
-async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise<void> {
+ *  Bounded, non-throwing, and honest about failing: false means the tab never
+ *  arrived and focus was left where it was. The caller must not type then — the
+ *  text would land in whatever tab the user was looking at, and a `submit`
+ *  action would run it there. */
+async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise<boolean> {
   // A spawn that answered with no id has nothing to wait for — without this the
   // caller would sit out the whole ceiling before carrying on.
-  if (!sid) return;
+  if (!sid) return false;
   const steps = Math.ceil(SPAWN_WAIT_MAX_MS / SPAWN_WAIT_POLL_MS);
   for (let i = 0; i < steps; i++) {
     if (handle.sessionLabel(sid) !== null) {
       handle.switchTo('my', sid);
-      return;
+      return true;
     }
     await new Promise<void>((resolve) => setTimeout(resolve, SPAWN_WAIT_POLL_MS));
   }
+  return false;
 }
 
 /** Look up an agent by id from the current agent list. Returns null for an
@@ -209,7 +212,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         // drops leading characters); the focus step is what makes the tab the
         // one `typeIntoActive` will write to.
         await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-        await focusSpawnedTab(handle, sid);
+        if (!(await focusSpawnedTab(handle, sid))) {
+          deps.flashToast('The new terminal tab never opened — nothing was sent.', 'error');
+          return null;
+        }
         return { handle, sid };
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
@@ -262,7 +268,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // and a cold app's first tab can outlast it. This is what guarantees the
     // prompt is typed into the tab the agent runs in and not the one that held
     // focus when the action fired.
-    await focusSpawnedTab(handle, sid);
+    if (!(await focusSpawnedTab(handle, sid))) {
+      deps.flashToast(`${agent.label}'s tab never opened — nothing was sent.`, 'error');
+      return null;
+    }
     return { handle, sid };
   };
 

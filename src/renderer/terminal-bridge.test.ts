@@ -34,7 +34,10 @@ function makeFakeHandle(): FakeHandle {
   const handle: FakeHandle = {
     spawn: vi.fn().mockResolvedValue(''),
     switchTo: vi.fn((_side: string, id?: string) => {
-      if (id) activeId = id;
+      // No-ops on a tab the roster does not hold, exactly as the controller's
+      // does — that is what makes "poll for membership, then switch" ordering
+      // load-bearing, so the double has to enforce it too.
+      if (id && handle.labels[id] !== undefined) activeId = id;
     }),
     spawnUserShell: vi.fn(async (agent?: Agent | null, _side?: string, titleOverride?: string) => {
       handle.labels[SPAWNED_SID] = titleOverride ?? agent?.label ?? 'shell';
@@ -463,19 +466,45 @@ describe('linking the tab an action landed on', () => {
     expect(linkedTabsOf(sampleProject.slug)).toEqual([{ sid: SPAWNED_SID, label: 'shell' }]);
   });
 
-  it('writes no link when the spawned tab never joins the roster', async () => {
-    // The relation would be pruned against a roster that never carried the sid,
-    // and the typed text never landed in that tab either — so nothing is
-    // recorded rather than a link to a tab the user cannot see.
+  it('types and links nothing when the spawned tab never joins the roster', async () => {
+    // Focus never moved, so typing would land in whatever tab the user was
+    // looking at — and a `submit` action would run it there. The action stops
+    // instead, and says so.
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     handle.hasActive.mockReturnValue(false);
     handle.spawnUserShell.mockResolvedValue('ghost');
-    const bridge = createTerminalBridge(makeDeps(handle));
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
     const promise = bridge.handleWorkOn(sampleProject);
     // The spawn settle (350 ms) plus the full roster-wait ceiling (3 s).
     await vi.advanceTimersByTimeAsync(3600);
     await promise;
+    expect(handle.typedInto).toEqual([]);
+    expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    vi.useRealTimers();
+  });
+
+  it('sends nothing to the focused tab when an agent tab never opens', async () => {
+    // The dangerous shape: a `submit` action whose spawned tab never arrives
+    // would otherwise type its template into the tab that held focus and press
+    // Enter on it.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.spawnUserShell.mockResolvedValue('ghost');
+    const deps = makeDeps(handle, [claudeAgent]);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.handleProjectAction(sampleProject, {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'claude-deepseek-v4-pro',
+      submit: true,
+      link: true,
+    });
+    await vi.advanceTimersByTimeAsync(3600);
+    await promise;
+    expect(handle.typedInto).toEqual([]);
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
     vi.useRealTimers();
   });
@@ -556,11 +585,15 @@ describe('linking the tab an action landed on', () => {
   });
 
   it('types into the shell it spawned when the pane was empty', async () => {
+    vi.useFakeTimers();
     const handle = makeFakeHandle();
     handle.hasActive.mockReturnValue(false);
     const bridge = createTerminalBridge(makeDeps(handle));
-    await bridge.handleWorkOn(sampleProject);
+    const promise = bridge.handleWorkOn(sampleProject);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
     expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'work on 2026-05-17-foo-bar' }]);
+    vi.useRealTimers();
   });
 
   it('never links a new-project action — no project exists to link to', async () => {
