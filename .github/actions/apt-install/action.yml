@@ -1,49 +1,57 @@
 name: Bounded apt install
 description: >-
-  Install apt packages under a hard time bound, so a stalled runner mirror
-  costs a bounded failure instead of the job's whole budget.
+  Install apt packages under a single hard time bound, so a stalled runner
+  mirror fails fast instead of consuming the job's whole budget.
 
-# Why this exists: on release run 32231104488 (v4.111.0) an unbounded
-# `apt-get update` went silent for 23 m 53 s when the runner's azure mirror
-# went down and the archive.ubuntu.com fallback stalled mid-index. That ate a
-# job budget sized for the test suite and skipped `build`/`publish`, leaving
-# the tag with no Release. Several steps across three workflows run apt, so
-# the bound belongs in one place they all call.
+# WHY: on release run 32231104488 (v4.111.0) an unbounded `apt-get update`
+# went silent for 23 m 53 s when the runner's azure mirror went down and the
+# archive.ubuntu.com fallback stalled mid-index. That ate a job budget sized
+# for the test suite, skipped `build`/`publish`, and left the tag with no
+# Release.
 #
-# WHAT ACTUALLY ENFORCES THE BOUND, in order:
-#   1. The `timeout -k` below. `-k` is load-bearing: without it `timeout`
-#      sends SIGTERM and then waits forever, and apt-get traps SIGTERM to
-#      release the dpkg lock. Verified against a trapping child, which
-#      outlived a bare `timeout` indefinitely.
-#   2. The calling JOB's `timeout-minutes`. Every job that calls this action
-#      declares one, and that is the real outer net.
-# NOT the caller's step-level `timeout-minutes`: it does not propagate into a
-# composite action's steps (actions/runner#1979, #2415, both open 2026-08-25).
-# Callers keep it only as a backstop for the day that is fixed.
+# WHAT THIS DELIBERATELY DOES NOT DO: retry. Three earlier versions of this
+# action wrapped apt in a retry loop and each was wrong in a new way; the last
+# nested a 4x30 s `Acquire::Retries` budget inside a 90 s external bound, so
+# two of its four "chances" were unreachable and every attempt simply burned
+# the full bound. Retries also forced a dpkg repair path, a multi-leg budget
+# nobody computed correctly three tries running, and a second copy of the apt
+# policy.
 #
-# WORST-CASE WALL CLOCK — stated here because getting it wrong is how a
-# "bound" silently exceeds the job budget it was supposed to fit inside:
-#   update leg:  2 tries x (90 s SIGTERM + 30 s SIGKILL grace) = 240 s
-#   install leg: 2 tries x (90 s + 30 s grace)                 = 240 s
-#   backoff:     2 x 10 s                                      =  20 s
-#   TOTAL                                                      = 500 s (8.4 min)
-# The `-k` grace is part of the budget. Omitting it is what made two earlier
-# versions of this comment understate the ceiling.
+# They bought little: v4.111.0 was a STALL, not a transient error, so a retry
+# would not have helped it — a fast, loud failure would have. apt already
+# retries connections internally (the v4.111.0 log shows four `Ign:` rounds
+# against azure before its mirrorlist failover), and `DPkg::Lock::Timeout`
+# below covers the other common case by WAITING rather than retrying.
+#
+# So: one bounded call per leg, and a failure is a failure. Re-running the
+# release lane is the retry.
 
 inputs:
   packages:
     description: >-
-      Space-separated package names to install. Deliberately word-split, so
+      Space-separated package names. Deliberately word-split, so
       "aptly gnupg" installs two packages.
     required: true
   skip-if-command:
     description: >-
-      If this command is already on PATH, skip apt entirely and succeed. Name
-      the binary the consumer actually executes, not a sibling from the same
-      package — the probe is the contract, so it should fail when the thing
-      that gets run is missing.
+      If this command is already on PATH, skip apt and succeed. Name the binary
+      the consumer actually executes, not a sibling from the same package — the
+      probe is the contract, so it should fail when the thing that gets run is
+      missing. Only valid for a single-package install: the probe short-circuits
+      the whole action, so with several packages a hit on one would silently
+      skip the rest.
     required: false
     default: ''
+  timeout-seconds:
+    description: >-
+      Hard bound on EACH of the two apt-get calls. Worst case is
+      2 x (this + 30 s SIGKILL grace) + 70 s for the failure-path dpkg repair.
+      Must stay comfortably above DPkg::Lock::Timeout (120 s), or the lock wait
+      cannot complete inside it — that inversion is what broke the previous
+      version. Raise it for a site with a large payload rather than tuning the
+      default down for everyone.
+    required: false
+    default: '180'
 
 runs:
   using: composite
@@ -52,90 +60,70 @@ runs:
       env:
         PACKAGES: ${{ inputs.packages }}
         SKIP_IF_COMMAND: ${{ inputs.skip-if-command }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
       run: |
         set -euo pipefail
 
         # `required: true` above is documentation, not enforcement — the runner
         # does not fail a missing input, and `apt-get install -y` with zero
-        # packages exits 0. Without this guard a caller that typos `package:`
-        # gets a green step and fails several steps later at a missing binary.
-        if [ -z "${PACKAGES// /}" ]; then
+        # operands exits 0. Strip ALL whitespace, not just spaces: a tab or a
+        # newline from a YAML block scalar would otherwise slip through and give
+        # a green step that fails several steps later at a missing binary.
+        if [ -z "${PACKAGES//[[:space:]]/}" ]; then
           echo "apt-install: 'packages' input is empty" >&2
           exit 1
         fi
 
-        if [ -n "$SKIP_IF_COMMAND" ] && command -v "$SKIP_IF_COMMAND" >/dev/null; then
-          echo "$SKIP_IF_COMMAND already on the image at $(command -v "$SKIP_IF_COMMAND") — skipping apt"
-          exit 0
+        if [ -n "$SKIP_IF_COMMAND" ]; then
+          # The probe exits the whole action, so it cannot speak for a list.
+          if [ "$(echo $PACKAGES | wc -w)" -gt 1 ]; then
+            echo "apt-install: skip-if-command is only valid for a single package (got: $PACKAGES)" >&2
+            exit 1
+          fi
+          if command -v "$SKIP_IF_COMMAND" >/dev/null; then
+            echo "$SKIP_IF_COMMAND already on the image at $(command -v "$SKIP_IF_COMMAND") — skipping apt"
+            exit 0
+          fi
         fi
-
-        # Retry lives INSIDE apt wherever apt can do it better than a shell
-        # loop can. Both of these are unset by default (`apt-config dump`
-        # emits neither), so apt ships with 0 retries and no lock wait:
-        #   Acquire::Retries    — per-URI retry, so one bad index file does
-        #                         not fail the whole update.
-        #   DPkg::Lock::Timeout — apt-get's default is 0 and it fails
-        #                         instantly. The 120 s default you see in
-        #                         `apt-config dump` is `binary::apt::`-scoped,
-        #                         i.e. the `apt` frontend only, NOT apt-get.
-        #                         GitHub runners start unattended-upgrades
-        #                         early, so an unwaited lock is the single
-        #                         most common CI apt failure.
-        APT_OPTS=(
-          -o Acquire::Retries=3
-          -o Acquire::http::Timeout=30
-          -o Acquire::https::Timeout=30
-          -o DPkg::Lock::Timeout=60
-        )
 
         # `sudo timeout`, not `timeout sudo`, so timeout runs as root and
         # signals apt-get directly rather than relying on sudo to forward it.
-        apt_get() {
-          sudo timeout -k 30 90 apt-get "${APT_OPTS[@]}" "$@"
-        }
+        # `-k` is load-bearing: without it `timeout` sends SIGTERM and then
+        # waits forever, and apt-get traps SIGTERM to release the dpkg lock.
+        # Verified against a trapping child, which outlived a bare `timeout`.
+        bounded() { sudo timeout -k 30 "$TIMEOUT_SECONDS" "$@"; }
 
-        # Update and install are retried as separate legs. Retrying them as a
-        # pair meant a failed install re-ran a successful update — paying the
-        # index fetch again (34 s / 11.4 MB on ubuntu-latest) and re-entering
-        # the exact code path that stalled for 23 m 53 s on run 32231104488.
-        for attempt in 1 2; do
-          echo "::group::apt-get update (attempt $attempt/2)"
-          if apt_get update; then
-            echo "::endgroup::"
-            break
-          fi
-          echo "::endgroup::"
-          if [ "$attempt" -eq 2 ]; then
-            echo "apt-install: apt-get update failed twice" >&2
-            exit 1
-          fi
-          echo "apt-install: update failed, retrying" >&2
-          sleep 10
-        done
+        echo "::group::apt-get update"
+        # No DPkg::Lock::Timeout here: `apt-get update` contends on
+        # /var/lib/apt/lists/lock, not the dpkg lock, so it would be inert.
+        bounded apt-get update
+        echo "::endgroup::"
 
-        for attempt in 1 2; do
-          # Killing apt-get mid-unpack leaves dpkg half-configured, and every
-          # later apt in the job — including unrelated steps — then aborts with
-          # "dpkg was interrupted". Repair before retrying. Bounded and
-          # non-interactive, because this is otherwise the one command here
-          # with no ceiling, and a postinst debconf prompt would block on stdin
-          # forever. Its failure is reported, not silently swallowed.
-          if [ "$attempt" -gt 1 ]; then
-            sudo timeout -k 10 60 env DEBIAN_FRONTEND=noninteractive \
-              dpkg --configure -a \
-              || echo "apt-install: dpkg repair failed or timed out; retrying install anyway" >&2
-          fi
-          echo "::group::apt-get install $PACKAGES (attempt $attempt/2)"
-          if apt_get install -y $PACKAGES; then
-            echo "::endgroup::"
-            exit 0
-          fi
+        echo "::group::apt-get install $PACKAGES"
+        # DPkg::Lock::Timeout is a WAIT, not a retry, which is why it survives
+        # the no-retry rule above. apt-get's own default does not give it: the
+        # 120 in `apt-config dump` is `binary::apt::`-scoped, i.e. the `apt`
+        # frontend only. GitHub runners start unattended-upgrades early and
+        # hold that lock for minutes, so without this the install fails
+        # instantly on a condition that clears on its own.
+        #
+        # DEBIAN_FRONTEND goes through `env` because sudo's env_reset drops it:
+        # installing a package runs its postinst, and a debconf prompt there
+        # would block on stdin until the bound kills it.
+        if bounded env DEBIAN_FRONTEND=noninteractive \
+             apt-get -o DPkg::Lock::Timeout=120 install -y $PACKAGES; then
           echo "::endgroup::"
-          echo "apt-install: install failed on attempt $attempt/2" >&2
-          if [ "$attempt" -lt 2 ]; then
-            sleep 10
-          fi
-        done
+          exit 0
+        fi
+        echo "::endgroup::"
+
+        # A killed install leaves dpkg half-configured, and that poisons every
+        # later apt in the job — including unrelated steps, and including an
+        # `if: failure()` diagnostic step that would then report the wrong
+        # cause. Repair on the way out even though we are failing.
+        echo "apt-install: install failed; repairing dpkg before exit" >&2
+        sudo timeout -k 10 60 env DEBIAN_FRONTEND=noninteractive dpkg --configure -a \
+          || echo "apt-install: dpkg repair also failed" >&2
 
         echo "apt-install: could not install $PACKAGES" >&2
         exit 1

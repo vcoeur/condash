@@ -31,6 +31,11 @@ jobs:
   changes:
     name: changes
     runs-on: ubuntu-latest
+    # A hard `needs:` of both `fast` and the required `ci-light-gate`, and it
+    # does a full-history checkout — exactly the network call that stalls. With
+    # no ceiling a stall parks a PR's required check for six hours and holds
+    # the `ci-${{ github.ref }}` concurrency group with it.
+    timeout-minutes: 10
     outputs:
       code: ${{ steps.f.outputs.code }}
     steps:
@@ -77,6 +82,8 @@ jobs:
     needs: [changes, fast]
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    # Aggregator only; it evaluates job results and exits.
+    timeout-minutes: 10
     steps:
       - name: Require fast lane green or skipped
         run: |

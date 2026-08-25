@@ -58,12 +58,7 @@ jobs:
       # wraps each invocation), so xvfb only needs to be present here.
       # ubuntu-latest ships it, so the probe is the normal path and apt never
       # runs; the action's fallback covers an image that later drops it.
-      # The bound comes from the action's own `timeout -k`; the step-level
-      # `timeout-minutes` is a backstop only, because it does not reach inside
-      # a composite action (actions/runner#1979). The job's 25-minute ceiling
-      # is the enforceable outer net. See the action for why this matters.
       - name: Ensure xvfb
-        timeout-minutes: 10
         uses: ./.github/actions/apt-install
         with:
           packages: xvfb
@@ -97,10 +92,12 @@ jobs:
           APTCONF
 
       # A plain `run:` step, so step-level `timeout-minutes` genuinely applies
-      # here — unlike on a composite `uses:` step. Healthy runs take ~80 s, so
-      # 6 min is 4.5x the observed cost and leaves the suite its budget.
+      # here — unlike on a composite `uses:` step, where it is inert. The ~80 s
+      # healthy figure is a WARM-cache measurement; a `package-lock.json` bump
+      # misses the cache above and makes this a cold chromium download plus
+      # apt work for its system deps, so size for that, not for the warm run.
       - name: Install Playwright browsers
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium
 
       - name: Build renderer + main
