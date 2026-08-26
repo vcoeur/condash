@@ -11,8 +11,8 @@ description: Live desktop dashboard for a folder of Markdown projects, incidents
 
 It exists for one person tracking work across several codebases — a solo maintainer, an engineering logbook, a workspace shared with an AI coding agent — or a small team, each on their own checkout of one shared git repo. If you already keep work notes in a git repo, condash is the front end that was missing.
 
-![The condash dashboard: a Projects pane grouping items under NOW, REVIEW and LATER, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-light.png#only-light)
-![The condash dashboard: a Projects pane grouping items under NOW, REVIEW and LATER, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-dark.png#only-dark)
+![The condash dashboard: a Projects pane grouping items under NOW, REVIEW, LATER, BACKLOG and DONE, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-light.png#only-light)
+![The condash dashboard: a Projects pane grouping items under NOW, REVIEW, LATER, BACKLOG and DONE, and a Code pane listing five git repos with their branches](assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 ## What is a conception?
 

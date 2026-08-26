@@ -16,8 +16,8 @@
  * theme-picker.spec.ts, which runs against the standard fixture every time.
  *
  * Run as `CONDASH_SHOTS_CONCEPTION=<tree> npm run test -- ui-revamp-shots.spec.ts`. Output
- * lands in `tests/screenshots-out/ui-revamp/<name>.png` at 3200×2500
- * (1600×1250 logical, deviceScaleFactor=2), mirroring screenshots.spec.ts —
+ * lands in `tests/screenshots-out/ui-revamp/<name>.png` at
+ * `VIEWPORT × DEVICE_SCALE`, the constants screenshots.spec.ts shares —
  * including the two-part scaling that spec documents: Electron's
  * `--force-device-scale-factor=2` alone leaves the page at `devicePixelRatio` 1
  * and the capture at the logical size, so the CDP device-metrics override below is what
@@ -36,6 +36,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { THEME_PRESETS } from '../src/shared/themes';
+import { VIEWPORT, DEVICE_SCALE } from './viewport';
 
 const repoRoot = resolve(__dirname, '..');
 const outRoot = resolve(__dirname, 'screenshots-out', 'ui-revamp');
@@ -108,13 +109,13 @@ async function boot(theme: string): Promise<Booted> {
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   // Pin the logical viewport AND the scale factor so the captured PNG is
-  // exactly 3200×2500. `page.setViewportSize` cannot carry the scale factor —
-  // it pins the page to dpr 1 — so the override goes through CDP.
+  // exactly `VIEWPORT × DEVICE_SCALE`. `page.setViewportSize` cannot carry the
+  // scale factor — it pins the page to dpr 1 — so the override goes through CDP.
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1600,
-    height: 1250,
-    deviceScaleFactor: 2,
+    width: VIEWPORT.width,
+    height: VIEWPORT.height,
+    deviceScaleFactor: DEVICE_SCALE,
     mobile: false,
   });
   // Collapse animations/transitions (same trick as tests/fixtures/electron-app.ts):
