@@ -191,15 +191,32 @@
   border-radius: var(--radius);
   contain: layout paint;
   transition: background 120ms ease;
-  padding: 4px 0 10px;
+  padding: 8px 0 16px;
 }
 
-/* Section spacing comes from negative space, not from a horizontal rule.
- * Non-empty sections get a little breathing room above so each block reads
- * as its own group without needing a graphic separator. Kept tight so the
- * status sections stack compactly. */
-.group-block:not([data-empty='true']) {
-  margin-top: 4px;
+/* Section spacing. The gap between two panels has to be an order above the
+ * gap between two cards inside one — at the former 4px margin the rendered
+ * distance between panels measured 12px, exactly the card gap, so two
+ * status washes read as one continuous surface with a colour change in the
+ * middle. This margin ADDS to `.projects-stack`'s own 8px flex gap, so the
+ * rendered distance is 40px against a 20px card gap. Scoped to a direct child
+ * of the stack: the Done month subgroups are `.group-block`s that carry no
+ * `data-empty` attribute, so an unscoped rule matches them too and their own
+ * 16px would be holding on nothing but source order. */
+.projects-stack > .group-block:not([data-empty='true']):not(:first-child) {
+  margin-top: 32px;
+}
+
+/* An empty lane keeps its thin collapsed line and no panel chrome. It needs a
+ * margin of its own or the 8px stack gap alone leaves it touching the panel
+ * above while 40px opens below it — by proximity it would read as that panel's
+ * footer. Measured from the lane: 24px + the stack's 8px gap puts 32px between
+ * the panel above and the lane, against 40px between the lane and the panel
+ * below — near enough to symmetric to float free. Scoped to a direct child of
+ * the stack for the same reason as the rule above: `SubGroup` happens not to
+ * set `data-empty` today, and nothing enforces that. */
+.projects-stack > .group-block[data-empty='true']:not([data-status='now']) {
+  margin-top: 24px;
 }
 
 /* Status-coloured section wash — the status signal moved off the cards
@@ -210,12 +227,14 @@
  * rounded tint panel. */
 .projects-stack > .group-block:not([data-empty='true']) {
   background: color-mix(in srgb, var(--col-status, var(--border-strong)) 16%, transparent);
-  padding-left: 14px;
-  padding-right: 14px;
-}
-
-.group-block:first-child {
-  margin-top: 0;
+  /* A drawn edge, so the panel ends somewhere definite. Deliberately quieter
+   * than a card's frame — 1px at 45% against the card's 2px at full strength
+   * — so it delimits without turning the pane into nested boxes. The radius
+   * token (not a literal) keeps Console's crisper 8px corners. */
+  border: 1px solid color-mix(in srgb, var(--col-status, var(--border-strong)) 45%, transparent);
+  border-radius: var(--radius-lg);
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .group-block.collapsed {
@@ -301,18 +320,12 @@ body[data-dragging='project'] .group-block.drag-over {
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-strong);
 }
 
 /* A section the filter bar holds open: the header is not a toggle for the
  * duration, so it does not invite a click. */
 .group-header.held-open {
   cursor: default;
-}
-
-/* Subgroup headers are nested and should stay subtle — no dividing rule. */
-.group-block.subgroup > .group-header {
-  border-bottom: none;
 }
 
 /* The trailing slot pushes any header action (NOW gets the "+ New project"
@@ -381,17 +394,12 @@ body[data-dragging='project'] .group-block.drag-over {
   letter-spacing: 0.04em;
 }
 
-/* A subtle bottom border separates each status section so the header
- * scans as a distinct row when the section is collapsed. The rule is
- * quiet enough not to compete with cards when expanded, but gives the
- * collapsed stack enough structure to read at a glance. */
-
 .group-body {
   /* Columns come from the shared `.card-grid` (primitives.css); this only
    * feeds it the pane's min-width (settings.json `cardMinWidth.projects`;
    * the fallback mirrors DEFAULT_CARD_MIN_WIDTH) and the Projects gap. */
   --card-min: var(--card-min-projects, 520px);
-  --card-gap: 12px;
+  --card-gap: 20px;
   padding: 0;
 }
 
@@ -408,7 +416,10 @@ body[data-dragging='project'] .group-block.drag-over {
  * Lighter chrome than the outer status group: no top margin between
  * siblings, a smaller header, and a subtle left rail to read as nested. */
 .group-block.subgroup {
-  margin-top: 0;
+  /* Done's month subgroups separate from each other one order below the
+   * status sections: enough to read as distinct months, never enough to
+   * compete with the panel boundaries around them. */
+  margin-top: 16px;
   padding: 2px 0 8px 12px;
   border-left: 1px solid var(--border);
 }
@@ -460,7 +471,7 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px 10px 16px;
+  padding: 7px 12px 7px 16px;
   /* Full frame in --row-stripe: neutral for a standalone card. A family card
    * (parent/subproject) drops the top/bottom sides and wears only its
    * directional edge(s) in the family colour (status lives on the section's
@@ -847,7 +858,7 @@ body[data-dragging='project'] .row {
   font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
   font-size: var(--text-xl);
-  line-height: 1.25;
+  line-height: 1.15;
   /* Plain text ink, or the family-tinted mix a .row.in-family card sets in
    * --row-title-color. currentColor carries the same tint into the
    * faux-weight stroke/shadow. */
@@ -887,7 +898,7 @@ body[data-dragging='project'] .row {
 .row-head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .row .meta {
@@ -898,6 +909,13 @@ body[data-dragging='project'] .row {
   margin-top: 4px;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Scoped to the card on purpose — `.app-pill` is shared with the Code pane,
+ * the terminal tab strip and the Projects filter bar, none of which are being
+ * compacted. */
+.row .meta .app-pill {
+  line-height: 1.3;
 }
 
 .row .meta-spacer {
@@ -984,6 +1002,25 @@ body[data-dragging='project'] .row {
 
 .row .row-action:active {
   transform: scale(0.96);
+}
+
+/* The card's work-on control takes its height from this padding, not from the
+ * 26px box `.row .row-action` declares: `.action-dropdown-button.row-action.work-on`
+ * (action-dropdown-button.css) resets that box to `width/height: auto` with
+ * `border: none` at a higher specificity, which is why the button measured 23px
+ * — the 15px glyph plus 2×4px padding, no border term. Trimming the padding is
+ * therefore the only thing that shortens the chrome row.
+ *
+ * 2px, not less: the row already floors at 20px on the star's box, so a 1px
+ * padding would buy no height at all and only shrink the hit area — the same
+ * test that keeps the star at 20px. A `done` card renders no star, so there the
+ * floor is the 19px Link button and this control matches it exactly.
+ *
+ * `padding-block`, not the `padding` shorthand: the shorthand would also cut
+ * the 6px horizontal padding this rule has no argument for touching, narrowing
+ * the hit area on an axis that contributes nothing to row height. */
+.row .title-actions .action-dropdown-button.row-action {
+  padding-block: 2px;
 }
 
 /* Verb→colour matches the actions.css tone palette: work = green (go live),
