@@ -87,13 +87,21 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   };
   onCleanup(clearInstallTimers);
 
+  /** Bumped whenever an install is abandoned — a conception switch, or a later
+   *  install starting. Delivery is now a 350 ms–3.4 s await, so a run can still
+   *  be in flight when that happens, and its resolution must not write state
+   *  the run that superseded it is relying on. */
+  let installGeneration = 0;
+
   // Re-read both snapshots on mount and whenever the conception switches.
   createEffect(() => {
     props.conceptionPath();
     // An install belongs to the conception it was fired for. Carrying its
     // pending state across leaves the new conception's button disabled with
     // nothing running for it, and lets the old timers refresh against the new
-    // conception's snapshot.
+    // conception's snapshot. The generation bump is what stops a delivery still
+    // in flight from writing back over this.
+    installGeneration += 1;
     clearInstallTimers();
     setInstalling(false);
     void refreshSync();
@@ -217,6 +225,9 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     // that fails or runs past that ceiling releases the button anyway rather
     // than leaving it dead forever.
     if (installing()) return;
+    installGeneration += 1;
+    const generation = installGeneration;
+    clearInstallTimers();
     setInstalling(true);
     let delivered: boolean;
     try {
@@ -228,9 +239,12 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
         `Could not run \`${SKILLS_INSTALL_CMD}\`: ${(err as Error).message}`,
         'error',
       );
-      setInstalling(false);
+      if (generation === installGeneration) setInstalling(false);
       return;
     }
+    // Abandoned while the delivery was in flight; whatever replaced it owns the
+    // button and the timers now.
+    if (generation !== installGeneration) return;
     // Nothing ran, so there is nothing to re-read; the bridge has already said
     // why.
     if (!delivered) {
@@ -249,12 +263,14 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
           // nudge. Releasing the button here would re-enable it mid-install,
           // and a user who sees no change yet clicks again — a second installer
           // over the same tree, which is the hazard the guard exists for.
-          if (skillsState() === 'synced') setInstalling(false);
+          if (generation === installGeneration && skillsState() === 'synced') {
+            setInstalling(false);
+          }
         });
       }, 4_000),
       setTimeout(() => {
         void refreshSkills();
-        setInstalling(false);
+        if (generation === installGeneration) setInstalling(false);
       }, 12_000),
     ];
   };

@@ -634,7 +634,7 @@ describe('linking the tab an action landed on', () => {
     await vi.advanceTimersByTimeAsync(4000);
     await promise;
     expect(deps.showTerminalBand).not.toHaveBeenCalled();
-    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('slow to open'), 'info');
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never appeared'), 'info');
     vi.useRealTimers();
   });
 

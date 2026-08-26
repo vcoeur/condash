@@ -363,13 +363,18 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         deps.flashToast(`${agent.label}'s tab did not open in time — nothing was sent.`, 'error');
         return null;
       }
-      // The prompt went in on the command line, so the agent is running with it
-      // whether or not its tab reached the renderer in time. Saying "nothing
-      // was sent" would be false, and returning null would drop the link to the
-      // tab that is doing the work. No band flip here: focus never landed, so
-      // bringing the terminal up would show whatever tab was already active and
-      // imply it is the agent's.
-      deps.flashToast(`${agent.label} is running, but its tab was slow to open.`, 'info');
+      // The prompt went in on the command line, so the agent ran with it
+      // whether or not its tab reached the renderer in time — "nothing was
+      // sent" would be false, and an error is the wrong register for something
+      // that worked. Two things reach here: a tab genuinely slow to appear, and
+      // a `--run` one-shot that finished and closed inside the wait, so the
+      // wording covers both. The target still comes back so the caller does not
+      // read the action as failed; the link is not written either way, because
+      // `linkTargetToProject` refuses a tab the roster does not hold, which is
+      // exactly the condition that got us here. No band flip either: focus
+      // never landed, so bringing the terminal up would show whatever tab was
+      // already active and imply it is the agent's.
+      deps.flashToast(`${agent.label} started, but its tab never appeared.`, 'info');
       return { handle, sid };
     }
     // Only for a prompt delivered in argv: nothing further happens for this

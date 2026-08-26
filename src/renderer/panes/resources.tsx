@@ -51,12 +51,7 @@ export function ResourcesView(props: {
   // Memoise the inline file renderer so toggling one directory's expansion
   // doesn't invalidate every file card in the rest of the tree — see
   // notes/01-design.md.
-  // Pane-level, not per-card: on an empty pane a paste now waits for a shell to
-  // spawn and its tab to arrive, and a second card fired inside that window
-  // opens a second shell. A per-card guard cannot see the other cards. The
-  // path, not a flag, so the pending label sits on the card that was clicked —
-  // a whole tree of "…" buttons reads as the pane having hung.
-  const [pastingPath, setPastingPath] = createSignal<string | null>(null);
+
   const renderFile = createMemo(() => (file: ResourceNode) => (
     <ResourceCard
       node={file}
@@ -108,6 +103,18 @@ export function ResourcesView(props: {
     </div>
   );
 }
+
+/** Path of the resource card whose paste is in flight, or null.
+ *
+ *  Module-level rather than owned by the view: on an empty pane a paste waits
+ *  for a shell to spawn and its tab to arrive — up to a few seconds — and the
+ *  view is mounted behind a `Show` on the working pane, so switching pane and
+ *  back inside that window would remount it with a fresh, empty guard and let a
+ *  second click open a second shell. Pane-wide rather than per-card because the
+ *  spawn it waits on is pane-wide; the path rather than a flag so only the card
+ *  that was clicked shows itself busy — a whole tree of "…" buttons reads as
+ *  the pane having hung. */
+const [pastingPath, setPastingPath] = createSignal<string | null>(null);
 
 function ResourceCard(props: {
   node: ResourceNode;
