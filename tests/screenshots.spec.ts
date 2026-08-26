@@ -10,7 +10,7 @@
  * needs a rename, not a plain `cp` (a bare
  * `cp tests/screenshots-out/{light,dark}/*.png docs/assets/screenshots/` writes
  * unsuffixed names and lets the dark pass clobber the light one), plus a
- * halving back to the 1600×1100 the docs ship:
+ * halving back to the logical `VIEWPORT` size the docs ship:
  *
  *   for theme in light dark; do
  *     for f in tests/screenshots-out/$theme/*.png; do
@@ -26,13 +26,22 @@
  * them, `cp` the 2× files instead and accept ~14 MB of assets. The palette pass
  * is what keeps the whole directory at ~2.7 MB.)
  *
- * The window is composed at 1600×1100 logical px and captured at
- * `deviceScaleFactor: 2`, so the raw PNGs are 3200×2200. BOTH halves of that are
+ * The window is composed at 1600×1250 logical px and captured at
+ * `deviceScaleFactor: 2`, so the raw PNGs are 3200×2500. The height is picked
+ * from measurement rather than taste: at the previous 1100 the Projects
+ * stack's visible window ended 10px into the `backlog` panel, so the flagship
+ * `dashboard-overview` shot published a 10px sliver of a rounded panel top
+ * that reads as a rendering glitch rather than as scrolled content. 1250 lands
+ * the fold in the 40px of bare background between `done` and the trailing `?`
+ * lane, so the whole canonical status stack renders with nothing bisected.
+ * `requireNoBisectedLane` below turns that from a lucky number into a checked
+ * invariant — change the fixture and the capture fails loudly instead of
+ * quietly shipping another sliver. BOTH halves of that are
  * load-bearing and neither works alone: Electron's `--force-device-scale-factor`
  * makes the compositor surface 2×, and the CDP device-metrics override makes the
  * page agree (`devicePixelRatio === 2`) so Playwright captures those real pixels.
  * With only the Electron flag — the pre-2026-07 setup — `page.setViewportSize`
- * pinned the page to dpr 1, the capture came out 1600×1100, and xterm rendered
+ * pinned the page to dpr 1, the capture came out at logical size, and xterm rendered
  * its glyphs at HALF size: every committed `terminal-*.png` had a ~6px, unreadable
  * body. Halving the 2× capture on the way into docs/ keeps the display serif's
  * hinting intact too (at a straight 1× capture the crossbar drops out of every `e`).
@@ -101,7 +110,7 @@ const worktreesPath = join(demoRoot, 'worktrees');
 
 /** Logical (CSS-pixel) window the shots are composed against, and the scale the
  *  capture runs at. Every PNG lands at `width*scale × height*scale`. */
-const VIEWPORT = { width: 1600, height: 1100 };
+const VIEWPORT = { width: 1600, height: 1250 };
 const DEVICE_SCALE = 2;
 
 type Theme = 'light' | 'dark';
@@ -328,8 +337,8 @@ async function boot(theme: Theme): Promise<Booted> {
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   // Emulate the viewport rather than resizing the window: the Xvfb display is
-  // smaller than the shot, so a real 1600×1100 window would be clamped.
-  // `deviceScaleFactor: 2` is what makes the capture 3200×2200 — plain
+  // smaller than the shot, so a real `VIEWPORT`-sized window would be clamped.
+  // `deviceScaleFactor: 2` is what doubles the capture — plain
   // `page.setViewportSize` pins it to 1, and the resulting 1× glyph hinting
   // drops the crossbar out of every `e` in the display serif.
   const cdp = await page.context().newCDPSession(page);
@@ -434,6 +443,53 @@ async function requireContent(
       { timeout: 10_000 },
     );
   }
+}
+
+/**
+ * Fail when the Projects stack's fold bisects a status lane.
+ *
+ * The stack always overflows on this fixture, so *a* fold is expected and a
+ * lane cut through its body reads correctly as scrolled content. What reads as
+ * a rendering glitch is a sliver — a few pixels of a lane's rounded top edge
+ * and tint sitting on the bottom border of a published screenshot. So a lane
+ * must be fully visible, fully past the fold, or cut by enough that it is
+ * plainly content continuing.
+ *
+ * Called only for `dashboard-overview`, and deliberately: that shot presents
+ * the pane at `scrollTop: 0` as a complete landing view, so a hairline of a
+ * lane at its bottom edge reads as a defect. The shots where the pane is
+ * visibly scrolled already (`terminal`, `item-*`) are cut at the top too, so a
+ * cut at the bottom reads correctly there as more content below.
+ */
+const MIN_VISIBLE_LANE_PX = 60;
+
+async function requireNoBisectedLane(page: Page, slug: string): Promise<void> {
+  const offender = await page.evaluate((minVisible) => {
+    const stack = document.querySelector('.projects-stack');
+    if (!stack) return null;
+    const fold = stack.getBoundingClientRect().top + stack.clientHeight;
+    for (const lane of Array.from(stack.querySelectorAll(':scope > .group-block'))) {
+      const box = lane.getBoundingClientRect();
+      const visible = Math.min(box.bottom, fold) - box.top;
+      if (visible > 0 && visible < Math.min(minVisible, box.height)) {
+        return {
+          status: lane.getAttribute('data-status'),
+          visible: Math.round(visible),
+          height: Math.round(box.height),
+        };
+      }
+    }
+    return null;
+  }, MIN_VISIBLE_LANE_PX);
+
+  expect(
+    offender,
+    offender
+      ? `${slug}: the fold leaves ${offender.visible}px of the ${offender.height}px '${offender.status}' lane — ` +
+          `a sliver reads as a rendering glitch. Adjust VIEWPORT.height so the fold lands between lanes, ` +
+          `or give the lane at least ${MIN_VISIBLE_LANE_PX}px.`
+      : '',
+  ).toBeNull();
 }
 
 /**
@@ -594,6 +650,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
       items: '.repo-row',
       minItems: 5,
     });
+    await requireNoBisectedLane(page, 'dashboard-overview');
     await shoot(page, theme, 'dashboard-overview');
 
     // 2. activity-rail — a narrow clip of the rail itself. It is the app's
@@ -937,8 +994,9 @@ test('capture every documentation screenshot in light + dark', async () => {
 
   // File-level checks, deliberately coarse: every slug exists in both themes,
   // clears a size floor (the sliver failure signature was 1.7 kB), and — for
-  // the full-window shots — is actually 3200×2200, the guard for the
-  // capture-scale regression that silently halved every xterm glyph. They
+  // the full-window shots — matches `VIEWPORT × DEVICE_SCALE` exactly, the
+  // guard for the capture-scale regression that silently halved every xterm
+  // glyph. Derived from the constants, so raising the viewport moves it. They
   // replace an `expect(true).toBe(true)` that let three broken shots reach
   // docs/, and they catch a missing file (`shoot()` swallows its own errors), a
   // degenerate clip, and a wrong capture scale.
