@@ -42,7 +42,9 @@
  * it wants — is the right fix and is deliberately not taken here: forcing an
  * offset is also how `status-unknown-badge` once lost its subject, so it has to
  * be per-shot intent rather than a blanket reset, which is more than this
- * change should carry. BOTH halves of that are
+ * change should carry.
+ *
+ * On the 2× capture: BOTH halves of it are
  * load-bearing and neither works alone: Electron's `--force-device-scale-factor`
  * makes the compositor surface 2×, and the CDP device-metrics override makes the
  * page agree (`devicePixelRatio === 2`) so Playwright captures those real pixels.
@@ -506,10 +508,13 @@ const foldChecked: string[] = [];
  * earlier version forced `scrollTop = 0` to kill an inherited-offset bug, and
  * that scrolled `status-unknown-badge`'s whole subject — the trailing `?` lane
  * — out of frame, because at 0 that lane sits below the fold. Resetting
- * destroys a scroll position a capture set on purpose. Inheritance is harmless
- * now for the reason the reset was reaching for anyway: every full-window
- * capture is checked, so an offset arriving from an earlier shot is corrected
- * here rather than published.
+ * destroys a scroll position a capture set on purpose.
+ *
+ * What that leaves is narrower than "inheritance is harmless": an inherited
+ * offset can no longer publish a *sliver*, because every full-window capture is
+ * checked, but it still decides the *framing*, and nothing asserts that. See
+ * the known limitation in this file's header — it is a real gap, not a solved
+ * problem.
  */
 async function settleStackFold(page: Page, label: string): Promise<'absent' | 'checked'> {
   const result = await page.evaluate((minVisible) => {
@@ -1178,8 +1183,9 @@ test('capture every documentation screenshot in light + dark', async () => {
   }
   // Exact set, not a count: both earlier rounds of this work failed because a
   // check quietly stopped covering shots, and a floor reproduces that hole.
-  // Every shot that frames the stack must have been reached, in BOTH themes.
-  // Asserted as "none missing" rather than as an exact set: `settings-modal`
+  // Every shot that frames the stack must have been reached, in BOTH themes,
+  // and the keys are theme-qualified so a shot skipped in one theme cannot hide
+  // behind the other. Asserted as "none missing" rather than as an exact set: `settings-modal`
   // also reaches the probe, because its stack stays mounted behind the
   // full-viewport modal, and pinning that would tie this assertion to an
   // unrelated mount detail. What must never happen is a *missing* one — that is

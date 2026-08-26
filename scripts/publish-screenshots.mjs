@@ -19,7 +19,6 @@
  */
 import { execFile } from 'node:child_process';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -68,8 +67,17 @@ async function pngSize(file) {
 async function main() {
   let slugs;
   if (checkOnly) {
-    slugs = await publishedSlugs();
-    if (!slugs.length) throw new Error(`nothing published under ${docsRoot}`);
+    // Union, not either/or. Reading `docs/` is what lets `--check` work on a
+    // plain checkout (the spec wipes the capture dir at the start of each run),
+    // but reading only `docs/` cannot see a slug that was captured and never
+    // published — add a shot, run the spec, forget to publish, and the check
+    // would report every published pair fine while the page ships a broken
+    // image. When captures are present they widen the list; they never narrow it.
+    const captured = await Promise.all(
+      THEMES.map((t) => slugsFor(t).catch(() => [])),
+    );
+    slugs = [...new Set([...(await publishedSlugs()), ...captured.flat()])].sort();
+    if (!slugs.length) throw new Error(`nothing published under ${docsRoot} and no captures to check`);
   } else {
     const [light, dark] = await Promise.all(THEMES.map(slugsFor));
     const onlyLight = light.filter((s) => !dark.includes(s));
