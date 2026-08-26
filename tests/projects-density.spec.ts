@@ -7,8 +7,8 @@ import { bootApp } from './fixtures/electron-app';
  * The Projects pane's spacing contract, as rendered.
  *
  * This exists because the pane's spacing is reasoned about in prose. The rules
- * carry long comments asserting geometry ("32px of bare background", "the row
- * floors at 20px on the star's box"), and those numbers are load-bearing —
+ * carry long comments asserting geometry ("a single dim line", "the row floors
+ * at 20px on the star's box"), and those numbers are load-bearing —
  * they are the argument for why each value is what it is. Prose cannot be
  * wrong loudly: two review rounds found comments that had drifted from the CSS
  * they sat above, including one that stated an asymmetry backwards and one that
@@ -30,10 +30,17 @@ import { bootApp } from './fixtures/electron-app';
  * **Assert rendered distances, never declarations.** A `marginTop` readback is
  * blind to the one failure mode this file exists for — a container gap silently
  * adding to the margin — so every distance below is measured between two
- * rectangles. The one exception is the stack's own `gap`, which is asserted
- * directly *because* it is the shared premise of all those comments: pinning
- * only the sums would let someone rebalance gap against margin and leave every
- * number in the prose false while the suite stayed green.
+ * rectangles. There are exactly two exceptions, the stack's own `gap` and the
+ * section `margin-top`, asserted as declarations *because* they are the shared
+ * premise of all those comments: pinning only the sums would let someone
+ * rebalance gap against margin and leave every number in the prose false while
+ * the suite stayed green.
+ *
+ * **What belongs here.** Every geometry fact a comment actually claims — in
+ * this file or in the rules it covers. That is the completion bar and also the
+ * limit: paddings and sizes no comment argues for are deliberately not pinned,
+ * because a test that freezes every number stops being a contract and starts
+ * being a diff.
  */
 
 /** `now` ×3 (two seeded here plus the `2026-04-26-sample` every `bootApp`
@@ -86,54 +93,90 @@ test.describe('Projects pane spacing', () => {
         const at = (status: string): Element =>
           lanes.find((el) => el.getAttribute('data-status') === status)!;
 
-        // Mirror the CSS selector exactly: `now` is excluded from the empty-lane
-        // margin, so an empty `now` is NOT one of these lanes.
+        // Mirrors the CSS selector, which excludes `now` from the empty-lane
+        // margin. This fixture always has cards in `now`, so the exclusion
+        // never fires here — the mirror keeps the predicate correct, it does
+        // not cover that branch, which stays untested.
         const isEmptyLane = (el: Element): boolean =>
           el.getAttribute('data-empty') === 'true' && el.getAttribute('data-status') !== 'now';
         const firstEmptyIndex = lanes.findIndex(isEmptyLane);
         let lastEmptyIndex = firstEmptyIndex;
-        while (lastEmptyIndex + 1 < lanes.length && isEmptyLane(lanes[lastEmptyIndex + 1])) {
+        while (
+          firstEmptyIndex >= 0 &&
+          lastEmptyIndex + 1 < lanes.length &&
+          isEmptyLane(lanes[lastEmptyIndex + 1])
+        ) {
           lastEmptyIndex += 1;
         }
+        // Every index below is guarded, so a fixture that stopped producing
+        // empty lanes reports through `laneOrder` instead of throwing an opaque
+        // getComputedStyle TypeError before any assertion can run.
+        const firstEmpty = firstEmptyIndex >= 0 ? lanes[firstEmptyIndex] : null;
+        const lastEmpty = firstEmptyIndex >= 0 ? lanes[lastEmptyIndex] : null;
         const above = firstEmptyIndex > 0 ? lanes[firstEmptyIndex - 1] : null;
-        const below = lanes[lastEmptyIndex + 1] ?? null;
+        const below = firstEmptyIndex >= 0 ? (lanes[lastEmptyIndex + 1] ?? null) : null;
 
         const now = at('now');
+        const stackBox = rect(stack);
         const cards = Array.from(now.querySelectorAll('.row'));
-        const card = cards[0];
+        const card = cards[0] ?? null;
         const root = getComputedStyle(document.documentElement);
 
         return {
           laneOrder: lanes.map(
             (el) => `${el.getAttribute('data-status')}${isEmptyLane(el) ? ':empty' : ''}`,
           ),
-          emptyLaneHasNeighbours: above !== null && below !== null,
+          emptyLaneHasPanelAbove: above !== null,
+          emptyLaneHasPanelBelow: below !== null,
           cardCount: cards.length,
           cardGap: cards.length > 1 ? gapBetween(cards[0], cards[1]) : null,
+          // One column at this window width. Side-by-side cards would make
+          // `cardGap` a large negative pointing nowhere near the cause, so the
+          // premise is asserted rather than assumed.
+          cardsShareAColumn:
+            cards.length > 1 ? round(rect(cards[0]).left) === round(rect(cards[1]).left) : null,
           sectionGap: gapBetween(now, at('review')),
-          aboveEmptyLane: above ? gapBetween(above, lanes[firstEmptyIndex]) : null,
-          belowEmptyLane: below ? gapBetween(lanes[lastEmptyIndex], below) : null,
+          // The `:not(:first-child)` half of the section-margin selector: the
+          // top panel sits flush to the stack, carrying no margin of its own.
+          topPanelOffset: lanes.length ? round(rect(lanes[0]).top - stackBox.top) : null,
+          aboveEmptyLane: above && firstEmpty ? gapBetween(above, firstEmpty) : null,
+          belowEmptyLane: below && lastEmpty ? gapBetween(lastEmpty, below) : null,
+          // Both surrounding gaps are immune to the lane's own height, so the
+          // "single dim line" claim needs its own assertion.
+          emptyLaneHeight: firstEmpty ? round(rect(firstEmpty).height) : null,
+          betweenEmptyLanes:
+            lastEmptyIndex > firstEmptyIndex && firstEmptyIndex >= 0
+              ? gapBetween(lanes[firstEmptyIndex], lanes[firstEmptyIndex + 1])
+              : null,
           // Asserted directly, not inferred: this is the premise every spacing
           // comment in the pane is written against.
           stackRowGap: getComputedStyle(stack).rowGap,
           sectionMarginTop: getComputedStyle(at('review')).marginTop,
-          emptyLaneBorder: getComputedStyle(lanes[firstEmptyIndex]).borderTopWidth,
-          emptyLaneBackground: getComputedStyle(lanes[firstEmptyIndex]).backgroundColor,
+          emptyLaneBorder: firstEmpty ? getComputedStyle(firstEmpty).borderTopWidth : null,
+          emptyLaneBackground: firstEmpty ? getComputedStyle(firstEmpty).backgroundColor : null,
           panelBorderWidth: getComputedStyle(now).borderTopWidth,
+          // The panel edge is justified relative to the card frame, so assert
+          // the relationship rather than only the absolute.
+          cardBorderWidth: card ? getComputedStyle(card).borderTopWidth : null,
           panelRadius: getComputedStyle(now).borderTopLeftRadius,
           radiusLgToken: root.getPropertyValue('--radius-lg').trim(),
           headerRule: getComputedStyle(now.querySelector('.group-header')!).borderBottomWidth,
-          headRowHeight: round(rect(card.querySelector('.head-row')!).height),
-          starBox: round(rect(card.querySelector('.star-toggle')!).height),
-          workOnHeight: round(
-            rect(card.querySelector('.title-actions .action-dropdown-button.row-action')!).height,
-          ),
+          headRowHeight: card ? round(rect(card.querySelector('.head-row')!).height) : null,
+          starBox: card ? round(rect(card.querySelector('.star-toggle')!).height) : null,
+          workOnHeight: card
+            ? round(
+                rect(card.querySelector('.title-actions .action-dropdown-button.row-action')!)
+                  .height,
+              )
+            : null,
         };
       });
 
       expect(geometry.laneOrder).toEqual(['now', 'review', 'later:empty', 'backlog:empty', 'done']);
-      expect(geometry.emptyLaneHasNeighbours).toBe(true);
+      expect(geometry.emptyLaneHasPanelAbove).toBe(true);
+      expect(geometry.emptyLaneHasPanelBelow).toBe(true);
       expect(geometry.cardCount).toBe(3);
+      expect(geometry.cardsShareAColumn).toBe(true);
 
       // The premise, pinned on its own so the sums below cannot be rebalanced
       // against it while every comment naming 8px / 32px quietly goes false.
@@ -150,6 +193,11 @@ test.describe('Projects pane spacing', () => {
       // footer of the one above it: near-symmetric, never flush.
       expect(geometry.aboveEmptyLane).toBe(32);
       expect(geometry.belowEmptyLane).toBe(40);
+      expect(geometry.betweenEmptyLanes).toBe(32);
+      // "Empty sections collapse to a single dim line" — a line, not a panel.
+      expect(geometry.emptyLaneHeight).toBe(25);
+      // The first panel carries no margin of its own.
+      expect(geometry.topPanelOffset).toBe(0);
       expect(geometry.emptyLaneBorder).toBe('0px');
       expect(geometry.emptyLaneBackground).toBe('rgba(0, 0, 0, 0)');
 
@@ -157,6 +205,10 @@ test.describe('Projects pane spacing', () => {
       // against the live token, not a literal: the point of `var(--radius-lg)`
       // is that a re-tune reaches the panel, so a re-tune must not fail this.
       expect(geometry.panelBorderWidth).toBe('1px');
+      expect(geometry.cardBorderWidth).toBe('2px');
+      expect(Number.parseFloat(geometry.panelBorderWidth)).toBeLessThan(
+        Number.parseFloat(geometry.cardBorderWidth!),
+      );
       expect(geometry.panelRadius).toBe(geometry.radiusLgToken);
       // Redundant once the panel has an edge — removing it is deliberate.
       expect(geometry.headerRule).toBe('0px');
@@ -188,9 +240,18 @@ test.describe('Projects pane spacing', () => {
       const subgroups = await page.evaluate(() => {
         const round = (n: number): number => Math.round(n);
         const rect = (el: Element): DOMRect => el.getBoundingClientRect();
-        const blocks = Array.from(document.querySelectorAll('.group-block.subgroup'));
+        const section = document.querySelector(
+          '.projects-stack > .group-block[data-status="done"]',
+        )!;
+        const header = section.querySelector(':scope > .group-header')!;
+        const blocks = Array.from(section.querySelectorAll('.group-block.subgroup'));
         return {
           labels: blocks.map((el) => el.querySelector('.name')?.textContent ?? ''),
+          // `.group-block.subgroup:first-child { margin-top: 0 }` — deleting it
+          // is otherwise invisible to every gap measured below.
+          firstOffsetFromHeader: blocks.length
+            ? round(rect(blocks[0]).top - rect(header).bottom)
+            : null,
           // Rendered distances, so a gap added to `.group-body.subgroups` cannot
           // hide behind an unchanged `margin-top`.
           gaps: blocks.slice(1).map((el, i) => round(rect(el).top - rect(blocks[i]).bottom)),
@@ -202,6 +263,7 @@ test.describe('Projects pane spacing', () => {
       // A subgroup carries no `data-empty`, so only the `.projects-stack > `
       // scope on the section margin keeps it off 32px — that is what this pins.
       expect(subgroups.labels).toEqual(['2026-07', '2026-06']);
+      expect(subgroups.firstOffsetFromHeader).toBe(0);
       expect(subgroups.gaps).toEqual([16]);
     } finally {
       await booted.cleanup();
