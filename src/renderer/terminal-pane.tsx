@@ -69,10 +69,12 @@ export interface TerminalPaneHandle {
    *  written, so a caller can stop rather than deliver its text to whatever
    *  happens to be in focus, or into a row whose pty has already gone. */
   typeInto(sid: string, text: string): boolean;
-  /** True when there is an active session in the active column. */
-  hasActive(): boolean;
-  /** Return the active session ID for the active column, or null. */
-  getActiveSessionId(): string | null;
+  /** The active column's active session id, but only while that tab is still
+   *  live — null when there is none, or when the one there has exited. A row
+   *  whose process died abnormally is kept on screen deliberately, so "there is
+   *  an active tab" and "there is a tab that can be written to" are different
+   *  questions; every caller here wants the second. */
+  activeLiveSessionId(): string | null;
   /** Display name of session `sid` — the same string the tab strip shows —
    *  or null when no tab with that id is in the roster. A tab spawned moments
    *  ago only joins on the next reconcile pass, so null is the signal a caller

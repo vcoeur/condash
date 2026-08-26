@@ -10,8 +10,7 @@ type FakeHandle = {
   spawnUserShell: ReturnType<typeof vi.fn>;
   moveActiveTab: ReturnType<typeof vi.fn>;
   typeInto: ReturnType<typeof vi.fn>;
-  hasActive: ReturnType<typeof vi.fn>;
-  getActiveSessionId: ReturnType<typeof vi.fn>;
+  activeLiveSessionId: ReturnType<typeof vi.fn>;
   sessionLabel: ReturnType<typeof vi.fn>;
   /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
    *  is a tab the renderer has not inserted yet. */
@@ -39,6 +38,7 @@ function makeFakeHandle(): FakeHandle {
   // which is the distinction the bridge turns on, so the double has to make it
   // observable rather than collapse the two into one assignment.
   let activeId: string | null = 'session-1';
+  let spawnCount = 0;
   const handle: FakeHandle = {
     spawn: vi.fn().mockResolvedValue(''),
     switchTo: vi.fn((_side: string, id?: string) => {
@@ -48,8 +48,12 @@ function makeFakeHandle(): FakeHandle {
       if (id && handle.labels[id] !== undefined) activeId = id;
     }),
     spawnUserShell: vi.fn(async (agent?: Agent | null, _side?: string, titleOverride?: string) => {
-      handle.labels[SPAWNED_SID] = titleOverride ?? agent?.label ?? 'shell';
-      return SPAWNED_SID;
+      // Distinct id per spawn, as the real one gives: a test about two spawns
+      // racing cannot say anything if both answer with the same tab.
+      const sid = spawnCount === 0 ? SPAWNED_SID : `${SPAWNED_SID}-${spawnCount + 1}`;
+      spawnCount += 1;
+      handle.labels[sid] = titleOverride ?? agent?.label ?? 'shell';
+      return sid;
     }),
     moveActiveTab: vi.fn(),
     // Named delivery, modelled as the controller's is: it writes to the sid it
@@ -61,8 +65,9 @@ function makeFakeHandle(): FakeHandle {
       handle.typedInto.push({ sid, text });
       return true;
     }),
-    hasActive: vi.fn().mockReturnValue(true),
-    getActiveSessionId: vi.fn(() => activeId),
+    // Live means present and not exited — the same distinction the controller
+    // draws, and the reason an abnormally-dead tab must not block a spawn.
+    activeLiveSessionId: vi.fn(() => (activeId && !handle.exited.has(activeId) ? activeId : null)),
     sessionLabel: vi.fn((sid: string) => handle.labels[sid] ?? null),
     labels: { 'session-1': 'conception · main' },
     exited: new Set<string>(),
@@ -141,7 +146,7 @@ describe('handleWorkOn', () => {
 
   it('opens the pane and spawns a shell when none is active', async () => {
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     const deps = makeDeps(handle);
     const bridge = createTerminalBridge(deps);
     await bridge.handleWorkOn(sampleProject);
@@ -188,7 +193,7 @@ describe('handleProjectAction', () => {
 
   it('shows an error toast when spawning a shell fails', async () => {
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     handle.spawnUserShell.mockRejectedValue(new Error('No shell'));
     const deps = makeDeps(handle);
     const bridge = createTerminalBridge(deps);
@@ -487,7 +492,7 @@ describe('linking the tab an action landed on', () => {
 
   it('names a shell it had to spawn exactly as the tab strip does', async () => {
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleWorkOn(sampleProject);
     expect(linkedTabsOf(sampleProject.slug)).toEqual([{ sid: SPAWNED_SID, label: 'shell' }]);
@@ -499,7 +504,7 @@ describe('linking the tab an action landed on', () => {
     // instead, and says so.
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     handle.spawnUserShell.mockResolvedValue('ghost');
     const deps = makeDeps(handle);
     const bridge = createTerminalBridge(deps);
@@ -617,7 +622,7 @@ describe('linking the tab an action landed on', () => {
   it('types into the shell it spawned when the pane was empty', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     const bridge = createTerminalBridge(makeDeps(handle));
     const promise = bridge.handleWorkOn(sampleProject);
     await vi.advanceTimersByTimeAsync(400);
@@ -646,6 +651,22 @@ describe('linking the tab an action landed on', () => {
     vi.useRealTimers();
   });
 
+  it('opens a shell when the only tab there has died', async () => {
+    // An abnormal exit KEEPS its row and stays the active id, so asking whether
+    // a tab is active answers yes for a dead pty. The action would then hand its
+    // text to a session main drops it for, and never open the shell it needed.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.exited.add('session-1');
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.handleWorkOn(sampleProject);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalled();
+    expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'work on 2026-05-17-foo-bar' }]);
+    vi.useRealTimers();
+  });
+
   it('never links a new-project action — no project exists to link to', async () => {
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle));
@@ -655,24 +676,37 @@ describe('linking the tab an action landed on', () => {
 });
 
 describe('two actions racing an empty pane', () => {
-  it('spawns one shell, not one each', async () => {
-    // `hasActive()` cannot see a tab that is spawned but not yet reconciled,
-    // and waiting for the tab properly stretched that blind window to seconds —
-    // long enough for a second click on a different surface to land inside it.
+  it('gives each its own tab rather than interleaving them in one', async () => {
+    // Deduplicating the in-flight spawn looks tidier and is wrong: two actions
+    // sharing a tab write across each other's 50 ms gap before the Enter, and
+    // the shell runs the two commands concatenated. A second tab is a surprise;
+    // a concatenated command is a wrong command.
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     const bridge = createTerminalBridge(makeDeps(handle));
-    const first = bridge.handlePasteToTerm('/one');
-    const second = bridge.handlePasteToTerm('/two');
-    await vi.advanceTimersByTimeAsync(400);
+    const first = bridge.handleProjectAction(sampleProject, {
+      label: 'A',
+      template: 'run a',
+      submit: true,
+    });
+    const second = bridge.handleProjectAction(sampleProject, {
+      label: 'B',
+      template: 'run b',
+      submit: true,
+    });
+    await vi.advanceTimersByTimeAsync(500);
     await Promise.all([first, second]);
-    expect(handle.spawnUserShell).toHaveBeenCalledTimes(1);
-    // Both pastes land, in the one tab that opened.
-    expect(handle.typedInto).toEqual([
-      { sid: SPAWNED_SID, text: '/one' },
-      { sid: SPAWNED_SID, text: '/two' },
-    ]);
+    expect(handle.spawnUserShell).toHaveBeenCalledTimes(2);
+    // Each command, and its Enter, alone in its own tab.
+    const tabs = new Set(handle.typedInto.map((call) => call.sid));
+    expect(tabs.size).toBe(2);
+    for (const sid of tabs) {
+      expect(handle.typedInto.filter((call) => call.sid === sid).map((c) => c.text)).toEqual([
+        expect.stringMatching(/^run [ab]$/),
+        '\r',
+      ]);
+    }
     vi.useRealTimers();
   });
 });
@@ -791,7 +825,7 @@ describe('handlePasteToTerm', () => {
   it('pastes into the shell it spawned when the pane was empty', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     const bridge = createTerminalBridge(makeDeps(handle));
     const promise = bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
     await vi.advanceTimersByTimeAsync(400);
@@ -815,7 +849,7 @@ describe('handlePasteToTerm', () => {
   it('pastes nothing and says so when the spawned tab never joins the roster', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    handle.hasActive.mockReturnValue(false);
+    handle.activeLiveSessionId.mockReturnValue(null);
     handle.spawnUserShell.mockResolvedValue(NEVER_ARRIVES_SID);
     const deps = makeDeps(handle);
     const bridge = createTerminalBridge(deps);

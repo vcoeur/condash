@@ -752,7 +752,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   });
 
   // ---- link-store focus mirror ----
-  // The handle exposes only imperative `hasActive()` / `getActiveSessionId()`
+  // The handle exposes only the imperative `activeLiveSessionId()`
   // and is a plain `let` in main.tsx, so the reactive source of truth for
   // "which tab is focused" is this controller's own signals. One effect
   // mirrors the focused session (id + display name) into the link store;
@@ -1417,8 +1417,17 @@ export function createTerminalController(props: TerminalPaneProps) {
       if (activeIdIn(activeColumn()) === sid) queueMicrotask(focusActive);
       return true;
     },
-    hasActive: () => Boolean(activeIdIn(activeColumn())),
-    getActiveSessionId: () => activeIdIn(activeColumn()),
+    activeLiveSessionId: () => {
+      // "Is there a tab to write to" is a liveness question, not an activity
+      // one. An abnormal exit deliberately KEEPS its row and stays the active
+      // id (see onTermExit), so asking whether a tab is active answers yes for
+      // a dead pty — and every caller then hands its text to a session main
+      // will drop it for, instead of opening the shell it needed.
+      const id = activeIdIn(activeColumn());
+      if (!id) return null;
+      const tab = tabs().find((t) => t.id === id);
+      return tab && tab.exited === undefined ? id : null;
+    },
     sessionLabel: (sid) => {
       const tab = tabs().find((t) => t.id === sid);
       return tab ? displayName(tab) : null;

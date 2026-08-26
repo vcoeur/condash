@@ -214,8 +214,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  the row, an abnormal one keeps it with a dead pty — so the toast says "no
    *  longer live" rather than "closed", which is only half of it. The two
    *  writes report separately, because a command typed but never submitted is a
-   *  different thing to explain than one that never arrived. Returns whether
-   *  the whole delivery landed. */
+   *  different thing to explain than one that never arrived.
+   *
+   *  Returns whether the **text** reached the tab, which is the question every
+   *  caller actually asks: it is what decides whether the tab is working on the
+   *  project and so whether to link it. A refused Enter is reported to the user
+   *  but does not retract that — the prompt is sitting in that tab either way. */
   const sendToTarget = async (
     target: ActionTarget,
     text: string,
@@ -235,22 +239,19 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         'That terminal tab is no longer live — the command was not submitted.',
         'error',
       );
-      return false;
     }
     return true;
   };
 
-  /** The empty-pane spawn currently in flight, if any. `hasActive()` cannot see
-   *  a tab that has been spawned but not yet reconciled, so two callers landing
-   *  in that window both take the spawn branch and two shells open. That window
-   *  used to be milliseconds; waiting for the tab properly stretched it to as
-   *  much as 3.35 s, which turns a rare double-click into a routine one — and
-   *  the per-surface busy flags cannot help, since the two callers are usually
-   *  different surfaces (a second resource card, the Install button). The
-   *  second caller joins the first spawn instead of starting its own. */
-  let spawnInFlight: Promise<ActionTarget | null> | null = null;
-
-  /** Shared preamble: ensure pane is open, spawn a shell if none active. */
+  /** Shared preamble: ensure the pane is open, and hand back a tab that can be
+   *  written to — spawning a shell when there is none live.
+   *
+   *  Deliberately NOT deduplicated across concurrent callers. Two callers
+   *  arriving while a spawn is in flight do each open a shell, and that looked
+   *  like a defect worth fixing until the fix was tried: sharing one tab makes
+   *  two submit-bearing actions interleave on the same prompt line, so the
+   *  shell runs the two commands concatenated. A second tab is a surprise; a
+   *  concatenated command is a wrong command. */
   const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -259,41 +260,27 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const handle = deps.terminalHandle();
     if (!handle) return null;
     deps.ensureTerminalOpen();
-    if (spawnInFlight) return spawnInFlight;
-    if (!handle.hasActive()) {
-      const spawn = (async (): Promise<ActionTarget | null> => {
-        try {
-          // Keep the id the spawn returns. A fresh tab only becomes the active
-          // one on the next reconcile pass, so reading the active id back off
-          // the handle here can still answer with the tab that just left.
-          const sid = await handle.spawnUserShell(null, 'my');
-          // Both steps, the same pair `spawnAgentTab` takes: the settle is for
-          // the shell to finish init and start accepting input (typing during it
-          // drops leading characters); the focus step is what puts the tab in
-          // front of the user and confirms the roster holds it.
-          await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-          if (!(await focusSpawnedTab(handle, sid))) {
-            deps.flashToast(
-              'The new terminal tab did not open in time — nothing was sent.',
-              'error',
-            );
-            return null;
-          }
-          return { handle, sid };
-        } catch (err) {
-          deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
-          return null;
-        }
-      })();
-      spawnInFlight = spawn;
-      try {
-        return await spawn;
-      } finally {
-        spawnInFlight = null;
+    const live = handle.activeLiveSessionId();
+    if (live) return { handle, sid: live };
+    try {
+      // Keep the id the spawn returns. A fresh tab only becomes the active
+      // one on the next reconcile pass, so reading the active id back off
+      // the handle here can still answer with the tab that just left.
+      const sid = await handle.spawnUserShell(null, 'my');
+      // Both steps, the same pair `spawnAgentTab` takes: the settle is for
+      // the shell to finish init and start accepting input (typing during it
+      // drops leading characters); the focus step is what puts the tab in
+      // front of the user and confirms the roster holds it.
+      await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+      if (!(await focusSpawnedTab(handle, sid))) {
+        deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
+        return null;
       }
+      return { handle, sid };
+    } catch (err) {
+      deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
+      return null;
     }
-    const sid = handle.getActiveSessionId();
-    return sid ? { handle, sid } : null;
   };
 
   /** Spawn a fresh tab running `agent`'s command and settle. Two-step settle:
@@ -370,7 +357,8 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const target = await spawnAgentTab(agent, title, taskContext);
     if (!target) return null;
     // A tab that took none of the prompt is not a tab the action landed in —
-    // callers use this return to link the project to it.
+    // callers use this return to link the project to it. A prompt that was
+    // typed but not submitted still landed there, and still counts.
     if (!(await sendToTarget(target, text, submit))) return null;
     return target;
   };
@@ -505,7 +493,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // Nothing to paste into stays nothing pasted, as before.
     const handle = deps.terminalHandle();
     if (!handle) return;
-    const sid = handle.getActiveSessionId();
+    const sid = handle.activeLiveSessionId();
     if (!sid) return;
     await sendToTarget({ handle, sid }, latest, false);
   };
@@ -525,11 +513,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // instead dropped the path outright — the spawn resolves as soon as main
     // has the pty, and there is no tab to write to until a reconcile pass
     // later.
-    // `ensureTermAndShell` toasts for the failures it can hit here — a spawn
+    // `ensureTermAndShell` toasts for every failure it can hit here — a spawn
     // that threw, a tab that never opened — and the guard above owns the
-    // missing handle. Its remaining null (an active column that reports a tab
-    // but hands back no id) is unreachable: `hasActive` and
-    // `getActiveSessionId` are the same read, taken with nothing between them.
+    // missing handle, so a null needs no second explanation.
     const target = await ensureTermAndShell();
     if (!target) return;
     await sendToTarget(target, text, false);
