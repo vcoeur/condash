@@ -53,10 +53,17 @@ export function ResourcesView(props: {
   // notes/01-design.md.
   // Pane-level, not per-card: on an empty pane a paste now waits for a shell to
   // spawn and its tab to arrive, and a second card fired inside that window
-  // opens a second shell. A per-card guard cannot see the other cards.
-  const [pasting, setPasting] = createSignal(false);
+  // opens a second shell. A per-card guard cannot see the other cards. The
+  // path, not a flag, so the pending label sits on the card that was clicked —
+  // a whole tree of "…" buttons reads as the pane having hung.
+  const [pastingPath, setPastingPath] = createSignal<string | null>(null);
   const renderFile = createMemo(() => (file: ResourceNode) => (
-    <ResourceCard node={file} actions={props.actions} pasting={pasting} setPasting={setPasting} />
+    <ResourceCard
+      node={file}
+      actions={props.actions}
+      pastingPath={pastingPath}
+      setPastingPath={setPastingPath}
+    />
   ));
 
   return (
@@ -105,21 +112,22 @@ export function ResourcesView(props: {
 function ResourceCard(props: {
   node: ResourceNode;
   actions: ResourcesViewActions;
-  /** Shared across the pane: a paste in flight blocks every card, not just
-   *  this one, because the spawn it may be waiting on is pane-wide. */
-  pasting: () => boolean;
-  setPasting: (value: boolean) => void;
+  /** Path of the card whose paste is in flight, shared across the pane: any
+   *  paste blocks every card, because the spawn it may be waiting on is
+   *  pane-wide, but only the clicked card shows itself as pending. */
+  pastingPath: () => string | null;
+  setPastingPath: (value: string | null) => void;
 }) {
   const cat = (): ResourceCategory => props.node.category ?? 'other';
-  const pasting = props.pasting;
-  const setPasting = props.setPasting;
+  const anyPasting = (): boolean => props.pastingPath() !== null;
+  const thisPasting = (): boolean => props.pastingPath() === props.node.path;
   const pasteToTerm = async (): Promise<void> => {
-    if (pasting()) return;
-    setPasting(true);
+    if (anyPasting()) return;
+    props.setPastingPath(props.node.path);
     try {
       await props.actions.pasteToTerm(props.node.path);
     } finally {
-      setPasting(false);
+      props.setPastingPath(null);
     }
   };
 
@@ -225,7 +233,7 @@ function ResourceCard(props: {
         <button
           type="button"
           class="resources-card-action"
-          disabled={pasting()}
+          disabled={anyPasting()}
           onClick={(e) => {
             e.stopPropagation();
             void pasteToTerm();
@@ -236,7 +244,7 @@ function ResourceCard(props: {
           {/* On an empty pane the paste now waits for a shell to spawn and its
               tab to arrive — up to a few seconds. Without a pending label the
               button just looks dead. */}
-          {pasting() ? '…' : '→ term'}
+          {thisPasting() ? '…' : '→ term'}
         </button>
       </div>
     </article>

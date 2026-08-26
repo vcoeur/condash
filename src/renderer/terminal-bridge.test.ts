@@ -789,6 +789,26 @@ describe('runShellCommand', () => {
     vi.useRealTimers();
   });
 
+  it('does not re-assert focus on a tab that is already active', async () => {
+    // `switchTo` has no already-active guard and allocates a fresh signal
+    // object, so a redundant call chains a whole visibility pass against a tab
+    // reconcile has just queued a repaint for. The spawn path has already
+    // activated this sid a microtask earlier.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(500);
+    await promise;
+    // Once, from focusSpawnedTab — not again for either write.
+    expect(handle.switchTo).toHaveBeenCalledTimes(1);
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: 'condash skills install' },
+      { sid: SPAWNED_SID, text: '\r' },
+    ]);
+    vi.useRealTimers();
+  });
+
   it('brings the terminal body up, not just the tab', async () => {
     // `switchTo` sets the active id and column; it does not flip the bottom
     // band. With the Dashboard body showing, every xterm is display:none, so

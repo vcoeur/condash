@@ -233,7 +233,16 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // correctly to a tab the user cannot see — which, now that the surfaces
     // wait seconds and disable themselves while they do, reads as a hang.
     deps.showTerminalBand();
-    target.handle.switchTo('my', target.sid);
+    // Only when it is not already the active tab. `switchTo` has no
+    // already-active guard, and `setActiveIn` allocates a fresh signal object,
+    // so a redundant call refires the focus effect and chains a whole
+    // visibility pass — against a tab reconcile has just queued a repaint for.
+    // Both paths in here usually arrive already active: `focusSpawnedTab`
+    // switched a microtask ago, and the reuse path returns the active sid by
+    // construction.
+    if (target.handle.activeLiveSessionId() !== target.sid) {
+      target.handle.switchTo('my', target.sid);
+    }
     if (!target.handle.typeInto(target.sid, text)) {
       deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
       return { delivered: false, submitted: false };
@@ -262,10 +271,13 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  shell runs the two commands concatenated. A second tab is a surprise; a
    *  concatenated command is a wrong command.
    *
-   *  Racing is held off at the surfaces instead, where the intent is known —
-   *  the Resources pane blocks every card while a paste is in flight, and the
-   *  Install button blocks itself — rather than here, where two callers wanting
-   *  one tab and two callers wanting two are indistinguishable. */
+   *  Racing is held off at the surfaces instead, where the intent is known,
+   *  rather than here, where two callers wanting one tab and two callers
+   *  wanting two are indistinguishable. The Resources pane blocks every card
+   *  while a paste is in flight and the Install button blocks itself; the
+   *  Work-on and project-action buttons do not, so a double-click there does
+   *  open two tabs. Pre-existing, and named here so the absence reads as known
+   *  rather than as covered. */
   const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -511,8 +523,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!sid) {
       // Every other surface here explains a refused delivery; this one used to
       // drop in silence, which on a dead-but-still-shown tab looks like the
-      // shortcut is broken.
-      deps.flashToast('No live terminal tab to paste into.', 'error');
+      // shortcut is broken. Scoped to the active column, which is what
+      // `activeLiveSessionId` answers about — the other column may well hold a
+      // live shell, and claiming there is none would be wrong.
+      deps.flashToast('The active terminal tab is not live — nothing was pasted.', 'error');
       return;
     }
     await sendToTarget({ handle, sid }, latest, false);
