@@ -210,10 +210,12 @@
 /* An empty lane keeps its thin collapsed line and no panel chrome. It needs a
  * margin of its own or the 8px stack gap alone leaves it touching the panel
  * above while 40px opens below it — by proximity it would read as that panel's
- * footer. 24px + the stack gap puts it 32px below and 40px above, near enough
- * to symmetric to float free. `:not(:first-child)` because this selector
- * outranks the `.group-block:first-child` reset below. */
-.group-block[data-empty='true']:not([data-status='now']):not(:first-child) {
+ * footer. Measured from the lane: 24px + the stack's 8px gap puts 32px between
+ * the panel above and the lane, against 40px between the lane and the panel
+ * below — near enough to symmetric to float free. Scoped to a direct child of
+ * the stack for the same reason as the rule above: `SubGroup` happens not to
+ * set `data-empty` today, and nothing enforces that. */
+.projects-stack > .group-block[data-empty='true']:not([data-status='now']) {
   margin-top: 24px;
 }
 
@@ -233,10 +235,6 @@
   border-radius: var(--radius-lg);
   padding-left: 16px;
   padding-right: 16px;
-}
-
-.group-block:first-child {
-  margin-top: 0;
 }
 
 .group-block.collapsed {
@@ -395,11 +393,6 @@ body[data-dragging='project'] .group-block.drag-over {
   font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
-
-/* A subtle bottom border separates each status section so the header
- * scans as a distinct row when the section is collapsed. The rule is
- * quiet enough not to compete with cards when expanded, but gives the
- * collapsed stack enough structure to read at a glance. */
 
 .group-body {
   /* Columns come from the shared `.card-grid` (primitives.css); this only
@@ -1008,9 +1001,13 @@ body[data-dragging='project'] .row {
  * 2px, not less: the row already floors at 20px on the star's box, so a 1px
  * padding would buy no height at all and only shrink the hit area — the same
  * test that keeps the star at 20px. A `done` card renders no star, so there the
- * floor is the 19px Link button and this control matches it exactly. */
+ * floor is the 19px Link button and this control matches it exactly.
+ *
+ * `padding-block`, not the `padding` shorthand: the shorthand would also cut
+ * the 6px horizontal padding this rule has no argument for touching, narrowing
+ * the hit area on an axis that contributes nothing to row height. */
 .row .title-actions .action-dropdown-button.row-action {
-  padding: 2px 4px;
+  padding-block: 2px;
 }
 
 /* Verb→colour matches the actions.css tone palette: work = green (go live),
