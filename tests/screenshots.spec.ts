@@ -34,9 +34,10 @@
  * that reads as a rendering glitch rather than as scrolled content. 1250 lands
  * the fold in the 40px of bare background between `done` and the trailing `?`
  * lane, so the whole canonical status stack renders with nothing bisected.
- * `requireNoBisectedLane` below turns that from a lucky number into a checked
- * invariant — change the fixture and the capture fails loudly instead of
- * quietly shipping another sliver. BOTH halves of that are
+ * `settleStackFold` below turns that from a lucky number into a checked
+ * invariant — it runs on every capture, places the stack's scroll offset
+ * deterministically, and records any lane a clip edge has sliced to a hairline
+ * for the file-level assertions to fail on. BOTH halves of that are
  * load-bearing and neither works alone: Electron's `--force-device-scale-factor`
  * makes the compositor surface 2×, and the CDP device-metrics override makes the
  * page agree (`devicePixelRatio === 2`) so Playwright captures those real pixels.
@@ -444,123 +445,133 @@ async function requireContent(
   }
 }
 
-/** A lane cut this thin by the stack's fold reads as a rendering artefact
- *  rather than as content continuing below. */
+/** A lane cut this thin by a clip edge of the Projects stack reads as a
+ *  rendering artefact rather than as content continuing past it. */
 const MIN_VISIBLE_LANE_PX = 60;
 
 /**
- * Fail when the Projects stack's fold slices a status lane to a hairline.
+ * Every fold offence seen during a sweep, and how many times the stack was
+ * actually inspected. Both are asserted at the end of the test rather than at
+ * the capture site, because `shoot()` swallows its own errors by design.
+ *
+ * The counter is the guard against the probe silently ceasing to run: rename
+ * `.projects-stack` or wrap the lanes and `foldChecks` falls to zero, which
+ * fails as loudly as an offence would.
+ */
+const foldOffences: string[] = [];
+let foldChecks = 0;
+
+/**
+ * Place the Projects stack's scroll offset, then report any lane a clip edge
+ * has sliced to a hairline.
  *
  * The stack overflows on this fixture, so *a* fold is expected, and a lane cut
  * through its body reads correctly as scrolled content. What reads as a defect
- * is a sliver — a few pixels of a lane's rounded top edge and tint sitting on
- * the bottom border of a published screenshot. So a lane must be fully visible,
- * fully past the fold, or cut by enough to be plainly content continuing. Both
- * ends count: a lane whose closing border is sliced off is the mirror image of
- * the same defect, and that border exists precisely so the panel "ends
- * somewhere definite" (`projects-pane.css`).
+ * is a sliver — a few pixels of a lane's rounded edge and tint pinned against a
+ * clip edge of a published screenshot. The contract is therefore: **a lane is
+ * whole, absent, or cut with at least `MIN_VISIBLE_LANE_PX` on both sides of
+ * the cut.** For a lane shorter than twice that — every collapsed lane — the
+ * contract reduces to whole-or-absent, which is deliberate: there is no amount
+ * of a 51px panel that reads as "continues below".
  *
- * Run at every capture that frames the Projects stack. An earlier version ran
- * only on `dashboard-overview`, on the reasoning that an already-scrolled pane
- * reads fine cut at either end — which was wrong, and four published PNGs
- * (`terminal-*`, `spawn-dropdown-*`) carried a 16px band of a lane top to prove
- * it. Where the scroll offset is not itself the subject, call `alignStackFold()`
- * first so the fold is placed rather than inherited.
+ * Three cases, not four. At the bottom clip edge both a slivered lane top and a
+ * sliced-off closing border count — that border exists precisely so the panel
+ * "ends somewhere definite" (`projects-pane.css`). At the top clip edge only a
+ * slivered lane *bottom* counts: a stray band of the previous lane's tail reads
+ * as an artefact, whereas a lane whose opening border is above the clip edge is
+ * simply what scrolled content looks like, and treating it as a defect makes
+ * the constraint unsatisfiable — measured, no scroll offset then clears the
+ * terminal shot at all.
+ *
+ * **Scroll is reset to 0 first, always.** The offset is otherwise inherited
+ * from whatever the capture sequence happened to do earlier, which made shots
+ * depend on each other's order: an earlier version of this routine scrolled the
+ * stack for `terminal` and the offset leaked into `item-fuzzy-search` and
+ * `item-document-with-pdf`, publishing the very sliver it had just removed from
+ * `terminal`. Resetting makes every capture independent of the ones before it.
  */
-async function requireNoBisectedLane(page: Page, slug: string): Promise<void> {
+async function settleStackFold(page: Page, label: string): Promise<void> {
   const result = await page.evaluate((minVisible) => {
     const stack = document.querySelector('.projects-stack');
-    if (!stack) return { found: false, lanes: 0, offender: null };
-    // `clientTop` bridges the border-box origin of `getBoundingClientRect` and
-    // the padding-box `clientHeight`: zero today, non-zero the moment the stack
-    // gains a border.
-    const rect = stack.getBoundingClientRect();
-    const fold = rect.top + stack.clientTop + stack.clientHeight;
+    if (!stack) return { present: false, offence: null as string | null };
     const lanes = Array.from(stack.querySelectorAll(':scope > .group-block'));
-    for (const lane of lanes) {
+    if (!lanes.length) return { present: false, offence: null as string | null };
+
+    const view = stack.clientHeight;
+    const maxScroll = Math.max(0, stack.scrollHeight - view);
+    // Content-space geometry, derived from rects relative to the stack rather
+    // than from `offsetTop` — that is measured against `offsetParent`, which is
+    // only the stack when the stack happens to be positioned.
+    const geom = (lane: Element) => {
+      const stackRect = stack.getBoundingClientRect();
       const box = lane.getBoundingClientRect();
-      const cap = Math.min(minVisible, box.height);
-      const visible = Math.min(box.bottom, fold) - box.top;
-      const clipped = box.bottom - fold;
-      const edge =
-        visible >= 1 && visible < cap ? 'top' : clipped >= 1 && clipped < cap ? 'bottom' : null;
-      if (edge) {
+      const top = box.top - stackRect.top - stack.clientTop + stack.scrollTop;
+      return { top, height: box.height, bottom: top + box.height };
+    };
+    const offenceAt = (scrollTop: number) => {
+      const viewTop = scrollTop;
+      const viewBottom = scrollTop + view;
+      for (const lane of lanes) {
+        const g = geom(lane);
+        const cap = Math.min(minVisible, g.height);
+        const cases = [
+          { edge: 'bottom-clip, top of lane', px: viewBottom - g.top },
+          { edge: 'bottom-clip, closing border', px: g.bottom - viewBottom },
+          { edge: 'top-clip, bottom of lane', px: g.bottom - viewTop },
+        ];
+        for (const c of cases) {
+          if (c.px >= 1 && c.px < cap) {
+            return {
+              status: lane.getAttribute('data-status'),
+              height: Math.round(g.height),
+              edge: c.edge,
+              px: Math.round(c.px),
+              laneTop: g.top,
+              laneBottom: g.bottom,
+            };
+          }
+        }
+      }
+      return null;
+    };
+
+    stack.scrollTop = 0;
+    for (let pass = 0; pass < 6; pass += 1) {
+      const hit = offenceAt(stack.scrollTop);
+      if (!hit) return { present: true, offence: null as string | null };
+      // Move the offending edge clear in the direction that costs least: pull
+      // the fold above a slivered lane top, push it past a sliced closing
+      // border. The earlier single-strategy version always pulled back, which
+      // for a bottom-edge hit scrolled by the lane's whole height.
+      const target = hit.edge.startsWith('bottom-clip')
+        ? hit.edge.endsWith('top of lane')
+          ? hit.laneTop - 8 - view
+          : hit.laneBottom + 8 - view
+        : hit.laneBottom + 8;
+      const next = Math.min(maxScroll, Math.max(0, target));
+      if (Math.abs(next - stack.scrollTop) < 1) {
         return {
-          found: true,
-          lanes: lanes.length,
-          offender: {
-            status: lane.getAttribute('data-status'),
-            visible: Math.round(edge === 'top' ? visible : box.height - clipped),
-            height: Math.round(box.height),
-            edge,
-          },
+          present: true,
+          offence:
+            `${hit.px}px of the ${hit.height}px '${hit.status}' lane at the ${hit.edge}; ` +
+            `no scroll offset in [0, ${Math.round(maxScroll)}] clears it`,
         };
       }
+      stack.scrollTop = next;
     }
-    return { found: true, lanes: lanes.length, offender: null };
-  }, MIN_VISIBLE_LANE_PX);
-
-  // A probe that silently stops running is worse than no probe: fail on a
-  // missing stack or an empty lane list rather than passing by default.
-  expect(result.found, `${slug}: .projects-stack not found — the fold probe never ran`).toBe(true);
-  expect(
-    result.lanes,
-    `${slug}: no .group-block lanes under .projects-stack — the fold probe never ran`,
-  ).toBeGreaterThan(0);
-
-  const o = result.offender;
-  expect(
-    o,
-    o
-      ? `${slug}: the fold leaves ${o.visible}px of the ${o.height}px '${o.status}' lane ` +
-          `(${o.edge} edge) — a sliver reads as a rendering glitch. Call alignStackFold() before ` +
-          `the capture, or adjust VIEWPORT.height so the fold lands between lanes.`
-      : '',
-  ).toBeNull();
-}
-
-/**
- * Nudge the Projects stack so its fold lands in the bare background between two
- * lanes instead of through one.
- *
- * For captures whose subject is elsewhere (the terminal band, a dropdown) the
- * stack's scroll offset is incidental — inherited from whatever the sequence did
- * earlier — so placing it deliberately is both safe and more reproducible than
- * leaving it to chance. Not used for `dashboard-overview`, which must present the
- * pane at `scrollTop: 0`; there the viewport height does this job.
- */
-async function alignStackFold(page: Page): Promise<void> {
-  await page.evaluate((minVisible) => {
-    const stack = document.querySelector('.projects-stack');
-    if (!stack) return;
-    const lanes = Array.from(stack.querySelectorAll(':scope > .group-block'));
-    if (!lanes.length) return;
-    const view = stack.clientHeight;
-    // Lane positions are derived from rects relative to the stack, not from
-    // `offsetTop`: that is measured against `offsetParent`, which is only the
-    // stack if the stack happens to be positioned — mixing it with `scrollTop`
-    // silently offsets every calculation.
-    const contentTop = (lane: Element): number => {
-      const stackRect = stack.getBoundingClientRect();
-      return lane.getBoundingClientRect().top - stackRect.top - stack.clientTop + stack.scrollTop;
+    const left = offenceAt(stack.scrollTop);
+    return {
+      present: true,
+      offence: left
+        ? `${left.px}px of the ${left.height}px '${left.status}' lane at the ${left.edge}; ` +
+          `still offending after 6 passes`
+        : null,
     };
-    for (let pass = 0; pass < 4; pass += 1) {
-      const foldContent = stack.scrollTop + view;
-      const hit = lanes.find((lane) => {
-        const top = contentTop(lane);
-        const height = lane.getBoundingClientRect().height;
-        const cap = Math.min(minVisible, height);
-        const visible = Math.min(top + height, foldContent) - top;
-        const clipped = top + height - foldContent;
-        return (visible >= 1 && visible < cap) || (clipped >= 1 && clipped < cap);
-      });
-      if (!hit) return;
-      // Pull the fold back above the offending lane's top edge, into the gap.
-      const target = Math.max(0, contentTop(hit) - 8 - view);
-      if (Math.abs(target - stack.scrollTop) < 1) return;
-      stack.scrollTop = target;
-    }
   }, MIN_VISIBLE_LANE_PX);
+
+  if (!result.present) return;
+  foldChecks += 1;
+  if (result.offence) foldOffences.push(`${label}: ${result.offence}`);
 }
 
 /**
@@ -589,6 +600,10 @@ async function readTerminalText(page: Page): Promise<string> {
 async function shoot(page: Page, theme: Theme, name: string): Promise<void> {
   const dir = join(outRoot, theme);
   await mkdir(dir, { recursive: true });
+  // Every full-window capture, not a hand-picked list: the Projects stack is on
+  // screen for nine of them and the set is easy to mis-enumerate. No-ops when
+  // the stack is not mounted.
+  await settleStackFold(page, `${theme}/${name}`);
   try {
     await page.screenshot({
       path: join(dir, `${name}.png`),
@@ -721,7 +736,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
       items: '.repo-row',
       minItems: 5,
     });
-    await requireNoBisectedLane(page, 'dashboard-overview');
     await shoot(page, theme, 'dashboard-overview');
 
     // 2. activity-rail — a narrow clip of the rail itself. It is the app's
@@ -903,8 +917,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
       );
       expect(terminalText, 'terminal: the xterm buffer has no command output').toContain('3 hits');
     }
-    await alignStackFold(page);
-    await requireNoBisectedLane(page, 'terminal');
     await shoot(page, theme, 'terminal');
 
     // 10. spawn-dropdown — the same tab strip with the launcher menu open, which
@@ -926,8 +938,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
         items: 'li',
         minItems: 3,
       });
-      await alignStackFold(page);
-      await requireNoBisectedLane(page, 'spawn-dropdown');
       await shoot(page, theme, 'spawn-dropdown');
       await page.keyboard.press('Escape');
       await settle(page);
@@ -1110,6 +1120,16 @@ test('capture every documentation screenshot in light + dark', async () => {
       }
     }
   }
+  // The stack is framed by nine of the full-window shots; zero inspections
+  // means the probe stopped matching, not that everything was clean.
+  expect(
+    foldChecks,
+    'the Projects-stack fold probe never ran — did .projects-stack move?',
+  ).toBeGreaterThan(0);
+  expect(
+    foldOffences,
+    `a clip edge slices a status lane to a hairline (reads as a rendering glitch):\n  ${foldOffences.join('\n  ')}`,
+  ).toEqual([]);
   expect(missing, `missing screenshots: ${missing.join(', ')}`).toEqual([]);
   expect(undersized, `implausibly small screenshots: ${undersized.join(', ')}`).toEqual([]);
   expect(wrongSize, `wrong capture size: ${wrongSize.join(', ')}`).toEqual([]);
