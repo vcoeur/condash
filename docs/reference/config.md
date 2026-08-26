@@ -299,7 +299,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `screenshot_dir`            | _(none)_                                                | Directory scanned for "most recent screenshot" by the paste shortcut. There is **no** default — until you set this, the shortcut toasts "No screenshot directory set". The Settings field shows `~/Pictures/Screenshots` as placeholder text, not as a value. |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.                                                                |
 | _(agents)_                  | —                                                       | The tab-strip spawn dropdown lists **agents** from the top-level `agents` list — not a `terminal.*` key. See [Agents](#agents) below.                                                |
-| `projectActions[]`          | `[]`                                                    | Configurable per-project actions — see [`terminal.projectActions`](#terminalprojectactions) below. Each entry adds an option to the dropdown next to a project's **Work on** button. |
+| `projectActions[]`          | `[]`                                                    | Configurable per-project actions — see [`terminal.projectActions`](#terminalprojectactions) below. Each entry adds an option to the dropdown next to a project's **Work on** button, and can link the tab it fires in to the project. |
 | `newProjectActions[]`       | `[]`                                                    | Configurable starter prompts — see [`terminal.newProjectActions`](#terminalnewprojectactions) below. Each entry adds an option to the dropdown next to the **+ New project** button. |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                                                                                |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                                                               |
@@ -424,6 +424,8 @@ See the [Tasks pane guide](../guides/tasks-pane.md). The same `{KEY:default}` fa
 
 Per-entry actions rendered in the per-card **Work on** dropdown on the Projects pane. The control is a single dropdown button: clicking it opens a menu whose first row is the built-in **Work on <slug>** action and whose remaining rows are the entries below. When `projectActions` is empty or missing, the menu still opens but contains only the default row.
 
+The built-in **Work on <slug>** row is not configurable and **always links** the tab it types into to the project — the relation the card's **Link** button writes ([Linking a card to terminal tabs](../guides/projects-pane.md#card-tab-links)). There is no key to turn that off; unlink from the card's Linked-tabs row. Configured entries link only when they set `link: true`.
+
 ```json
 {
   "terminal": {
@@ -450,6 +452,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
 | `template` | string | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). A `{placeholder:default}` form falls back to `default` when the placeholder is unknown; a default-less unknown placeholder is left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool   | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit.                                                                                                                                                                                                                                                                                                               |
 | `agent`    | string | no       | When set, the `id` of an agent from the `agents` list. The action spawns a fresh tab running that agent's command before typing the template — useful for binding an action to a specific agent. Empty / missing → type into the focused tab (a plain shell when no tab exists). An id that no longer matches an agent falls through to the focused-tab flow.                                                                                                                                                                 |
+| `link`     | bool   | no       | When `true`, firing the action also links the tab it typed into to the project. Default `false`. For an `agent`-bound entry that is the tab the agent was just spawned in, not the one that held focus at click time; on the plain path it is the focused tab, or the shell the action had to spawn when the pane was empty. Linking is additive and idempotent — firing twice writes one relation. The link is written only once the tab is actually open, so a spawn that never produces a tab leaves no relation. |
 
 ### `terminal.newProjectActions` { #terminalnewprojectactions }
 
@@ -482,6 +485,8 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
 | `agent`    | string | no       | When set, the `id` of an agent from the `agents` list. The action spawns a fresh tab running that agent's command and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → claude-kimi** always opens a fresh agent shell). Empty / missing keeps the "type into focused tab" behaviour. |
 
 > **Note.** Selecting a new-project action does **not** create a project automatically — it only types a starter prompt into the terminal. The user then prompts their agent to create the project via `condash projects create`.
+
+> **Note.** `newProjectActions` shares the `projectActions` entry shape, so a `link` key here validates — but it does nothing, because no project exists yet when the action fires. The Settings editor only offers the checkbox on `projectActions`.
 
 ### `terminal.xterm` { #terminalxterm }
 

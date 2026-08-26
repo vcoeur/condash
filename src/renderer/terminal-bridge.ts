@@ -10,6 +10,7 @@ import type {
 } from '@shared/types';
 import { globalContext, projectContext, substitute } from '@shared/action-template';
 import { quoteForShell, shellFamily, type ShellFamily } from '@shared/shell-quote';
+import { linkProject } from './link-store';
 import type { TerminalPaneHandle } from './terminal-pane';
 
 export interface TerminalBridgeDeps {
@@ -36,10 +37,14 @@ export interface TerminalBridgeDeps {
 export interface TerminalBridge {
   /** Per-card "work on" — paste "work on <slug>" into the focused
    *  terminal. Opens the pane and spawns a shell first if neither
-   *  exists, so the action never silently no-ops. Does not press Enter. */
+   *  exists, so the action never silently no-ops. Does not press Enter.
+   *  Always links that tab to the project (see `linkProject`): a persisted
+   *  relation that outlives a reload and dies with the tab. */
   handleWorkOn: (project: Project) => Promise<void>;
   /** Execute a configured project action — substitute template, type into
-   *  the focused terminal, and press Enter when `submit` is true. */
+   *  the focused terminal, and press Enter when `submit` is true. When the
+   *  action sets `link`, also links the tab it typed into to the project —
+   *  the freshly spawned one for an `agent`-bound action. */
   handleProjectAction: (project: Project, action: ActionTemplate) => Promise<void>;
   /** Execute a configured "+ New project" starter action — substitute
    *  global template, type into the focused terminal, and press Enter
@@ -109,6 +114,59 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
+/** The tab an action landed on: the pane handle plus the session id of the tab
+ *  that receives the text. Callers need the id — not just the handle — to write
+ *  the tab↔project link, and the id has to come from the spawn that created
+ *  the tab rather than be read back off the handle afterwards. */
+interface ActionTarget {
+  handle: TerminalPaneHandle;
+  sid: string;
+}
+
+/** Poll cadence and ceiling for {@link focusSpawnedTab}. The ceiling only ever
+ *  elapses when the tab genuinely never arrives; the wait returns the moment it
+ *  does. Generous because the first tab of a cold app pays for the dynamic
+ *  xterm import, which can outlast any flat settle. */
+const SPAWN_WAIT_POLL_MS = 50;
+const SPAWN_WAIT_MAX_MS = 3000;
+
+/** Wait for a freshly spawned `sid` to join the tab roster, then make it the
+ *  active tab.
+ *
+ *  A spawn resolves as soon as main has the pty, but the tab reaches the
+ *  renderer only on the next reconcile pass — which inserts it into the roster,
+ *  then awaits a dynamic xterm import, and only afterwards activates it. The
+ *  two things an action does need different guarantees across that window: the
+ *  link needs the sid to be in the **roster**, or a pass still holding a
+ *  pre-spawn snapshot prunes the relation; `typeIntoActive` needs the tab to be
+ *  **active**, or the text lands in whatever tab held focus — or nowhere.
+ *
+ *  Polling for "active" would cover both, but it can also never arrive:
+ *  activation is last-writer-wins within a pass, so a tab inserted in the same
+ *  tick takes it. So poll the monotone condition — membership — and then
+ *  activate the tab outright instead of waiting to see whether it happens.
+ *  `switchTo` no-ops on an id it does not know, which is why membership has to
+ *  come first.
+ *
+ *  Bounded, non-throwing, and honest about failing: false means the tab never
+ *  arrived and focus was left where it was. The caller must not type then — the
+ *  text would land in whatever tab the user was looking at, and a `submit`
+ *  action would run it there. */
+async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise<boolean> {
+  // A spawn that answered with no id has nothing to wait for — without this the
+  // caller would sit out the whole ceiling before carrying on.
+  if (!sid) return false;
+  const steps = Math.ceil(SPAWN_WAIT_MAX_MS / SPAWN_WAIT_POLL_MS);
+  for (let i = 0; i < steps; i++) {
+    if (handle.sessionLabel(sid) !== null) {
+      handle.switchTo('my', sid);
+      return true;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, SPAWN_WAIT_POLL_MS));
+  }
+  return false;
+}
+
 /** Look up an agent by id from the current agent list. Returns null for an
  *  empty/missing id or when no agent matches. */
 function findAgentById(agents: readonly Agent[], id: string | undefined): Agent | null {
@@ -135,7 +193,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     shellFamily(deps.terminalPrefs()?.shell, isWindowsRenderer());
 
   /** Shared preamble: ensure pane is open, spawn a shell if none active. */
-  const ensureTermAndShell = async (): Promise<TerminalPaneHandle | null> => {
+  const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -145,13 +203,27 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
-        await handle.spawnUserShell(null, 'my');
+        // Keep the id the spawn returns. A fresh tab only becomes the active
+        // one on the next reconcile pass, so reading the active id back off
+        // the handle here can still answer with the tab that just left.
+        const sid = await handle.spawnUserShell(null, 'my');
+        // Both steps, the same pair `spawnAgentTab` takes: the settle is for
+        // the shell to finish init and start accepting input (typing during it
+        // drops leading characters); the focus step is what makes the tab the
+        // one `typeIntoActive` will write to.
+        await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+        if (!(await focusSpawnedTab(handle, sid))) {
+          deps.flashToast('The new terminal tab never opened — nothing was sent.', 'error');
+          return null;
+        }
+        return { handle, sid };
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return null;
       }
     }
-    return handle;
+    const sid = handle.getActiveSessionId();
+    return sid ? { handle, sid } : null;
   };
 
   /** Spawn a fresh tab running `agent`'s command and settle. Two-step settle:
@@ -166,7 +238,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     agent: Agent,
     title?: string,
     taskContext?: TaskRunContext,
-  ): Promise<TerminalPaneHandle | null> => {
+  ): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -174,24 +246,33 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const handle = deps.terminalHandle();
     if (!handle) return null;
     deps.ensureTerminalOpen();
+    let sid: string;
     try {
       // Keep the call shape minimal: bare 2-arg for an untitled spawn, 3-arg
       // when a title is set, and only widen to 4-arg when a task context must
       // ride along (capability 4). Preserves the shapes existing callers
       // assert on.
       if (taskContext !== undefined) {
-        await handle.spawnUserShell(agent, 'my', title, taskContext);
+        sid = await handle.spawnUserShell(agent, 'my', title, taskContext);
       } else if (title === undefined) {
-        await handle.spawnUserShell(agent, 'my');
+        sid = await handle.spawnUserShell(agent, 'my');
       } else {
-        await handle.spawnUserShell(agent, 'my', title);
+        sid = await handle.spawnUserShell(agent, 'my', title);
       }
     } catch (err) {
       deps.flashToast(`Could not spawn ${agent.label}: ${(err as Error).message}`, 'error');
       return null;
     }
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-    return handle;
+    // The settle above is for the launched program's prompt, not for reconcile,
+    // and a cold app's first tab can outlast it. This is what guarantees the
+    // prompt is typed into the tab the agent runs in and not the one that held
+    // focus when the action fired.
+    if (!(await focusSpawnedTab(handle, sid))) {
+      deps.flashToast(`${agent.label}'s tab never opened — nothing was sent.`, 'error');
+      return null;
+    }
+    return { handle, sid };
   };
 
   /** Run `text` through `agent` in a fresh tab. For a `promptFlags` agent, `mode`
@@ -210,29 +291,47 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     title?: string,
     taskContext?: TaskRunContext,
     mode: RunMode = 'interactive',
-  ): Promise<void> => {
+  ): Promise<ActionTarget | null> => {
     if (agent.promptFlags) {
       const flag = mode === 'oneshot' ? '--run' : '--prompt';
       const command = `${agent.command} ${flag} ${quoteForShell(text, promptShellFamily())}`;
-      await spawnAgentTab({ ...agent, command }, title, taskContext);
-      return;
+      return spawnAgentTab({ ...agent, command }, title, taskContext);
     }
-    const handle = await spawnAgentTab(agent, title, taskContext);
-    if (!handle) return;
-    handle.typeIntoActive(text);
+    const target = await spawnAgentTab(agent, title, taskContext);
+    if (!target) return null;
+    target.handle.typeIntoActive(text);
     if (submit) {
       // Small delay so the terminal has time to ingest the typed text
       // before the Enter key arrives.
       await new Promise((r) => setTimeout(r, 50));
-      handle.typeIntoActive('\r');
+      target.handle.typeIntoActive('\r');
     }
+    return target;
+  };
+
+  /** Write the tab↔project relation the card's Link button writes, naming the
+   *  tab as the tab strip does. Idempotent: the store no-ops when the pair
+   *  already exists.
+   *
+   *  A null label means the tab is not in the roster — the spawn's `sid` never
+   *  showed up, or answered empty. That is exactly when the relation must NOT
+   *  be written: the reconcile prune runs against the roster, so it would
+   *  delete the record moments later. Silent rather than a toast: whatever the
+   *  action itself did, it did. */
+  const linkTargetToProject = (target: ActionTarget, project: Project): void => {
+    const label = target.handle.sessionLabel(target.sid);
+    if (!label) return;
+    linkProject(project.slug, target.sid, label);
   };
 
   const handleWorkOn = async (project: Project): Promise<void> => {
     const text = `work on ${project.slug}`;
-    const handle = await ensureTermAndShell();
-    if (!handle) return;
-    handle.typeIntoActive(text);
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    target.handle.typeIntoActive(text);
+    // The built-in row links unconditionally and carries no flag: starting
+    // work on a project is exactly the moment its tab belongs to it.
+    linkTargetToProject(target, project);
   };
 
   const handleProjectAction = async (project: Project, action: ActionTemplate): Promise<void> => {
@@ -243,18 +342,22 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // tab, spawning a plain shell only if none exists.
     const agent = findAgentById(deps.agents(), action.agent);
     if (agent) {
-      await runAgentTask(agent, text, action.submit === true);
+      const spawned = await runAgentTask(agent, text, action.submit === true);
+      // An agent-bound action links the tab the agent runs in, not the one
+      // that held focus at click time — that is where the work happens.
+      if (spawned && action.link) linkTargetToProject(spawned, project);
       return;
     }
-    const handle = await ensureTermAndShell();
-    if (!handle) return;
-    handle.typeIntoActive(text);
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    target.handle.typeIntoActive(text);
     if (action.submit) {
       // Small delay so the terminal has time to ingest the typed text
       // before the Enter key arrives.
       await new Promise((r) => setTimeout(r, 50));
-      handle.typeIntoActive('\r');
+      target.handle.typeIntoActive('\r');
     }
+    if (action.link) linkTargetToProject(target, project);
   };
 
   const handleNewProjectAction = async (action: ActionTemplate): Promise<void> => {
@@ -266,12 +369,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       await runAgentTask(agent, text, action.submit === true);
       return;
     }
-    const handle = await ensureTermAndShell();
-    if (!handle) return;
-    handle.typeIntoActive(text);
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    target.handle.typeIntoActive(text);
     if (action.submit) {
       await new Promise((r) => setTimeout(r, 50));
-      handle.typeIntoActive('\r');
+      target.handle.typeIntoActive('\r');
     }
   };
 

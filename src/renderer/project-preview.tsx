@@ -479,7 +479,7 @@ export function ProjectPreview(props: {
 
               <ActionDropdownButton
                 trigger={<IconTerminal />}
-                triggerTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
+                triggerTitle={`Paste 'work on ${project().slug}' into the focused terminal and link that tab`}
                 defaultLabel={`Work on ${shortSlug(project().slug)}`}
                 items={props.projectActions ?? []}
                 onItem={(idx) => {

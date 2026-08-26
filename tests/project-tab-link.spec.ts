@@ -463,3 +463,64 @@ test('a Restart re-points the links onto the new session id', async () => {
     await booted.cleanup();
   }
 });
+
+test('firing Work on links the focused tab — no Link click involved', async () => {
+  const booted = await bootApp();
+  try {
+    const win = booted.window;
+    const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
+
+    const card = sampleCard(win);
+    await card.locator('.action-dropdown-button').click();
+    const menu = win.locator('.action-dropdown-menu');
+    await menu.waitFor({ state: 'visible' });
+    await menu.locator('.action-dropdown-menu-item').filter({ hasText: 'Work on' }).click();
+
+    await expect(card).toHaveClass(/linked-active/);
+    await expect
+      .poll(() => linksOnDisk(win), { timeout: 5000 })
+      .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('a configured action links only when it sets the link flag', async () => {
+  const booted = await bootApp({
+    prepare: prepareSibling,
+    extraConfig: {
+      terminal: {
+        projectActions: [
+          { label: 'Plain review', template: 'echo review {shortSlug}' },
+          { label: 'Linking review', template: 'echo review {shortSlug}', link: true },
+        ],
+      },
+    },
+  });
+  try {
+    const win = booted.window;
+    const tab = await spawnTab(win, 'printf "READY\n"; sleep 30');
+    const menu = win.locator('.action-dropdown-menu');
+    const alphaCard = win.locator('article.row', { hasText: 'Alpha project' });
+
+    const fire = async (card: ReturnType<typeof sampleCard>, label: string): Promise<void> => {
+      await card.locator('.action-dropdown-button').click();
+      await menu.waitFor({ state: 'visible' });
+      await menu.locator('.action-dropdown-menu-item').filter({ hasText: label }).click();
+    };
+
+    // Two different cards, so the flagless assertion is not vacuous: firing the
+    // flagged one on the OTHER card gives a positive signal that the pipeline
+    // ran, and only then is the first card's absence from the map evidence.
+    await fire(sampleCard(win), 'Plain review');
+    await fire(alphaCard, 'Linking review');
+
+    await expect(alphaCard).toHaveClass(/linked-active/);
+    await expect
+      .poll(() => linksOnDisk(win), { timeout: 5000 })
+      .toEqual({ '2026-04-20-alpha': { [tab]: { label: 'shell', linkedAt: expect.any(String) } } });
+    await expect(sampleCard(win)).not.toHaveClass(/linked-any/);
+  } finally {
+    await booted.cleanup();
+  }
+});

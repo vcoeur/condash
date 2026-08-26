@@ -69,6 +69,11 @@ export interface TerminalPaneHandle {
   hasActive(): boolean;
   /** Return the active session ID for the active column, or null. */
   getActiveSessionId(): string | null;
+  /** Display name of session `sid` — the same string the tab strip shows —
+   *  or null when no tab with that id is known yet. A tab spawned moments ago
+   *  only joins the roster on the next reconcile pass, so a caller that just
+   *  spawned one needs a fallback name. */
+  sessionLabel(sid: string): string | null;
 }
 
 export interface TerminalPaneProps {

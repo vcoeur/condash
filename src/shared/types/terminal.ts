@@ -59,6 +59,14 @@ export interface ActionTemplate {
    *  missing → type into the focused tab, spawning a plain shell only if no tab
    *  exists. */
   agent?: string;
+  /** When true, firing the action also links the tab it typed into to the
+   *  project — the same relation the card's Link button writes. For an
+   *  `agent`-bound action that is the tab just spawned, not the one that held
+   *  focus at click time. Default false. Meaningless for `newProjectActions`
+   *  (no project exists yet at click time), so the Settings editor only offers
+   *  it on `projectActions`. The built-in "Work on" row links unconditionally
+   *  and carries no flag. */
+  link?: boolean;
 }
 
 /** A terminal-launcher agent: a named shell command surfaced in the tab-strip

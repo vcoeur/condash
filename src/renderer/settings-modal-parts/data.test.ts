@@ -269,6 +269,33 @@ describe('patchActionTemplate', () => {
     expect(result.success).toBe(true);
   });
 
+  it('carries the link flag to disk and past the strict schema', () => {
+    // `actionTemplateSchema` is `.strict()`, so a flag the compactor forwards
+    // but the schema does not know fails the save outright.
+    const actions = patchActionTemplate(undefined, 0, {
+      label: 'Claude review',
+      template: 'claude "review {slug}"',
+      link: true,
+    });
+    const payload = buildSavePayload({ terminal: { projectActions: actions } });
+    expect(payload.terminal).toEqual({
+      projectActions: [{ label: 'Claude review', template: 'claude "review {slug}"', link: true }],
+    });
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('drops an unset link flag rather than writing link: false', () => {
+    const actions = patchActionTemplate(undefined, 0, {
+      label: 'Claude review',
+      template: 'claude "review {slug}"',
+      link: false,
+    });
+    const payload = buildSavePayload({ terminal: { projectActions: actions } });
+    expect(payload.terminal).toEqual({
+      projectActions: [{ label: 'Claude review', template: 'claude "review {slug}"' }],
+    });
+  });
+
   it('round-trips a blank-row action template through buildSavePayload + schema', () => {
     // Regression: "+ Add action" produced
     // `terminal.projectActions.0.label — expected string, received undefined`

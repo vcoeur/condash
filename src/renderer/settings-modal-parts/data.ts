@@ -604,8 +604,8 @@ function compactTerminal(terminal: RawTerminal): RawTerminal | undefined {
 
 /**
  * Normalise `actionTemplateSchema`-shaped rows for disk: keep `label` +
- * `template` verbatim, attach `submit: true` only when explicitly set, and
- * attach `agent` only when set to a non-empty string.
+ * `template` verbatim, attach `submit: true` / `link: true` only when
+ * explicitly set, and attach `agent` only when set to a non-empty string.
  */
 function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
   return arr.map((a) => {
@@ -615,6 +615,7 @@ function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
     };
     if (a.submit === true) out.submit = true;
     if (typeof a.agent === 'string' && a.agent.length > 0) out.agent = a.agent;
+    if (a.link === true) out.link = true;
     return out;
   });
 }
