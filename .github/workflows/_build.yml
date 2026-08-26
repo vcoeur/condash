@@ -116,13 +116,11 @@ jobs:
       # switch to take effect. The .deb path keeps the sandbox: it
       # installs chrome-sandbox at /opt/condash/ where the SUID bit is
       # honoured, so this patch only touches the AppImage.
-      # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle
-      # contents during repack and aborts if it's missing. Not on the
-      # default ubuntu-latest image.
-      # This is the release chain's most exposed apt call: unlike the
-      # Playwright lane's, the package really is absent from the image, so it
-      # cannot be probed away — and this is the job whose installers `publish`
-      # uploads, so a stall here ships nothing.
+      # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle contents
+      # during repack and aborts if it's missing. This is the release chain's
+      # most exposed apt call: unlike the Playwright lane's, the package really
+      # is absent from the image, so it cannot be probed away — and this is the
+      # job whose installers `publish` uploads, so a stall here ships nothing.
       - name: Install desktop-file-utils (for appimagetool repack)
         if: matrix.os == 'ubuntu-latest'
         uses: ./.github/actions/apt-install

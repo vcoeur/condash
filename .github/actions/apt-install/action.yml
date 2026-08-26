@@ -1,7 +1,8 @@
 name: Bounded apt install
 description: >-
-  Install apt packages under a single hard time bound, so a stalled runner
-  mirror fails fast instead of consuming the job's whole budget.
+  Install apt packages under a hard time bound, and install this repo's apt
+  policy for the whole job, so a stalled runner mirror fails fast instead of
+  consuming the job's budget.
 
 # WHY: on release run 32231104488 (v4.111.0) an unbounded `apt-get update`
 # went silent for 23 m 53 s when the runner's azure mirror went down and the
@@ -9,22 +10,27 @@ description: >-
 # for the test suite, skipped `build`/`publish`, and left the tag with no
 # Release.
 #
-# WHAT THIS DELIBERATELY DOES NOT DO: retry. Three earlier versions of this
-# action wrapped apt in a retry loop and each was wrong in a new way; the last
-# nested a 4x30 s `Acquire::Retries` budget inside a 90 s external bound, so
-# two of its four "chances" were unreachable and every attempt simply burned
-# the full bound. Retries also forced a dpkg repair path, a multi-leg budget
-# nobody computed correctly three tries running, and a second copy of the apt
-# policy.
+# THIS ACTION OWNS THE APT POLICY FOR THE JOB. It writes
+# /etc/apt/apt.conf.d/99-ci-timeouts before doing anything else — before the
+# skip probe, so the policy lands even when the install itself is skipped.
+# That matters because it is the only lever on apt nested inside something
+# else: `npx playwright install --with-deps` shells out to apt internally,
+# where no argument of ours can reach. Having one owner also stops the policy
+# drifting between lanes, which it did while each site configured its own.
 #
-# They bought little: v4.111.0 was a STALL, not a transient error, so a retry
-# would not have helped it — a fast, loud failure would have. apt already
-# retries connections internally (the v4.111.0 log shows four `Ign:` rounds
-# against azure before its mirrorlist failover), and `DPkg::Lock::Timeout`
-# below covers the other common case by WAITING rather than retrying.
+# WHAT THIS DELIBERATELY DOES NOT DO: retry. Three earlier versions wrapped apt
+# in a retry loop and each was wrong in a new way; the last nested a 4x30 s
+# `Acquire::Retries` budget inside a 90 s external bound, so two of its four
+# "chances" were unreachable. Retries also forced a dpkg repair path, a
+# multi-leg budget computed wrong three tries running, and a second copy of
+# this policy. v4.111.0 was a STALL, not a transient error — a fast, loud
+# failure serves it better than a retry. Re-running the lane is the retry.
 #
-# So: one bounded call per leg, and a failure is a failure. Re-running the
-# release lane is the retry.
+# The two knobs that ARE kept are waits, not retries, and both must fit inside
+# the external bound or they cannot complete — that inversion is what broke the
+# previous version, so the script asserts it rather than documenting it:
+#   Acquire::Retries 3 x http::Timeout 30 = 120 s per URI  <  180 s bound
+#   DPkg::Lock::Timeout                   = 120 s          <  180 s bound
 
 inputs:
   packages:
@@ -34,22 +40,20 @@ inputs:
     required: true
   skip-if-command:
     description: >-
-      If this command is already on PATH, skip apt and succeed. Name the binary
-      the consumer actually executes, not a sibling from the same package — the
-      probe is the contract, so it should fail when the thing that gets run is
-      missing. Only valid for a single-package install: the probe short-circuits
-      the whole action, so with several packages a hit on one would silently
-      skip the rest.
+      If this command is already on PATH, skip the install and succeed (the apt
+      policy above is still written). Name the binary the consumer actually
+      executes, not a sibling from the same package — the probe is the
+      contract, so it should fail when the thing that gets run is missing.
+      Only valid for a single-package install: the probe short-circuits the
+      install, so with several packages a hit on one would skip the rest.
     required: false
     default: ''
   timeout-seconds:
     description: >-
       Hard bound on EACH of the two apt-get calls. Worst case is
       2 x (this + 30 s SIGKILL grace) + 70 s for the failure-path dpkg repair.
-      Must stay comfortably above DPkg::Lock::Timeout (120 s), or the lock wait
-      cannot complete inside it — that inversion is what broke the previous
-      version. Raise it for a site with a large payload rather than tuning the
-      default down for everyone.
+      Must exceed the 120 s waits above; the script enforces that. Raise it for
+      a site with a large payload rather than tuning the default for everyone.
     required: false
     default: '180'
 
@@ -63,25 +67,59 @@ runs:
         TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
       run: |
         set -euo pipefail
+        # $PACKAGES is intentionally word-split below; -f stops it also being
+        # glob-expanded against the workspace, where a name containing * or [
+        # would otherwise turn into a list of repo filenames.
+        set -f
 
-        # `required: true` above is documentation, not enforcement — the runner
-        # does not fail a missing input, and `apt-get install -y` with zero
-        # operands exits 0. Strip ALL whitespace, not just spaces: a tab or a
-        # newline from a YAML block scalar would otherwise slip through and give
-        # a green step that fails several steps later at a missing binary.
+        # `required: true` is documentation, not enforcement — the runner does
+        # not fail a missing input, and `apt-get install -y` with zero operands
+        # exits 0. Strip ALL whitespace: a tab or newline from a YAML block
+        # scalar would otherwise slip through into that silent success.
         if [ -z "${PACKAGES//[[:space:]]/}" ]; then
           echo "apt-install: 'packages' input is empty" >&2
           exit 1
         fi
 
+        # The bound is load-bearing, so validate it rather than trusting the
+        # caller — an empty or non-numeric value would reach `timeout -k 30 ""`
+        # and exit 125 at the first apt call, looking like an unbounded failure.
+        WAIT_CEILING=120
+        if ! [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]]; then
+          echo "apt-install: timeout-seconds must be a whole number (got: '$TIMEOUT_SECONDS')" >&2
+          exit 1
+        fi
+        if [ "$TIMEOUT_SECONDS" -le "$WAIT_CEILING" ]; then
+          echo "apt-install: timeout-seconds ($TIMEOUT_SECONDS) must exceed the ${WAIT_CEILING}s apt waits, or they cannot complete inside it" >&2
+          exit 1
+        fi
+
+        # Written first, and before the probe, so it applies to every apt in
+        # this job including the one nested inside `playwright install
+        # --with-deps`. Both settings are unset by default (`apt-config dump`
+        # emits neither), so apt ships with 0 retries and no dpkg lock wait —
+        # the 120 s you see in that dump is `binary::apt::`-scoped, i.e. the
+        # `apt` frontend only, never apt-get.
+        echo "::group::apt policy"
+        sudo tee /etc/apt/apt.conf.d/99-ci-timeouts <<APTCONF
+        Acquire::Retries "3";
+        Acquire::http::Timeout "30";
+        Acquire::https::Timeout "30";
+        DPkg::Lock::Timeout "$WAIT_CEILING";
+        APTCONF
+        echo "::endgroup::"
+
         if [ -n "$SKIP_IF_COMMAND" ]; then
-          # The probe exits the whole action, so it cannot speak for a list.
-          if [ "$(echo $PACKAGES | wc -w)" -gt 1 ]; then
+          # The probe short-circuits the install, so it cannot speak for a list.
+          if [ "$(echo "$PACKAGES" | wc -w)" -gt 1 ]; then
             echo "apt-install: skip-if-command is only valid for a single package (got: $PACKAGES)" >&2
             exit 1
           fi
-          if command -v "$SKIP_IF_COMMAND" >/dev/null; then
-            echo "$SKIP_IF_COMMAND already on the image at $(command -v "$SKIP_IF_COMMAND") — skipping apt"
+          # `type -P` not `command -v`: the latter also resolves builtins,
+          # functions and keywords, so probing a name like `test` or `printf`
+          # would hit unconditionally and skip the install forever.
+          if probe_path=$(type -P "$SKIP_IF_COMMAND"); then
+            echo "$SKIP_IF_COMMAND already on the image at $probe_path — skipping install"
             exit 0
           fi
         fi
@@ -93,37 +131,39 @@ runs:
         # Verified against a trapping child, which outlived a bare `timeout`.
         bounded() { sudo timeout -k 30 "$TIMEOUT_SECONDS" "$@"; }
 
+        # Both legs are wrapped in `if`. Left bare under `set -e` a failure
+        # exits mid-group, so the runner folds the error into a collapsed log
+        # group and none of this script's own diagnostics print — the quiet
+        # failure being avoided here is on the update leg, which is the leg
+        # that actually failed in v4.111.0.
         echo "::group::apt-get update"
-        # No DPkg::Lock::Timeout here: `apt-get update` contends on
-        # /var/lib/apt/lists/lock, not the dpkg lock, so it would be inert.
-        bounded apt-get update
+        if ! bounded apt-get update; then
+          echo "::endgroup::"
+          echo "apt-install: apt-get update failed (exit 124 means it hit the ${TIMEOUT_SECONDS}s bound)" >&2
+          exit 1
+        fi
         echo "::endgroup::"
 
         echo "::group::apt-get install $PACKAGES"
-        # DPkg::Lock::Timeout is a WAIT, not a retry, which is why it survives
-        # the no-retry rule above. apt-get's own default does not give it: the
-        # 120 in `apt-config dump` is `binary::apt::`-scoped, i.e. the `apt`
-        # frontend only. GitHub runners start unattended-upgrades early and
-        # hold that lock for minutes, so without this the install fails
-        # instantly on a condition that clears on its own.
-        #
         # DEBIAN_FRONTEND goes through `env` because sudo's env_reset drops it:
         # installing a package runs its postinst, and a debconf prompt there
         # would block on stdin until the bound kills it.
-        if bounded env DEBIAN_FRONTEND=noninteractive \
-             apt-get -o DPkg::Lock::Timeout=120 install -y $PACKAGES; then
+        if bounded env DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES; then
           echo "::endgroup::"
           exit 0
         fi
         echo "::endgroup::"
 
         # A killed install leaves dpkg half-configured, and that poisons every
-        # later apt in the job — including unrelated steps, and including an
-        # `if: failure()` diagnostic step that would then report the wrong
-        # cause. Repair on the way out even though we are failing.
+        # later apt in the job — including an `if: failure()` diagnostic step,
+        # which would then report the wrong cause. `--configure -a` alone does
+        # not cover a package left unpacked-but-unconfigured with broken deps;
+        # `install -f` is what resolves those, so run both.
         echo "apt-install: install failed; repairing dpkg before exit" >&2
         sudo timeout -k 10 60 env DEBIAN_FRONTEND=noninteractive dpkg --configure -a \
-          || echo "apt-install: dpkg repair also failed" >&2
+          || echo "apt-install: dpkg --configure -a did not complete" >&2
+        sudo timeout -k 10 60 env DEBIAN_FRONTEND=noninteractive apt-get install -f -y \
+          || echo "apt-install: apt-get install -f did not complete" >&2
 
         echo "apt-install: could not install $PACKAGES" >&2
         exit 1

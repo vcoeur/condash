@@ -21,7 +21,13 @@ jobs:
     # generous headroom over the suite's own per-test timeouts so a single
     # pass never brushes the job limit (a brush would otherwise trigger the
     # config's CI retries and stack runtime 3×).
-    timeout-minutes: 25
+    # Raised from 25 when the bounded apt fallback landed: that fallback did
+    # not exist when 25 was chosen, and stacking its worst case on a cold
+    # Playwright cache and a full-length suite came to 24.7 min — 18 s of
+    # margin, i.e. none. The suite-headroom argument above is unchanged; the
+    # suite's own share is still ~5 min. Every step here is individually
+    # bounded now, so this is a backstop rather than the primary control.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -71,26 +77,11 @@ jobs:
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: npm ci
 
-      # `npx playwright install --with-deps` runs apt *inside* itself, so
-      # neither the bounded-install action nor any argument of ours reaches
-      # that apt. Global config is the only lever, which is why this is a
-      # visible step of its own rather than a side effect of another one —
-      # the step below depends on it, and that dependency should be legible.
-      #
-      # Both settings are unset by default (`apt-config dump` emits neither),
-      # so apt ships with `Acquire::Retries` at 0: today a dropped index fetch
-      # is simply lost, with no retry at all. Three retries at a 30 s stall
-      # window keeps the same ~120 s per-URI ceiling as apt's built-in default
-      # while giving four chances instead of one.
-      - name: Bound the apt that Playwright runs internally
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-ci-timeouts >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          DPkg::Lock::Timeout "60";
-          APTCONF
-
+      # `npx playwright install --with-deps` runs apt *inside* itself, out of
+      # reach of any argument of ours. The `Ensure xvfb` step above installs
+      # /etc/apt/apt.conf.d/99-ci-timeouts for the whole job before its probe
+      # runs, so that nested apt inherits the bound — which is why that step
+      # is not conditional and must stay ahead of this one.
       # A plain `run:` step, so step-level `timeout-minutes` genuinely applies
       # here — unlike on a composite `uses:` step, where it is inert. The ~80 s
       # healthy figure is a WARM-cache measurement; a `package-lock.json` bump
