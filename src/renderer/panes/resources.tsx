@@ -51,8 +51,12 @@ export function ResourcesView(props: {
   // Memoise the inline file renderer so toggling one directory's expansion
   // doesn't invalidate every file card in the rest of the tree — see
   // notes/01-design.md.
+  // Pane-level, not per-card: on an empty pane a paste now waits for a shell to
+  // spawn and its tab to arrive, and a second card fired inside that window
+  // opens a second shell. A per-card guard cannot see the other cards.
+  const [pasting, setPasting] = createSignal(false);
   const renderFile = createMemo(() => (file: ResourceNode) => (
-    <ResourceCard node={file} actions={props.actions} />
+    <ResourceCard node={file} actions={props.actions} pasting={pasting} setPasting={setPasting} />
   ));
 
   return (
@@ -98,12 +102,17 @@ export function ResourcesView(props: {
   );
 }
 
-function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions }) {
+function ResourceCard(props: {
+  node: ResourceNode;
+  actions: ResourcesViewActions;
+  /** Shared across the pane: a paste in flight blocks every card, not just
+   *  this one, because the spawn it may be waiting on is pane-wide. */
+  pasting: () => boolean;
+  setPasting: (value: boolean) => void;
+}) {
   const cat = (): ResourceCategory => props.node.category ?? 'other';
-  // pasteToTerm is async — guard against rapid double-clicks queuing two
-  // pastes that may target different terminal sessions if focus shifts
-  // between them.
-  const [pasting, setPasting] = createSignal(false);
+  const pasting = props.pasting;
+  const setPasting = props.setPasting;
   const pasteToTerm = async (): Promise<void> => {
     if (pasting()) return;
     setPasting(true);

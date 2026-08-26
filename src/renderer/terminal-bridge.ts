@@ -198,8 +198,8 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  failed delivery is reported — a call site cannot forget to, which is the
    *  mistake this whole class of defect keeps being made of.
    *
-   *  `switchTo` is for the user: it puts the tab they are about to work in on
-   *  screen. It is not what makes the delivery correct; `typeInto` is, because
+   *  The band flip and `switchTo` are for the user: together they put the tab
+   *  they are about to work in on screen. It is not what makes the delivery correct; `typeInto` is, because
    *  it addresses the sid rather than whatever is active. That distinction
    *  matters because there is no window in which the renderer promises to
    *  leave focus alone: `focusSpawnedTab` returns the moment the spawned tab
@@ -227,6 +227,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     text: string,
     submit: boolean,
   ): Promise<{ delivered: boolean; submitted: boolean }> => {
+    // Both halves of "put the tab on screen". `switchTo` only sets the active
+    // id and column; with the bottom band showing the Dashboard body every
+    // xterm is display:none, so without the band flip the text is delivered
+    // correctly to a tab the user cannot see — which, now that the surfaces
+    // wait seconds and disable themselves while they do, reads as a hang.
+    deps.showTerminalBand();
     target.handle.switchTo('my', target.sid);
     if (!target.handle.typeInto(target.sid, text)) {
       deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
@@ -254,7 +260,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  like a defect worth fixing until the fix was tried: sharing one tab makes
    *  two submit-bearing actions interleave on the same prompt line, so the
    *  shell runs the two commands concatenated. A second tab is a surprise; a
-   *  concatenated command is a wrong command. */
+   *  concatenated command is a wrong command.
+   *
+   *  Racing is held off at the surfaces instead, where the intent is known —
+   *  the Resources pane blocks every card while a paste is in flight, and the
+   *  Install button blocks itself — rather than here, where two callers wanting
+   *  one tab and two callers wanting two are indistinguishable. */
   const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();

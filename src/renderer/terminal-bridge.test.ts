@@ -789,6 +789,21 @@ describe('runShellCommand', () => {
     vi.useRealTimers();
   });
 
+  it('brings the terminal body up, not just the tab', async () => {
+    // `switchTo` sets the active id and column; it does not flip the bottom
+    // band. With the Dashboard body showing, every xterm is display:none, so
+    // the command would be delivered correctly to a tab nobody can see.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(500);
+    await promise;
+    expect(deps.showTerminalBand).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('reports success when the command was typed and submitted', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
