@@ -6,33 +6,50 @@
  *
  * Run as `npm run test -- --reporter=list screenshots.spec.ts`. Output lands in
  * `tests/screenshots-out/{light,dark}/<name>.png` — with NO theme suffix, one
- * directory per theme. Landing them in `docs/assets/screenshots/` therefore
- * needs a rename, not a plain `cp` (a bare
- * `cp tests/screenshots-out/{light,dark}/*.png docs/assets/screenshots/` writes
- * unsuffixed names and lets the dark pass clobber the light one), plus a
- * halving back to the 1600×1100 the docs ship:
+ * directory per theme — and reaches `docs/assets/screenshots/` through
  *
- *   for theme in light dark; do
- *     for f in tests/screenshots-out/$theme/*.png; do
- *       convert "$f" -resize 50% -strip \
- *         "docs/assets/screenshots/$(basename "$f" .png)-$theme.png"
- *     done
- *   done
- *   pngquant --force --skip-if-larger --quality=70-95 --ext .png \
- *     docs/assets/screenshots/*.png
+ *   node scripts/publish-screenshots.mjs
  *
+ * which renames per theme, halves the 2× capture back to the logical `VIEWPORT`
+ * size the docs ship, runs the palette pass that keeps the directory at ~2.9 MB,
+ * and then verifies its own output. That used to be a shell recipe retyped here
+ * by hand, and the rename is a trap — a bare `cp` writes unsuffixed names and
+ * lets the dark pass clobber the light one. It was mis-run exactly that way, and
+ * a dark-mode reader was served a light screenshot until a review caught it; the
+ * script's byte-identical-pair check is that failure, made unshippable.
  * (ImageMagick and pngquant are local docs-authoring tools only — the harness
- * itself has no such dependency, so the tag-time CI run stays clean. Without
- * them, `cp` the 2× files instead and accept ~14 MB of assets. The palette pass
- * is what keeps the whole directory at ~2.7 MB.)
+ * itself has no such dependency, so the tag-time CI run stays clean.)
  *
- * The window is composed at 1600×1100 logical px and captured at
- * `deviceScaleFactor: 2`, so the raw PNGs are 3200×2200. BOTH halves of that are
+ * The window is composed at 1600×1250 logical px and captured at
+ * `deviceScaleFactor: 2`, so the raw PNGs are 3200×2500. The height is picked
+ * from measurement rather than taste: at the previous 1100 the Projects
+ * stack's visible window ended 10px into the `backlog` panel, so the flagship
+ * `dashboard-overview` shot published a 10px sliver of a rounded panel top
+ * that reads as a rendering glitch rather than as scrolled content. 1250 lands
+ * the fold in the 40px of bare background between `done` and the trailing `?`
+ * lane, so the whole canonical status stack renders with nothing bisected.
+ * `settleStackFold` below turns that from a lucky number into a checked
+ * invariant — it runs on every capture and records any lane a clip edge has
+ * sliced to a hairline for the file-level assertions to fail on.
+ *
+ * **Known limitation, stated rather than fixed.** It nudges the stack only when
+ * there is an offence, so a capture that scrolls the stack on purpose (step 3's
+ * `projects-done`) leaves an offset that later shots inherit through
+ * `usePaneScrollMemory`. Four published images are framed at max scroll for
+ * that reason and nothing asserts it, so reordering or deleting an earlier step
+ * can change their framing with a green run. What is ruled out is a *sliver*,
+ * not a particular framing. The alternative — every shot declaring the offset
+ * it wants — is the right fix and is deliberately not taken here: forcing an
+ * offset is also how `status-unknown-badge` once lost its subject, so it has to
+ * be per-shot intent rather than a blanket reset, which is more than this
+ * change should carry.
+ *
+ * On the 2× capture: BOTH halves of it are
  * load-bearing and neither works alone: Electron's `--force-device-scale-factor`
  * makes the compositor surface 2×, and the CDP device-metrics override makes the
  * page agree (`devicePixelRatio === 2`) so Playwright captures those real pixels.
  * With only the Electron flag — the pre-2026-07 setup — `page.setViewportSize`
- * pinned the page to dpr 1, the capture came out 1600×1100, and xterm rendered
+ * pinned the page to dpr 1, the capture came out at logical size, and xterm rendered
  * its glyphs at HALF size: every committed `terminal-*.png` had a ~6px, unreadable
  * body. Halving the 2× capture on the way into docs/ keeps the display serif's
  * hinting intact too (at a straight 1× capture the crossbar drops out of every `e`).
@@ -99,10 +116,9 @@ const demoBinDir = join(demoRoot, 'bin');
 const workspacePath = join(demoRoot, 'workspace');
 const worktreesPath = join(demoRoot, 'worktrees');
 
-/** Logical (CSS-pixel) window the shots are composed against, and the scale the
- *  capture runs at. Every PNG lands at `width*scale × height*scale`. */
-const VIEWPORT = { width: 1600, height: 1100 };
-const DEVICE_SCALE = 2;
+// Logical window + capture scale. Shared with `ui-revamp-shots.spec.ts` so the
+// two harnesses cannot drift; every PNG lands at `width*scale × height*scale`.
+import { VIEWPORT, DEVICE_SCALE } from './viewport';
 
 type Theme = 'light' | 'dark';
 
@@ -328,8 +344,8 @@ async function boot(theme: Theme): Promise<Booted> {
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   // Emulate the viewport rather than resizing the window: the Xvfb display is
-  // smaller than the shot, so a real 1600×1100 window would be clamped.
-  // `deviceScaleFactor: 2` is what makes the capture 3200×2200 — plain
+  // smaller than the shot, so a real `VIEWPORT`-sized window would be clamped.
+  // `deviceScaleFactor: 2` is what doubles the capture — plain
   // `page.setViewportSize` pins it to 1, and the resulting 1× glyph hinting
   // drops the crossbar out of every `e` in the display serif.
   const cdp = await page.context().newCDPSession(page);
@@ -436,6 +452,187 @@ async function requireContent(
   }
 }
 
+/** A lane cut this thin by a clip edge of the Projects stack reads as a
+ *  rendering artefact rather than as content continuing past it. */
+const MIN_VISIBLE_LANE_PX = 60;
+
+/** Full-window captures that frame the Projects stack. Asserted as an exact
+ *  count, not a floor: both earlier rounds of this work failed because a check
+ *  quietly stopped covering shots, and `> 0` reproduces that hole. */
+const STACK_FRAMING_SHOTS = [
+  'dashboard-overview',
+  'knowledge-pane',
+  'resources-pane',
+  'skills-pane',
+  'terminal',
+  'spawn-dropdown',
+  'item-fuzzy-search',
+  'item-document-with-pdf',
+  'status-unknown-badge',
+  // `settings-modal` deliberately absent: its stack is mounted but wholly
+  // behind a full-viewport modal, so listing it would pin this assertion to
+  // whether that modal keeps the dashboard mounted — unrelated to framing.
+  // `settleStackFold` still runs there; it simply is not required to.
+] as const;
+
+/**
+ * Every fold offence seen during a sweep, and every shot where the stack was
+ * actually inspected. Both are asserted at the end of the test rather than at
+ * the capture site, because `shoot()` swallows its own errors by design.
+ */
+const foldOffences: string[] = [];
+const foldChecked: string[] = [];
+
+/**
+ * Nudge the Projects stack's scroll offset if a clip edge has sliced a lane to
+ * a hairline, then record what is left.
+ *
+ * The stack overflows on this fixture, so *a* fold is expected, and a lane cut
+ * through its body reads correctly as scrolled content. What reads as a defect
+ * is a sliver — a few pixels of a lane's rounded edge and tint pinned against a
+ * clip edge of a published screenshot. The contract: **a lane is whole, absent,
+ * or cut with at least `MIN_VISIBLE_LANE_PX` on both sides of the cut.** For a
+ * lane shorter than twice that — every collapsed lane — this reduces to
+ * whole-or-absent, deliberately: no amount of a 51px panel reads as "continues
+ * below".
+ *
+ * Three cases, not four. At the bottom clip edge both a slivered lane top and a
+ * sliced-off closing border count — that border exists precisely so the panel
+ * "ends somewhere definite" (`projects-pane.css`). At the top clip edge only a
+ * slivered lane *bottom* counts: a lane whose opening border is above the clip
+ * edge is simply what scrolled content looks like, and treating it as a defect
+ * makes the constraint unsatisfiable — measured, no offset then clears the
+ * terminal shot at all.
+ *
+ * **It nudges from wherever the capture left the stack; it does not reset.** An
+ * earlier version forced `scrollTop = 0` to kill an inherited-offset bug, and
+ * that scrolled `status-unknown-badge`'s whole subject — the trailing `?` lane
+ * — out of frame, because at 0 that lane sits below the fold. Resetting
+ * destroys a scroll position a capture set on purpose.
+ *
+ * What that leaves is narrower than "inheritance is harmless": an inherited
+ * offset can no longer publish a *sliver*, because every full-window capture is
+ * checked, but it still decides the *framing*, and nothing asserts that. See
+ * the known limitation in this file's header — it is a real gap, not a solved
+ * problem.
+ */
+async function settleStackFold(page: Page, label: string): Promise<'absent' | 'checked'> {
+  const result = await page.evaluate((minVisible) => {
+    const stack = document.querySelector('.projects-stack');
+    if (!stack) return { present: false, lanes: 0, offence: null as string | null };
+    const lanes = Array.from(stack.querySelectorAll(':scope > .group-block'));
+    // A mounted stack with no lanes means the selector stopped matching, not
+    // that there is nothing to check — report it rather than skipping.
+    if (!lanes.length) return { present: true, lanes: 0, offence: null as string | null };
+
+    const view = stack.clientHeight;
+    const maxScroll = Math.max(0, stack.scrollHeight - view);
+    // Content-space geometry from rects relative to the stack, not `offsetTop`:
+    // that is measured against `offsetParent`, only the stack when positioned.
+    const geom = (lane: Element) => {
+      const stackRect = stack.getBoundingClientRect();
+      const box = lane.getBoundingClientRect();
+      const top = box.top - stackRect.top - stack.clientTop + stack.scrollTop;
+      return { top, height: box.height, bottom: top + box.height };
+    };
+    type Kind = 'lane-top' | 'closing-border' | 'lane-bottom';
+    const offenceAt = (scrollTop: number) => {
+      const viewTop = scrollTop;
+      const viewBottom = scrollTop + view;
+      for (const lane of lanes) {
+        const g = geom(lane);
+        const cap = Math.min(minVisible, g.height);
+        // `kind` is a discriminant, never parsed back out of the message: the
+        // scroll strategy keys on it, so wording must not be able to change it.
+        const cases: { kind: Kind; px: number; label: string }[] = [
+          {
+            kind: 'lane-top',
+            px: viewBottom - g.top,
+            label: 'top of lane at the bottom clip edge',
+          },
+          {
+            kind: 'closing-border',
+            px: g.bottom - viewBottom,
+            label: 'closing border past the bottom clip edge',
+          },
+          {
+            kind: 'lane-bottom',
+            px: g.bottom - viewTop,
+            label: 'bottom of lane at the top clip edge',
+          },
+        ];
+        for (const c of cases) {
+          if (c.px >= 1 && c.px < cap) {
+            // `px` after the spread, not before: spreading `c` last puts the
+            // unrounded value back and prints `10.399999618530273px`.
+            return {
+              status: lane.getAttribute('data-status'),
+              height: Math.round(g.height),
+              ...c,
+              px: Math.round(c.px),
+              g,
+            };
+          }
+        }
+      }
+      return null;
+    };
+
+    const clamp = (n: number) => Math.min(maxScroll, Math.max(0, n));
+    for (let pass = 0; pass < 8; pass += 1) {
+      const hit = offenceAt(stack.scrollTop);
+      if (!hit) return { present: true, lanes: lanes.length, offence: null as string | null };
+      // Both directions are tried for every case. A single strategy is what made
+      // a slivered lane top unfixable at scrollTop 0: pulling back clamps to the
+      // current offset and the routine then declared the whole range hopeless
+      // without ever having tried forward.
+      // Ordered by distance from where the capture left the stack, so the
+      // smallest correction wins. Order matters more than the set: an earlier
+      // version listed a near-viewport backward jump first, which "fixed" a
+      // slivered lane tail by scrolling that lane out of frame entirely — the
+      // shape of the bug that published `status-unknown-badge` without its
+      // subject. `find` takes the first that clears, so the nearest must lead.
+      const candidates = [
+        hit.g.bottom + 8 - view,
+        hit.g.top - 8 - view,
+        hit.g.bottom + 8,
+        hit.g.top - 8,
+      ]
+        .map(clamp)
+        .filter((n) => Math.abs(n - stack.scrollTop) >= 1)
+        .sort((a, b) => Math.abs(a - stack.scrollTop) - Math.abs(b - stack.scrollTop));
+      const next = candidates.find((n) => !offenceAt(n));
+      if (next === undefined) {
+        return {
+          present: true,
+          lanes: lanes.length,
+          offence:
+            `${hit.px}px of the ${hit.height}px '${hit.status}' lane — ${hit.label}; ` +
+            `none of the ${candidates.length} candidate offsets clears it ` +
+            `(tried ${candidates.map((n) => Math.round(n)).join(', ')} in [0, ${Math.round(maxScroll)}])`,
+        };
+      }
+      stack.scrollTop = next;
+    }
+    const left = offenceAt(stack.scrollTop);
+    return {
+      present: true,
+      lanes: lanes.length,
+      offence: left
+        ? `${left.px}px of the ${left.height}px '${left.status}' lane — ${left.label}; still offending after 8 passes`
+        : null,
+    };
+  }, MIN_VISIBLE_LANE_PX);
+
+  if (!result.present) return 'absent';
+  if (!result.lanes) {
+    foldOffences.push(`${label}: .projects-stack is mounted but holds no .group-block lanes`);
+    return 'checked';
+  }
+  if (result.offence) foldOffences.push(`${label}: ${result.offence}`);
+  return 'checked';
+}
+
 /**
  * Plain text of every live xterm buffer, scrollback included.
  *
@@ -462,6 +659,12 @@ async function readTerminalText(page: Page): Promise<string> {
 async function shoot(page: Page, theme: Theme, name: string): Promise<void> {
   const dir = join(outRoot, theme);
   await mkdir(dir, { recursive: true });
+  // Every full-window capture, not a hand-picked list: the stack is on screen
+  // for ten of them and the set is easy to mis-enumerate. No-ops when the stack
+  // is not mounted; `STACK_FRAMING_SHOTS` pins which ones must reach it.
+  if ((await settleStackFold(page, `${theme}/${name}`)) === 'checked') {
+    foldChecked.push(`${theme}/${name}`);
+  }
   try {
     await page.screenshot({
       path: join(dir, `${name}.png`),
@@ -599,7 +802,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 2. activity-rail — a narrow clip of the rail itself. It is the app's
     //    primary navigation and the one element both shortcut pages need to
     //    show; a full-window shot renders it 52px wide and unreadable. Clipped
-    //    to the icon block, not the rail's full 1100px height — the rest is
+    //    to the icon block, not the rail's full height — the rest is
     //    empty and would render the strip unreadably thin in a docs column.
     {
       await requireContent(page, 'activity-rail', {
@@ -937,8 +1140,9 @@ test('capture every documentation screenshot in light + dark', async () => {
 
   // File-level checks, deliberately coarse: every slug exists in both themes,
   // clears a size floor (the sliver failure signature was 1.7 kB), and — for
-  // the full-window shots — is actually 3200×2200, the guard for the
-  // capture-scale regression that silently halved every xterm glyph. They
+  // the full-window shots — matches `VIEWPORT × DEVICE_SCALE` exactly, the
+  // guard for the capture-scale regression that silently halved every xterm
+  // glyph. Derived from the constants, so raising the viewport moves it. They
   // replace an `expect(true).toBe(true)` that let three broken shots reach
   // docs/, and they catch a missing file (`shoot()` swallows its own errors), a
   // degenerate clip, and a wrong capture scale.
@@ -977,6 +1181,28 @@ test('capture every documentation screenshot in light + dark', async () => {
       }
     }
   }
+  // Exact set, not a count: both earlier rounds of this work failed because a
+  // check quietly stopped covering shots, and a floor reproduces that hole.
+  // Every shot that frames the stack must have been reached, in BOTH themes,
+  // and the keys are theme-qualified so a shot skipped in one theme cannot hide
+  // behind the other. Asserted as "none missing" rather than as an exact set: `settings-modal`
+  // also reaches the probe, because its stack stays mounted behind the
+  // full-viewport modal, and pinning that would tie this assertion to an
+  // unrelated mount detail. What must never happen is a *missing* one — that is
+  // the hole every earlier round of this work fell through, and a theme-
+  // collapsing Set or a bare count reproduces it one layer up.
+  const reached = new Set(foldChecked);
+  const notReached = (['light', 'dark'] as Theme[]).flatMap((t) =>
+    STACK_FRAMING_SHOTS.map((slug) => `${t}/${slug}`).filter((k) => !reached.has(k)),
+  );
+  expect(
+    notReached,
+    `the Projects-stack fold probe never reached: ${notReached.join(', ')}`,
+  ).toEqual([]);
+  expect(
+    foldOffences,
+    `a clip edge slices a status lane to a hairline (reads as a rendering glitch):\n  ${foldOffences.join('\n  ')}`,
+  ).toEqual([]);
   expect(missing, `missing screenshots: ${missing.join(', ')}`).toEqual([]);
   expect(undersized, `implausibly small screenshots: ${undersized.join(', ')}`).toEqual([]);
   expect(wrongSize, `wrong capture size: ${wrongSize.join(', ')}`).toEqual([]);

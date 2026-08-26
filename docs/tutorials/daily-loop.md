@@ -124,10 +124,10 @@ Once the PR is open and `gh` can see it, an **Open PR #N** badge appears on the 
 
 The incident is now **waiting on an external signal** — the merge. Change its status from `now` to `review`: click the **status pill** in the item modal's header and pick `review` from the list. (On the card in the list, the same change is a **drag** to another section, or `Ctrl`/`Cmd`+`1`…`5` with the card focused.) condash rewrites the README's status line — `status:` for YAML frontmatter, `**Status**:` for the legacy bold-prose form.
 
-The item moves from the `NOW` section to `REVIEW`. The Projects pane is one scrolling stack of sections in the fixed order `now`, `review`, `later`, `backlog`, `done`, plus a trailing `?` for any item whose status isn't one of those five — you can see all of them in the screenshot below.
+The item moves from the `NOW` section to `REVIEW`. The Projects pane is one scrolling stack of sections in the fixed order `now`, `review`, `later`, `backlog`, `done`, plus a trailing `?` for any item whose status isn't one of those five. The screenshot below shows the five canonical sections; the `?` section only appears once some item carries an unrecognised status, and is pictured in [Status values](../reference/readme-format.md#status).
 
-![Projects pane with the NOW, REVIEW, LATER, BACKLOG, DONE and unknown-status sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-light.png#only-light)
-![Projects pane with the NOW, REVIEW, LATER, BACKLOG, DONE and unknown-status sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-dark.png#only-dark)
+![Projects pane with the NOW, REVIEW, LATER, BACKLOG and DONE sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-light.png#only-light)
+![Projects pane with the NOW, REVIEW, LATER, BACKLOG and DONE sections stacked in that order, Code alongside](../assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 Prefer a skill over the shell? In an agent session with the skills installed, this step is one command:
 
