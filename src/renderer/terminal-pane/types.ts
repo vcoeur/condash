@@ -67,6 +67,11 @@ export interface Tab {
   /** One-line "what is happening now" from the dashboard engine — shown in the
    *  hover popover. Renderer-only ephemeral state; never persisted. */
   currentAction?: string;
+  /** Project slug main's mention scan derived from this tab's recent output.
+   *  Broadcast state, never persisted, and never a link on its own: it turns
+   *  that project's card Link button into "Link (suggested)", and only the
+   *  user's click writes the relation. */
+  suggestedProject?: string;
 }
 
 /** Display name for a tab. A user rename always wins; then the dashboard's

@@ -666,6 +666,19 @@ body[data-dragging='project'] .row {
   cursor: not-allowed;
   border-color: var(--border);
 }
+/* Suggested state: main's mention scan read this project's slug in the focused
+ * tab's output. A washed accent border + accent text — the same 55% accent mix
+ * the Linked-tabs fold uses for its subtle strength — so a suggestion reads as
+ * weaker than any real relation, which is what it is. Never the left edge: that
+ * belongs to the family frame (see the relationship-decoration block below). */
+.row .link-button.suggested:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+.row .link-button.suggested:not(:disabled):hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
 /* Relationship / hierarchy decoration (2026-07 left-edge frame; directional-
  * border semantics 2026-08-24). A family card wears only the directional

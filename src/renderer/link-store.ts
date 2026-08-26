@@ -39,6 +39,12 @@ export type LinkMap = Record<string, Record<string, LinkRecord>>;
 interface ActiveSession {
   sid: string;
   label: string;
+  /** Project slug main's mention scan derived from this tab's output. Rides the
+   *  focus mirror because every consumer of a suggestion is already reading the
+   *  focused session — the card's Link button asks "is the tab I would link
+   *  suggesting me?", which is one question, not two. Undefined when the scan
+   *  found no clear leader. */
+  suggestedProject?: string;
 }
 
 /** A fresh, prototype-less dictionary. The persisted bytes are untrusted, and a
@@ -94,17 +100,34 @@ const [active, setActive] = createSignal<ActiveSession | null>(null);
 /** The focused terminal session, or null when none is. Drives the Link
  *  button's disabled state, the Active-tab filter, and the strong card
  *  decoration. */
-export function activeSession(): { sid: string; label: string } | null {
+export function activeSession(): {
+  sid: string;
+  label: string;
+  suggestedProject?: string;
+} | null {
   return active();
 }
 
-/** Mirror the focused session into the store. Equality-guarded on both sid and
- *  label so the controller's 2.5 s memory-sampler broadcast — which re-runs
- *  the mirror effect without changing the focus — publishes nothing. */
-export function setActiveSession(next: { sid: string; label: string } | null): void {
+/** Mirror the focused session into the store. Equality-guarded on sid, label
+ *  and suggestion so the controller's 2.5 s memory-sampler broadcast — which
+ *  re-runs the mirror effect without changing the focus — publishes nothing.
+ *  The suggestion is part of the guard, not exempt from it: the mention scan
+ *  rides that same 2.5 s tick, so a settled tab re-publishes the same value
+ *  every tick and only a real change may ripple out. */
+export function setActiveSession(
+  next: { sid: string; label: string; suggestedProject?: string } | null,
+): void {
   const current = active();
   if (current === next) return;
-  if (current && next && current.sid === next.sid && current.label === next.label) return;
+  if (
+    current &&
+    next &&
+    current.sid === next.sid &&
+    current.label === next.label &&
+    current.suggestedProject === next.suggestedProject
+  ) {
+    return;
+  }
   setActive(next);
 }
 

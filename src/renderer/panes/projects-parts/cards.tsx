@@ -528,6 +528,14 @@ export function Card(props: {
   // The Link button binds the card to the *focused* session; without one it is
   // disabled (linking must never spawn a tab the user didn't ask for).
   const canLink = (): boolean => activeSession() !== null;
+  // Main's mention scan read this project's slug (or its branch) in the focused
+  // tab's recent output, so that tab is probably working on this card. The
+  // button says so and stays exactly the button it was — accepting is the same
+  // click writing the same ordinary manual relation. A suggestion is never a
+  // link: it decorates nothing else, and it drives neither the Active-tab
+  // filter nor the card's linked decoration, both of which mean a real relation.
+  const isSuggested = (): boolean =>
+    !linkedToActive() && activeSession()?.suggestedProject === props.item.slug;
 
   // Linked-tabs fold in the relations zone — the card's link signal AND
   // control (2026-08 v2: replaces the meta-row chip + portaled popover, which
@@ -672,13 +680,20 @@ export function Card(props: {
             <button
               type="button"
               class="link-button"
+              classList={{ suggested: isSuggested() }}
               disabled={!canLink()}
               title={
-                canLink()
-                  ? `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
-                  : 'Open a terminal tab first, then link this project'
+                !canLink()
+                  ? 'Open a terminal tab first, then link this project'
+                  : isSuggested()
+                    ? `The focused tab (${activeSession()!.label}) mentions ${props.item.slug} — link it to ${props.item.title}`
+                    : `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
               }
-              aria-label="Link this project to the focused terminal tab"
+              aria-label={
+                isSuggested()
+                  ? 'Link this project to the focused terminal tab, which mentions it'
+                  : 'Link this project to the focused terminal tab'
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 const active = activeSession();
@@ -686,7 +701,7 @@ export function Card(props: {
                 linkProject(props.item.slug, active.sid, active.label);
               }}
             >
-              Link
+              {isSuggested() ? 'Link (suggested)' : 'Link'}
             </button>
             <ActionDropdownButton
               trigger={<TerminalIcon />}

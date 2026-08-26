@@ -35,6 +35,8 @@ import { cleanTerminalText } from './dashboard/clean-text';
 import { OscTranscriptExtractor } from './osc-transcript';
 import { readFileTranscript, sidecarTranscriptPath } from './file-transcript';
 import { TerminalFlow } from './terminal-flow';
+import { SCAN_WINDOW_CHARS, suggestProjectForText } from './tab-mentions';
+import { mentionNeedles } from './tab-mentions-source';
 
 interface Session {
   id: string;
@@ -56,6 +58,13 @@ interface Session {
   /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
    * so the Code pane can match a session to the worktree it was started in. */
   cwd: string;
+  /** Project slug this tab's recent output suggests it is working on, from the
+   * mention scan. Advisory only — it decorates the card's Link button and is
+   * never itself a link. Undefined when nothing leads clearly. */
+  suggestedProject?: string;
+  /** `bytesSeen` at the last mention scan, so a tab that produced no new output
+   * keeps its previous verdict instead of being rescanned every tick. */
+  mentionScannedAt?: number;
   /** The pty's current winsize — the geometry the running program is drawing
    * for. Main owns the pty, so this is the authority: the renderer only ever
    * *writes* geometry (a fit → `termResize`), and a hidden tab's renderer-side
@@ -209,6 +218,7 @@ function snapshot(): TermSession[] {
     memMaxBytes: s.memMaxBytes,
     memGrowthBytesPerSec: s.memGrowthBytesPerSec,
     memThrottled: s.memThrottled,
+    suggestedProject: s.suggestedProject,
   }));
 }
 
@@ -330,12 +340,69 @@ function sampleMemory(): void {
       s.memEvents = events;
     }
   }
+  // Same reasoning as the perf flush below: ride this tick rather than arming a
+  // second timer. The scan is growth-gated per tab, so a pane full of idle tabs
+  // costs one integer compare each.
+  if (scanMentions()) changed = true;
   if (changed) broadcastSessions();
   // Ride this tick rather than arming a second timer — the instrumentation must
   // not add periodic work to the very thread it is measuring. No-op while perf
   // recording is off, and best-effort when on (a write failure must never break
   // the thing it measures).
   void perfLog.flush();
+}
+
+/** The conception whose projects the mention scan recognises. Set alongside
+ *  `syncPerfLogging` at boot and on every conception switch; null disables the
+ *  scan (there are no projects to name). */
+let mentionConception: string | null = null;
+
+/**
+ * Point the mention scan at a conception (or null to disable it).
+ *
+ * @param conceptionPath Active conception root, or null when none is set.
+ */
+export function setMentionConception(conceptionPath: string | null): void {
+  mentionConception = conceptionPath;
+}
+
+/**
+ * Re-derive each live tab's suggested project from its recent output.
+ *
+ * Growth-gated on `bytesSeen`: a tab that emitted nothing since the last scan
+ * keeps its verdict untouched. Scanning is otherwise stateless — the verdict is
+ * recomputed from the current window rather than accumulated — so a tab that
+ * stops talking about a project drops the suggestion as that text scrolls out.
+ *
+ * The gate makes one bounded staleness deliberate: when the needle set changes
+ * (a project closed, say), a *silent* tab keeps the suggestion it had until it
+ * next prints something. Re-scanning every tab on every needle change would cost
+ * a full pass per README write — and an agent tab, the case that matters, writes
+ * READMEs constantly and so re-scans within a tick or two anyway.
+ *
+ * Reads through `recentTextFor` rather than `tabRecentText` on purpose: the
+ * latter's perf span is the dashboard summarizer's, and folding this scan's
+ * calls into it would misattribute the time.
+ *
+ * @returns True when any tab's suggestion changed, so the caller rebroadcasts.
+ */
+function scanMentions(): boolean {
+  const needles = mentionNeedles(mentionConception);
+  if (needles.length === 0) return false;
+  let changed = false;
+  for (const s of sessions.values()) {
+    // `my`-side only: the Code pane's inline runners are already bound to a
+    // repo by construction and have no card to decorate.
+    if (s.side !== 'my' || s.exited !== undefined) continue;
+    if (s.mentionScannedAt === s.bytesSeen) continue;
+    s.mentionScannedAt = s.bytesSeen;
+    const suggestion = suggestProjectForText(recentTextFor(s.id, SCAN_WINDOW_CHARS), needles);
+    if (suggestion !== s.suggestedProject) {
+      s.suggestedProject = suggestion;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /**

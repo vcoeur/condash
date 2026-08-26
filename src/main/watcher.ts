@@ -10,7 +10,13 @@ import { conceptionConfigCandidates } from './condash-dir';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
 import { resolveConceptionPaths } from './conception-paths';
-import { applyIndexFsEvent, clearSearchIndex, rebuildSearchIndex } from './search/index-cache';
+import {
+  applyIndexFsEvent,
+  clearSearchIndex,
+  isReadmePath,
+  rebuildSearchIndex,
+} from './search/index-cache';
+import { clearMentionNeedles, invalidateMentionNeedles } from './tab-mentions-source';
 import { clearReadmeCache, invalidateReadmeCache } from './parse-cache';
 import {
   buildWatchPaths,
@@ -52,6 +58,9 @@ export async function setWatchedConception(
   // README parse memo too so the new tree never serves a stale entry.
   clearSearchIndex();
   clearReadmeCache();
+  // Same reason: the needle set names the old tree's projects, and serving it
+  // against the new one would suggest projects that are not there.
+  clearMentionNeedles();
 
   if (current) {
     await current.watcher.close().catch(() => undefined);
@@ -250,6 +259,15 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   // cheap no-op for the (vast majority of) non-README events.
   if (eventName === 'change' || eventName === 'unlink') {
     invalidateReadmeCache(path);
+  }
+
+  // A README event can add, close, or re-branch a project, all of which change
+  // what the tab-mention scan should recognise. Includes `add`, unlike the memo
+  // drop above: a brand-new project has nothing cached to invalidate but must
+  // still become recognisable. The rebuild itself is lazy — the next scan does
+  // it, off this thread.
+  if (isReadmePath(toPosix(path))) {
+    invalidateMentionNeedles();
   }
 
   const event = classify(eventName as ChokidarEvent, path, roots, paths);
