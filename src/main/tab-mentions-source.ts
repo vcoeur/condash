@@ -24,6 +24,13 @@ type Needles = ReturnType<typeof buildNeedles>;
 let cached: { conceptionPath: string; needles: Needles } | null = null;
 let stale = true;
 let building: Promise<void> | null = null;
+// Bumped by every invalidation. A rebuild reads the tree over hundreds of
+// milliseconds, so a README written mid-build is not in the result; comparing
+// this counter across the build tells the rebuild whether it may clear
+// staleness or must leave the next scan to try again. Without it that write is
+// dropped for good — the search index carries the same guard, for the same
+// reason (`search/index-cache.ts`, its buildToken / buildBuffer pair).
+let invalidations = 0;
 
 /**
  * Mark the needle set stale. Called from the watcher on any project README
@@ -31,16 +38,19 @@ let building: Promise<void> | null = null;
  * the scan should recognise.
  */
 export function invalidateMentionNeedles(): void {
+  invalidations += 1;
   stale = true;
 }
 
 /** Drop the set entirely (conception switch / teardown). */
 export function clearMentionNeedles(): void {
   cached = null;
+  invalidations += 1;
   stale = true;
 }
 
 async function rebuild(conceptionPath: string): Promise<void> {
+  const startedAt = invalidations;
   const readmes = await findProjectReadmes(conceptionPath);
   // `parseReadmeCached` memoises on path + mtime, so a rebuild after a one-file
   // edit re-parses that one file and stats the rest.
@@ -62,7 +72,10 @@ async function rebuild(conceptionPath: string): Promise<void> {
       longLived,
     ),
   };
-  stale = false;
+  // Only settle when nothing invalidated while this build was reading: a change
+  // that landed mid-build is not in `needles`, and clearing staleness here would
+  // strand it until the tree happened to change again.
+  if (invalidations === startedAt) stale = false;
 }
 
 /**

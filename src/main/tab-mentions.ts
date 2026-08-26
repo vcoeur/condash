@@ -127,18 +127,15 @@ export function buildNeedles(
   return out;
 }
 
-/** Filler for text a longer needle already claimed, so a nested needle cannot
- *  re-count it. NUL, because no slug or branch can contain one — and written as
- *  an escape, never as a literal byte: a raw NUL in the source makes git treat
- *  the whole file as binary and show no diff at review time. */
-const CONSUMED = '\u0000';
-
 /**
  * Score one window of terminal output.
  *
- * Occurrences are counted longest-needle-first, and each match is blanked out of
- * a working copy before the next needle runs — so `2026-08-21-foo` scores as one
- * dated-slug sighting rather than also as a `foo` short-slug sighting.
+ * Occurrences are counted longest-needle-first over a consumed-character mask,
+ * so a match overlapping text a longer needle already claimed is skipped —
+ * `2026-08-21-foo` scores as one dated-slug sighting rather than also as a `foo`
+ * short-slug sighting. The mask is one byte per character and never reallocates;
+ * an earlier version blanked the matched span out of a working copy of the
+ * window, which rebuilt the whole string once per match.
  *
  * @param text Recent output; case-insensitive, so it is lowercased here.
  * @param needles From {@link buildNeedles} — must be longest-first.
@@ -149,21 +146,26 @@ const CONSUMED = '\u0000';
 export function scoreWindow(text: string, needles: readonly Needle[]): Map<string, number> {
   const scores = new Map<string, number>();
   if (!text) return scores;
-  let remaining = text.toLowerCase();
+  const haystack = text.toLowerCase();
+  const consumed = new Uint8Array(haystack.length);
   for (const needle of needles) {
+    const width = needle.text.length;
     let from = 0;
     let hits = 0;
     for (;;) {
-      const at = remaining.indexOf(needle.text, from);
+      const at = haystack.indexOf(needle.text, from);
       if (at === -1) break;
+      from = at + width;
+      let overlaps = false;
+      for (let i = at; i < at + width; i++) {
+        if (consumed[i]) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) continue;
+      consumed.fill(1, at, at + width);
       hits += 1;
-      // Blank the span rather than splicing it out: same length keeps every
-      // later index valid and avoids reallocating the window per match.
-      remaining =
-        remaining.slice(0, at) +
-        CONSUMED.repeat(needle.text.length) +
-        remaining.slice(at + needle.text.length);
-      from = at + needle.text.length;
     }
     if (hits > 0) scores.set(needle.slug, (scores.get(needle.slug) ?? 0) + hits * needle.weight);
   }
