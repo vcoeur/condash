@@ -98,10 +98,6 @@ jobs:
         uses: ./.github/actions/apt-install
         with:
           packages: aptly gnupg
-          # aptly is a Go binary in the tens of MB — the largest payload of any
-          # apt site here, and its duration was never measured. Give it room
-          # rather than tightening the shared default for everyone.
-          timeout-seconds: '300'
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

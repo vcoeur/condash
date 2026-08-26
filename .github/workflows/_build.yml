@@ -27,12 +27,16 @@ jobs:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Without this the matrix inherits GitHub's 360-minute default, so a hung
-    # step burns six hours before `publish` is skipped. Measured over the eight
-    # most recent releases the legs run 1.4-5.9 min (windows slowest), so 25
-    # leaves >4x headroom on the worst observed run. It also auto-kills the
-    # v4.109.0 failure mode: an ubuntu leg wedged at 27 m 48 s that a human had
-    # to cancel by hand.
-    timeout-minutes: 25
+    # step burns six hours before `publish` is skipped. Sized against the
+    # DESIGNED worst path, not the happy one: measured legs run 1.4-5.9 min
+    # (windows slowest), but this job also contains the 3x `npm ci` retry loop
+    # below (~6 min on the recovery path the v4.55.0 flake needs) and the
+    # bounded apt step (11 min worst case) — 22.9 min together, which 25 does
+    # not clear comfortably. Every step here is individually bounded now, so
+    # this is a backstop; it still turns the v4.109.0 failure mode (an ubuntu
+    # leg wedged at 27 m 48 s that a human cancelled by hand) into an automatic
+    # kill, just at 30 min rather than 25.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
