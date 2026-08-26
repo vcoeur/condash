@@ -216,21 +216,23 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  writes report separately, because a command typed but never submitted is a
    *  different thing to explain than one that never arrived.
    *
-   *  Returns whether the **text** reached the tab, which is the question every
-   *  caller actually asks: it is what decides whether the tab is working on the
-   *  project and so whether to link it. A refused Enter is reported to the user
-   *  but does not retract that — the prompt is sitting in that tab either way. */
+   *  Reports the two writes separately because callers want different ones.
+   *  `delivered` — the text reached the tab — is what decides whether the tab is
+   *  working on the project, and so whether to link it: a refused Enter does not
+   *  retract that, the prompt is sitting there either way. `submitted` is true
+   *  when no Enter was asked for, or when it landed; a caller that exists to
+   *  *run* something needs that one, not the first. */
   const sendToTarget = async (
     target: ActionTarget,
     text: string,
     submit: boolean,
-  ): Promise<boolean> => {
+  ): Promise<{ delivered: boolean; submitted: boolean }> => {
     target.handle.switchTo('my', target.sid);
     if (!target.handle.typeInto(target.sid, text)) {
       deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
-      return false;
+      return { delivered: false, submitted: false };
     }
-    if (!submit) return true;
+    if (!submit) return { delivered: true, submitted: true };
     // Small delay so the terminal has time to ingest the typed text before the
     // Enter key arrives.
     await new Promise((r) => setTimeout(r, 50));
@@ -239,8 +241,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         'That terminal tab is no longer live — the command was not submitted.',
         'error',
       );
+      return { delivered: true, submitted: false };
     }
-    return true;
+    return { delivered: true, submitted: true };
   };
 
   /** Shared preamble: ensure the pane is open, and hand back a tab that can be
@@ -359,7 +362,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // A tab that took none of the prompt is not a tab the action landed in —
     // callers use this return to link the project to it. A prompt that was
     // typed but not submitted still landed there, and still counts.
-    if (!(await sendToTarget(target, text, submit))) return null;
+    if (!(await sendToTarget(target, text, submit)).delivered) return null;
     return target;
   };
 
@@ -386,7 +389,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // work on a project is exactly the moment its tab belongs to it — but only
     // if the work actually got there. Linking after a "nothing was sent" toast
     // records a relation to a tab the user was just told failed.
-    if (!(await sendToTarget(target, text, false))) return;
+    if (!(await sendToTarget(target, text, false)).delivered) return;
     linkTargetToProject(target, project);
   };
 
@@ -406,7 +409,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await ensureTermAndShell();
     if (!target) return;
-    if (!(await sendToTarget(target, text, action.submit === true))) return;
+    if (!(await sendToTarget(target, text, action.submit === true)).delivered) return;
     if (action.link) linkTargetToProject(target, project);
   };
 
@@ -494,7 +497,13 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const handle = deps.terminalHandle();
     if (!handle) return;
     const sid = handle.activeLiveSessionId();
-    if (!sid) return;
+    if (!sid) {
+      // Every other surface here explains a refused delivery; this one used to
+      // drop in silence, which on a dead-but-still-shown tab looks like the
+      // shortcut is broken.
+      deps.flashToast('No live terminal tab to paste into.', 'error');
+      return;
+    }
     await sendToTarget({ handle, sid }, latest, false);
   };
 
@@ -555,7 +564,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
       return false;
     }
-    return sendToTarget({ handle, sid }, command, true);
+    // This one exists to run the command, not merely to place it — a prompt
+    // left unsubmitted is not a command that ran, and the caller schedules work
+    // off this answer.
+    const sent = await sendToTarget({ handle, sid }, command, true);
+    return sent.delivered && sent.submitted;
   };
 
   const runTask = async (

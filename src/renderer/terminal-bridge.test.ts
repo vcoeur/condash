@@ -631,6 +631,29 @@ describe('linking the tab an action landed on', () => {
     vi.useRealTimers();
   });
 
+  it('still links when the prompt was typed but its Enter was refused', async () => {
+    // The prompt is sitting in that tab either way, so the tab is working on
+    // the project — a refused Enter is a thing to say, not a reason to forget.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.handleProjectAction(sampleProject, {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'claude-deepseek-v4-pro',
+      submit: true,
+      link: true,
+    });
+    await vi.advanceTimersByTimeAsync(360);
+    handle.exited.add(SPAWNED_SID);
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+    expect(linkedTabsOf(sampleProject.slug)).toEqual([
+      { sid: SPAWNED_SID, label: 'DeepSeek v4 Pro' },
+    ]);
+    vi.useRealTimers();
+  });
+
   it('links nothing when the text never reached the tab', async () => {
     // The user has just been told nothing was sent; recording the relation
     // anyway claims the tab is working on the project.
@@ -749,6 +772,30 @@ describe('runShellCommand', () => {
       { sid: SPAWNED_SID, text: 'condash skills install' },
       { sid: SPAWNED_SID, text: '\r' },
     ]);
+    vi.useRealTimers();
+  });
+
+  it('reports failure when the command was typed but never submitted', async () => {
+    // Its caller schedules work off this answer, and a prompt left unsubmitted
+    // is not a command that ran.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(360);
+    handle.exited.add(SPAWNED_SID);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await promise).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('reports success when the command was typed and submitted', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await promise).toBe(true);
     vi.useRealTimers();
   });
 

@@ -191,9 +191,15 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
 
   const installSkills = async (): Promise<void> => {
     // Delivering the command means spawning a shell and waiting for its tab to
-    // reach the renderer — seconds on a cold app, not a tick. Without this
-    // guard the dead-looking button invites a second click, and two tabs then
-    // run `condash skills install` over the same tree at once.
+    // reach the renderer — seconds on a cold app, not a tick — and then the
+    // install itself runs in that tab for a while longer. Without a guard the
+    // dead-looking button invites a second click, and two tabs then run
+    // `condash skills install` over the same tree at once.
+    //
+    // Best effort, not a lock: the button stays disabled through delivery and
+    // the first refresh window below, which covers the impatient double-click.
+    // It cannot cover an install that runs longer than that, because nothing
+    // here is told when the command finishes.
     if (installing()) return;
     setInstalling(true);
     let delivered: boolean;
@@ -206,19 +212,24 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
         `Could not run \`${SKILLS_INSTALL_CMD}\`: ${(err as Error).message}`,
         'error',
       );
-      return;
-    } finally {
       setInstalling(false);
+      return;
     }
     // Nothing ran, so there is nothing to re-read; the bridge has already said
     // why.
-    if (!delivered) return;
+    if (!delivered) {
+      setInstalling(false);
+      return;
+    }
     // The command runs asynchronously in its terminal tab; nudge the indicator
     // a couple of times after it likely finished (the poll covers the rest).
     // Timed from delivery rather than from the click, which may be seconds
     // earlier — a nudge that lands before the command starts reads the old
     // state and leaves the pill stale.
-    setTimeout(() => void refreshSkills(), 4_000);
+    setTimeout(() => {
+      void refreshSkills();
+      setInstalling(false);
+    }, 4_000);
     setTimeout(() => void refreshSkills(), 12_000);
   };
 

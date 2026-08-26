@@ -103,10 +103,16 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
       )
       .toContain('spec.txt');
 
-    // The user was not told a lie on the way there.
+    // The user was not told a lie on the way there. Asserted against the
+    // bridge's own error copy rather than "no toast at all": an unrelated
+    // watcher or sync toast on a slow boot would otherwise fail this spec with
+    // a message reading as "the paste lied to the user".
     await wait(500);
+    const toasts = await window.evaluate(
+      () => (window as unknown as { __toastLog: string[] }).__toastLog,
+    );
     expect(
-      await window.evaluate(() => (window as unknown as { __toastLog: string[] }).__toastLog),
+      toasts.filter((t) => /nothing was sent|no longer live|did not open in time/.test(t)),
     ).toEqual([]);
   } finally {
     await cleanup();
