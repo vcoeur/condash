@@ -548,7 +548,7 @@ function App() {
           <StatusBarIndicators
             conceptionPath={conceptionPath}
             onInstallSkills={() =>
-              void bridge.runShellCommand('condash skills install', 'skills install')
+              bridge.runShellCommand('condash skills install', 'skills install')
             }
             flashToast={flashToast}
           />

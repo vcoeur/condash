@@ -221,8 +221,8 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
             e.stopPropagation();
             void pasteToTerm();
           }}
-          title="Paste path into the active terminal"
-          aria-label="Paste path into the active terminal"
+          title="Paste path into the terminal — opens a shell if none is live"
+          aria-label="Paste path into the terminal — opens a shell if none is live"
         >
           {/* On an empty pane the paste now waits for a shell to spawn and its
               tab to arrive — up to a few seconds. Without a pending label the

@@ -37,8 +37,10 @@ type SkillsState = 'synced' | 'update' | 'install' | 'unknown';
 interface StatusBarIndicatorsProps {
   /** Active conception path — a change re-reads both snapshots. */
   conceptionPath: () => string | null;
-  /** Run `condash skills install` (in a terminal tab); wired to the bridge. */
-  onInstallSkills: () => void;
+  /** Run `condash skills install` (in a terminal tab); wired to the bridge.
+   *  Resolves once the command has been delivered to its tab — which is not
+   *  immediate, so the button waits on it rather than firing and forgetting. */
+  onInstallSkills: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
@@ -47,6 +49,7 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   const [auto, setAuto] = createSignal<AutoSyncStatus | null>(null);
   const [skills, setSkills] = createSignal<SkillsSyncStatus | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const [installing, setInstalling] = createSignal(false);
 
   const refreshSync = async (): Promise<void> => {
     try {
@@ -185,10 +188,23 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     }
   };
 
-  const installSkills = (): void => {
-    props.onInstallSkills();
+  const installSkills = async (): Promise<void> => {
+    // Delivering the command means spawning a shell and waiting for its tab to
+    // reach the renderer — seconds on a cold app, not a tick. Without this
+    // guard the dead-looking button invites a second click, and two tabs then
+    // run `condash skills install` over the same tree at once.
+    if (installing()) return;
+    setInstalling(true);
+    try {
+      await props.onInstallSkills();
+    } finally {
+      setInstalling(false);
+    }
     // The command runs asynchronously in its terminal tab; nudge the indicator
     // a couple of times after it likely finished (the poll covers the rest).
+    // Timed from delivery rather than from the click, which may be seconds
+    // earlier — a nudge that lands before the command starts reads the old
+    // state and leaves the pill stale.
     setTimeout(() => void refreshSkills(), 4_000);
     setTimeout(() => void refreshSkills(), 12_000);
   };
@@ -253,10 +269,11 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
           <button
             type="button"
             class="status-bar-action"
-            onClick={installSkills}
+            onClick={() => void installSkills()}
+            disabled={installing()}
             title={`Run \`${SKILLS_INSTALL_CMD}\``}
           >
-            Install
+            {installing() ? '…' : 'Install'}
           </button>
         </Show>
       </span>

@@ -175,9 +175,12 @@ describe('handleProjectAction', () => {
     const promise = bridge.handleProjectAction(sampleProject, action);
     await vi.advanceTimersByTimeAsync(60);
     await promise;
-    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'claude "review foo-bar"');
-    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
-    expect(handle.typeInto).toHaveBeenCalledTimes(2);
+    // Both writes, and the tab each reached: a mis-addressed Enter submits
+    // another tab's prompt, so "an Enter was sent" is not the guarantee.
+    expect(handle.typedInto).toEqual([
+      { sid: 'session-1', text: 'claude "review foo-bar"' },
+      { sid: 'session-1', text: '\r' },
+    ]);
     vi.useRealTimers();
   });
 
@@ -223,9 +226,10 @@ describe('handleNewProjectAction', () => {
     const promise = bridge.handleNewProjectAction(action);
     await vi.advanceTimersByTimeAsync(60);
     await promise;
-    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'draft conception');
-    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
-    expect(handle.typeInto).toHaveBeenCalledTimes(2);
+    expect(handle.typedInto).toEqual([
+      { sid: 'session-1', text: 'draft conception' },
+      { sid: 'session-1', text: '\r' },
+    ]);
     vi.useRealTimers();
   });
 
@@ -311,8 +315,10 @@ describe('runTask', () => {
     await vi.advanceTimersByTimeAsync(600);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my', 'Kimi native•Review docs');
-    expect(handle.typeInto).toHaveBeenCalledWith(SPAWNED_SID, 'review the docs');
-    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: 'review the docs' },
+      { sid: SPAWNED_SID, text: '\r' },
+    ]);
     vi.useRealTimers();
   });
 

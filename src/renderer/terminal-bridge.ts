@@ -186,15 +186,18 @@ async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise
  *
  *  A write returns false once the roster has dropped the tab (an agent that
  *  exits on a bad command takes its tab with it), and then nothing further is
- *  sent: an Enter that outlived its tab would submit another tab's prompt. */
-async function sendToTarget(target: ActionTarget, text: string, submit: boolean): Promise<void> {
+ *  sent: an Enter that outlived its tab would submit another tab's prompt.
+ *  False comes back to the caller too — from the user's side a command that was
+ *  never delivered looks the same whether the tab failed to arrive or arrived
+ *  and vanished, so both deserve to be explained. */
+async function sendToTarget(target: ActionTarget, text: string, submit: boolean): Promise<boolean> {
   target.handle.switchTo('my', target.sid);
-  if (!target.handle.typeInto(target.sid, text)) return;
-  if (!submit) return;
+  if (!target.handle.typeInto(target.sid, text)) return false;
+  if (!submit) return true;
   // Small delay so the terminal has time to ingest the typed text before the
   // Enter key arrives.
   await new Promise((r) => setTimeout(r, 50));
-  target.handle.typeInto(target.sid, '\r');
+  return target.handle.typeInto(target.sid, '\r');
 }
 
 /** Look up an agent by id from the current agent list. Returns null for an
@@ -477,7 +480,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // `getActiveSessionId` are the same read, taken with nothing between them.
     const target = await ensureTermAndShell();
     if (!target) return;
-    await sendToTarget(target, text, false);
+    if (!(await sendToTarget(target, text, false))) {
+      deps.flashToast('That terminal tab closed before the path could be pasted.', 'error');
+    }
   };
 
   const runShellCommand = async (command: string, title?: string): Promise<void> => {
@@ -514,7 +519,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
       return;
     }
-    await sendToTarget({ handle, sid }, command, true);
+    if (!(await sendToTarget({ handle, sid }, command, true))) {
+      deps.flashToast('That terminal tab closed before the command could be sent.', 'error');
+    }
   };
 
   const runTask = async (
