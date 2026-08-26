@@ -23,6 +23,8 @@ type FakeHandle = {
 
 /** The id every fake spawn answers with. */
 const SPAWNED_SID = 'session-new';
+/** A spawn id the roster never learns about — the tab that never opens. */
+const NEVER_ARRIVES_SID = 'never-arrives';
 
 function makeFakeHandle(): FakeHandle {
   // Modelled on what reconcile actually does, and deliberately in two separate
@@ -61,6 +63,12 @@ function makeFakeHandle(): FakeHandle {
 afterEach(() => {
   unlinkAllForTab('session-1');
   unlinkAllForTab(SPAWNED_SID);
+  unlinkAllForTab(NEVER_ARRIVES_SID);
+  // A test that fails mid-body never reaches its own `vi.useRealTimers()`, and
+  // fake timers left armed hang every test after it — which reads as a second
+  // failure in an unrelated case. Reset here so one red test stays one.
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function makeDeps(handle: FakeHandle | null = null, agents: Agent[] = []) {
@@ -601,5 +609,104 @@ describe('linking the tab an action landed on', () => {
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleNewProjectAction({ label: 'Starter', template: 'start', link: true });
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+  });
+});
+
+describe('runShellCommand', () => {
+  it('types the command into the tab it spawned, not the one that held focus', async () => {
+    // It always spawns a fresh tab and then submits with Enter, so a command
+    // typed before that tab is active does not just go missing — it runs in
+    // whatever tab the user was looking at.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(500);
+    await promise;
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: 'condash skills install' },
+      { sid: SPAWNED_SID, text: '\r' },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('sends nothing and says so when the spawned tab never joins the roster', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    // A sid the roster never learns about — the tab that never opens.
+    handle.spawnUserShell.mockResolvedValue(NEVER_ARRIVES_SID);
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(4000);
+    await promise;
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    vi.useRealTimers();
+  });
+
+  it('reports an unavailable terminal pane rather than failing silently', async () => {
+    // The no-handle path spins on requestAnimationFrame, which the node test
+    // environment does not provide.
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(0), 0),
+    );
+    const deps = makeDeps(null);
+    const bridge = createTerminalBridge(deps);
+    await bridge.runShellCommand('condash skills install');
+    expect(deps.flashToast).toHaveBeenCalledWith('Terminal pane not available.', 'error');
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('handlePasteToTerm', () => {
+  it('pastes into the shell it spawned when the pane was empty', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.hasActive.mockReturnValue(false);
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: '/home/alice/resources/spec.txt' },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it('pastes into the tab already in focus without spawning one', async () => {
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    await bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
+    expect(handle.typedInto).toEqual([
+      { sid: 'session-1', text: '/home/alice/resources/spec.txt' },
+    ]);
+  });
+
+  it('pastes nothing and says so when the spawned tab never joins the roster', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.hasActive.mockReturnValue(false);
+    handle.spawnUserShell.mockResolvedValue(NEVER_ARRIVES_SID);
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
+    await vi.advanceTimersByTimeAsync(4000);
+    await promise;
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    vi.useRealTimers();
+  });
+
+  it('reports an unavailable terminal pane rather than failing silently', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(0), 0),
+    );
+    const deps = makeDeps(null);
+    const bridge = createTerminalBridge(deps);
+    await bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
+    expect(deps.flashToast).toHaveBeenCalledWith('Terminal pane not available.', 'error');
+    vi.unstubAllGlobals();
   });
 });

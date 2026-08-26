@@ -446,21 +446,21 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
     }
-    const handle = deps.terminalHandle();
-    if (!handle) {
+    if (!deps.terminalHandle()) {
       deps.flashToast('Terminal pane not available.', 'error');
       return;
     }
-    deps.ensureTerminalOpen();
-    if (!handle.hasActive()) {
-      try {
-        await handle.spawnUserShell(null, 'my');
-      } catch (err) {
-        deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
-        return;
-      }
-    }
-    handle.typeIntoActive(text);
+    // The same preamble every project action takes, rather than a second copy
+    // of spawn-then-type: on an empty pane it spawns the shell, waits for its
+    // tab to reach the renderer, and makes that tab the active one. Typing on
+    // the line after the spawn instead dropped the path outright — the spawn
+    // resolves as soon as main has the pty, while `typeIntoActive` follows the
+    // active tab, which the tab only becomes a reconcile pass later.
+    // `ensureTermAndShell` has already toasted for anything it returns null on
+    // except a missing handle, which the guard above owns.
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    target.handle.typeIntoActive(text);
   };
 
   const runShellCommand = async (command: string, title?: string): Promise<void> => {
@@ -474,17 +474,29 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       return;
     }
     deps.ensureTerminalOpen();
+    let sid: string;
     try {
       // Always a fresh plain-shell tab — never reuse the focused tab (which
-      // could be a running agent). null agent + a pinned title.
-      await handle.spawnUserShell(null, 'my', title);
+      // could be a running agent). null agent + a pinned title. The id it
+      // answers with is how the tab is named below; reading the active id back
+      // off the handle would still answer with the tab that just left.
+      sid = await handle.spawnUserShell(null, 'my', title);
     } catch (err) {
       deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
       return;
     }
-    // Same settle as an agent spawn: let the reconcile mark the new tab active
-    // and the shell print its prompt before typing.
+    // Both steps, the same pair every agent spawn takes: the settle is for the
+    // shell to finish init and start accepting input; the focus step is what
+    // makes the new tab the one `typeIntoActive` writes to. The settle alone
+    // was a hope — on a cold app whose first dynamic xterm import outlasts it
+    // the command was typed into nothing and silently lost. It also ends in
+    // Enter, so a tab that never opened must stop the command rather than let
+    // it run in whatever tab held focus.
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+    if (!(await focusSpawnedTab(handle, sid))) {
+      deps.flashToast('The new terminal tab never opened — nothing was sent.', 'error');
+      return;
+    }
     handle.typeIntoActive(command);
     await new Promise((r) => setTimeout(r, 50));
     handle.typeIntoActive('\r');

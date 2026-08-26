@@ -70,9 +70,10 @@ export interface TerminalPaneHandle {
   /** Return the active session ID for the active column, or null. */
   getActiveSessionId(): string | null;
   /** Display name of session `sid` — the same string the tab strip shows —
-   *  or null when no tab with that id is known yet. A tab spawned moments ago
-   *  only joins the roster on the next reconcile pass, so a caller that just
-   *  spawned one needs a fallback name. */
+   *  or null when no tab with that id is in the roster. A tab spawned moments
+   *  ago only joins on the next reconcile pass, so null is the signal a caller
+   *  polls on (see the bridge's `focusSpawnedTab`); it is never a cue to guess
+   *  a name, and nothing is recorded for a tab that never arrives. */
   sessionLabel(sid: string): string | null;
 }
 

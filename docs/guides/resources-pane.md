@@ -52,7 +52,7 @@ A button row at the bottom of each card exposes:
 - **open** — opens the file via your `open_with.main_ide` slot. That is a **personal, global-only** setting: it lives in the per-machine `settings.json`, never in a conception's `.condash/settings.json`. If nothing happens, the slot is probably unconfigured — see [Repositories and open-with launchers](repositories-and-open-with.md#the-three-open_with-slots).
 - **reveal** — reveals the file in your OS file manager (selected in its parent folder).
 - **copy** — copies the absolute path to the system clipboard.
-- **→ term** — pastes the absolute path into the focused terminal session (no `↵`). If no session is live, the button still pastes once you spawn one.
+- **→ term** — pastes the absolute path into the focused terminal session (no `↵`). With no session live it opens a shell first and pastes into that new tab, once the tab is actually there to receive it; if the tab fails to open, it says so rather than pasting somewhere else.
 
 Clicking the card body itself runs the most-likely action for the file type — view for inline-viewable types, open-in-IDE otherwise.
 
