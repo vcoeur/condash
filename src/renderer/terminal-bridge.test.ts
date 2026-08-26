@@ -626,11 +626,54 @@ describe('linking the tab an action landed on', () => {
     vi.useRealTimers();
   });
 
+  it('links nothing when the text never reached the tab', async () => {
+    // The user has just been told nothing was sent; recording the relation
+    // anyway claims the tab is working on the project.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.handleWorkOn(sampleProject);
+    handle.exited.add('session-1');
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.typedInto).toEqual([]);
+    expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('no longer live'),
+      'error',
+    );
+    vi.useRealTimers();
+  });
+
   it('never links a new-project action — no project exists to link to', async () => {
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleNewProjectAction({ label: 'Starter', template: 'start', link: true });
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+  });
+});
+
+describe('two actions racing an empty pane', () => {
+  it('spawns one shell, not one each', async () => {
+    // `hasActive()` cannot see a tab that is spawned but not yet reconciled,
+    // and waiting for the tab properly stretched that blind window to seconds —
+    // long enough for a second click on a different surface to land inside it.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.hasActive.mockReturnValue(false);
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const first = bridge.handlePasteToTerm('/one');
+    const second = bridge.handlePasteToTerm('/two');
+    await vi.advanceTimersByTimeAsync(400);
+    await Promise.all([first, second]);
+    expect(handle.spawnUserShell).toHaveBeenCalledTimes(1);
+    // Both pastes land, in the one tab that opened.
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: '/one' },
+      { sid: SPAWNED_SID, text: '/two' },
+    ]);
+    vi.useRealTimers();
   });
 });
 

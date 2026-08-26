@@ -38,9 +38,10 @@ interface StatusBarIndicatorsProps {
   /** Active conception path — a change re-reads both snapshots. */
   conceptionPath: () => string | null;
   /** Run `condash skills install` (in a terminal tab); wired to the bridge.
-   *  Resolves once the command has been delivered to its tab — which is not
-   *  immediate, so the button waits on it rather than firing and forgetting. */
-  onInstallSkills: () => Promise<void>;
+   *  Resolves when the command has been delivered to its tab — which is not
+   *  immediate, so the button waits on it rather than firing and forgetting —
+   *  and answers false when it never got there. */
+  onInstallSkills: () => Promise<boolean>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
@@ -195,8 +196,9 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     // run `condash skills install` over the same tree at once.
     if (installing()) return;
     setInstalling(true);
+    let delivered: boolean;
     try {
-      await props.onInstallSkills();
+      delivered = await props.onInstallSkills();
     } catch (err) {
       // The click handler discards this promise, so a rejection would escape
       // unhandled and leave the pill stale until the slow poll caught up.
@@ -208,6 +210,9 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     } finally {
       setInstalling(false);
     }
+    // Nothing ran, so there is nothing to re-read; the bridge has already said
+    // why.
+    if (!delivered) return;
     // The command runs asynchronously in its terminal tab; nudge the indicator
     // a couple of times after it likely finished (the poll covers the rest).
     // Timed from delivery rather than from the click, which may be seconds
