@@ -10,14 +10,16 @@ type FakeHandle = {
   spawnUserShell: ReturnType<typeof vi.fn>;
   moveActiveTab: ReturnType<typeof vi.fn>;
   typeIntoActive: ReturnType<typeof vi.fn>;
+  typeInto: ReturnType<typeof vi.fn>;
   hasActive: ReturnType<typeof vi.fn>;
   getActiveSessionId: ReturnType<typeof vi.fn>;
   sessionLabel: ReturnType<typeof vi.fn>;
   /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
    *  is a tab the renderer has not inserted yet. */
   labels: Record<string, string>;
-  /** Every `typeIntoActive` call with the sid that was active when it ran, so a
-   *  test can assert *which* tab the text reached, not just that it was typed. */
+  /** Every delivery with the tab it reached — the sid named by `typeInto`, or
+   *  whatever was active for a bare `typeIntoActive`. Lets a test assert *which*
+   *  tab the text landed in, not just that something was typed. */
   typedInto: { sid: string | null; text: string }[];
 };
 
@@ -48,6 +50,15 @@ function makeFakeHandle(): FakeHandle {
     moveActiveTab: vi.fn(),
     typeIntoActive: vi.fn((text: string) => {
       handle.typedInto.push({ sid: activeId, text });
+    }),
+    // Named delivery, modelled as the controller's is: it writes to the sid it
+    // is given whatever is active, and refuses once the roster has dropped the
+    // tab. A double that wrote regardless would hide exactly the mis-address
+    // this handle exists to prevent.
+    typeInto: vi.fn((sid: string, text: string) => {
+      if (handle.labels[sid] === undefined) return false;
+      handle.typedInto.push({ sid, text });
+      return true;
     }),
     hasActive: vi.fn().mockReturnValue(true),
     getActiveSessionId: vi.fn(() => activeId),
@@ -123,7 +134,7 @@ describe('handleWorkOn', () => {
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleWorkOn(sampleProject);
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('work on 2026-05-17-foo-bar');
+    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'work on 2026-05-17-foo-bar');
   });
 
   it('opens the pane and spawns a shell when none is active', async () => {
@@ -134,7 +145,7 @@ describe('handleWorkOn', () => {
     await bridge.handleWorkOn(sampleProject);
     expect(deps.ensureTerminalOpen).toHaveBeenCalled();
     expect(handle.spawnUserShell).toHaveBeenCalled();
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('work on 2026-05-17-foo-bar');
+    expect(handle.typeInto).toHaveBeenCalledWith(SPAWNED_SID, 'work on 2026-05-17-foo-bar');
   });
 });
 
@@ -148,8 +159,8 @@ describe('handleProjectAction', () => {
       submit: false,
     };
     await bridge.handleProjectAction(sampleProject, action);
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('claude "review foo-bar"');
-    expect(handle.typeIntoActive).toHaveBeenCalledTimes(1);
+    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'claude "review foo-bar"');
+    expect(handle.typeInto).toHaveBeenCalledTimes(1);
   });
 
   it('substitutes template, types it, and presses Enter when submit is true', async () => {
@@ -164,9 +175,9 @@ describe('handleProjectAction', () => {
     const promise = bridge.handleProjectAction(sampleProject, action);
     await vi.advanceTimersByTimeAsync(60);
     await promise;
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('claude "review foo-bar"');
-    expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
-    expect(handle.typeIntoActive).toHaveBeenCalledTimes(2);
+    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'claude "review foo-bar"');
+    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
+    expect(handle.typeInto).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 
@@ -181,7 +192,7 @@ describe('handleProjectAction', () => {
       expect.stringContaining('Could not open a shell'),
       'error',
     );
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.typeInto).not.toHaveBeenCalled();
   });
 });
 
@@ -195,8 +206,8 @@ describe('handleNewProjectAction', () => {
       submit: false,
     };
     await bridge.handleNewProjectAction(action);
-    expect(handle.typeIntoActive).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(handle.typeIntoActive).mock.calls[0][0];
+    expect(handle.typeInto).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(handle.typeInto).mock.calls[0][1] as string;
     expect(call).toMatch(/^start project for \d{4}-\d{2}-\d{2}:$/);
   });
 
@@ -212,9 +223,9 @@ describe('handleNewProjectAction', () => {
     const promise = bridge.handleNewProjectAction(action);
     await vi.advanceTimersByTimeAsync(60);
     await promise;
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('draft conception');
-    expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
-    expect(handle.typeIntoActive).toHaveBeenCalledTimes(2);
+    expect(handle.typeInto).toHaveBeenCalledWith('session-1', 'draft conception');
+    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
+    expect(handle.typeInto).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 
@@ -232,7 +243,7 @@ describe('handleNewProjectAction', () => {
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my');
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
+    expect(handle.typeInto).toHaveBeenCalledWith(expect.any(String), 'Start new project ');
     vi.useRealTimers();
   });
 
@@ -247,7 +258,7 @@ describe('handleNewProjectAction', () => {
     await bridge.handleNewProjectAction(action);
     // No spawn — handle is already active, fell through to the default flow.
     expect(handle.spawnUserShell).not.toHaveBeenCalled();
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
+    expect(handle.typeInto).toHaveBeenCalledWith(expect.any(String), 'Start new project ');
   });
 });
 
@@ -265,7 +276,7 @@ describe('handleProjectAction with agent binding', () => {
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
+    expect(handle.typeInto).toHaveBeenCalledWith(SPAWNED_SID, 'review foo-bar');
     vi.useRealTimers();
   });
 
@@ -286,7 +297,7 @@ describe('handleProjectAction with agent binding', () => {
       { ...agedumAgent, command: "agedum claude --prompt 'review foo-bar'" },
       'my',
     );
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.typeInto).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 });
@@ -300,8 +311,8 @@ describe('runTask', () => {
     await vi.advanceTimersByTimeAsync(600);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my', 'Kimi native•Review docs');
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('review the docs');
-    expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
+    expect(handle.typeInto).toHaveBeenCalledWith(SPAWNED_SID, 'review the docs');
+    expect(handle.typeInto).toHaveBeenLastCalledWith(expect.any(String), '\r');
     vi.useRealTimers();
   });
 
@@ -315,7 +326,7 @@ describe('runTask', () => {
       'error',
     );
     expect(handle.spawnUserShell).not.toHaveBeenCalled();
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.typeInto).not.toHaveBeenCalled();
   });
 });
 
@@ -332,7 +343,7 @@ describe('runTask with promptFlags agent', () => {
       'my',
       'agedum · claude•Review docs',
     );
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.typeInto).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -405,7 +416,7 @@ describe('runTask with promptFlags agent', () => {
       'my',
       'agedum · claude•Review docs',
     );
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.typeInto).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -490,7 +501,10 @@ describe('linking the tab an action landed on', () => {
     await promise;
     expect(handle.typedInto).toEqual([]);
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
-    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('did not open in time'),
+      'error',
+    );
     vi.useRealTimers();
   });
 
@@ -630,11 +644,12 @@ describe('runShellCommand', () => {
     vi.useRealTimers();
   });
 
-  it('re-aims at its own tab before the Enter when another tab takes focus meanwhile', async () => {
+  it('keeps writing to its own tab when another tab takes focus meanwhile', async () => {
     // The focus wait returns as soon as the tab joins the roster, while the
     // reconcile pass that inserted it is still mid-import — so it can come back
     // and activate another restored session inside the 50 ms gap before the
-    // Enter. An Enter landing there submits that tab's prompt.
+    // Enter. Delivery names the sid, so the Enter still lands where the command
+    // went; an Enter on the other tab would submit that tab's prompt.
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle));
@@ -652,6 +667,22 @@ describe('runShellCommand', () => {
     vi.useRealTimers();
   });
 
+  it('does not press Enter when its tab disappears before the Enter', async () => {
+    // An agent launched on a bad command exits and the controller closes its
+    // tab. If that lands in the 50 ms gap, a bare Enter would go to whatever
+    // tab is active now and submit whatever sits on its prompt.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(360);
+    delete handle.labels[SPAWNED_SID];
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+    expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'condash skills install' }]);
+    vi.useRealTimers();
+  });
+
   it('sends nothing and says so when the spawned tab never joins the roster', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
@@ -662,8 +693,11 @@ describe('runShellCommand', () => {
     const promise = bridge.runShellCommand('condash skills install', 'skills install');
     await vi.advanceTimersByTimeAsync(4000);
     await promise;
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
-    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    expect(handle.typeInto).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('did not open in time'),
+      'error',
+    );
     vi.useRealTimers();
   });
 
@@ -716,8 +750,11 @@ describe('handlePasteToTerm', () => {
     const promise = bridge.handlePasteToTerm('/home/alice/resources/spec.txt');
     await vi.advanceTimersByTimeAsync(4000);
     await promise;
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
-    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('never opened'), 'error');
+    expect(handle.typeInto).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('did not open in time'),
+      'error',
+    );
     vi.useRealTimers();
   });
 

@@ -23,6 +23,10 @@ import { bootApp } from './fixtures/electron-app';
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test('pasting a resource path into an empty terminal pane reaches the spawned tab', async () => {
+  // Electron boot plus two 15 s polls overruns the 30 s default, so the red
+  // case would die as a generic timeout instead of the buffer assertion. Repo
+  // convention for boot-heavy specs.
+  test.setTimeout(90_000);
   const booted = await bootApp({
     globalConfig: {
       // Pane open, nothing in it — the state the defect needs.

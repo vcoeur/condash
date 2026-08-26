@@ -1402,6 +1402,23 @@ export function createTerminalController(props: TerminalPaneProps) {
       // button and the user has to click the pane again before typing.
       queueMicrotask(focusActive);
     },
+    typeInto: (sid, text) => {
+      // Named delivery. `typeIntoActive` can only address whatever is active,
+      // so every caller that had just spawned a tab was obliged to re-activate
+      // it before each keystroke and trust that no reconcile pass slipped in
+      // between — a window that exists on every await. Writing to the sid
+      // itself removes the window rather than narrowing it.
+      //
+      // False when the roster no longer holds the tab (an agent that exited on
+      // a bad command takes its tab with it), so a caller can stop instead of
+      // writing blind. Focus is driven into the xterm only when this *is* the
+      // active tab — same reason `typeIntoActive` does it, and meaningless
+      // otherwise.
+      if (!tabs().some((t) => t.id === sid)) return false;
+      void window.condash.termWrite(sid, text);
+      if (activeIdIn(activeColumn()) === sid) queueMicrotask(focusActive);
+      return true;
+    },
     hasActive: () => Boolean(activeIdIn(activeColumn())),
     getActiveSessionId: () => activeIdIn(activeColumn()),
     sessionLabel: (sid) => {

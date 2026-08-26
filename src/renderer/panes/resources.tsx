@@ -224,7 +224,10 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
           title="Paste path into the active terminal"
           aria-label="Paste path into the active terminal"
         >
-          → term
+          {/* On an empty pane the paste now waits for a shell to spawn and its
+              tab to arrive — up to a few seconds. Without a pending label the
+              button just looks dead. */}
+          {pasting() ? '…' : '→ term'}
         </button>
       </div>
     </article>
