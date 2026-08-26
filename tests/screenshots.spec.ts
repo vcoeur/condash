@@ -29,9 +29,20 @@
  * the fold in the 40px of bare background between `done` and the trailing `?`
  * lane, so the whole canonical status stack renders with nothing bisected.
  * `settleStackFold` below turns that from a lucky number into a checked
- * invariant — it runs on every capture, places the stack's scroll offset
- * deterministically, and records any lane a clip edge has sliced to a hairline
- * for the file-level assertions to fail on. BOTH halves of that are
+ * invariant — it runs on every capture and records any lane a clip edge has
+ * sliced to a hairline for the file-level assertions to fail on.
+ *
+ * **Known limitation, stated rather than fixed.** It nudges the stack only when
+ * there is an offence, so a capture that scrolls the stack on purpose (step 3's
+ * `projects-done`) leaves an offset that later shots inherit through
+ * `usePaneScrollMemory`. Four published images are framed at max scroll for
+ * that reason and nothing asserts it, so reordering or deleting an earlier step
+ * can change their framing with a green run. What is ruled out is a *sliver*,
+ * not a particular framing. The alternative — every shot declaring the offset
+ * it wants — is the right fix and is deliberately not taken here: forcing an
+ * offset is also how `status-unknown-badge` once lost its subject, so it has to
+ * be per-shot intent rather than a blanket reset, which is more than this
+ * change should carry. BOTH halves of that are
  * load-bearing and neither works alone: Electron's `--force-device-scale-factor`
  * makes the compositor surface 2×, and the CDP device-metrics override makes the
  * page agree (`devicePixelRatio === 2`) so Playwright captures those real pixels.
@@ -456,7 +467,10 @@ const STACK_FRAMING_SHOTS = [
   'item-fuzzy-search',
   'item-document-with-pdf',
   'status-unknown-badge',
-  'settings-modal',
+  // `settings-modal` deliberately absent: its stack is mounted but wholly
+  // behind a full-viewport modal, so listing it would pin this assertion to
+  // whether that modal keeps the dashboard mounted — unrelated to framing.
+  // `settleStackFold` still runs there; it simply is not required to.
 ] as const;
 
 /**
@@ -544,10 +558,13 @@ async function settleStackFold(page: Page, label: string): Promise<'absent' | 'c
         ];
         for (const c of cases) {
           if (c.px >= 1 && c.px < cap) {
+            // `px` after the spread, not before: spreading `c` last puts the
+            // unrounded value back and prints `10.399999618530273px`.
             return {
               status: lane.getAttribute('data-status'),
               height: Math.round(g.height),
               ...c,
+              px: Math.round(c.px),
               g,
             };
           }
@@ -564,14 +581,21 @@ async function settleStackFold(page: Page, label: string): Promise<'absent' | 'c
       // a slivered lane top unfixable at scrollTop 0: pulling back clamps to the
       // current offset and the routine then declared the whole range hopeless
       // without ever having tried forward.
+      // Ordered by distance from where the capture left the stack, so the
+      // smallest correction wins. Order matters more than the set: an earlier
+      // version listed a near-viewport backward jump first, which "fixed" a
+      // slivered lane tail by scrolling that lane out of frame entirely — the
+      // shape of the bug that published `status-unknown-badge` without its
+      // subject. `find` takes the first that clears, so the nearest must lead.
       const candidates = [
-        hit.kind === 'closing-border' ? hit.g.bottom + 8 - view : hit.g.top - 8 - view,
-        hit.kind === 'lane-bottom' ? hit.g.bottom + 8 : hit.g.top - view + hit.height + 8,
-        hit.g.top - 8,
         hit.g.bottom + 8 - view,
+        hit.g.top - 8 - view,
+        hit.g.bottom + 8,
+        hit.g.top - 8,
       ]
         .map(clamp)
-        .filter((n) => Math.abs(n - stack.scrollTop) >= 1);
+        .filter((n) => Math.abs(n - stack.scrollTop) >= 1)
+        .sort((a, b) => Math.abs(a - stack.scrollTop) - Math.abs(b - stack.scrollTop));
       const next = candidates.find((n) => !offenceAt(n));
       if (next === undefined) {
         return {
@@ -579,7 +603,8 @@ async function settleStackFold(page: Page, label: string): Promise<'absent' | 'c
           lanes: lanes.length,
           offence:
             `${hit.px}px of the ${hit.height}px '${hit.status}' lane — ${hit.label}; ` +
-            `no offset in [0, ${Math.round(maxScroll)}] clears it`,
+            `none of the ${candidates.length} candidate offsets clears it ` +
+            `(tried ${candidates.map((n) => Math.round(n)).join(', ')} in [0, ${Math.round(maxScroll)}])`,
         };
       }
       stack.scrollTop = next;
@@ -632,7 +657,9 @@ async function shoot(page: Page, theme: Theme, name: string): Promise<void> {
   // Every full-window capture, not a hand-picked list: the stack is on screen
   // for ten of them and the set is easy to mis-enumerate. No-ops when the stack
   // is not mounted; `STACK_FRAMING_SHOTS` pins which ones must reach it.
-  if ((await settleStackFold(page, `${theme}/${name}`)) === 'checked') foldChecked.push(name);
+  if ((await settleStackFold(page, `${theme}/${name}`)) === 'checked') {
+    foldChecked.push(`${theme}/${name}`);
+  }
   try {
     await page.screenshot({
       path: join(dir, `${name}.png`),
@@ -1151,10 +1178,21 @@ test('capture every documentation screenshot in light + dark', async () => {
   }
   // Exact set, not a count: both earlier rounds of this work failed because a
   // check quietly stopped covering shots, and a floor reproduces that hole.
+  // Every shot that frames the stack must have been reached, in BOTH themes.
+  // Asserted as "none missing" rather than as an exact set: `settings-modal`
+  // also reaches the probe, because its stack stays mounted behind the
+  // full-viewport modal, and pinning that would tie this assertion to an
+  // unrelated mount detail. What must never happen is a *missing* one — that is
+  // the hole every earlier round of this work fell through, and a theme-
+  // collapsing Set or a bare count reproduces it one layer up.
+  const reached = new Set(foldChecked);
+  const notReached = (['light', 'dark'] as Theme[]).flatMap((t) =>
+    STACK_FRAMING_SHOTS.map((slug) => `${t}/${slug}`).filter((k) => !reached.has(k)),
+  );
   expect(
-    [...new Set(foldChecked)].sort(),
-    'the Projects-stack fold probe did not reach exactly the shots that frame it',
-  ).toEqual([...STACK_FRAMING_SHOTS].sort());
+    notReached,
+    `the Projects-stack fold probe never reached: ${notReached.join(', ')}`,
+  ).toEqual([]);
   expect(
     foldOffences,
     `a clip edge slices a status lane to a hairline (reads as a rendering glitch):\n  ${foldOffences.join('\n  ')}`,
