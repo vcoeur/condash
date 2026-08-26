@@ -197,6 +197,14 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     setInstalling(true);
     try {
       await props.onInstallSkills();
+    } catch (err) {
+      // The click handler discards this promise, so a rejection would escape
+      // unhandled and leave the pill stale until the slow poll caught up.
+      props.flashToast(
+        `Could not run \`${SKILLS_INSTALL_CMD}\`: ${(err as Error).message}`,
+        'error',
+      );
+      return;
     } finally {
       setInstalling(false);
     }

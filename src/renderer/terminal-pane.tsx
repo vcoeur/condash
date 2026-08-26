@@ -63,14 +63,11 @@ export interface TerminalPaneHandle {
   ): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
-  /** Type a literal string into the active terminal (no shell parsing). For a
-   *  caller that knows which tab it means — anything that just spawned one —
-   *  use `typeInto`, which cannot be re-aimed by a reconcile pass. */
-  typeIntoActive(text: string): void;
   /** Type a literal string into the tab `sid` names, whether or not it is the
-   *  active one (no shell parsing). Returns false when the roster no longer
-   *  holds that tab and nothing was written, so a caller can stop rather than
-   *  deliver its text to whatever happens to be in focus. */
+   *  active one (no shell parsing). Returns false when that tab is no longer
+   *  live — gone from the roster, or still shown but exited — and nothing was
+   *  written, so a caller can stop rather than deliver its text to whatever
+   *  happens to be in focus, or into a row whose pty has already gone. */
   typeInto(sid: string, text: string): boolean;
   /** True when there is an active session in the active column. */
   hasActive(): boolean;

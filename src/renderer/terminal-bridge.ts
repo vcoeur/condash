@@ -168,38 +168,6 @@ async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise
   return false;
 }
 
-/** Deliver `text` to the tab `target` names, pressing Enter after it when
- *  `submit`. The single delivery path for every action: nothing in this module
- *  writes to a tab it has not named.
- *
- *  `switchTo` is for the user — it puts the tab they are about to work in on
- *  screen. It is not what makes the delivery correct; `typeInto` is, because it
- *  addresses the sid rather than whatever is active. That distinction matters
- *  because there is no window in which the renderer promises to leave focus
- *  alone: `focusSpawnedTab` returns the moment the spawned tab joins the
- *  roster, while the reconcile pass that inserted it is still suspended in its
- *  dynamic xterm import, and when that pass resumes it can insert *and
- *  activate* another session from the same snapshot. Every `await` here — and
- *  every `await` a caller takes between the focus step and this call — is such
- *  a window. Re-activating the tab before each keystroke would only narrow
- *  them.
- *
- *  A write returns false once the roster has dropped the tab (an agent that
- *  exits on a bad command takes its tab with it), and then nothing further is
- *  sent: an Enter that outlived its tab would submit another tab's prompt.
- *  False comes back to the caller too — from the user's side a command that was
- *  never delivered looks the same whether the tab failed to arrive or arrived
- *  and vanished, so both deserve to be explained. */
-async function sendToTarget(target: ActionTarget, text: string, submit: boolean): Promise<boolean> {
-  target.handle.switchTo('my', target.sid);
-  if (!target.handle.typeInto(target.sid, text)) return false;
-  if (!submit) return true;
-  // Small delay so the terminal has time to ingest the typed text before the
-  // Enter key arrives.
-  await new Promise((r) => setTimeout(r, 50));
-  return target.handle.typeInto(target.sid, '\r');
-}
-
 /** Look up an agent by id from the current agent list. Returns null for an
  *  empty/missing id or when no agent matches. */
 function findAgentById(agents: readonly Agent[], id: string | undefined): Agent | null {
@@ -224,6 +192,53 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  in a prompt execute under cmd.exe / pwsh. */
   const promptShellFamily = (): ShellFamily =>
     shellFamily(deps.terminalPrefs()?.shell, isWindowsRenderer());
+
+  /** Deliver `text` to the tab `target` names, pressing Enter after it when
+   *  `submit`. The single delivery path for every action, and the one place a
+   *  failed delivery is reported — a call site cannot forget to, which is the
+   *  mistake this whole class of defect keeps being made of.
+   *
+   *  `switchTo` is for the user: it puts the tab they are about to work in on
+   *  screen. It is not what makes the delivery correct; `typeInto` is, because
+   *  it addresses the sid rather than whatever is active. That distinction
+   *  matters because there is no window in which the renderer promises to
+   *  leave focus alone: `focusSpawnedTab` returns the moment the spawned tab
+   *  joins the roster, while the reconcile pass that inserted it is still
+   *  suspended in its dynamic xterm import, and when that pass resumes it can
+   *  insert *and activate* another session from the same snapshot. Every
+   *  `await` here — and every `await` a caller takes between the focus step and
+   *  this call — is such a window. Re-activating the tab before each keystroke
+   *  would only narrow them.
+   *
+   *  A write fails once the tab it names stops being live: a clean exit closes
+   *  the row, an abnormal one keeps it with a dead pty — so the toast says "no
+   *  longer live" rather than "closed", which is only half of it. The two
+   *  writes report separately, because a command typed but never submitted is a
+   *  different thing to explain than one that never arrived. Returns whether
+   *  the whole delivery landed. */
+  const sendToTarget = async (
+    target: ActionTarget,
+    text: string,
+    submit: boolean,
+  ): Promise<boolean> => {
+    target.handle.switchTo('my', target.sid);
+    if (!target.handle.typeInto(target.sid, text)) {
+      deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
+      return false;
+    }
+    if (!submit) return true;
+    // Small delay so the terminal has time to ingest the typed text before the
+    // Enter key arrives.
+    await new Promise((r) => setTimeout(r, 50));
+    if (!target.handle.typeInto(target.sid, '\r')) {
+      deps.flashToast(
+        'That terminal tab is no longer live — the command was not submitted.',
+        'error',
+      );
+      return false;
+    }
+    return true;
+  };
 
   /** Shared preamble: ensure pane is open, spawn a shell if none active. */
   const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
@@ -453,9 +468,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast(`No files under ${dir}`, 'error');
       return;
     }
-    const handle = deps.terminalHandle();
-    if (!handle) return;
-    handle.typeIntoActive(latest);
+    // The last write in this module that used to address "whatever is active".
+    // It reads as the one case that genuinely means that — but the screenshot
+    // shortcut can be pressed while a reconcile pass is activating a restored
+    // session, and the path then lands in that tab. Same preamble as every
+    // other surface: it also opens the pane and spawns a shell when there is
+    // none, instead of returning silently with nothing pasted.
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    await sendToTarget(target, latest, false);
   };
 
   const handlePasteToTerm = async (text: string): Promise<void> => {
@@ -480,9 +501,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // `getActiveSessionId` are the same read, taken with nothing between them.
     const target = await ensureTermAndShell();
     if (!target) return;
-    if (!(await sendToTarget(target, text, false))) {
-      deps.flashToast('That terminal tab closed before the path could be pasted.', 'error');
-    }
+    await sendToTarget(target, text, false);
   };
 
   const runShellCommand = async (command: string, title?: string): Promise<void> => {
@@ -519,9 +538,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
       return;
     }
-    if (!(await sendToTarget({ handle, sid }, command, true))) {
-      deps.flashToast('That terminal tab closed before the command could be sent.', 'error');
-    }
+    await sendToTarget({ handle, sid }, command, true);
   };
 
   const runTask = async (

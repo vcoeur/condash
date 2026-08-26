@@ -9,7 +9,6 @@ type FakeHandle = {
   switchTo: ReturnType<typeof vi.fn>;
   spawnUserShell: ReturnType<typeof vi.fn>;
   moveActiveTab: ReturnType<typeof vi.fn>;
-  typeIntoActive: ReturnType<typeof vi.fn>;
   typeInto: ReturnType<typeof vi.fn>;
   hasActive: ReturnType<typeof vi.fn>;
   getActiveSessionId: ReturnType<typeof vi.fn>;
@@ -17,9 +16,14 @@ type FakeHandle = {
   /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
    *  is a tab the renderer has not inserted yet. */
   labels: Record<string, string>;
-  /** Every delivery with the tab it reached — the sid named by `typeInto`, or
-   *  whatever was active for a bare `typeIntoActive`. Lets a test assert *which*
-   *  tab the text landed in, not just that something was typed. */
+  /** Sids whose process has exited. The controller keeps the row for an
+   *  abnormal death so the user can read the verdict, so "in the roster" and
+   *  "alive" are different questions — and only the second one means the tab
+   *  can still be written to. */
+  exited: Set<string>;
+  /** Every delivery with the tab it reached, as named by `typeInto`. Lets a
+   *  test assert *which* tab the text landed in, not just that something was
+   *  typed. */
   typedInto: { sid: string | null; text: string }[];
 };
 
@@ -48,15 +52,12 @@ function makeFakeHandle(): FakeHandle {
       return SPAWNED_SID;
     }),
     moveActiveTab: vi.fn(),
-    typeIntoActive: vi.fn((text: string) => {
-      handle.typedInto.push({ sid: activeId, text });
-    }),
     // Named delivery, modelled as the controller's is: it writes to the sid it
-    // is given whatever is active, and refuses once the roster has dropped the
-    // tab. A double that wrote regardless would hide exactly the mis-address
-    // this handle exists to prevent.
+    // is given whatever is active, and refuses once that tab is no longer live.
+    // A double that wrote regardless would hide exactly the mis-address this
+    // handle exists to prevent.
     typeInto: vi.fn((sid: string, text: string) => {
-      if (handle.labels[sid] === undefined) return false;
+      if (handle.labels[sid] === undefined || handle.exited.has(sid)) return false;
       handle.typedInto.push({ sid, text });
       return true;
     }),
@@ -64,6 +65,7 @@ function makeFakeHandle(): FakeHandle {
     getActiveSessionId: vi.fn(() => activeId),
     sessionLabel: vi.fn((sid: string) => handle.labels[sid] ?? null),
     labels: { 'session-1': 'conception · main' },
+    exited: new Set<string>(),
     typedInto: [],
   };
   return handle;
@@ -595,8 +597,8 @@ describe('linking the tab an action landed on', () => {
 
   it('types into the tab it spawned, not the one that held focus', async () => {
     // The roster insert and the activation are separate steps in reconcile, and
-    // `typeIntoActive` follows the active tab — so an action that spawned a tab
-    // has to activate it before typing or the text lands somewhere else.
+    // Delivery names the tab it means — so an action that spawned one writes
+    // there whatever else has taken focus in the meantime.
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
@@ -670,6 +672,27 @@ describe('runShellCommand', () => {
       { sid: SPAWNED_SID, text: 'condash skills install' },
       { sid: SPAWNED_SID, text: '\r' },
     ]);
+    vi.useRealTimers();
+  });
+
+  it('does not press Enter into a tab whose process died before the Enter', async () => {
+    // An abnormal exit KEEPS its row so the user can read the death verdict, so
+    // the tab is still in the roster while its pty is gone — main drops writes
+    // to it silently. Membership is not liveness.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    await vi.advanceTimersByTimeAsync(360);
+    handle.exited.add(SPAWNED_SID);
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+    expect(handle.typedInto).toEqual([{ sid: SPAWNED_SID, text: 'condash skills install' }]);
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('was not submitted'),
+      'error',
+    );
     vi.useRealTimers();
   });
 
