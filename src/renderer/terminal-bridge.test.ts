@@ -15,6 +15,9 @@ type FakeHandle = {
   /** Display name per sid — the roster `sessionLabel` reads. A sid absent here
    *  is a tab the renderer has not inserted yet. */
   labels: Record<string, string>;
+  /** Every sid the fake spawn has handed out, so the suite can clear the
+   *  module-level link store between tests — it mints more than one now. */
+  spawned: string[];
   /** Sids whose process has exited. The controller keeps the row for an
    *  abnormal death so the user can read the verdict, so "in the roster" and
    *  "alive" are different questions — and only the second one means the tab
@@ -30,6 +33,10 @@ type FakeHandle = {
 const SPAWNED_SID = 'session-new';
 /** A spawn id the roster never learns about — the tab that never opens. */
 const NEVER_ARRIVES_SID = 'never-arrives';
+
+/** Every handle this test file has built, so `afterEach` can clear the link
+ *  store of every sid they handed out. */
+let liveHandles: FakeHandle[] = [];
 
 function makeFakeHandle(): FakeHandle {
   // Modelled on what reconcile actually does, and deliberately in two separate
@@ -53,6 +60,7 @@ function makeFakeHandle(): FakeHandle {
       const sid = spawnCount === 0 ? SPAWNED_SID : `${SPAWNED_SID}-${spawnCount + 1}`;
       spawnCount += 1;
       handle.labels[sid] = titleOverride ?? agent?.label ?? 'shell';
+      handle.spawned.push(sid);
       return sid;
     }),
     moveActiveTab: vi.fn(),
@@ -71,8 +79,10 @@ function makeFakeHandle(): FakeHandle {
     sessionLabel: vi.fn((sid: string) => handle.labels[sid] ?? null),
     labels: { 'session-1': 'conception · main' },
     exited: new Set<string>(),
+    spawned: [],
     typedInto: [],
   };
+  liveHandles.push(handle);
   return handle;
 }
 
@@ -82,6 +92,11 @@ afterEach(() => {
   unlinkAllForTab('session-1');
   unlinkAllForTab(SPAWNED_SID);
   unlinkAllForTab(NEVER_ARRIVES_SID);
+  // The fake mints a fresh sid per spawn, so a multi-spawn test can leave
+  // relations the three constants above do not cover; the link store is
+  // module-level and they would surface in the next test's assertions.
+  for (const handle of liveHandles) for (const sid of handle.spawned) unlinkAllForTab(sid);
+  liveHandles = [];
   // A test that fails mid-body never reaches its own `vi.useRealTimers()`, and
   // fake timers left armed hang every test after it — which reads as a second
   // failure in an unrelated case. Reset here so one red test stays one.
@@ -695,6 +710,52 @@ describe('linking the tab an action landed on', () => {
     const bridge = createTerminalBridge(makeDeps(handle));
     await bridge.handleNewProjectAction({ label: 'Starter', template: 'start', link: true });
     expect(linkedTabsOf(sampleProject.slug)).toEqual([]);
+  });
+});
+
+describe('handleScreenshotPaste', () => {
+  /** The shortcut reads its directory from prefs and the newest file from main;
+   *  both are stubbed so the test is about *where the path goes*. */
+  function makeScreenshotDeps(handle: FakeHandle | null) {
+    const deps = makeDeps(handle);
+    return { ...deps, terminalPrefs: (): TerminalPrefs => ({ screenshot_dir: '/shots' }) };
+  }
+
+  const stubLatest = (latest: string | null): void => {
+    vi.stubGlobal('window', {
+      ...globalThis.window,
+      condash: { termLatestScreenshot: vi.fn().mockResolvedValue(latest) },
+    });
+  };
+
+  it('pastes into the tab it named, not into whatever is active', async () => {
+    stubLatest('/shots/latest.png');
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeScreenshotDeps(handle));
+    await bridge.handleScreenshotPaste();
+    expect(handle.typedInto).toEqual([{ sid: 'session-1', text: '/shots/latest.png' }]);
+  });
+
+  it('says so, rather than dropping in silence, when the active tab has died', async () => {
+    stubLatest('/shots/latest.png');
+    const handle = makeFakeHandle();
+    handle.exited.add('session-1');
+    const deps = makeScreenshotDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    await bridge.handleScreenshotPaste();
+    expect(handle.typedInto).toEqual([]);
+    // Never spawns: the shortcut is key-repeatable and would open a tab per repeat.
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('not live'), 'error');
+  });
+
+  it('brings the terminal body up so the pasted path is visible', async () => {
+    stubLatest('/shots/latest.png');
+    const handle = makeFakeHandle();
+    const deps = makeScreenshotDeps(handle);
+    const bridge = createTerminalBridge(deps);
+    await bridge.handleScreenshotPaste();
+    expect(deps.showTerminalBand).toHaveBeenCalled();
   });
 });
 

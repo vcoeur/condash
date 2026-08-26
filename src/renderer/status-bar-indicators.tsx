@@ -197,9 +197,10 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     // `condash skills install` over the same tree at once.
     //
     // Best effort, not a lock: the button stays disabled through delivery and
-    // the first refresh window below, which covers the impatient double-click.
-    // It cannot cover an install that runs longer than that, because nothing
-    // here is told when the command finishes.
+    // until the pill reports the skills in sync, with the last refresh as a
+    // ceiling. Nothing here is told when the command finishes, so an install
+    // that fails or runs past that ceiling releases the button anyway rather
+    // than leaving it dead forever.
     if (installing()) return;
     setInstalling(true);
     let delivered: boolean;
@@ -227,10 +228,18 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     // earlier — a nudge that lands before the command starts reads the old
     // state and leaves the pill stale.
     setTimeout(() => {
+      void refreshSkills().then(() => {
+        // `condash skills install` routinely runs longer than this first nudge.
+        // Releasing the button here would re-enable it mid-install, and a user
+        // who sees no change yet clicks again — a second installer over the
+        // same tree, which is the hazard the guard exists for.
+        if (skillsState() === 'synced') setInstalling(false);
+      });
+    }, 4_000);
+    setTimeout(() => {
       void refreshSkills();
       setInstalling(false);
-    }, 4_000);
-    setTimeout(() => void refreshSkills(), 12_000);
+    }, 12_000);
   };
 
   // Commits popover.

@@ -227,12 +227,6 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     text: string,
     submit: boolean,
   ): Promise<{ delivered: boolean; submitted: boolean }> => {
-    // Both halves of "put the tab on screen". `switchTo` only sets the active
-    // id and column; with the bottom band showing the Dashboard body every
-    // xterm is display:none, so without the band flip the text is delivered
-    // correctly to a tab the user cannot see — which, now that the surfaces
-    // wait seconds and disable themselves while they do, reads as a hang.
-    deps.showTerminalBand();
     // Only when it is not already the active tab. `switchTo` has no
     // already-active guard, and `setActiveIn` allocates a fresh signal object,
     // so a redundant call refires the focus effect and chains a whole
@@ -247,6 +241,14 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
       return { delivered: false, submitted: false };
     }
+    // The other half of "put the tab on screen": `switchTo` only sets the
+    // active id and column, and with the bottom band showing the Dashboard body
+    // every xterm is display:none — so without this the text is delivered
+    // correctly to a tab the user cannot see, which, now that these surfaces
+    // wait seconds and disable themselves while they do, reads as a hang. After
+    // the write, not before, so a refused delivery does not rearrange the
+    // layout on its way to saying it failed.
+    deps.showTerminalBand();
     if (!submit) return { delivered: true, submitted: true };
     // Small delay so the terminal has time to ingest the typed text before the
     // Enter key arrives.
@@ -321,6 +323,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     agent: Agent,
     title?: string,
     taskContext?: TaskRunContext,
+    /** False when the prompt rides in argv, so nothing will be typed into this
+     *  tab afterwards. Changes what a focus failure means: the agent is running
+     *  either way, so there is no lost text to report and no reason to hand the
+     *  caller a null it would read as "the action did not happen". */
+    deliversText = true,
   ): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -352,9 +359,21 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // prompt is typed into the tab the agent runs in and not the one that held
     // focus when the action fired.
     if (!(await focusSpawnedTab(handle, sid))) {
-      deps.flashToast(`${agent.label}'s tab did not open in time — nothing was sent.`, 'error');
-      return null;
+      if (deliversText) {
+        deps.flashToast(`${agent.label}'s tab did not open in time — nothing was sent.`, 'error');
+        return null;
+      }
+      // The prompt went in on the command line, so the agent is running with it
+      // whether or not its tab reached the renderer in time. Saying "nothing
+      // was sent" would be false, and returning null would drop the link to the
+      // tab that is doing the work.
+      deps.flashToast(`${agent.label} is running, but its tab was slow to open.`, 'info');
     }
+    // A freshly spawned tab is one the user should be looking at, and switching
+    // to it does not by itself bring the terminal body up. `sendToTarget` does
+    // this too, for the deliveries that go through it — but an agent that takes
+    // its prompt in argv never gets there.
+    deps.showTerminalBand();
     return { handle, sid };
   };
 
@@ -378,7 +397,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (agent.promptFlags) {
       const flag = mode === 'oneshot' ? '--run' : '--prompt';
       const command = `${agent.command} ${flag} ${quoteForShell(text, promptShellFamily())}`;
-      return spawnAgentTab({ ...agent, command }, title, taskContext);
+      return spawnAgentTab({ ...agent, command }, title, taskContext, false);
     }
     const target = await spawnAgentTab(agent, title, taskContext);
     if (!target) return null;
