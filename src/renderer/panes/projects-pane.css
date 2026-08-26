@@ -191,15 +191,23 @@
   border-radius: var(--radius);
   contain: layout paint;
   transition: background 120ms ease;
-  padding: 4px 0 10px;
+  padding: 8px 0 16px;
 }
 
-/* Section spacing comes from negative space, not from a horizontal rule.
- * Non-empty sections get a little breathing room above so each block reads
- * as its own group without needing a graphic separator. Kept tight so the
- * status sections stack compactly. */
+/* Section spacing. The gap between two panels has to be an order above the
+ * gap between two cards inside one — at the former 4px margin the rendered
+ * distance between panels measured 12px, exactly the card gap, so two
+ * status washes read as one continuous surface with a colour change in the
+ * middle. 32px of bare background plus the drawn edge below is the boundary;
+ * whitespace alone was never going to be enough. */
 .group-block:not([data-empty='true']) {
-  margin-top: 4px;
+  margin-top: 32px;
+}
+
+/* An empty lane keeps its thin collapsed line and no panel chrome, but must
+ * not sit flush against the panel above it. */
+.group-block[data-empty='true']:not([data-status='now']) {
+  margin-top: 8px;
 }
 
 /* Status-coloured section wash — the status signal moved off the cards
@@ -210,8 +218,14 @@
  * rounded tint panel. */
 .projects-stack > .group-block:not([data-empty='true']) {
   background: color-mix(in srgb, var(--col-status, var(--border-strong)) 16%, transparent);
-  padding-left: 14px;
-  padding-right: 14px;
+  /* A drawn edge, so the panel ends somewhere definite. Deliberately quieter
+   * than a card's frame — 1px at 45% against the card's 2px at full strength
+   * — so it delimits without turning the pane into nested boxes. The radius
+   * token (not a literal) keeps Console's crisper 8px corners. */
+  border: 1px solid color-mix(in srgb, var(--col-status, var(--border-strong)) 45%, transparent);
+  border-radius: var(--radius-lg);
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .group-block:first-child {
@@ -301,18 +315,12 @@ body[data-dragging='project'] .group-block.drag-over {
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-strong);
 }
 
 /* A section the filter bar holds open: the header is not a toggle for the
  * duration, so it does not invite a click. */
 .group-header.held-open {
   cursor: default;
-}
-
-/* Subgroup headers are nested and should stay subtle — no dividing rule. */
-.group-block.subgroup > .group-header {
-  border-bottom: none;
 }
 
 /* The trailing slot pushes any header action (NOW gets the "+ New project"
@@ -391,7 +399,7 @@ body[data-dragging='project'] .group-block.drag-over {
    * feeds it the pane's min-width (settings.json `cardMinWidth.projects`;
    * the fallback mirrors DEFAULT_CARD_MIN_WIDTH) and the Projects gap. */
   --card-min: var(--card-min-projects, 520px);
-  --card-gap: 12px;
+  --card-gap: 20px;
   padding: 0;
 }
 
@@ -408,7 +416,10 @@ body[data-dragging='project'] .group-block.drag-over {
  * Lighter chrome than the outer status group: no top margin between
  * siblings, a smaller header, and a subtle left rail to read as nested. */
 .group-block.subgroup {
-  margin-top: 0;
+  /* Done's month subgroups separate from each other one order below the
+   * status sections: enough to read as distinct months, never enough to
+   * compete with the panel boundaries around them. */
+  margin-top: 16px;
   padding: 2px 0 8px 12px;
   border-left: 1px solid var(--border);
 }
@@ -460,7 +471,7 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px 10px 16px;
+  padding: 7px 12px 7px 16px;
   /* Full frame in --row-stripe: neutral for a standalone card. A family card
    * (parent/subproject) drops the top/bottom sides and wears only its
    * directional edge(s) in the family colour (status lives on the section's
@@ -834,7 +845,7 @@ body[data-dragging='project'] .row {
   font-family: var(--ui-font-card-title, var(--font-serif-base));
   font-weight: 700;
   font-size: var(--text-xl);
-  line-height: 1.25;
+  line-height: 1.15;
   /* Plain text ink, or the family-tinted mix a .row.in-family card sets in
    * --row-title-color. currentColor carries the same tint into the
    * faux-weight stroke/shadow. */
@@ -874,7 +885,7 @@ body[data-dragging='project'] .row {
 .row-head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .row .meta {
@@ -885,6 +896,13 @@ body[data-dragging='project'] .row {
   margin-top: 4px;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Scoped to the card on purpose — `.app-pill` is shared with the Code pane,
+ * the terminal tab strip and the Projects filter bar, none of which are being
+ * compacted. */
+.row .meta .app-pill {
+  line-height: 1.3;
 }
 
 .row .meta-spacer {
@@ -971,6 +989,17 @@ body[data-dragging='project'] .row {
 
 .row .row-action:active {
   transform: scale(0.96);
+}
+
+/* The card's work-on control is an `.action-dropdown-button`, so its height
+ * comes from this padding and NOT from the fixed 26px box `.row .row-action`
+ * declares — measured, that box never wins here (the button renders 23px, i.e.
+ * the 15px glyph plus its own padding and border). Trimming the padding is
+ * therefore the only thing that shortens the chrome row; the glyph is
+ * untouched. The row floors at 20px, the star's box, which keeps its size so
+ * the pointer target does not shrink for no gain. */
+.row .title-actions .action-dropdown-button.row-action {
+  padding: 1px 4px;
 }
 
 /* Verb→colour matches the actions.css tone palette: work = green (go live),
