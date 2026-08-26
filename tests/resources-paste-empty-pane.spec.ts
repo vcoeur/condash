@@ -41,6 +41,23 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
     await expect(window.locator('.terminal-pane')).toBeVisible();
     expect(await window.locator('.terminal-tab[data-sid]').count()).toBe(0);
 
+    // Toasts self-dismiss after 4 s while the polls below are allowed 15 s, so
+    // counting them at the end can miss one entirely. Record every toast that
+    // ever appears instead, from before the click.
+    await window.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { __toastLog: string[] }).__toastLog = seen;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of Array.from(record.addedNodes)) {
+            if (node instanceof HTMLElement && node.classList.contains('toast')) {
+              seen.push(node.textContent ?? '');
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+
     await window.locator('.rail-item[title*="Resources"]').click();
     await expect(window.locator('.resources-pane')).toBeVisible();
     await window
@@ -66,7 +83,15 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
             const buf = term.buffer.active;
             const lines: string[] = [];
             for (let i = 0; i < buf.length; i++) {
-              lines.push(buf.getLine(i)?.translateToString(true) ?? '');
+              const line = buf.getLine(i);
+              if (!line) continue;
+              // The pty runs the developer's own shell, so the prompt width is
+              // whatever their PS1 is — a path near the wrap column would split
+              // the token across two rows and fail the match for a reason that
+              // has nothing to do with this fix. Rejoin continuation rows.
+              const text = line.translateToString(true);
+              if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text;
+              else lines.push(text);
             }
             return lines.join('\n');
           }, sid),
@@ -74,9 +99,11 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
       )
       .toContain('spec.txt');
 
-    // Nothing was pasted anywhere else, and the user was not told a lie.
+    // The user was not told a lie on the way there.
     await wait(500);
-    expect(await window.locator('.toast').count()).toBe(0);
+    expect(
+      await window.evaluate(() => (window as unknown as { __toastLog: string[] }).__toastLog),
+    ).toEqual([]);
   } finally {
     await cleanup();
   }

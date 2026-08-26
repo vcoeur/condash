@@ -167,6 +167,32 @@ async function focusSpawnedTab(handle: TerminalPaneHandle, sid: string): Promise
   return false;
 }
 
+/** Deliver `text` to the tab `target` names, pressing Enter after it when
+ *  `submit`.
+ *
+ *  `typeIntoActive` follows the *active* tab, so the tab is activated
+ *  immediately before each keystroke rather than once at the start. The gap
+ *  between the text and the Enter is not idle time the renderer promises to
+ *  leave alone: `focusSpawnedTab` returns as soon as the spawned tab joins the
+ *  roster, while the reconcile pass that inserted it is still suspended in its
+ *  dynamic xterm import — and when that pass resumes it can insert *and
+ *  activate* another session from the same snapshot. An Enter landing there
+ *  does not merely go astray, it submits whatever sits on that tab's prompt.
+ *
+ *  `switchTo` derives the column from the tab itself and no-ops on an id the
+ *  roster does not hold, so this cannot move focus to a tab that has gone away
+ *  and is inert on a tab that is already active. */
+async function sendToTarget(target: ActionTarget, text: string, submit: boolean): Promise<void> {
+  target.handle.switchTo('my', target.sid);
+  target.handle.typeIntoActive(text);
+  if (!submit) return;
+  // Small delay so the terminal has time to ingest the typed text before the
+  // Enter key arrives.
+  await new Promise((r) => setTimeout(r, 50));
+  target.handle.switchTo('my', target.sid);
+  target.handle.typeIntoActive('\r');
+}
+
 /** Look up an agent by id from the current agent list. Returns null for an
  *  empty/missing id or when no agent matches. */
 function findAgentById(agents: readonly Agent[], id: string | undefined): Agent | null {
@@ -299,13 +325,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await spawnAgentTab(agent, title, taskContext);
     if (!target) return null;
-    target.handle.typeIntoActive(text);
-    if (submit) {
-      // Small delay so the terminal has time to ingest the typed text
-      // before the Enter key arrives.
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    await sendToTarget(target, text, submit);
     return target;
   };
 
@@ -350,13 +370,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await ensureTermAndShell();
     if (!target) return;
-    target.handle.typeIntoActive(text);
-    if (action.submit) {
-      // Small delay so the terminal has time to ingest the typed text
-      // before the Enter key arrives.
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    await sendToTarget(target, text, action.submit === true);
     if (action.link) linkTargetToProject(target, project);
   };
 
@@ -371,11 +385,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await ensureTermAndShell();
     if (!target) return;
-    target.handle.typeIntoActive(text);
-    if (action.submit) {
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    await sendToTarget(target, text, action.submit === true);
   };
 
   /** Focus a linked terminal tab from a card row's arrow. `switchTo` is the
@@ -456,8 +466,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // the line after the spawn instead dropped the path outright — the spawn
     // resolves as soon as main has the pty, while `typeIntoActive` follows the
     // active tab, which the tab only becomes a reconcile pass later.
-    // `ensureTermAndShell` has already toasted for anything it returns null on
-    // except a missing handle, which the guard above owns.
+    // `ensureTermAndShell` toasts for the failures it can hit here — a spawn
+    // that threw, a tab that never opened — and the guard above owns the
+    // missing handle. Its remaining null (an active column that reports a tab
+    // but hands back no id) is unreachable: `hasActive` and
+    // `getActiveSessionId` are the same read, taken with nothing between them.
     const target = await ensureTermAndShell();
     if (!target) return;
     target.handle.typeIntoActive(text);
@@ -497,9 +510,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast('The new terminal tab never opened — nothing was sent.', 'error');
       return;
     }
-    handle.typeIntoActive(command);
-    await new Promise((r) => setTimeout(r, 50));
-    handle.typeIntoActive('\r');
+    await sendToTarget({ handle, sid }, command, true);
   };
 
   const runTask = async (

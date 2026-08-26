@@ -630,6 +630,28 @@ describe('runShellCommand', () => {
     vi.useRealTimers();
   });
 
+  it('re-aims at its own tab before the Enter when another tab takes focus meanwhile', async () => {
+    // The focus wait returns as soon as the tab joins the roster, while the
+    // reconcile pass that inserted it is still mid-import — so it can come back
+    // and activate another restored session inside the 50 ms gap before the
+    // Enter. An Enter landing there submits that tab's prompt.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle));
+    const promise = bridge.runShellCommand('condash skills install', 'skills install');
+    // Past the settle and the focus step: the command is typed, the gap is open.
+    await vi.advanceTimersByTimeAsync(360);
+    handle.labels['session-restored'] = 'restored';
+    handle.switchTo('my', 'session-restored');
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+    expect(handle.typedInto).toEqual([
+      { sid: SPAWNED_SID, text: 'condash skills install' },
+      { sid: SPAWNED_SID, text: '\r' },
+    ]);
+    vi.useRealTimers();
+  });
+
   it('sends nothing and says so when the spawned tab never joins the roster', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
