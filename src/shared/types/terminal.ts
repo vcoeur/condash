@@ -372,6 +372,12 @@ export interface TermSession {
    * invisible — the user saw an unexplained slowdown with nothing to attribute
    * it to — and it is the state tabs are actually dying in. */
   memThrottled?: boolean;
+  /** Project slug this tab's recent output suggests it is working on, derived
+   * in main by scanning the tab's captured text for project slugs, short slugs
+   * and branch names. Undefined when nothing leads clearly. Advisory: it turns
+   * the matching project card's Link button into "Link (suggested)", and only
+   * the user's click writes an actual relation. */
+  suggestedProject?: string;
 }
 
 export interface TermSpawnRequest {

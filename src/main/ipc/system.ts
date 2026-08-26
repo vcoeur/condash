@@ -15,7 +15,7 @@ import { assertInitTargetAllowed, detectConceptionState, initConception } from '
 import { htmlToPdf } from '../export-pdf';
 import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';
-import { syncPerfLogging } from '../terminals';
+import { setMentionConception, syncPerfLogging } from '../terminals';
 import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
 import { requireMainWindowSender, requireNonEmptyString } from './utils';
@@ -194,6 +194,9 @@ export function registerSystemIpc(opts: {
     // `<conception>/.condash/perf/`, so without this a session left recording
     // across a conception switch keeps writing into the previous tree.
     await syncPerfLogging(picked);
+    // Re-point the tab-mention scan too, or tabs would keep being suggested
+    // projects from the tree the user just left.
+    setMentionConception(picked);
     opts.onConceptionPicked(picked);
     fireRecentsChange();
   }

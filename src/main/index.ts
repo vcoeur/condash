@@ -19,6 +19,7 @@ import {
   resetFlowsForWebContents,
   startMemorySampling,
   syncPerfLogging,
+  setMentionConception,
   trackedSessionIds,
 } from './terminals';
 import { clearBootRepos } from './repos';
@@ -512,6 +513,9 @@ app.whenReady().then(async () => {
   // Open the perf recorder if the user opted in. Fire-and-forget so it can never
   // delay first paint; a no-op unless `terminal.perf.enabled` is true.
   void syncPerfLogging(conceptionPath);
+  // Point the tab-mention scan at the same conception: it recognises that
+  // tree's project slugs and nothing else.
+  setMentionConception(conceptionPath);
   // The menu only needs the just-read settings — build it up front.
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],

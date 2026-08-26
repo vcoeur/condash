@@ -54,6 +54,8 @@ A tab can be **linked** to project cards — see [The Projects pane → Linking 
 - **Hover popover** — hovering a linked tab lists its linked projects (by dated slug) under a **Linked projects** heading. The list shows even when the Dashboard summarisation is off and no summary exists — the manual link is readable without the opt-in LLM feature. The popover replaces the plain title tooltip while it is up.
 - **Context menu** — right-clicking a linked tab shows a **Linked projects** block between Refresh and Close: one **Unlink from `<slug>`** item per project and, when there are several, an **Unlink all projects (n)** item. A single-linked tab shows just its one item — unlink-one and unlink-all coincide.
 
+A tab's output also drives **suggestions**: condash reads the recent output it already captures for each tab, and when a tab keeps naming one non-`done` project — by dated slug, short slug, or branch — that project's card offers **Link (suggested)** on its Link button. This is why a tab need not sit in a worktree to be recognised: what the tab *says* is the signal, not where it is. The suggestion decorates only that button and never the tab, nothing leaves the machine, and the matched text is never displayed.
+
 Links are **session-lifetime**: closing the tab removes every relation of it (the card's Linked-tabs fold and decoration clear on their own), and a **Restart** re-points them onto the new session, so a restarted tab keeps its links. A renderer reload keeps them while the tab is alive. The label a card row shows was captured when the link was made; the tab itself always shows its true name.
 
 ### Window-title tabs { #window-title-tabs }

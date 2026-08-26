@@ -553,7 +553,7 @@ export function createTerminalController(props: TerminalPaneProps) {
    *  on every reload, leaving unexplained zombie rows with no Restart button. */
   type SessionSnapshot = Pick<
     TermSession,
-    'id' | 'side' | 'exited' | 'repo' | 'memBytes' | 'memMaxBytes' | 'death'
+    'id' | 'side' | 'exited' | 'repo' | 'memBytes' | 'memMaxBytes' | 'death' | 'suggestedProject'
   >;
 
   // ---- onTermSessions: single source of truth for adds/removes ----
@@ -670,7 +670,8 @@ export function createTerminalController(props: TerminalPaneProps) {
           // Compare by kind, not by object identity: main rebuilds the verdict
           // object on every broadcast, so an identity compare would allocate a
           // fresh row every 2.5 s and undo the T5 churn fix.
-          t.death?.kind === s.death?.kind
+          t.death?.kind === s.death?.kind &&
+          t.suggestedProject === s.suggestedProject
         ) {
           return t;
         }
@@ -681,6 +682,7 @@ export function createTerminalController(props: TerminalPaneProps) {
           memBytes: s.memBytes,
           memMaxBytes: s.memMaxBytes,
           death: s.death,
+          suggestedProject: s.suggestedProject,
         };
       });
       return mutated ? next : prev;
@@ -763,7 +765,15 @@ export function createTerminalController(props: TerminalPaneProps) {
   createEffect(() => {
     const sid = activeIdIn(activeColumn());
     const activeTab = sid ? tabs().find((t) => t.id === sid) : undefined;
-    setActiveSession(activeTab ? { sid: activeTab.id, label: displayName(activeTab) } : null);
+    setActiveSession(
+      activeTab
+        ? {
+            sid: activeTab.id,
+            label: displayName(activeTab),
+            suggestedProject: activeTab.suggestedProject,
+          }
+        : null,
+    );
   });
 
   // ---- spawn helpers ----
