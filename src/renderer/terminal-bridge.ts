@@ -366,14 +366,18 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       // The prompt went in on the command line, so the agent is running with it
       // whether or not its tab reached the renderer in time. Saying "nothing
       // was sent" would be false, and returning null would drop the link to the
-      // tab that is doing the work.
+      // tab that is doing the work. No band flip here: focus never landed, so
+      // bringing the terminal up would show whatever tab was already active and
+      // imply it is the agent's.
       deps.flashToast(`${agent.label} is running, but its tab was slow to open.`, 'info');
+      return { handle, sid };
     }
-    // A freshly spawned tab is one the user should be looking at, and switching
-    // to it does not by itself bring the terminal body up. `sendToTarget` does
-    // this too, for the deliveries that go through it — but an agent that takes
-    // its prompt in argv never gets there.
-    deps.showTerminalBand();
+    // Only for a prompt delivered in argv: nothing further happens for this
+    // tab, so this is its last chance to reach the screen — switching to it
+    // does not by itself bring the terminal body up. Every other path reaches
+    // `sendToTarget`, which flips the band *after* its write, so a refused
+    // delivery does not rearrange the layout on its way to saying it failed.
+    if (!deliversText) deps.showTerminalBand();
     return { handle, sid };
   };
 
@@ -537,7 +541,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // debounce, and holding it on an empty pane would open a tab per repeat.
     // Nothing to paste into stays nothing pasted, as before.
     const handle = deps.terminalHandle();
-    if (!handle) return;
+    if (!handle) {
+      // The last silent path on the surface this branch made loud.
+      deps.flashToast('Terminal pane not available.', 'error');
+      return;
+    }
     const sid = handle.activeLiveSessionId();
     if (!sid) {
       // Every other surface here explains a refused delivery; this one used to

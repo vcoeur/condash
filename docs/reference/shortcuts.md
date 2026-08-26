@@ -147,8 +147,8 @@ The `?` overlay, `Ctrl+K`, and the two move-tab shortcuts yield to any editable 
 When `terminal.screenshot_paste_shortcut` fires:
 
 1. **Main process:** the [`termLatestScreenshot(dir)`](ipc-api.md#pty-sessions) IPC verb scans the top level of `terminal.screenshot_dir` and returns the most recently modified **file** (any extension — it does not filter on image types). There is no HTTP route.
-2. **Renderer:** the returned path is typed into the active terminal tab — **no `Enter` appended**. You confirm.
-3. If `terminal.screenshot_dir` is unset, or the directory is missing or empty, a transient toast surfaces the reason.
+2. **Renderer:** the returned path is written to the active column's live tab, addressed by session id rather than by whatever holds focus — **no `Enter` appended**. You confirm. If the bottom band is showing the Dashboard, the terminal body comes up once the path has landed, so you can see it.
+3. If `terminal.screenshot_dir` is unset, or the directory is missing or empty, a transient toast surfaces the reason. So does a refusal: with no live tab in the active column — it is empty, or the tab there has exited — nothing is pasted and the toast says so. The shortcut never opens a shell for you; it is key-repeatable, and holding it would open one per repeat.
 
 See [using the embedded terminal](../guides/terminal.md#screenshot-paste).
 

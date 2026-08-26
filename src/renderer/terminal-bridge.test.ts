@@ -597,6 +597,47 @@ describe('linking the tab an action landed on', () => {
     vi.useRealTimers();
   });
 
+  it('brings up the terminal for an argv-delivered prompt, which types nothing', async () => {
+    // That path never reaches sendToTarget, where every other surface's band
+    // flip lives — so the agent started and, with the Dashboard body up, the
+    // user saw nothing happen.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle, [agedumAgent]);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.handleProjectAction(sampleProject, {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'agedum-claude',
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(deps.showTerminalBand).toHaveBeenCalled();
+    // The prompt rode in argv; nothing is typed into the tab.
+    expect(handle.typedInto).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('does not bring the terminal up when the argv agent tab never focused', async () => {
+    // Focus never landed, so the band would show whatever tab was already
+    // active and imply it is the agent's.
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.spawnUserShell.mockResolvedValue(NEVER_ARRIVES_SID);
+    const deps = makeDeps(handle, [agedumAgent]);
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.handleProjectAction(sampleProject, {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'agedum-claude',
+    });
+    await vi.advanceTimersByTimeAsync(4000);
+    await promise;
+    expect(deps.showTerminalBand).not.toHaveBeenCalled();
+    expect(deps.flashToast).toHaveBeenCalledWith(expect.stringContaining('slow to open'), 'info');
+    vi.useRealTimers();
+  });
+
   it('links the spawned tab for a promptFlags agent too', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();

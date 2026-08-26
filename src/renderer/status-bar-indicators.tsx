@@ -78,9 +78,24 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     onCleanup(unsubscribe);
   });
 
+  /** Pending post-install refreshes, so switching conception can drop them.
+   *  They also own the `installing` reset, which would otherwise stay set. */
+  let installTimers: ReturnType<typeof setTimeout>[] = [];
+  const clearInstallTimers = (): void => {
+    for (const timer of installTimers) clearTimeout(timer);
+    installTimers = [];
+  };
+  onCleanup(clearInstallTimers);
+
   // Re-read both snapshots on mount and whenever the conception switches.
   createEffect(() => {
     props.conceptionPath();
+    // An install belongs to the conception it was fired for. Carrying its
+    // pending state across leaves the new conception's button disabled with
+    // nothing running for it, and lets the old timers refresh against the new
+    // conception's snapshot.
+    clearInstallTimers();
+    setInstalling(false);
     void refreshSync();
     void refreshSkills();
   });
@@ -227,19 +242,21 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     // Timed from delivery rather than from the click, which may be seconds
     // earlier — a nudge that lands before the command starts reads the old
     // state and leaves the pill stale.
-    setTimeout(() => {
-      void refreshSkills().then(() => {
-        // `condash skills install` routinely runs longer than this first nudge.
-        // Releasing the button here would re-enable it mid-install, and a user
-        // who sees no change yet clicks again — a second installer over the
-        // same tree, which is the hazard the guard exists for.
-        if (skillsState() === 'synced') setInstalling(false);
-      });
-    }, 4_000);
-    setTimeout(() => {
-      void refreshSkills();
-      setInstalling(false);
-    }, 12_000);
+    installTimers = [
+      setTimeout(() => {
+        void refreshSkills().then(() => {
+          // `condash skills install` routinely runs longer than this first
+          // nudge. Releasing the button here would re-enable it mid-install,
+          // and a user who sees no change yet clicks again — a second installer
+          // over the same tree, which is the hazard the guard exists for.
+          if (skillsState() === 'synced') setInstalling(false);
+        });
+      }, 4_000),
+      setTimeout(() => {
+        void refreshSkills();
+        setInstalling(false);
+      }, 12_000),
+    ];
   };
 
   // Commits popover.
