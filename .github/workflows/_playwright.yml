@@ -21,7 +21,13 @@ jobs:
     # generous headroom over the suite's own per-test timeouts so a single
     # pass never brushes the job limit (a brush would otherwise trigger the
     # config's CI retries and stack runtime 3×).
-    timeout-minutes: 25
+    # Raised from 25 when the bounded apt fallback landed: that fallback did
+    # not exist when 25 was chosen, and stacking its worst case on a cold
+    # Playwright cache and a full-length suite came to 24.7 min — 18 s of
+    # margin, i.e. none. The suite-headroom argument above is unchanged; the
+    # suite's own share is still ~5 min. Every step here is individually
+    # bounded now, so this is a backstop rather than the primary control.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -54,70 +60,35 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('package-lock.json') }}
 
+      # The suite runs headless through `xvfb-run` (scripts/run-playwright.mjs
+      # wraps each invocation), so xvfb only needs to be present here.
+      # ubuntu-latest ships it, so the probe is the normal path and apt never
+      # runs; the action's fallback covers an image that later drops it.
       - name: Ensure xvfb
-        # Electron Playwright needs a display server on Linux. `npm test`
-        # (scripts/run-playwright.mjs) wraps the suite in its own
-        # `xvfb-run -a` so each invocation gets an isolated virtual display
-        # — xvfb only needs to be *present* here, not invoked.
-        #
-        # This was an unconditional `apt-get update && apt-get install -y
-        # xvfb` until v4.111.0 lost a release to it. Two things were wrong
-        # with that. It never installed anything: ubuntu-latest ships Xvfb
-        # (image 20260729.566 carried 2:21.1.12-1ubuntu1.6, and apt reported
-        # `0 newly installed`), so the step's 34 s was pure `apt-get update`
-        # fetching 11.4 MB of package lists for a package already on disk.
-        # And it was unbounded: on run 32231104488 the runner's azure mirror
-        # went down, apt failed over to archive.ubuntu.com via the image's
-        # mirrorlist, then went silent mid-index for 23 m 53 s — eating the
-        # job's whole `timeout-minutes: 25`, which is sized for the suite,
-        # and skipping `build`/`publish` so the tag shipped nothing.
-        #
-        # Hence: probe first, apt only as a fallback for an image that drops
-        # xvfb, and then under an external `timeout`. apt's own knobs are not
-        # a sufficient bound on their own — v4.111.0 had already burned four
-        # connection retries and its mirror failover before it stalled.
-        shell: bash
-        run: |
-          # Bounds every apt in this job, not just the fallback below — most
-          # importantly the one `npx playwright install --with-deps` runs a
-          # few steps down, which has the same exposure. Acquire::Retries
-          # defaults to 0, so today a dropped index fetch is simply lost.
-          # Caveat: these bound a *stalled* connection, not a slow-drip
-          # mirror that keeps trickling bytes under the inactivity timer.
-          sudo tee /etc/apt/apt.conf.d/99-ci-timeouts >/dev/null <<'APTCONF'
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          Acquire::Retries "3";
-          APTCONF
-
-          if command -v Xvfb >/dev/null; then
-            echo "Xvfb already on the image at $(command -v Xvfb) — skipping apt"
-            exit 0
-          fi
-
-          echo "Xvfb missing from this runner image; falling back to apt" >&2
-          # `sudo timeout`, not `timeout sudo`: this way timeout runs as root
-          # and signals apt-get directly instead of relying on sudo to
-          # forward SIGTERM. Worst case is 3 x 240 s, well inside the budget.
-          for attempt in 1 2 3; do
-            echo "::group::apt-get xvfb (attempt $attempt)"
-            if sudo timeout 120 apt-get update \
-               && sudo timeout 120 apt-get install -y xvfb; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "apt failed on attempt $attempt" >&2
-            if [ "$attempt" -lt 3 ]; then sleep 10; fi
-          done
-          echo "could not install xvfb after 3 attempts" >&2
-          exit 1
+        uses: ./.github/actions/apt-install
+        with:
+          packages: xvfb
+          # Probe `xvfb-run`, not `Xvfb`: run-playwright.mjs execs the wrapper,
+          # and its ENOENT message names it. Same package ships both, so this
+          # is about naming the real dependency, not a divergence we expect.
+          skip-if-command: xvfb-run
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: npm ci
 
+      # `npx playwright install --with-deps` runs apt *inside* itself, out of
+      # reach of any argument of ours. The `Ensure xvfb` step above installs
+      # /etc/apt/apt.conf.d/99-ci-timeouts for the whole job before its probe
+      # runs, so that nested apt inherits the bound — which is why that step
+      # is not conditional and must stay ahead of this one.
+      # A plain `run:` step, so step-level `timeout-minutes` genuinely applies
+      # here — unlike on a composite `uses:` step, where it is inert. The ~80 s
+      # healthy figure is a WARM-cache measurement; a `package-lock.json` bump
+      # misses the cache above and makes this a cold chromium download plus
+      # apt work for its system deps, so size for that, not for the warm run.
       - name: Install Playwright browsers
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium
 
       - name: Build renderer + main

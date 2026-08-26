@@ -26,6 +26,17 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Without this the matrix inherits GitHub's 360-minute default, so a hung
+    # step burns six hours before `publish` is skipped. Sized against the
+    # DESIGNED worst path, not the happy one: measured legs run 1.4-5.9 min
+    # (windows slowest), but this job also contains the 3x `npm ci` retry loop
+    # below (~6 min on the recovery path the v4.55.0 flake needs) and the
+    # bounded apt step (11 min worst case) — 22.9 min together, which 25 does
+    # not clear comfortably. Every step here is individually bounded now, so
+    # this is a backstop; it still turns the v4.109.0 failure mode (an ubuntu
+    # leg wedged at 27 m 48 s that a human cancelled by hand) into an automatic
+    # kill, just at 30 min rather than 25.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -109,12 +120,16 @@ jobs:
       # switch to take effect. The .deb path keeps the sandbox: it
       # installs chrome-sandbox at /opt/condash/ where the SUID bit is
       # honoured, so this patch only touches the AppImage.
-      # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle
-      # contents during repack and aborts if it's missing. Not on the
-      # default ubuntu-latest image.
+      # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle contents
+      # during repack and aborts if it's missing. This is the release chain's
+      # most exposed apt call: unlike the Playwright lane's, the package really
+      # is absent from the image, so it cannot be probed away — and this is the
+      # job whose installers `publish` uploads, so a stall here ships nothing.
       - name: Install desktop-file-utils (for appimagetool repack)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: desktop-file-utils
 
       - name: Inject --no-sandbox into AppImage AppRun
         if: matrix.os == 'ubuntu-latest'
