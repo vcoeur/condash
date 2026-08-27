@@ -91,6 +91,10 @@ export interface TerminalBridge {
  *  than a Solid render pass yet still tight enough to surface a genuine
  *  mount failure as a no-op rather than an indefinite hang. */
 const HANDLE_WAIT_FRAMES = 12;
+/** Ceiling per frame of that wait, so a window that has stopped painting still
+ *  makes progress. Generous next to a 60 Hz frame; it only ever applies when
+ *  rAF is not firing at all. */
+const HANDLE_WAIT_FRAME_MS = 100;
 
 /** Delay between spawning an agent-bound tab and typing the template into it.
  *  Covers two races: the renderer's onTermSessions reconcile (the tab must
@@ -109,7 +113,20 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   for (let i = 0; i < HANDLE_WAIT_FRAMES; i++) {
     const handle = deps.terminalHandle();
     if (handle) return handle;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    // Raced against a timer, not a bare rAF: an occluded or minimised window
+    // stops painting, so rAF may never fire and this loop would never settle —
+    // taking its caller's promise with it, and with that any busy flag a
+    // surface is holding on that promise's `finally`.
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      requestAnimationFrame(done);
+      setTimeout(done, HANDLE_WAIT_FRAME_MS);
+    });
   }
   return deps.terminalHandle();
 }

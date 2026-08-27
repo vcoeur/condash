@@ -53,12 +53,7 @@ export function ResourcesView(props: {
   // notes/01-design.md.
 
   const renderFile = createMemo(() => (file: ResourceNode) => (
-    <ResourceCard
-      node={file}
-      actions={props.actions}
-      pastingPath={pastingPath}
-      setPastingPath={setPastingPath}
-    />
+    <ResourceCard node={file} actions={props.actions} />
   ));
 
   return (
@@ -113,28 +108,27 @@ export function ResourcesView(props: {
  *  second click open a second shell. Pane-wide rather than per-card because the
  *  spawn it waits on is pane-wide; the path rather than a flag so only the card
  *  that was clicked shows itself busy — a whole tree of "…" buttons reads as
- *  the pane having hung. */
+ *  the pane having hung.
+ *
+ *  Read directly rather than threaded through props: both components live in
+ *  this module, and passing it down would make deliberately module-scoped state
+ *  read as though it belonged to a component instance. Nothing else can reset
+ *  it, so the bridge call it waits on must always settle — see
+ *  `waitForTerminalHandle`, which races its frame wait against a timer for
+ *  exactly that reason. */
 const [pastingPath, setPastingPath] = createSignal<string | null>(null);
 
-function ResourceCard(props: {
-  node: ResourceNode;
-  actions: ResourcesViewActions;
-  /** Path of the card whose paste is in flight, shared across the pane: any
-   *  paste blocks every card, because the spawn it may be waiting on is
-   *  pane-wide, but only the clicked card shows itself as pending. */
-  pastingPath: () => string | null;
-  setPastingPath: (value: string | null) => void;
-}) {
+function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions }) {
   const cat = (): ResourceCategory => props.node.category ?? 'other';
-  const anyPasting = (): boolean => props.pastingPath() !== null;
-  const thisPasting = (): boolean => props.pastingPath() === props.node.path;
+  const anyPasting = (): boolean => pastingPath() !== null;
+  const thisPasting = (): boolean => pastingPath() === props.node.path;
   const pasteToTerm = async (): Promise<void> => {
     if (anyPasting()) return;
-    props.setPastingPath(props.node.path);
+    setPastingPath(props.node.path);
     try {
       await props.actions.pasteToTerm(props.node.path);
     } finally {
-      props.setPastingPath(null);
+      setPastingPath(null);
     }
   };
 

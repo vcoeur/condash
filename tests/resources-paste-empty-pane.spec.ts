@@ -51,15 +51,21 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
     await window.evaluate(() => {
       const seen: string[] = [];
       (window as unknown as { __toastLog: string[] }).__toastLog = seen;
-      new MutationObserver((records) => {
-        for (const record of records) {
-          for (const node of Array.from(record.addedNodes)) {
-            if (node instanceof HTMLElement && node.classList.contains('toast')) {
-              seen.push(node.textContent ?? '');
-            }
-          }
-        }
-      }).observe(document.body, { childList: true, subtree: true });
+      // Record whatever the toast slot currently says, on any mutation. Watching
+      // only for *added* nodes misses the case this observer exists for: the
+      // toast is an unkeyed `<Show>`, and Solid memoises that condition on
+      // truthiness, so a second toast arriving while the first is still up
+      // rewrites the existing node's text and inserts nothing. On a slow boot
+      // that is exactly how an unrelated toast would mask the failure toast.
+      const record = (): void => {
+        const text = document.querySelector('.toast')?.textContent ?? '';
+        if (text && seen[seen.length - 1] !== text) seen.push(text);
+      };
+      new MutationObserver(record).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
     });
 
     await window.locator('.rail-item[title*="Resources"]').click();

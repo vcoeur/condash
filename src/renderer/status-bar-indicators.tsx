@@ -269,9 +269,20 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
         });
       }, 4_000),
       setTimeout(() => {
-        void refreshSkills();
-        if (generation === installGeneration) setInstalling(false);
+        void refreshSkills().then(() => {
+          if (generation === installGeneration && skillsState() === 'synced') {
+            setInstalling(false);
+          }
+        });
       }, 12_000),
+      // Hard ceiling. `condash skills install` can outlast both nudges above,
+      // and releasing the button while it still runs invites the second,
+      // concurrent installer this guard exists to prevent — but an install that
+      // fails outright never reaches `synced`, so something has to let go
+      // regardless or the button stays dead for the session.
+      setTimeout(() => {
+        if (generation === installGeneration) setInstalling(false);
+      }, 60_000),
     ];
   };
 
