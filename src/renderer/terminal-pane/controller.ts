@@ -754,7 +754,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   });
 
   // ---- link-store focus mirror ----
-  // The handle exposes only imperative `hasActive()` / `getActiveSessionId()`
+  // The handle exposes only the imperative `activeLiveSessionId()`
   // and is a plain `let` in main.tsx, so the reactive source of truth for
   // "which tab is focused" is this controller's own signals. One effect
   // mirrors the focused session (id + display name) into the link store;
@@ -1402,18 +1402,42 @@ export function createTerminalController(props: TerminalPaneProps) {
       setActiveIn(col, ids[nextIdx]);
       queueMicrotask(focusActive);
     },
-    typeIntoActive: (text) => {
-      const id = activeIdIn(activeColumn());
-      if (!id) return;
-      void window.condash.termWrite(id, text);
-      // Drive focus into the active xterm so the next keystroke lands in the
-      // shell — callers (Work on, screenshot paste) all want this. Without it
-      // the click that triggered typeIntoActive leaves focus on the dashboard
-      // button and the user has to click the pane again before typing.
-      queueMicrotask(focusActive);
+    typeInto: (sid, text) => {
+      // Named delivery, and the only way into a terminal from the renderer.
+      // Its predecessor addressed whatever was active, so every caller that had
+      // just spawned a tab was obliged to re-activate it before each keystroke
+      // and trust that no reconcile pass slipped in between — a window that
+      // exists on every await. Writing to the sid itself removes the window
+      // rather than narrowing it, and leaving no unnamed alternative is what
+      // stops the next caller from reintroducing it.
+      //
+      // False when there is no live tab to write to, so a caller can stop
+      // instead of writing blind. Membership alone is not liveness: a clean
+      // exit auto-closes the row, but an ABNORMAL one deliberately keeps it so
+      // the user can read the death verdict (see onTermExit) — its pty is gone
+      // and main drops anything written to it, silently. Both are "the tab you
+      // named is not there any more".
+      //
+      // Focus is driven into the xterm only when this *is* the active tab, so
+      // the next keystroke lands in the shell rather than on the button that
+      // was clicked; meaningless for a tab the user is not looking at.
+      const tab = tabs().find((t) => t.id === sid);
+      if (!tab || tab.exited !== undefined) return false;
+      void window.condash.termWrite(sid, text);
+      if (activeIdIn(activeColumn()) === sid) queueMicrotask(focusActive);
+      return true;
     },
-    hasActive: () => Boolean(activeIdIn(activeColumn())),
-    getActiveSessionId: () => activeIdIn(activeColumn()),
+    activeLiveSessionId: () => {
+      // "Is there a tab to write to" is a liveness question, not an activity
+      // one. An abnormal exit deliberately KEEPS its row and stays the active
+      // id (see onTermExit), so asking whether a tab is active answers yes for
+      // a dead pty — and every caller then hands its text to a session main
+      // will drop it for, instead of opening the shell it needed.
+      const id = activeIdIn(activeColumn());
+      if (!id) return null;
+      const tab = tabs().find((t) => t.id === id);
+      return tab && tab.exited === undefined ? id : null;
+    },
     sessionLabel: (sid) => {
       const tab = tabs().find((t) => t.id === sid);
       return tab ? displayName(tab) : null;

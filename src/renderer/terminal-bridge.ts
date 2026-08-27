@@ -69,7 +69,7 @@ export interface TerminalBridge {
   /** Open the terminal pane, spawn a fresh user-shell tab, and run `command`
    *  (typed + Enter). Used by the status-bar "Install skills" action to run
    *  `condash skills install` visibly in its own tab. */
-  runShellCommand: (command: string, title?: string) => Promise<void>;
+  runShellCommand: (command: string, title?: string) => Promise<boolean>;
   /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`
    *  and deliver the already-substituted `text`. The tab title is pinned to
    *  `<agent label>•<taskName>`. A `promptFlags` agent is seeded via the run's
@@ -86,15 +86,23 @@ export interface TerminalBridge {
   ) => Promise<void>;
 }
 
-/** Upper bound on animation frames waited for the pane to mount after
- *  `ensureTerminalOpen()`. At ~60 Hz this is ~200 ms — comfortably more
- *  than a Solid render pass yet still tight enough to surface a genuine
- *  mount failure as a no-op rather than an indefinite hang. */
+/** Upper bound on frames waited for the pane to mount after
+ *  `ensureTerminalOpen()`. On a painting window, at ~60 Hz, that is ~200 ms —
+ *  comfortably more than a Solid render pass yet tight enough to surface a
+ *  genuine mount failure as a no-op rather than a hang. On one that has stopped
+ *  painting each frame falls back to the timer below, so the true worst case is
+ *  12 × 100 ms = 1.2 s. Still bounded, which is the point: this wait sits in
+ *  front of every bridge surface, and a surface holding a busy flag on the
+ *  resulting promise cannot get it back if the promise never settles. */
 const HANDLE_WAIT_FRAMES = 12;
+/** Ceiling per frame of that wait, so a window that has stopped painting still
+ *  makes progress. Generous next to a 60 Hz frame; it only ever applies when
+ *  rAF is not firing at all. */
+const HANDLE_WAIT_FRAME_MS = 100;
 
 /** Delay between spawning an agent-bound tab and typing the template into it.
- *  Covers two races: the renderer's onTermSessions reconcile (must run before
- *  the new tab becomes the active typeIntoActive target) and the agent
+ *  Covers two races: the renderer's onTermSessions reconcile (the tab must
+ *  reach the roster before anything is delivered to it) and the agent
  *  process's own boot time (claude / kimi need to print their prompt before
  *  accepting input). 350 ms is the smallest value that didn't drop characters
  *  across the agents we've tried; imperceptible to a user clicking a menu
@@ -109,7 +117,20 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   for (let i = 0; i < HANDLE_WAIT_FRAMES; i++) {
     const handle = deps.terminalHandle();
     if (handle) return handle;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    // Raced against a timer, not a bare rAF: an occluded or minimised window
+    // stops painting, so rAF may never fire and this loop would never settle —
+    // taking its caller's promise with it, and with that any busy flag a
+    // surface is holding on that promise's `finally`.
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      requestAnimationFrame(done);
+      setTimeout(done, HANDLE_WAIT_FRAME_MS);
+    });
   }
   return deps.terminalHandle();
 }
@@ -136,10 +157,11 @@ const SPAWN_WAIT_MAX_MS = 3000;
  *  A spawn resolves as soon as main has the pty, but the tab reaches the
  *  renderer only on the next reconcile pass — which inserts it into the roster,
  *  then awaits a dynamic xterm import, and only afterwards activates it. The
- *  two things an action does need different guarantees across that window: the
- *  link needs the sid to be in the **roster**, or a pass still holding a
- *  pre-spawn snapshot prunes the relation; `typeIntoActive` needs the tab to be
- *  **active**, or the text lands in whatever tab held focus — or nowhere.
+ *  two things an action does need the same guarantee across that window —
+ *  roster membership. The link needs it or a pass still holding a pre-spawn
+ *  snapshot prunes the relation; `typeInto` needs it or there is no tab to
+ *  deliver to. Activation is a third thing, and it is for the user's eyes:
+ *  the tab they are about to work in should be the one on screen.
  *
  *  Polling for "active" would cover both, but it can also never arrive:
  *  activation is last-writer-wins within a pass, so a tab inserted in the same
@@ -192,7 +214,93 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const promptShellFamily = (): ShellFamily =>
     shellFamily(deps.terminalPrefs()?.shell, isWindowsRenderer());
 
-  /** Shared preamble: ensure pane is open, spawn a shell if none active. */
+  /** Deliver `text` to the tab `target` names, pressing Enter after it when
+   *  `submit`. The single delivery path for every action, and the one place a
+   *  failed delivery is reported — a call site cannot forget to, which is the
+   *  mistake this whole class of defect keeps being made of.
+   *
+   *  The band flip and `switchTo` are for the user: together they put the tab
+   *  they are about to work in on screen. It is not what makes the delivery correct; `typeInto` is, because
+   *  it addresses the sid rather than whatever is active. That distinction
+   *  matters because there is no window in which the renderer promises to
+   *  leave focus alone: `focusSpawnedTab` returns the moment the spawned tab
+   *  joins the roster, while the reconcile pass that inserted it is still
+   *  suspended in its dynamic xterm import, and when that pass resumes it can
+   *  insert *and activate* another session from the same snapshot. Every
+   *  `await` here — and every `await` a caller takes between the focus step and
+   *  this call — is such a window. Re-activating the tab before each keystroke
+   *  would only narrow them.
+   *
+   *  A write fails once the tab it names stops being live: a clean exit closes
+   *  the row, an abnormal one keeps it with a dead pty — so the toast says "no
+   *  longer live" rather than "closed", which is only half of it. The two
+   *  writes report separately, because a command typed but never submitted is a
+   *  different thing to explain than one that never arrived.
+   *
+   *  Reports the two writes separately because callers want different ones.
+   *  `delivered` — the text reached the tab — is what decides whether the tab is
+   *  working on the project, and so whether to link it: a refused Enter does not
+   *  retract that, the prompt is sitting there either way. `submitted` is true
+   *  when no Enter was asked for, or when it landed; a caller that exists to
+   *  *run* something needs that one, not the first. */
+  const sendToTarget = async (
+    target: ActionTarget,
+    text: string,
+    submit: boolean,
+  ): Promise<{ delivered: boolean; submitted: boolean }> => {
+    // Only when it is not already the active tab. `switchTo` has no
+    // already-active guard, and `setActiveIn` allocates a fresh signal object,
+    // so a redundant call refires the focus effect and chains a whole
+    // visibility pass — against a tab reconcile has just queued a repaint for.
+    // Both paths in here usually arrive already active: `focusSpawnedTab`
+    // switched a microtask ago, and the reuse path returns the active sid by
+    // construction.
+    if (target.handle.activeLiveSessionId() !== target.sid) {
+      target.handle.switchTo('my', target.sid);
+    }
+    if (!target.handle.typeInto(target.sid, text)) {
+      deps.flashToast('That terminal tab is no longer live — nothing was sent.', 'error');
+      return { delivered: false, submitted: false };
+    }
+    // The other half of "put the tab on screen": `switchTo` only sets the
+    // active id and column, and with the bottom band showing the Dashboard body
+    // every xterm is display:none — so without this the text is delivered
+    // correctly to a tab the user cannot see, which, now that these surfaces
+    // wait seconds and disable themselves while they do, reads as a hang. After
+    // the write, not before, so a refused delivery does not rearrange the
+    // layout on its way to saying it failed.
+    deps.showTerminalBand();
+    if (!submit) return { delivered: true, submitted: true };
+    // Small delay so the terminal has time to ingest the typed text before the
+    // Enter key arrives.
+    await new Promise((r) => setTimeout(r, 50));
+    if (!target.handle.typeInto(target.sid, '\r')) {
+      deps.flashToast(
+        'That terminal tab is no longer live — the command was not submitted.',
+        'error',
+      );
+      return { delivered: true, submitted: false };
+    }
+    return { delivered: true, submitted: true };
+  };
+
+  /** Shared preamble: ensure the pane is open, and hand back a tab that can be
+   *  written to — spawning a shell when there is none live.
+   *
+   *  Deliberately NOT deduplicated across concurrent callers. Two callers
+   *  arriving while a spawn is in flight do each open a shell, and that looked
+   *  like a defect worth fixing until the fix was tried: sharing one tab makes
+   *  two submit-bearing actions interleave on the same prompt line, so the
+   *  shell runs the two commands concatenated. A second tab is a surprise; a
+   *  concatenated command is a wrong command.
+   *
+   *  Racing is held off at the surfaces instead, where the intent is known,
+   *  rather than here, where two callers wanting one tab and two callers
+   *  wanting two are indistinguishable. The Resources pane blocks every card
+   *  while a paste is in flight and the Install button blocks itself; the
+   *  Work-on and project-action buttons do not, so a double-click there does
+   *  open two tabs. Pre-existing, and named here so the absence reads as known
+   *  rather than as covered. */
   const ensureTermAndShell = async (): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -201,29 +309,27 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const handle = deps.terminalHandle();
     if (!handle) return null;
     deps.ensureTerminalOpen();
-    if (!handle.hasActive()) {
-      try {
-        // Keep the id the spawn returns. A fresh tab only becomes the active
-        // one on the next reconcile pass, so reading the active id back off
-        // the handle here can still answer with the tab that just left.
-        const sid = await handle.spawnUserShell(null, 'my');
-        // Both steps, the same pair `spawnAgentTab` takes: the settle is for
-        // the shell to finish init and start accepting input (typing during it
-        // drops leading characters); the focus step is what makes the tab the
-        // one `typeIntoActive` will write to.
-        await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-        if (!(await focusSpawnedTab(handle, sid))) {
-          deps.flashToast('The new terminal tab never opened — nothing was sent.', 'error');
-          return null;
-        }
-        return { handle, sid };
-      } catch (err) {
-        deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
+    const live = handle.activeLiveSessionId();
+    if (live) return { handle, sid: live };
+    try {
+      // Keep the id the spawn returns. A fresh tab only becomes the active
+      // one on the next reconcile pass, so reading the active id back off
+      // the handle here can still answer with the tab that just left.
+      const sid = await handle.spawnUserShell(null, 'my');
+      // Both steps, the same pair `spawnAgentTab` takes: the settle is for
+      // the shell to finish init and start accepting input (typing during it
+      // drops leading characters); the focus step is what puts the tab in
+      // front of the user and confirms the roster holds it.
+      await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+      if (!(await focusSpawnedTab(handle, sid))) {
+        deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
         return null;
       }
+      return { handle, sid };
+    } catch (err) {
+      deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
+      return null;
     }
-    const sid = handle.getActiveSessionId();
-    return sid ? { handle, sid } : null;
   };
 
   /** Spawn a fresh tab running `agent`'s command and settle. Two-step settle:
@@ -238,6 +344,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     agent: Agent,
     title?: string,
     taskContext?: TaskRunContext,
+    /** False when the prompt rides in argv, so nothing will be typed into this
+     *  tab afterwards. Changes what a focus failure means: the agent is running
+     *  either way, so there is no lost text to report and no reason to hand the
+     *  caller a null it would read as "the action did not happen". */
+    deliversText = true,
   ): Promise<ActionTarget | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -269,9 +380,30 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     // prompt is typed into the tab the agent runs in and not the one that held
     // focus when the action fired.
     if (!(await focusSpawnedTab(handle, sid))) {
-      deps.flashToast(`${agent.label}'s tab never opened — nothing was sent.`, 'error');
-      return null;
+      if (deliversText) {
+        deps.flashToast(`${agent.label}'s tab did not open in time — nothing was sent.`, 'error');
+        return null;
+      }
+      // The prompt went in on the command line, so the agent ran with it
+      // whether or not its tab reached the renderer in time — "nothing was
+      // sent" would be false, and an error is the wrong register for something
+      // that worked. Two things reach here: a tab genuinely slow to appear, and
+      // a `--run` one-shot that finished and closed inside the wait, so the
+      // wording covers both. The target still comes back so the caller does not
+      // read the action as failed; the link is not written either way, because
+      // `linkTargetToProject` refuses a tab the roster does not hold, which is
+      // exactly the condition that got us here. No band flip either: focus
+      // never landed, so bringing the terminal up would show whatever tab was
+      // already active and imply it is the agent's.
+      deps.flashToast(`${agent.label} started, but its tab never appeared.`, 'info');
+      return { handle, sid };
     }
+    // Only for a prompt delivered in argv: nothing further happens for this
+    // tab, so this is its last chance to reach the screen — switching to it
+    // does not by itself bring the terminal body up. Every other path reaches
+    // `sendToTarget`, which flips the band *after* its write, so a refused
+    // delivery does not rearrange the layout on its way to saying it failed.
+    if (!deliversText) deps.showTerminalBand();
     return { handle, sid };
   };
 
@@ -295,17 +427,14 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (agent.promptFlags) {
       const flag = mode === 'oneshot' ? '--run' : '--prompt';
       const command = `${agent.command} ${flag} ${quoteForShell(text, promptShellFamily())}`;
-      return spawnAgentTab({ ...agent, command }, title, taskContext);
+      return spawnAgentTab({ ...agent, command }, title, taskContext, false);
     }
     const target = await spawnAgentTab(agent, title, taskContext);
     if (!target) return null;
-    target.handle.typeIntoActive(text);
-    if (submit) {
-      // Small delay so the terminal has time to ingest the typed text
-      // before the Enter key arrives.
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    // A tab that took none of the prompt is not a tab the action landed in —
+    // callers use this return to link the project to it. A prompt that was
+    // typed but not submitted still landed there, and still counts.
+    if (!(await sendToTarget(target, text, submit)).delivered) return null;
     return target;
   };
 
@@ -328,9 +457,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const text = `work on ${project.slug}`;
     const target = await ensureTermAndShell();
     if (!target) return;
-    target.handle.typeIntoActive(text);
     // The built-in row links unconditionally and carries no flag: starting
-    // work on a project is exactly the moment its tab belongs to it.
+    // work on a project is exactly the moment its tab belongs to it — but only
+    // if the work actually got there. Linking after a "nothing was sent" toast
+    // records a relation to a tab the user was just told failed.
+    if (!(await sendToTarget(target, text, false)).delivered) return;
     linkTargetToProject(target, project);
   };
 
@@ -350,13 +481,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await ensureTermAndShell();
     if (!target) return;
-    target.handle.typeIntoActive(text);
-    if (action.submit) {
-      // Small delay so the terminal has time to ingest the typed text
-      // before the Enter key arrives.
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    if (!(await sendToTarget(target, text, action.submit === true)).delivered) return;
     if (action.link) linkTargetToProject(target, project);
   };
 
@@ -371,11 +496,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const target = await ensureTermAndShell();
     if (!target) return;
-    target.handle.typeIntoActive(text);
-    if (action.submit) {
-      await new Promise((r) => setTimeout(r, 50));
-      target.handle.typeIntoActive('\r');
-    }
+    await sendToTarget(target, text, action.submit === true);
   };
 
   /** Focus a linked terminal tab from a card row's arrow. `switchTo` is the
@@ -436,9 +557,32 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast(`No files under ${dir}`, 'error');
       return;
     }
+    // The last write in this module that used to address "whatever is active".
+    // It reads as the one case that genuinely means that — but the shortcut can
+    // be pressed while a reconcile pass is activating a restored session, and
+    // the path then lands in that tab. So it names the tab it means.
+    //
+    // Deliberately NOT the "spawn a shell if none is live" preamble the two
+    // clicked surfaces take: this is a key-repeat-capable shortcut with no
+    // debounce, and holding it on an empty pane would open a tab per repeat.
+    // Nothing to paste into stays nothing pasted, as before.
     const handle = deps.terminalHandle();
-    if (!handle) return;
-    handle.typeIntoActive(latest);
+    if (!handle) {
+      // The last silent path on the surface this branch made loud.
+      deps.flashToast('Terminal pane not available.', 'error');
+      return;
+    }
+    const sid = handle.activeLiveSessionId();
+    if (!sid) {
+      // Every other surface here explains a refused delivery; this one used to
+      // drop in silence, which on a dead-but-still-shown tab looks like the
+      // shortcut is broken. Scoped to the active column, which is what
+      // `activeLiveSessionId` answers about — the other column may well hold a
+      // live shell, and claiming there is none would be wrong.
+      deps.flashToast('The active terminal tab is not live — nothing was pasted.', 'error');
+      return;
+    }
+    await sendToTarget({ handle, sid }, latest, false);
   };
 
   const handlePasteToTerm = async (text: string): Promise<void> => {
@@ -446,24 +590,25 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
     }
-    const handle = deps.terminalHandle();
-    if (!handle) {
+    if (!deps.terminalHandle()) {
       deps.flashToast('Terminal pane not available.', 'error');
       return;
     }
-    deps.ensureTerminalOpen();
-    if (!handle.hasActive()) {
-      try {
-        await handle.spawnUserShell(null, 'my');
-      } catch (err) {
-        deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
-        return;
-      }
-    }
-    handle.typeIntoActive(text);
+    // The same preamble every project action takes, rather than a second copy
+    // of spawn-then-type: on an empty pane it spawns the shell and waits for
+    // its tab to reach the renderer. Typing on the line after the spawn
+    // instead dropped the path outright — the spawn resolves as soon as main
+    // has the pty, and there is no tab to write to until a reconcile pass
+    // later.
+    // `ensureTermAndShell` toasts for every failure it can hit here — a spawn
+    // that threw, a tab that never opened — and the guard above owns the
+    // missing handle, so a null needs no second explanation.
+    const target = await ensureTermAndShell();
+    if (!target) return;
+    await sendToTarget(target, text, false);
   };
 
-  const runShellCommand = async (command: string, title?: string): Promise<void> => {
+  const runShellCommand = async (command: string, title?: string): Promise<boolean> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -471,23 +616,37 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const handle = deps.terminalHandle();
     if (!handle) {
       deps.flashToast('Terminal pane not available.', 'error');
-      return;
+      return false;
     }
     deps.ensureTerminalOpen();
+    let sid: string;
     try {
       // Always a fresh plain-shell tab — never reuse the focused tab (which
-      // could be a running agent). null agent + a pinned title.
-      await handle.spawnUserShell(null, 'my', title);
+      // could be a running agent). null agent + a pinned title. The id it
+      // answers with is how the tab is named below; reading the active id back
+      // off the handle would still answer with the tab that just left.
+      sid = await handle.spawnUserShell(null, 'my', title);
     } catch (err) {
       deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
-      return;
+      return false;
     }
-    // Same settle as an agent spawn: let the reconcile mark the new tab active
-    // and the shell print its prompt before typing.
+    // Both steps, the same pair every agent spawn takes: the settle is for the
+    // shell to finish init and start accepting input; the focus step is what
+    // confirms the tab exists to be written to. The settle alone was a hope —
+    // on a cold app whose first dynamic xterm import outlasts it the command
+    // was typed into nothing and silently lost. It also ends in Enter, so a
+    // tab that did not open must stop the command rather than let it run in
+    // whatever tab held focus.
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-    handle.typeIntoActive(command);
-    await new Promise((r) => setTimeout(r, 50));
-    handle.typeIntoActive('\r');
+    if (!(await focusSpawnedTab(handle, sid))) {
+      deps.flashToast('The new terminal tab did not open in time — nothing was sent.', 'error');
+      return false;
+    }
+    // This one exists to run the command, not merely to place it — a prompt
+    // left unsubmitted is not a command that ran, and the caller schedules work
+    // off this answer.
+    const sent = await sendToTarget({ handle, sid }, command, true);
+    return sent.delivered && sent.submitted;
   };
 
   const runTask = async (

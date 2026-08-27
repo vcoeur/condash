@@ -37,8 +37,11 @@ type SkillsState = 'synced' | 'update' | 'install' | 'unknown';
 interface StatusBarIndicatorsProps {
   /** Active conception path — a change re-reads both snapshots. */
   conceptionPath: () => string | null;
-  /** Run `condash skills install` (in a terminal tab); wired to the bridge. */
-  onInstallSkills: () => void;
+  /** Run `condash skills install` (in a terminal tab); wired to the bridge.
+   *  Resolves when the command has been delivered to its tab — which is not
+   *  immediate, so the button waits on it rather than firing and forgetting —
+   *  and answers false when it never got there. */
+  onInstallSkills: () => Promise<boolean>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
@@ -47,6 +50,7 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   const [auto, setAuto] = createSignal<AutoSyncStatus | null>(null);
   const [skills, setSkills] = createSignal<SkillsSyncStatus | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const [installing, setInstalling] = createSignal(false);
 
   const refreshSync = async (): Promise<void> => {
     try {
@@ -74,9 +78,32 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     onCleanup(unsubscribe);
   });
 
+  /** Pending post-install refreshes, so switching conception can drop them.
+   *  They also own the `installing` reset, which would otherwise stay set. */
+  let installTimers: ReturnType<typeof setTimeout>[] = [];
+  const clearInstallTimers = (): void => {
+    for (const timer of installTimers) clearTimeout(timer);
+    installTimers = [];
+  };
+  onCleanup(clearInstallTimers);
+
+  /** Bumped whenever an install is abandoned — a conception switch, or a later
+   *  install starting. Delivery is now a 350 ms–3.4 s await, so a run can still
+   *  be in flight when that happens, and its resolution must not write state
+   *  the run that superseded it is relying on. */
+  let installGeneration = 0;
+
   // Re-read both snapshots on mount and whenever the conception switches.
   createEffect(() => {
     props.conceptionPath();
+    // An install belongs to the conception it was fired for. Carrying its
+    // pending state across leaves the new conception's button disabled with
+    // nothing running for it, and lets the old timers refresh against the new
+    // conception's snapshot. The generation bump is what stops a delivery still
+    // in flight from writing back over this.
+    installGeneration += 1;
+    clearInstallTimers();
+    setInstalling(false);
     void refreshSync();
     void refreshSkills();
   });
@@ -185,12 +212,55 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     }
   };
 
-  const installSkills = (): void => {
-    props.onInstallSkills();
+  const installSkills = async (): Promise<void> => {
+    // Guards the click-to-delivery window and nothing more. Delivery means
+    // spawning a shell and waiting for its tab to reach the renderer — seconds
+    // on a cold app, not a tick — and a dead-looking button for that long
+    // invites a second click that would open a second tab.
+    //
+    // It deliberately does NOT try to cover the install's runtime. Nothing in
+    // the renderer is told when the command finishes, so every version that
+    // tried inferred it from the skills pill, and each inference was wrong in
+    // one direction or the other: releasing on a timer freed the button
+    // mid-install, and holding until the pill read `synced` locked it for a
+    // minute after an install that had already failed. Two concurrent installs
+    // remain possible if the user clicks again while one is still running; that
+    // was true before this branch and is not something this button can honestly
+    // prevent from here.
+    if (installing()) return;
+    installGeneration += 1;
+    const generation = installGeneration;
+    clearInstallTimers();
+    setInstalling(true);
+    let delivered: boolean;
+    try {
+      delivered = await props.onInstallSkills();
+    } catch (err) {
+      // The click handler discards this promise, so a rejection would escape
+      // unhandled and leave the pill stale until the slow poll caught up.
+      props.flashToast(
+        `Could not run \`${SKILLS_INSTALL_CMD}\`: ${(err as Error).message}`,
+        'error',
+      );
+      return;
+    } finally {
+      // Always, and only, the delivery window — an abandoned run still hands
+      // the button back, because whatever abandoned it has already reset the
+      // state it owns.
+      if (generation === installGeneration) setInstalling(false);
+    }
+    // Abandoned mid-delivery, or nothing ran and the bridge has already said
+    // why; either way there is no new state to re-read.
+    if (generation !== installGeneration || !delivered) return;
     // The command runs asynchronously in its terminal tab; nudge the indicator
-    // a couple of times after it likely finished (the poll covers the rest).
-    setTimeout(() => void refreshSkills(), 4_000);
-    setTimeout(() => void refreshSkills(), 12_000);
+    // a couple of times after it likely finished (the 20 s poll covers the
+    // rest). Timed from delivery rather than from the click, which may be
+    // seconds earlier — a nudge that lands before the command starts reads the
+    // old state and leaves the pill stale.
+    installTimers = [
+      setTimeout(() => void refreshSkills(), 4_000),
+      setTimeout(() => void refreshSkills(), 12_000),
+    ];
   };
 
   // Commits popover.
@@ -253,10 +323,11 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
           <button
             type="button"
             class="status-bar-action"
-            onClick={installSkills}
+            onClick={() => void installSkills()}
+            disabled={installing()}
             title={`Run \`${SKILLS_INSTALL_CMD}\``}
           >
-            Install
+            {installing() ? '…' : 'Install'}
           </button>
         </Show>
       </span>
