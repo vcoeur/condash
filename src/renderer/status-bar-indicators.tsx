@@ -213,17 +213,20 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   };
 
   const installSkills = async (): Promise<void> => {
-    // Delivering the command means spawning a shell and waiting for its tab to
-    // reach the renderer — seconds on a cold app, not a tick — and then the
-    // install itself runs in that tab for a while longer. Without a guard the
-    // dead-looking button invites a second click, and two tabs then run
-    // `condash skills install` over the same tree at once.
+    // Guards the click-to-delivery window and nothing more. Delivery means
+    // spawning a shell and waiting for its tab to reach the renderer — seconds
+    // on a cold app, not a tick — and a dead-looking button for that long
+    // invites a second click that would open a second tab.
     //
-    // Best effort, not a lock: the button stays disabled through delivery and
-    // until the pill reports the skills in sync, with the last refresh as a
-    // ceiling. Nothing here is told when the command finishes, so an install
-    // that fails or runs past that ceiling releases the button anyway rather
-    // than leaving it dead forever.
+    // It deliberately does NOT try to cover the install's runtime. Nothing in
+    // the renderer is told when the command finishes, so every version that
+    // tried inferred it from the skills pill, and each inference was wrong in
+    // one direction or the other: releasing on a timer freed the button
+    // mid-install, and holding until the pill read `synced` locked it for a
+    // minute after an install that had already failed. Two concurrent installs
+    // remain possible if the user clicks again while one is still running; that
+    // was true before this branch and is not something this button can honestly
+    // prevent from here.
     if (installing()) return;
     installGeneration += 1;
     const generation = installGeneration;
@@ -239,50 +242,24 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
         `Could not run \`${SKILLS_INSTALL_CMD}\`: ${(err as Error).message}`,
         'error',
       );
+      return;
+    } finally {
+      // Always, and only, the delivery window — an abandoned run still hands
+      // the button back, because whatever abandoned it has already reset the
+      // state it owns.
       if (generation === installGeneration) setInstalling(false);
-      return;
     }
-    // Abandoned while the delivery was in flight; whatever replaced it owns the
-    // button and the timers now.
-    if (generation !== installGeneration) return;
-    // Nothing ran, so there is nothing to re-read; the bridge has already said
-    // why.
-    if (!delivered) {
-      setInstalling(false);
-      return;
-    }
+    // Abandoned mid-delivery, or nothing ran and the bridge has already said
+    // why; either way there is no new state to re-read.
+    if (generation !== installGeneration || !delivered) return;
     // The command runs asynchronously in its terminal tab; nudge the indicator
-    // a couple of times after it likely finished (the poll covers the rest).
-    // Timed from delivery rather than from the click, which may be seconds
-    // earlier — a nudge that lands before the command starts reads the old
-    // state and leaves the pill stale.
+    // a couple of times after it likely finished (the 20 s poll covers the
+    // rest). Timed from delivery rather than from the click, which may be
+    // seconds earlier — a nudge that lands before the command starts reads the
+    // old state and leaves the pill stale.
     installTimers = [
-      setTimeout(() => {
-        void refreshSkills().then(() => {
-          // `condash skills install` routinely runs longer than this first
-          // nudge. Releasing the button here would re-enable it mid-install,
-          // and a user who sees no change yet clicks again — a second installer
-          // over the same tree, which is the hazard the guard exists for.
-          if (generation === installGeneration && skillsState() === 'synced') {
-            setInstalling(false);
-          }
-        });
-      }, 4_000),
-      setTimeout(() => {
-        void refreshSkills().then(() => {
-          if (generation === installGeneration && skillsState() === 'synced') {
-            setInstalling(false);
-          }
-        });
-      }, 12_000),
-      // Hard ceiling. `condash skills install` can outlast both nudges above,
-      // and releasing the button while it still runs invites the second,
-      // concurrent installer this guard exists to prevent — but an install that
-      // fails outright never reaches `synced`, so something has to let go
-      // regardless or the button stays dead for the session.
-      setTimeout(() => {
-        if (generation === installGeneration) setInstalling(false);
-      }, 60_000),
+      setTimeout(() => void refreshSkills(), 4_000),
+      setTimeout(() => void refreshSkills(), 12_000),
     ];
   };
 

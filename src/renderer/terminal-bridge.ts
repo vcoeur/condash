@@ -86,10 +86,14 @@ export interface TerminalBridge {
   ) => Promise<void>;
 }
 
-/** Upper bound on animation frames waited for the pane to mount after
- *  `ensureTerminalOpen()`. At ~60 Hz this is ~200 ms — comfortably more
- *  than a Solid render pass yet still tight enough to surface a genuine
- *  mount failure as a no-op rather than an indefinite hang. */
+/** Upper bound on frames waited for the pane to mount after
+ *  `ensureTerminalOpen()`. On a painting window, at ~60 Hz, that is ~200 ms —
+ *  comfortably more than a Solid render pass yet tight enough to surface a
+ *  genuine mount failure as a no-op rather than a hang. On one that has stopped
+ *  painting each frame falls back to the timer below, so the true worst case is
+ *  12 × 100 ms = 1.2 s. Still bounded, which is the point: this wait sits in
+ *  front of every bridge surface, and a surface holding a busy flag on the
+ *  resulting promise cannot get it back if the promise never settles. */
 const HANDLE_WAIT_FRAMES = 12;
 /** Ceiling per frame of that wait, so a window that has stopped painting still
  *  makes progress. Generous next to a 60 Hz frame; it only ever applies when
