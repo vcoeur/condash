@@ -36,7 +36,7 @@ import { OscTranscriptExtractor } from './osc-transcript';
 import { readFileTranscript, sidecarTranscriptPath } from './file-transcript';
 import { TerminalFlow } from './terminal-flow';
 import { SCAN_WINDOW_CHARS, suggestProjectForText } from './tab-mentions';
-import { mentionNeedles } from './tab-mentions-source';
+import { mentionNeedles, mentionNeedlesVersion } from './tab-mentions-source';
 
 interface Session {
   id: string;
@@ -366,6 +366,11 @@ export function setMentionConception(conceptionPath: string | null): void {
   mentionConception = conceptionPath;
 }
 
+/** The needle-set version the last scan pass ran with; a bump re-scores every
+ *  tab whether or not its output grew. Seeded below the first build's version
+ *  so the first pass is always a full one. */
+let lastScannedNeedleVersion = -1;
+
 /**
  * Re-derive each live tab's suggested project from its recent output.
  *
@@ -374,11 +379,13 @@ export function setMentionConception(conceptionPath: string | null): void {
  * recomputed from the current window rather than accumulated — so a tab that
  * stops talking about a project drops the suggestion as that text scrolls out.
  *
- * The gate makes one bounded staleness deliberate: when the needle set changes
- * (a project closed, say), a *silent* tab keeps the suggestion it had until it
- * next prints something. Re-scanning every tab on every needle change would cost
- * a full pass per README write — and an agent tab, the case that matters, writes
- * READMEs constantly and so re-scans within a tick or two anyway.
+ * The gate is suspended when the needle set changes ({@link mentionNeedlesVersion}):
+ * a tab that printed a brand-new project's slug and then went silent — the
+ * `condash projects create` case — stopped emitting *before* the set recognised
+ * the project, so gating on growth there would strand the suggestion forever.
+ * The text did not change; the recognition of it did, and that alone re-opens
+ * the scan for every live tab. The cost is one window slice + needle search per
+ * tab, paid only on rebuilds (README writes), so it does not ride ordinary ticks.
  *
  * Reads through `recentTextFor` rather than `tabRecentText` on purpose: the
  * latter's perf span is the dashboard summarizer's, and folding this scan's
@@ -388,13 +395,33 @@ export function setMentionConception(conceptionPath: string | null): void {
  */
 function scanMentions(): boolean {
   const needles = mentionNeedles(mentionConception);
-  if (needles.length === 0) return false;
+  if (needles.length === 0) {
+    // Nothing is recognisable — no projects read yet, the last project gone,
+    // or no conception. A tab must not keep advertising a project the scan can
+    // no longer name: drop every verdict now rather than waiting for output
+    // that may never come. Exited tabs are included — a dead-but-retained row
+    // keeps its snapshot fields, and its verdict must clear with everything
+    // else. (A non-empty set that merely changed is the version catch-up below;
+    // this is the recognising-nothing-at-all case.)
+    let changed = false;
+    for (const s of sessions.values()) {
+      if (s.side !== 'my') continue;
+      if (s.suggestedProject !== undefined) {
+        s.suggestedProject = undefined;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+  const needleVersion = mentionNeedlesVersion();
+  const rescanAll = needleVersion !== lastScannedNeedleVersion;
+  lastScannedNeedleVersion = needleVersion;
   let changed = false;
   for (const s of sessions.values()) {
     // `my`-side only: the Code pane's inline runners are already bound to a
     // repo by construction and have no card to decorate.
     if (s.side !== 'my' || s.exited !== undefined) continue;
-    if (s.mentionScannedAt === s.bytesSeen) continue;
+    if (!rescanAll && s.mentionScannedAt === s.bytesSeen) continue;
     s.mentionScannedAt = s.bytesSeen;
     const suggestion = suggestProjectForText(recentTextFor(s.id, SCAN_WINDOW_CHARS), needles);
     if (suggestion !== s.suggestedProject) {

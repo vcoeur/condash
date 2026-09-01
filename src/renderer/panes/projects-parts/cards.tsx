@@ -554,6 +554,10 @@ export function Card(props: {
   // cards — the vast majority — entirely. A user toggle overrides the stored
   // value for the life of the mount and writes it back for the next one.
   const linksStorageKey = `links.${props.item.slug}`;
+  // Focus handoff target: when the Link button unmounts (the focused tab is
+  // now linked), keyboard focus moves to the Linked-tabs fold toggle — the
+  // control that owns undoing the relation — instead of dropping to <body>.
+  let cardEl: HTMLElement | undefined;
   const storedLinksExpanded = createMemo(
     (): boolean => linkedTabs().length > 0 && readCollapseMap()[linksStorageKey] === true,
   );
@@ -594,6 +598,7 @@ export function Card(props: {
 
   return (
     <article
+      ref={cardEl}
       class="row"
       classList={{
         draggable: isDraggable(),
@@ -676,33 +681,45 @@ export function Card(props: {
                 Each click adds one relation (many-to-many, never a replace);
                 unlink lives on the Linked-tabs fold's per-tab rows below and
                 in the tab's context menu. Disabled without a focused tab:
-                linking never spawns one. */}
-            <button
-              type="button"
-              class="link-button"
-              classList={{ suggested: isSuggested() }}
-              disabled={!canLink()}
-              title={
-                !canLink()
-                  ? 'Open a terminal tab first, then link this project'
-                  : isSuggested()
-                    ? `The focused tab (${activeSession()!.label}) mentions ${props.item.slug} — link it to ${props.item.title}`
-                    : `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
-              }
-              aria-label={
-                isSuggested()
-                  ? 'Link this project to the focused terminal tab, which mentions it'
-                  : 'Link this project to the focused terminal tab'
-              }
-              onClick={(event) => {
-                event.stopPropagation();
-                const active = activeSession();
-                if (!active) return;
-                linkProject(props.item.slug, active.sid, active.label);
-              }}
-            >
-              {isSuggested() ? 'Link (suggested)' : 'Link'}
-            </button>
+                linking never spawns one. Hidden entirely while the focused tab
+                is already among the linked ones — a second link of the same
+                pair is a no-op the button has nothing to say about, and the
+                fold (visible by construction in that state, the card wearing
+                `linked-active`) is where undoing it lives. */}
+            <Show when={!linkedToActive()}>
+              <button
+                type="button"
+                class="link-button"
+                classList={{ suggested: isSuggested() }}
+                disabled={!canLink()}
+                title={
+                  !canLink()
+                    ? 'Open a terminal tab first, then link this project'
+                    : isSuggested()
+                      ? `The focused tab (${activeSession()!.label}) mentions ${props.item.slug} — link it to ${props.item.title}`
+                      : `Link ${props.item.title} to the focused tab (${activeSession()!.label})`
+                }
+                aria-label={
+                  isSuggested()
+                    ? 'Link this project to the focused terminal tab, which mentions it'
+                    : 'Link this project to the focused terminal tab'
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const active = activeSession();
+                  if (!active) return;
+                  linkProject(props.item.slug, active.sid, active.label);
+                  // The write unmounts this button (the pair is now linked);
+                  // hand focus to the fold toggle that just appeared. The
+                  // microtask lands after Solid commits the signal write.
+                  queueMicrotask(() => {
+                    cardEl?.querySelector<HTMLButtonElement>('button.linked-tabs-toggle')?.focus();
+                  });
+                }}
+              >
+                {isSuggested() ? 'Link (suggested)' : 'Link'}
+              </button>
+            </Show>
             <ActionDropdownButton
               trigger={<TerminalIcon />}
               triggerTitle={`Paste 'work on ${props.item.slug}' into the terminal — opening a shell if none is live — and link that tab`}
