@@ -678,17 +678,22 @@ body[data-dragging='project'] .row {
   border-color: var(--border);
 }
 /* Suggested state: main's mention scan read this project's slug in the focused
- * tab's output. A washed accent border + accent text — the same 55% accent mix
- * the Linked-tabs fold uses for its subtle strength — so a suggestion reads as
- * weaker than any real relation, which is what it is. Never the left edge: that
- * belongs to the family frame (see the relationship-decoration block below). */
+ * tab's output. Filled accent — the .btn--primary recipe (adaptive --bg-elevated
+ * text stays legible over the accent in both themes) — because a washed outline
+ * did not surface the suggestion: the whole value of deriving it is that the
+ * user sees it without hunting. It stays a suggestion semantically: nothing
+ * about the card is decorated, the click writes the ordinary manual relation,
+ * and it drives neither the Active-tab filter nor the linked highlight. Never
+ * the left edge: that belongs to the family frame (see the
+ * relationship-decoration block below). */
 .row .link-button.suggested:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  color: var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-elevated);
+  font-weight: 600;
 }
 .row .link-button.suggested:not(:disabled):hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  filter: brightness(1.06);
 }
 
 /* Relationship / hierarchy decoration (2026-07 left-edge frame; directional-

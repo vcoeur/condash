@@ -24,6 +24,15 @@ type Needles = ReturnType<typeof buildNeedles>;
 let cached: { conceptionPath: string; needles: Needles } | null = null;
 let stale = true;
 let building: Promise<void> | null = null;
+// Monotonic version of the needle set: bumped once per *successful* rebuild.
+// The scan growth-gates each tab on its byte count, which is the right gate for
+// verdict churn but wrong across a needle change — a tab that printed a
+// brand-new project's slug and then went silent (the `condash projects create`
+// case) would never be re-scored once the new needle existed, because its
+// `bytesSeen` stopped advancing before the set caught up. Comparing versions
+// lets the scan re-score every tab exactly when recognition changes and not
+// otherwise. A failed rebuild keeps the old set, so it bumps nothing.
+let version = 0;
 // Bumped by every invalidation. A rebuild reads the tree over hundreds of
 // milliseconds, so a README written mid-build is not in the result; comparing
 // this counter across the build tells the rebuild whether it may clear
@@ -75,7 +84,10 @@ async function rebuild(conceptionPath: string): Promise<void> {
   // Only settle when nothing invalidated while this build was reading: a change
   // that landed mid-build is not in `needles`, and clearing staleness here would
   // strand it until the tree happened to change again.
-  if (invalidations === startedAt) stale = false;
+  if (invalidations === startedAt) {
+    stale = false;
+    version += 1;
+  }
 }
 
 /**
@@ -107,4 +119,16 @@ export function mentionNeedles(conceptionPath: string | null): Needles {
       });
   }
   return fresh ? cached!.needles : [];
+}
+
+/**
+ * Monotonic version of the needle set — bumps on every successful rebuild, so a
+ * consumer that last scanned at an older version knows recognition changed and
+ * must re-examine text it already scored. Version 0 means "no set has ever
+ * completed building".
+ *
+ * @returns The current needle-set version.
+ */
+export function mentionNeedlesVersion(): number {
+  return version;
 }

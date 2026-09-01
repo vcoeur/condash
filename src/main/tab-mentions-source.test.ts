@@ -134,3 +134,44 @@ describe('mentionNeedles', () => {
     expect(slugs).not.toContain('2026-08-02-broken');
   });
 });
+
+describe('mentionNeedlesVersion', () => {
+  let source: typeof import('./tab-mentions-source');
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    source = await import('./tab-mentions-source');
+  });
+
+  it('stays at zero until a build completes and bumps on every successful one', async () => {
+    expect(source.mentionNeedlesVersion()).toBe(0);
+    source.mentionNeedles(CONCEPTION);
+    await settle();
+    const first = source.mentionNeedlesVersion();
+    expect(first).toBeGreaterThan(0);
+
+    // A fresh (non-stale) set rebuilds nothing — the version must not move,
+    // or the scan would re-score every tab on every tick.
+    source.mentionNeedles(CONCEPTION);
+    await settle();
+    expect(source.mentionNeedlesVersion()).toBe(first);
+
+    source.invalidateMentionNeedles();
+    source.mentionNeedles(CONCEPTION);
+    await settle();
+    expect(source.mentionNeedlesVersion()).toBeGreaterThan(first);
+  });
+
+  it('does not bump when a rebuild throws — the set, and recognition, did not change', async () => {
+    source.mentionNeedles(CONCEPTION);
+    await settle();
+    const before = source.mentionNeedlesVersion();
+
+    h.findProjectReadmes.mockRejectedValueOnce(new Error('tree unreadable'));
+    source.invalidateMentionNeedles();
+    source.mentionNeedles(CONCEPTION);
+    await settle();
+    expect(source.mentionNeedlesVersion()).toBe(before);
+  });
+});

@@ -108,8 +108,9 @@ test('linking adds one relation — the card gains the fold header, its row, and
       .poll(() => linksOnDisk(win), { timeout: 5000 })
       .toMatchObject({ '2026-04-26-sample': { [tab]: { label: 'shell' } } });
 
-    // Re-linking the same pair is a no-op — one row, one record.
-    await sampleCard(win).locator('.link-button').click();
+    // The focused tab is already linked → the Link button is gone; the fold
+    // (visible by construction in this state) is where unlinking lives.
+    await expect(sampleCard(win).locator('.link-button')).toHaveCount(0);
     await expect(card.locator('.link-row')).toHaveCount(1);
     await expect(toggle.locator('.linked-tabs-toggle-count')).toHaveText('1');
     await expect
