@@ -144,6 +144,11 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
       handleOpenSkillFile(newPath, title, null);
       return;
     }
+    if (newPath.toLowerCase().endsWith('.md') || newPath.toLowerCase().endsWith('.markdown')) {
+      const title = newPath.split('/').pop() ?? newPath;
+      handleEditMarkdownResource(newPath, title);
+      return;
+    }
     // Resources: open the new file the same way a click would — the shared
     // router picks the in-app viewer for markdown / pdf / html / image /
     // text-code and falls back to the OS app for everything else.
