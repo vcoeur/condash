@@ -151,7 +151,8 @@ The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the sa
 | Anything under `.git/` | Out of scope. Use your editor / CLI. |
 | Anything outside the resolved conception path | Path validation rejects escapes. |
 | Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
-| Existing files under `knowledge/` or `resources/` | The tree panes **create** files and folders and **import** files (above), but never rewrite an existing one — every create refuses an occupied target. Editing a knowledge body is your editor's job, or the `/knowledge` skill's. |
+| Existing files under `knowledge/` | The tree pane **creates** files and folders and **imports** files (above), but never rewrites an existing one — every create refuses an occupied target. Editing a knowledge body is your editor's job, or the `/knowledge` skill's. |
+| Existing non-Markdown files under `resources/` | The tree pane **creates** files and folders and **imports** files (above), but the in-app viewer does not rewrite existing non-Markdown resources. Use your editor for those files. Markdown resources are editable in the note modal. |
 | Anything under `.agents/skills/` | The Skills pane is read-only in both scopes; [agedum](skill.md#the-harness-launcher-agedum) owns those sources. `condash skills install` (a CLI verb, not a dashboard action) is the only writer. |
 | Lock files | Concurrent edits are detected via the drift check on `toggleStep` / `editStepText` / `writeNote`; there's no advisory lock. |
 

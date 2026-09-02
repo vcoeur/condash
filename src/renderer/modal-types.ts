@@ -22,7 +22,7 @@ export type ModalState = {
    * preview via the previewBackPath plumbing. */
   backLabel?: string;
   /** Open the modal in read-only mode — no save / edit toggle. Used by the
-   * Resources pane for `.md` and `.txt` viewing. */
+   * Resources pane for `.txt` viewing. */
   readOnly?: boolean;
   /** Render an informational banner above the body. `'shipped'` flags a file
    * tracked by `.condash-skills.json` whose disk SHA matches the manifest;

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
@@ -13,9 +13,9 @@ import { bootApp } from './fixtures/electron-app';
  * matrix small — Vitest already covers the tree-reader and search-walk
  * logic; these specs only verify the renderer ↔ IPC ↔ FS round-trip.
  */
-test('Resources pane: handle, render, copy path, view markdown', async () => {
+test('Resources pane: handle, render, copy path, edit markdown', async () => {
   const booted = await bootApp();
-  const { window, conceptionDir, cleanup } = booted;
+  const { app, window, conceptionDir, cleanup } = booted;
   try {
     await mkdir(join(conceptionDir, 'resources'), { recursive: true });
     await writeFile(
@@ -52,15 +52,65 @@ test('Resources pane: handle, render, copy path, view markdown', async () => {
     const clipboard = await window.evaluate(() => navigator.clipboard.readText());
     expect(clipboard).toContain('resources/README.md');
 
-    // Clicking the card body of a markdown resource opens the note modal in
-    // read-only mode — the read-only tag in the header confirms the prop is
-    // threaded through.
+    // Clicking the card body of a markdown resource opens the editable note
+    // modal. Exercise the complete renderer → IPC → filesystem save path.
     await window
       .locator('.resources-card', { hasText: 'Resources home' })
       .locator('.resources-card-body')
       .click();
     await expect(window.locator('.note-modal')).toBeVisible();
-    await expect(window.locator('.modal-readonly-tag')).toBeVisible();
+    await expect(window.locator('.modal-readonly-tag')).toHaveCount(0);
+    await window.locator('.note-modal button[aria-label="Switch to edit mode"]').click();
+    await expect(window.locator('.note-modal .cm-editor')).toBeVisible();
+    await window
+      .locator('.note-modal .cm-content')
+      .fill('# Resources home\n\nEdited in condash.\n');
+    await window.locator('.note-modal button[aria-label="Save"]').click();
+    await expect(window.locator('.note-modal .modal-saved')).toBeVisible();
+    await expect(readFile(join(conceptionDir, 'resources', 'README.md'), 'utf8')).resolves.toBe(
+      '# Resources home\n\nEdited in condash.\n',
+    );
+
+    // Markdown created from the Resources tree follows the same editable path
+    // immediately, rather than opening read-only through the generic viewer.
+    await window.locator('.note-modal button[aria-label="Close"]').click();
+    await expect(window.locator('.note-modal')).toHaveCount(0);
+    await window
+      .locator(
+        '.resources-pane .tree-dir-header[data-root="true"] button[aria-label="Create new markdown file"]',
+      )
+      .click();
+    await window.locator('.prompt-input').fill('new-resource-note');
+    await window.locator('.prompt-input').press('Enter');
+    await expect(window.locator('.note-modal')).toBeVisible();
+    await expect(window.locator('.modal-readonly-tag')).toHaveCount(0);
+
+    // Imported Markdown follows the same editable route, including the
+    // alternate `.markdown` extension.
+    const importedSource = join(conceptionDir, 'imported.markdown');
+    await writeFile(importedSource, '# Imported resource\n', 'utf8');
+    await window.locator('.note-modal button[aria-label="Close"]').click();
+    await expect(window.locator('.note-modal')).toHaveCount(0);
+    await app.evaluate(({ dialog }, source) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [source] });
+    }, importedSource);
+    await window
+      .locator(
+        '.resources-pane .tree-dir-header[data-root="true"] button[aria-label="Import file"]',
+      )
+      .click();
+    await expect(window.locator('.note-modal')).toBeVisible();
+    await expect(window.locator('.modal-readonly-tag')).toHaveCount(0);
+    await expect(window.locator('.note-modal .md-rendered')).toContainText('Imported resource');
+    await window.locator('.note-modal button[aria-label="Close"]').click();
+    await expect(window.locator('.note-modal')).toHaveCount(0);
+
+    // Plain text remains read-only after Markdown is made editable.
+    await window
+      .locator('.resources-card', { hasText: 'spec.txt' })
+      .locator('.resources-card-action', { hasText: 'view' })
+      .click();
+    await expect(window.locator('.note-modal .modal-readonly-tag')).toBeVisible();
   } finally {
     await cleanup();
   }
@@ -145,6 +195,7 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
 
     // Opening the diverged card surfaces the divergence banner above the body.
     await createCard.click();
+    await expect(window.locator('.note-modal .modal-readonly-tag')).toBeVisible();
     await expect(window.locator('.note-modal .modal-banner--warn')).toBeVisible();
   } finally {
     await cleanup();

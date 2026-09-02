@@ -36,7 +36,8 @@ function inferLanguage(path: string): 'markdown' | 'json' {
 }
 
 function isMarkdown(path: string): boolean {
-  return path.toLowerCase().endsWith('.md');
+  const lower = path.toLowerCase();
+  return lower.endsWith('.md') || lower.endsWith('.markdown');
 }
 
 function isConceptionConfig(path: string): boolean {

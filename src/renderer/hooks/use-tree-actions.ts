@@ -102,6 +102,10 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     deps.setModal({ path, title, readOnly: true });
   };
 
+  const handleEditMarkdownResource = (path: string, title: string): void => {
+    deps.setModal({ path, title });
+  };
+
   const handleOpenSkillFile = (
     path: string,
     title: string,
@@ -140,6 +144,11 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
       handleOpenSkillFile(newPath, title, null);
       return;
     }
+    if (newPath.toLowerCase().endsWith('.md') || newPath.toLowerCase().endsWith('.markdown')) {
+      const title = newPath.split('/').pop() ?? newPath;
+      handleEditMarkdownResource(newPath, title);
+      return;
+    }
     // Resources: open the new file the same way a click would — the shared
     // router picks the in-app viewer for markdown / pdf / html / image /
     // text-code and falls back to the OS app for everything else.
@@ -148,7 +157,7 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
 
   const resourcesActions: ResourcesViewActions = {
     openInEditor: handleOpenInEditor,
-    viewMarkdown: handleViewResource,
+    viewMarkdown: handleEditMarkdownResource,
     viewText: handleViewResource,
     viewPdf: (path) => deps.setPdfPath(path),
     viewHtml: (path) => deps.setHtmlPath(path),
