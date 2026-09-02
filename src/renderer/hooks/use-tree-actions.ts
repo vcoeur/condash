@@ -102,6 +102,10 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     deps.setModal({ path, title, readOnly: true });
   };
 
+  const handleEditMarkdownResource = (path: string, title: string): void => {
+    deps.setModal({ path, title });
+  };
+
   const handleOpenSkillFile = (
     path: string,
     title: string,
@@ -148,7 +152,7 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
 
   const resourcesActions: ResourcesViewActions = {
     openInEditor: handleOpenInEditor,
-    viewMarkdown: handleViewResource,
+    viewMarkdown: handleEditMarkdownResource,
     viewText: handleViewResource,
     viewPdf: (path) => deps.setPdfPath(path),
     viewHtml: (path) => deps.setHtmlPath(path),

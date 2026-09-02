@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
@@ -13,7 +13,7 @@ import { bootApp } from './fixtures/electron-app';
  * matrix small — Vitest already covers the tree-reader and search-walk
  * logic; these specs only verify the renderer ↔ IPC ↔ FS round-trip.
  */
-test('Resources pane: handle, render, copy path, view markdown', async () => {
+test('Resources pane: handle, render, copy path, edit markdown', async () => {
   const booted = await bootApp();
   const { window, conceptionDir, cleanup } = booted;
   try {
@@ -52,15 +52,24 @@ test('Resources pane: handle, render, copy path, view markdown', async () => {
     const clipboard = await window.evaluate(() => navigator.clipboard.readText());
     expect(clipboard).toContain('resources/README.md');
 
-    // Clicking the card body of a markdown resource opens the note modal in
-    // read-only mode — the read-only tag in the header confirms the prop is
-    // threaded through.
+    // Clicking the card body of a markdown resource opens the editable note
+    // modal. Exercise the complete renderer → IPC → filesystem save path.
     await window
       .locator('.resources-card', { hasText: 'Resources home' })
       .locator('.resources-card-body')
       .click();
     await expect(window.locator('.note-modal')).toBeVisible();
-    await expect(window.locator('.modal-readonly-tag')).toBeVisible();
+    await expect(window.locator('.modal-readonly-tag')).toHaveCount(0);
+    await window.locator('.note-modal button[aria-label="Switch to edit mode"]').click();
+    await expect(window.locator('.note-modal .cm-editor')).toBeVisible();
+    await window
+      .locator('.note-modal .cm-content')
+      .fill('# Resources home\n\nEdited in condash.\n');
+    await window.locator('.note-modal button[aria-label="Save"]').click();
+    await expect(window.locator('.note-modal .modal-saved')).toBeVisible();
+    await expect(readFile(join(conceptionDir, 'resources', 'README.md'), 'utf8')).resolves.toBe(
+      '# Resources home\n\nEdited in condash.\n',
+    );
   } finally {
     await cleanup();
   }

@@ -14,7 +14,7 @@ const RESOURCES_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'impor
 export interface ResourcesViewActions {
   /** Open via the user's main `open_with` slot. */
   openInEditor: (path: string) => void;
-  /** View an `.md` or `.txt` resource read-only. */
+  /** Open a Markdown resource in the editable note modal. */
   viewMarkdown: (path: string, title: string) => void;
   /** View a `.txt` resource read-only. */
   viewText: (path: string, title: string) => void;

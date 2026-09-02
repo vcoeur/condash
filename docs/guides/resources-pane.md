@@ -42,7 +42,7 @@ Each card carries a coloured glyph for its file type:
 A button row at the bottom of each card exposes:
 
 - **view** — opens the file in-app, picking the viewer by type:
-    - Markdown → the note modal, rendered, **read-only**.
+    - Markdown → the editable note modal, rendered by default; use the edit toggle and **Save** to write it back.
     - Text / source code (JSON, YAML, CSS, JS, …) → the note modal, **read-only**, syntax-highlighted by extension.
     - PDF → the PDF viewer modal.
     - HTML → the HTML viewer modal, rendered, with a **Rendered / Source** toggle in the header.
