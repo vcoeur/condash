@@ -232,9 +232,12 @@ describe('search index-cache', () => {
   it('applies concurrent events for the same path in arrival order', async () => {
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let firstStarted!: () => void;
+    const firstReadStarted = new Promise<void>((resolve) => (firstStarted = resolve));
     // The first event's read is slow and deterministically returns the *old*
     // content, completing only after the gate opens.
     prepareFileMock.mockImplementationOnce(async (ref) => {
+      firstStarted();
       const prepared = await actualMatch.prepareFile(ref);
       await firstGate;
       return prepared
@@ -242,6 +245,7 @@ describe('search index-cache', () => {
         : prepared;
     });
     const first = applyIndexFsEvent(dir, 'change', readme);
+    await firstReadStarted;
     await writeFile(readme, '# Foo\n\nnewword body\n');
     const second = applyIndexFsEvent(dir, 'change', readme);
     releaseFirst();
