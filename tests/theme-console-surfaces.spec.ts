@@ -35,6 +35,15 @@ async function resolvedColor(booted: BootedApp, token: string): Promise<string> 
   }, token);
 }
 
+/** Wait until the requested preset has replaced the pre-hydration palette. */
+async function waitForTheme(booted: BootedApp, theme: string): Promise<void> {
+  await expect
+    .poll(() => booted.window.evaluate(() => document.documentElement.dataset.theme), {
+      timeout: 15_000,
+    })
+    .toBe(theme);
+}
+
 /** The four treatments, read off the live DOM in one round-trip. */
 async function surfaces(booted: BootedApp): Promise<{
   railActiveBg: string;
@@ -63,6 +72,7 @@ test('Console paints the four mockup-F surface rules', async () => {
   test.setTimeout(60_000);
   const booted = await bootApp({ globalConfig: { theme: 'console' } });
   try {
+    await waitForTheme(booted, 'console');
     await expect(booted.window.locator('.rail-item.active').first()).toBeVisible();
 
     // The rail's reverse-video fill is the BASE rule now (app-shell.css), so
@@ -117,6 +127,7 @@ test('none of them leak into Warm Gallery', async () => {
   test.setTimeout(60_000);
   const booted = await bootApp({ globalConfig: { theme: 'dark' } });
   try {
+    await waitForTheme(booted, 'dark');
     await expect(booted.window.locator('.rail-item.active').first()).toBeVisible();
     const seen = await surfaces(booted);
 
