@@ -15,14 +15,9 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { AutoSyncStatus, SkillsSyncStatus, SyncStatusSnapshot } from '@shared/types';
+import { POLL_MS } from '@shared/status-poll';
 import { createPositionedPopover } from './popover';
 import { Button } from './actions';
-
-/** How often to re-read the snapshots. Commit cadence is minutes; the push
- *  refreshes the sync side the instant a sweep lands, so 20 s is plenty.
- *  Exported for the guard test pinning it below `STATUS_TTL_MS` — a TTL
- *  shorter than this cadence makes every poll a guaranteed cache miss. */
-export const POLL_MS = 20_000;
 /** Command the Install button runs — matches the Skills-pane hint. */
 const SKILLS_INSTALL_CMD = 'condash skills install';
 

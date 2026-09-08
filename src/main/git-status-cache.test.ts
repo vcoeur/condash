@@ -40,9 +40,9 @@ describe('getDirtyCount coalescing', () => {
     // The renderer polls the conception's dirty/upstream snapshot every
     // POLL_MS. A TTL below that cadence makes every poll a guaranteed cache
     // miss — the ~8,200-git-spawns/day idle pattern this cache exists to
-    // prevent. Import across the main/renderer boundary so neither constant
-    // can silently drift below the other again.
-    const { POLL_MS } = await import('../renderer/status-bar-indicators');
+    // prevent. The constant lives in `shared/status-poll.ts` (plain .ts) so
+    // neither side can silently drift below the other again.
+    const { POLL_MS } = await import('../shared/status-poll');
     expect(STATUS_TTL_MS).toBeGreaterThan(POLL_MS);
   });
 
