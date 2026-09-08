@@ -141,11 +141,45 @@ async function readManifest(path: string): Promise<ShippedManifest | null> {
 }
 
 async function sha256OfFile(path: string): Promise<string | null> {
+  // Memo on (mtimeMs, size) — the same staleness contract as the v4.65.3
+  // settings-read memo (settings.ts). The status bar polls this aggregate
+  // every 20 s, and the previous unconditional read + sha256 of every shipped
+  // and installed skill file cost ~100 ms of main-process work per tick while
+  // idle; an unchanged file now costs one `fs.stat`. Any real edit moves the
+  // mtime or the size, so the hash recomputes; a missing file drops its entry.
+  let stat;
   try {
-    return createHash('sha256')
-      .update(await fs.readFile(path))
-      .digest('hex');
+    stat = await fs.stat(path);
   } catch {
+    shaMemo.delete(path);
     return null;
   }
+  const memo = shaMemo.get(path);
+  if (memo && memo.mtimeMs === stat.mtimeMs && memo.size === stat.size) return memo.sha;
+  try {
+    const sha = createHash('sha256')
+      .update(await fs.readFile(path))
+      .digest('hex');
+    shaMemo.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, sha });
+    return sha;
+  } catch {
+    // TOCTOU: the file may have been removed between stat and read.
+    shaMemo.delete(path);
+    return null;
+  }
+}
+
+interface ShaMemoEntry {
+  mtimeMs: number;
+  size: number;
+  sha: string;
+}
+// Keyed by absolute path, so shipped and installed copies never collide and a
+// conception switch needs no flush. Bounded by the number of skill files seen
+// this session — small.
+const shaMemo = new Map<string, ShaMemoEntry>();
+
+/** Drop every memoised hash. Exported for tests. */
+export function clearSkillsSyncHashMemo(): void {
+  shaMemo.clear();
 }

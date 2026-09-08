@@ -36,6 +36,16 @@ afterEach(() => {
 });
 
 describe('getDirtyCount coalescing', () => {
+  it('keeps the TTL above the status-bar poll cadence (B1a regression guard)', async () => {
+    // The renderer polls the conception's dirty/upstream snapshot every
+    // POLL_MS. A TTL below that cadence makes every poll a guaranteed cache
+    // miss — the ~8,200-git-spawns/day idle pattern this cache exists to
+    // prevent. The constant lives in `shared/status-poll.ts` (plain .ts) so
+    // neither side can silently drift below the other again.
+    const { POLL_MS } = await import('../shared/status-poll');
+    expect(STATUS_TTL_MS).toBeGreaterThan(POLL_MS);
+  });
+
   it('coalesces concurrent misses onto a single git status', async () => {
     const d = deferred();
     rawMock.mockReturnValue(d.promise);
@@ -98,6 +108,36 @@ describe('getDirtyCount coalescing', () => {
     // Past it: recomputed.
     vi.advanceTimersByTime(2_000);
     expect(await getDirtyCount('/coalesce-d')).toBe(1);
+    expect(rawMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('serves the 20 s status-bar poll from cache within the TTL (B1a)', async () => {
+    // The status bar re-reads the conception's dirty/upstream snapshot every
+    // 20 s; when the TTL sat below that cadence every poll was a guaranteed
+    // miss (~8,200 git spawns/day idle). Derive the ticks from the TTL so the
+    // test keeps pinning "poll cadence < TTL" if either moves.
+    vi.useFakeTimers();
+    rawMock.mockResolvedValue(' M a.ts\n');
+    expect(await getDirtyCount('/poll-repo')).toBe(1);
+    expect(rawMock).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 2; i++) {
+      vi.advanceTimersByTime(STATUS_TTL_MS / 3);
+      expect(await getDirtyCount('/poll-repo')).toBe(1);
+    }
+    expect(rawMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a watcher invalidation busts a completed entry inside the TTL', async () => {
+    // The TTL only bounds *unwatched* staleness — a real edit must still
+    // refresh promptly via invalidateForPath, long before the TTL expires.
+    vi.useFakeTimers();
+    rawMock.mockResolvedValue(' M a.ts\n');
+    expect(await getDirtyCount('/watched-repo')).toBe(1);
+    expect(rawMock).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(STATUS_TTL_MS / 3); // comfortably inside the TTL
+    invalidateForPath('/watched-repo/src/file.ts');
+    rawMock.mockResolvedValue(' M a.ts\n M b.ts\n');
+    expect(await getDirtyCount('/watched-repo')).toBe(2);
     expect(rawMock).toHaveBeenCalledTimes(2);
   });
 });

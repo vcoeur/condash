@@ -66,8 +66,15 @@ interface DirtyCountOptions {
  *  per-worktree chokidar watchers in `repo-watchers.ts` (`invalidateForPath`).
  *  It only bounds how long an *unwatched* change stays invisible, so trading
  *  seconds of that for a fan-out that fires far less often is the right side
- *  of the deal. */
-export const STATUS_TTL_MS = 12_000;
+ *  of the deal.
+ *
+ *  Raised again to 60 s (B1a): the status bar polls the conception's
+ *  dirty/upstream snapshot every 20 s (`POLL_MS` in
+ *  `status-bar-indicators.tsx`), and a 12 s window sat *below* that cadence —
+ *  every poll was a guaranteed miss, ~8,200 git spawns/day measured idle. At
+ *  60 s a steady-state poll hits the cache; invalidation above still busts it
+ *  the moment a real change lands. */
+export const STATUS_TTL_MS = 60_000;
 const cache = new Map<string, CacheSlot>();
 
 function cacheKey(path: string, opts: DirtyCountOptions): string {
