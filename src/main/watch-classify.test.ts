@@ -92,10 +92,39 @@ describe('classify — dir add/remove under knowledge/ & resources/ scope-reload
       op: 'add',
       path: '/c/resources/newdir',
     });
-    expect(cl('unlinkDir', '/c/resources/local/shots')).toEqual({
+    expect(cl('unlinkDir', '/c/resources/olddir')).toEqual({
       kind: 'resources',
       op: 'unlink',
-      path: '/c/resources/local/shots',
+      path: '/c/resources/olddir',
+    });
+  });
+});
+
+describe('classify — resources/local/ scratch is a no-op (B2b)', () => {
+  it('ignores file events under resources/local/', () => {
+    expect(cl('change', '/c/resources/local/x.md')).toEqual({ kind: 'ignore' });
+    expect(cl('add', '/c/resources/local/shots/shot.png')).toEqual({ kind: 'ignore' });
+    expect(cl('unlink', '/c/resources/local/x.md')).toEqual({ kind: 'ignore' });
+  });
+
+  it('ignores dir events under — and of — resources/local/', () => {
+    expect(cl('addDir', '/c/resources/local')).toEqual({ kind: 'ignore' });
+    expect(cl('addDir', '/c/resources/local/shots')).toEqual({ kind: 'ignore' });
+    expect(cl('unlinkDir', '/c/resources/local/shots')).toEqual({ kind: 'ignore' });
+  });
+
+  it('does not swallow a sibling dir with a local-ish name', () => {
+    // Only the exact `local/` segment is scratch — `locale/`, `local2/` are
+    // ordinary resources and must still classify as resources.
+    expect(cl('change', '/c/resources/locale/x.md')).toEqual({
+      kind: 'resources',
+      op: 'change',
+      path: '/c/resources/locale/x.md',
+    });
+    expect(cl('change', '/c/resources/local2/x.md')).toEqual({
+      kind: 'resources',
+      op: 'change',
+      path: '/c/resources/local2/x.md',
     });
   });
 });

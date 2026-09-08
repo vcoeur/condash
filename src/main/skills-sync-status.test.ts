@@ -4,11 +4,19 @@
  * tmpdir and asserts the classification the status-bar indicator reads.
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+  promises as fsPromises,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getSkillsSyncStatus } from './skills-sync-status';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearSkillsSyncHashMemo, getSkillsSyncStatus } from './skills-sync-status';
 
 let root: string;
 let shippedRoot: string;
@@ -18,9 +26,13 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'condash-skills-sync-'));
   shippedRoot = join(root, 'shipped');
   dest = join(root, 'conception');
+  // The hash memo is module-level; each test builds a fresh tree and must not
+  // inherit entries from a previous test's (now deleted) tmpdir.
+  clearSkillsSyncHashMemo();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -140,5 +152,60 @@ describe('getSkillsSyncStatus', () => {
     const status = await getSkillsSyncStatus(shippedRoot, dest);
     expect(status.installed).toBe(true);
     expect(status.synced).toBe(true);
+  });
+});
+
+describe('getSkillsSyncStatus — mtime+size hash memo (B1b)', () => {
+  /** readFile calls on skill content files (the manifest read is separate
+   *  and stays uncached). */
+  function skillFileReads(spy: { mock: { calls: unknown[][] } }): string[] {
+    const installedRoot = join(dest, '.agents', 'skills');
+    return spy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((p) => p.startsWith(shippedRoot) || p.startsWith(installedRoot));
+  }
+
+  function seedSynced(): void {
+    shipFoo('a', 'b');
+    install('SKILL.md', 'a');
+    install('extra.md', 'b');
+    writeManifest({ 'SKILL.md': 'a', 'extra.md': 'b' });
+  }
+
+  it('a second poll re-reads no skill file — one stat each, no re-hash', async () => {
+    seedSynced();
+    const first = await getSkillsSyncStatus(shippedRoot, dest);
+    expect(first.synced).toBe(true);
+    const readSpy = vi.spyOn(fsPromises, 'readFile');
+    const second = await getSkillsSyncStatus(shippedRoot, dest);
+    expect(second.synced).toBe(true);
+    expect(skillFileReads(readSpy)).toEqual([]);
+  });
+
+  it('re-hashes a file whose mtime moved with content and size unchanged', async () => {
+    seedSynced();
+    await getSkillsSyncStatus(shippedRoot, dest); // prime the memo
+    const target = join(shippedRoot, 'foo', 'SKILL.md');
+    const before = statSync(target);
+    utimesSync(target, before.atime, new Date(before.mtimeMs + 5_000));
+    const readSpy = vi.spyOn(fsPromises, 'readFile');
+    const status = await getSkillsSyncStatus(shippedRoot, dest);
+    // Same bytes → same classification; only the hash recomputed.
+    expect(status.synced).toBe(true);
+    expect(skillFileReads(readSpy)).toEqual([target]);
+  });
+
+  it('re-hashes a file whose size changed at an unchanged mtime', async () => {
+    seedSynced();
+    await getSkillsSyncStatus(shippedRoot, dest); // prime the memo
+    const target = join(dest, '.agents', 'skills', 'foo', 'SKILL.md');
+    const before = statSync(target);
+    writeFileSync(target, 'locally edited, and longer');
+    utimesSync(target, before.atime, before.mtime); // pin the mtime
+    const readSpy = vi.spyOn(fsPromises, 'readFile');
+    const status = await getSkillsSyncStatus(shippedRoot, dest);
+    // Differs from shipped AND from the manifest sha → locally edited.
+    expect(status.edited).toBe(1);
+    expect(skillFileReads(readSpy)).toEqual([target]);
   });
 });

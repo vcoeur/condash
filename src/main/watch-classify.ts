@@ -72,6 +72,18 @@ export function classify(
   const pathP = toPosix(path);
   const projectsRoot = paths.projectsPrefix.slice(0, -1); // strip trailing '/'
 
+  // `resources/local/` is gitignored agent/task scratch (conception
+  // convention) — writes there are constant and store-irrelevant, and they
+  // were the trigger of the 2026-08-30 resources-reload storm (B2b). The
+  // watch-set exclusion in `watcher.ts` is the primary gate; classifying a
+  // stray event under it as a no-op keeps even a leaked event from costing
+  // a tree reload. The search index already skips `local/` segments
+  // (`search/walk.ts`), so nothing else needs these events.
+  const resourcesLocal = `${roots.resources}/local`;
+  if (pathP === resourcesLocal || pathP.startsWith(`${resourcesLocal}/`)) {
+    return { kind: 'ignore' };
+  }
+
   // Directory add/remove — route to the one scoped reload for whichever tree
   // the dir sits under, never the whole-dashboard + repo-sweep fan-out.
   //   projects/  — a project create/delete, a `notes/` dir appearing, or a bulk

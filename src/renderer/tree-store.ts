@@ -31,7 +31,11 @@ export interface TreeStore<T> {
   /** Re-fetch the tree from disk and reconcile into the store. The
    *  conception-path effect already calls this on conception switch; the
    *  tree-events handler calls it on chokidar events for this pane's
-   *  kind, and View → Refresh fans it out alongside the other reloaders. */
+   *  kind, and View → Refresh fans it out alongside the other reloaders.
+   *  Gated on the activation latch: a pane that was never opened holds no
+   *  data, so reloading it is pure churn — its first open fetches through
+   *  the conception-path effect instead. Once the pane has activated the
+   *  latch stays true and every reload runs as before. */
   reload: () => Promise<void>;
 }
 
@@ -94,6 +98,13 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   };
 
   const reload = async (): Promise<void> => {
+    // Watcher-driven and View→Refresh reloads alike: before the pane has
+    // ever activated there is no data to refresh, and the resources tree in
+    // particular is a full recursive walk with per-markdown head reads —
+    // reloading it on every watcher batch while the pane stays closed was
+    // the 2026-08-30 storm (B2a). The latch stays true after first open, so
+    // explicit reloads from a live pane are unaffected.
+    if (!activated()) return;
     const path = deps.conceptionPath();
     if (!path) {
       applySnapshot(null);

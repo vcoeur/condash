@@ -116,6 +116,10 @@ export async function setWatchedConception(
     resources: toPosix(join(conceptionPath, resources)),
     skills: toPosix(join(conceptionPath, skills)),
   };
+  // `resources/local/` is gitignored agent/task scratch — the storm source of
+  // B2b. Excluded from the watch set outright (saves the inotify watches too);
+  // `classify` also no-ops any stray event under it.
+  const resourcesLocal = `${roots.resources}/local`;
 
   // The dotfile-segment pattern excludes paths like `.git/…` from the watch
   // set. The skills root lives under `.agents/skills/` (agedum source),
@@ -135,11 +139,14 @@ export async function setWatchedConception(
   const condashSettings = toPosix(configCandidates[0]);
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
-    if (!DOTFILE_SEGMENT_RE.test(path)) return false;
-    // toPosix is only needed for the dotfile bypass checks below; the three
-    // regexes above filter out the vast majority of paths, so we avoid the
-    // string-replacement cost on every chokidar event for those.
+    // The `resources/local/` exclusion runs before the dotfile short-circuit
+    // below (its paths carry no dotfile segment and would return early), so
+    // the POSIX view is computed for every event — it already is downstream
+    // (`isReadmePath`, `classify`), so this adds no per-event cost in
+    // practice.
     const posix = toPosix(path);
+    if (posix === resourcesLocal || posix.startsWith(`${resourcesLocal}/`)) return true;
+    if (!DOTFILE_SEGMENT_RE.test(path)) return false;
     if (posix === roots.resources || posix.startsWith(`${roots.resources}/`)) return false;
     if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;
     if (posix === agentsRoot) return false;
