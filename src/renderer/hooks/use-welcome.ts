@@ -84,8 +84,22 @@ export function useWelcome(deps: UseWelcomeDeps): UseWelcome {
   };
 
   const handleTemplateInit = (): void => {
-    setWelcomeInitPending(true);
-    void window.condash.setWelcomeInitShown(false);
+    // Sequence the two writes: the one-shot effect above persists
+    // `initShown = true` the instant `welcomeInitPending` flips, so the
+    // `false` marker must be enqueued FIRST. `updateSettings` writes are
+    // serialized (withSettingsQueue) but last-enqueued wins, so flipping
+    // the signal before the false-write is enqueued lets the effect's
+    // true-write land first and the false-write clobber it — the welcome
+    // then re-shows on every launch. A rejected write still flips the
+    // pending marker: showing the welcome once more is the better failure
+    // mode than never showing it after an init. When the signal is already
+    // true (bootstrap hydration on a fresh profile), the post-resolve flip
+    // is a Solid no-op and the effect relies on its other tracked reads
+    // (knowledgeIsEmpty after seeding) to re-fire the true-write.
+    const flipPending = (): void => {
+      setWelcomeInitPending(true);
+    };
+    void window.condash.setWelcomeInitShown(false).then(flipPending, flipPending);
   };
 
   return {
