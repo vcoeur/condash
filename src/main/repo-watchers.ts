@@ -131,6 +131,12 @@ const pendingStructuralTimers = new Map<string, NodeJS.Timeout>();
 let lastRepoTargets: WatchedPath[] = [];
 let repoReArmedForSignature: string | null = null;
 
+/** Watch-target contribution of each top-level primary repo path, mirroring
+ *  the last repos-driven sync. Lets a per-primary structural re-sync replace
+ *  just that primary's slice of the watch set instead of re-listing the
+ *  whole registry (B4 — one `.git/HEAD` flip used to cost a full fan-out). */
+let targetsByPrimary: Map<string, WatchedPath[]> = new Map();
+
 function targetSetSignature(targets: readonly WatchedPath[]): string {
   return targets
     .map((t) => t.path)
@@ -399,17 +405,44 @@ async function rewireStructuralWatcher(repoPath: string): Promise<void> {
  *  worktrees become separate entries; submodule repos inherit the
  *  subtree-scope flag. Missing repos are skipped. Top-level repos
  *  (`!parent`) carry `isPrimary: true` so the structural watcher spins
- *  up; submodules and per-worktree paths get scalar watchers only. */
-export function watchTargetsFromRepos(repos: readonly RepoEntry[]): WatchedPath[] {
-  const out: WatchedPath[] = [];
+ *  up; submodules and per-worktree paths get scalar watchers only.
+ *
+ *  Alongside the flat list, each target is attributed to the top-level
+ *  primary that contributes it (submodule children roll up to their root
+ *  primary), so `syncRepoWatchersForPrimary` can replace one primary's
+ *  slice without a whole-registry re-list. */
+function watchTargetsWithOwners(repos: readonly RepoEntry[]): {
+  targets: WatchedPath[];
+  byPrimary: Map<string, WatchedPath[]>;
+} {
+  const byName = new Map(repos.map((r) => [r.name, r]));
+  const rootOf = (repo: RepoEntry): RepoEntry => {
+    let cur = repo;
+    // Config order caps the walk; a parent cycle can't spin forever.
+    for (let guard = 0; cur.parent && guard < repos.length; guard++) {
+      const parent = byName.get(cur.parent);
+      if (!parent) break;
+      cur = parent;
+    }
+    return cur;
+  };
+  const targets: WatchedPath[] = [];
+  const byPrimary = new Map<string, WatchedPath[]>();
   const seen = new Set<string>();
+  const push = (repo: RepoEntry, target: WatchedPath): void => {
+    targets.push(target);
+    const owner = rootOf(repo).path;
+    const owned = byPrimary.get(owner);
+    if (owned) owned.push(target);
+    else byPrimary.set(owner, [target]);
+  };
   for (const repo of repos) {
     if (repo.missing) continue;
     const scopeToSubtree = !!repo.parent;
     const isPrimary = !repo.parent;
     if (!seen.has(repo.path)) {
-      out.push({ path: repo.path, scopeToSubtree, isPrimary });
       seen.add(repo.path);
+      push(repo, { path: repo.path, scopeToSubtree, isPrimary });
     }
     if (!repo.worktrees) continue;
     for (const wt of repo.worktrees) {
@@ -417,11 +450,42 @@ export function watchTargetsFromRepos(repos: readonly RepoEntry[]): WatchedPath[
       // Worktree-only paths never need the structural watcher — their
       // .git is a *file* pointing at the primary's `.git/worktrees/<name>/`.
       // The primary is already covered upstream.
-      out.push({ path: wt.path, scopeToSubtree, isPrimary: false });
       seen.add(wt.path);
+      push(repo, { path: wt.path, scopeToSubtree, isPrimary: false });
     }
   }
-  return out;
+  return { targets, byPrimary };
+}
+
+/** Full watcher re-sync from a repos listing (renderer repo refresh, boot).
+ *  Replaces the whole watch set AND the per-primary attribution. */
+export async function setRepoWatchersForRepos(repos: readonly RepoEntry[]): Promise<void> {
+  const { targets, byPrimary } = watchTargetsWithOwners(repos);
+  await setRepoWatchers(targets);
+  targetsByPrimary = byPrimary;
+}
+
+/** Incremental watcher re-sync for ONE primary, after a structural event
+ *  (`listReposForPrimary`'s recompute). Replaces just that primary's
+ *  contribution — its own path, its worktrees, its submodule children —
+ *  with the fresh entries: paths that dropped out are torn down, new
+ *  paths get a watcher pair, everything else is untouched (idempotent
+ *  through `setRepoWatchers`). A structural event no longer drags a
+ *  whole-registry git fan-out behind it.
+ *
+ *  Watchers for a removed-and-recreated path keep the close-then-recreate
+ *  ordering `setRepoWatchers` guarantees. Unknown / empty entries (the
+ *  primary didn't resolve) leave the watch set alone. */
+export async function syncRepoWatchersForPrimary(entries: readonly RepoEntry[]): Promise<void> {
+  const primary = entries.find((e) => !e.parent);
+  if (!primary) return;
+  const { targets: fresh } = watchTargetsWithOwners(entries);
+  const stalePaths = new Set((targetsByPrimary.get(primary.path) ?? []).map((t) => t.path));
+  const kept = lastRepoTargets.filter((t) => !stalePaths.has(t.path));
+  await setRepoWatchers([...kept, ...fresh]);
+  const next = new Map(targetsByPrimary);
+  next.set(primary.path, fresh);
+  targetsByPrimary = next;
 }
 
 /** Recompute dirty + upstream for every currently-watched path and
@@ -455,5 +519,6 @@ export async function recomputeAllWatchedRepos(): Promise<void> {
 export async function disposeRepoWatchers(): Promise<void> {
   repoReArmedForSignature = null;
   lastRepoTargets = [];
+  targetsByPrimary = new Map();
   await teardownAllRepoWatchers();
 }

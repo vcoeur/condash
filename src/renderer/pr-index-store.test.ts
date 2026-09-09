@@ -1,11 +1,13 @@
 /**
- * Unit tests for the pure project→PR matcher behind the Projects-pane card
- * badges. The reactive `reloadPrIndex` / `prsForProject` shell isn't exercised
- * here (it needs `window.condash` + a live gh) — only the index-matching logic.
+ * Unit tests for the project→PR matcher behind the Projects-pane card badges
+ * and for the `createPrIndexSync` visibility gate (B3): `gh` lookups must not
+ * fire while the pane is hidden, must fire when it shows, and must track list
+ * churn only while visible.
  */
-import { describe, expect, it } from 'vitest';
-import type { OpenPullRequest } from '@shared/types';
-import { matchProjectPrs } from './pr-index-store';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSignal } from 'solid-js';
+import type { OpenPullRequest, Project } from '@shared/types';
+import { createPrIndexSync, matchProjectPrs } from './pr-index-store';
 
 const pr = (number: number, headRefName: string, isDraft = false): OpenPullRequest => ({
   number,
@@ -70,5 +72,75 @@ describe('matchProjectPrs', () => {
     expect(matchProjectPrs(index, { apps: ['condash'], branch: 'feature-x' })[0].isDraft).toBe(
       true,
     );
+  });
+});
+
+describe('createPrIndexSync — visibility gate (B3)', () => {
+  const listOpenPullRequests = vi.fn(async (): Promise<OpenPullRequest[]> => []);
+
+  const flushMicrotasks = async (): Promise<void> => {
+    // reloadPrIndex is one IPC round per app + a Promise.all — a macrotask
+    // flush settles it without touching fake timers.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  const project = (apps: string[], branch: string | null): Project => ({ apps, branch }) as Project;
+
+  beforeEach(() => {
+    listOpenPullRequests.mockClear();
+    vi.stubGlobal('window', { condash: { listOpenPullRequests } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('does not fetch while the pane is hidden, fetches when it becomes visible', async () => {
+    const [projects, setProjects] = createSignal<Project[]>([project(['condash'], 'feature-x')]);
+    const [visible, setVisible] = createSignal(false);
+    createPrIndexSync(projects, visible);
+
+    await flushMicrotasks();
+    expect(listOpenPullRequests).not.toHaveBeenCalled();
+
+    setVisible(true);
+    await flushMicrotasks();
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
+    expect(listOpenPullRequests).toHaveBeenCalledWith('condash');
+
+    // List churn while the pane is hidden: no fan-out.
+    setVisible(false);
+    setProjects([project(['condash'], 'other-branch')]);
+    await flushMicrotasks();
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks project-list churn only while the pane is visible', async () => {
+    const [projects, setProjects] = createSignal<Project[]>([project(['condash'], 'feature-x')]);
+    const [visible, setVisible] = createSignal(true);
+    createPrIndexSync(projects, visible);
+
+    await flushMicrotasks();
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
+
+    setProjects([project(['condash'], 'other-branch')]);
+    await flushMicrotasks();
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(2);
+    expect(listOpenPullRequests).toHaveBeenLastCalledWith('condash');
+
+    // Hiding then re-showing re-runs the sync (fresh badges on pane open).
+    setVisible(false);
+    setVisible(true);
+    await flushMicrotasks();
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(3);
+  });
+
+  it('resolves an empty project list without calling out', async () => {
+    const [projects] = createSignal<Project[]>([]);
+    const [visible] = createSignal(true);
+    createPrIndexSync(projects, visible);
+
+    await flushMicrotasks();
+    expect(listOpenPullRequests).not.toHaveBeenCalled();
   });
 });

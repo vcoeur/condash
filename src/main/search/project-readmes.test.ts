@@ -7,7 +7,7 @@
  * renderer already holds as `Project.path`. Both index states are covered — the
  * on-disk fallback of the boot gap and the live index.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -117,5 +117,36 @@ describe('searchProjectReadmes', () => {
     const paths = await searchProjectReadmes(dir, 'manyword');
     expect(paths.length).toBe(120);
     expect(new Set(paths)).toEqual(new Set(expected));
+  });
+
+  it('yields to the event loop during a large indexed scan (B5)', async () => {
+    // Push the index past one scan chunk with files the README pass skips —
+    // the chunk boundary must be hit even when nothing matches yet.
+    for (let i = 0; i < 70; i++) {
+      await writeFile(join(dir, 'knowledge', `filler-${String(i).padStart(3, '0')}.md`), '# F\n');
+    }
+    await rebuildSearchIndex(dir);
+
+    vi.useFakeTimers({ toFake: ['setImmediate'] });
+    try {
+      let settled = false;
+      const scan = searchProjectReadmes(dir, 'filterword').then((paths) => {
+        settled = true;
+        return paths;
+      });
+      // Flush microtasks: with setImmediate faked the parked chunk yield must
+      // keep the scan pending — proof the loop was handed back mid-scan
+      // (the old synchronous version could never observe this state).
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      const paths = await vi.runAllTimersAsync().then(() => scan);
+      expect(settled).toBe(true);
+      // Identical result to the synchronous pass: same members, READMEs only.
+      expect([...paths].sort()).toEqual([readmes[0], readmes[2]].sort());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

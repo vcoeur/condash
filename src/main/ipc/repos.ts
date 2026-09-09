@@ -1,7 +1,11 @@
 import { ipcMain } from 'electron';
-import { listRepos, listReposForPrimary, listReposReusingBoot } from '../repos';
+import { listReposForPrimary, listReposReusingBoot } from '../repos';
 import { invalidateAll } from '../git-status-cache';
-import { recomputeAllWatchedRepos, setRepoWatchers, watchTargetsFromRepos } from '../repo-watchers';
+import {
+  recomputeAllWatchedRepos,
+  setRepoWatchersForRepos,
+  syncRepoWatchersForPrimary,
+} from '../repo-watchers';
 import { getDirtyDetails } from '../git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from '../launchers';
 import { pullBranch } from '../pull-branch';
@@ -35,28 +39,23 @@ export function registerReposIpc(): void {
       // Sync the per-repo FS watchers to the live repo set: a config edit
       // that adds or removes a repo is reflected here, since this handler
       // re-runs on every renderer-driven repos refresh.
-      await setRepoWatchers(watchTargetsFromRepos(repos));
+      await setRepoWatchersForRepos(repos);
       return repos;
     }, []);
   });
 
   // Per-primary partial reload — driven by the structural FS watcher when
   // `.git/HEAD` or `.git/worktrees/` changes. Returns the primary's
-  // RepoEntry plus its submodule children, freshly re-read. Watchers are
-  // re-synced for the affected paths so a freshly-added worktree gets a
-  // scalar watcher pair right away (and a freshly-removed one is dropped).
+  // RepoEntry plus its submodule children, freshly re-read. The watch set
+  // is re-synced INCREMENTALLY for just this primary (its old contribution
+  // replaced by the fresh entries' targets), so a structural event no
+  // longer re-runs the whole-registry listRepos just to diff the watcher
+  // set — that was an 8–15 s gitUpstream window in the perf corpus.
   ipcMain.handle('listReposForPrimary', (event, primaryName: string) => {
     requireMainWindowSender(event);
     return withConception(async (conceptionPath) => {
       const entries = await listReposForPrimary(conceptionPath, primaryName);
-      // Re-list the *full* watcher set: the simplest correct way to make sure
-      // an added or removed worktree under this primary is reflected in the
-      // watch set without diffing the per-primary subset against the global
-      // one. The cost is one extra `listRepos` call on a structural event,
-      // which is rare (worktree mutation, branch checkout) — far cheaper
-      // than getting the watch-set delta logic wrong.
-      const repos = await listRepos(conceptionPath);
-      await setRepoWatchers(watchTargetsFromRepos(repos));
+      await syncRepoWatchersForPrimary(entries);
       return entries;
     }, []);
   });

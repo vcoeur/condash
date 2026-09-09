@@ -31,6 +31,13 @@ import {
 
 const PREPARE_CONCURRENCY = 32;
 
+/** Files scanned per event-loop chunk before `indexedReadmesMatching` yields. */
+const README_SCAN_CHUNK = 64;
+
+/** One macrotask yield — `setImmediate` keeps the ordering guarantees the
+ *  chunk boundary implies (timers could fire other queued work first). */
+const yieldEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 export type IndexedSource = 'project' | 'knowledge' | 'resources' | 'skills';
 
 /** Scope-pill name (what the renderer forwards) for each indexed source. */
@@ -127,15 +134,30 @@ export function searchIndex(
  * satisfies every term (`readmeMatchesTerms`). No scoring, no snippets, notes
  * skipped up front. Returns `null` when no index is built yet — the caller
  * falls back to the disk scan.
+ *
+ * The scan yields to the event loop every `README_SCAN_CHUNK` files: it runs
+ * inside the IPC handler, and the perf corpus shows the synchronous pass
+ * monopolising the main thread for ~1 s on a ~680-README index. The file list
+ * is snapshotted up front so an FS-event apply interleaving at a yield can't
+ * mutate the Map mid-iteration (additions would otherwise be visited); the
+ * snapshot preserves insertion order, so results are identical to the old
+ * synchronous pass.
  */
-export function indexedReadmesMatching(
+export async function indexedReadmesMatching(
   conceptionPath: string,
   terms: readonly SearchTerm[],
-): string[] | null {
+): Promise<string[] | null> {
   const index = getIndex(conceptionPath);
   if (!index) return null;
   const out: string[] = [];
-  for (const file of index.byPath.values()) {
+  const files = [...index.byPath.values()];
+  for (let i = 0; i < files.length; i++) {
+    // The yield counts ITERATIONS, not candidate files — a mostly non-README
+    // index must still hand the loop back every chunk.
+    if ((i + 1) % README_SCAN_CHUNK === 0) {
+      await yieldEventLoop();
+    }
+    const file = files[i];
     if (file.source !== 'project' || !file.projectPath || !isReadmePath(file.path)) continue;
     if (readmeMatchesTerms(file.lowerContent, projectSlugLower(file.projectPath), terms)) {
       out.push(file.path);
