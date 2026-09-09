@@ -82,7 +82,13 @@ vi.mock('electron', () => ({
 vi.mock('node:child_process', () => ({ execFile: h.execFile }));
 vi.mock('./safe-send', () => ({ safeSend: h.safeSend }));
 
-import { setRepoWatchers, disposeRepoWatchers } from './repo-watchers';
+import {
+  setRepoWatchers,
+  disposeRepoWatchers,
+  setRepoWatchersForRepos,
+  syncRepoWatchersForPrimary,
+} from './repo-watchers';
+import type { RepoEntry } from '../shared/types';
 
 describe('repo-watchers — rebuild triggers (M8b)', () => {
   let root: string;
@@ -187,5 +193,109 @@ describe('repo-watchers — rebuild triggers (M8b)', () => {
     await vi.waitFor(() => {
       expect(h.execFile.mock.calls.length).toBeGreaterThan(callsAfterFirst);
     });
+  });
+});
+
+describe('repo-watchers — incremental per-primary re-sync (B4)', () => {
+  // Distinct paths (no real FS behind the chokidar mock); the temp `root` is
+  // only needed for the global-excludes execFile mock. Self-contained hooks:
+  // this describe is a sibling of the M8b one, not a nested child.
+  const A = '/repos/primary-a';
+  const B = '/repos/primary-b';
+  const A_WT1 = '/wt/a-1';
+  const A_WT2 = '/wt/a-2';
+  const S = '/repos/primary-a/vendor/sub';
+  const S_WT1 = '/wt/s-1';
+  let root: string;
+
+  beforeEach(async () => {
+    h.created.length = 0;
+    h.execFile.mockImplementation((_cmd, args, cb) => {
+      if (args && args[0] === 'config' && args[1] === '--get' && args[2] === 'core.excludesFile') {
+        cb(null, { stdout: join(root, 'global-excludes') });
+      } else {
+        cb(null, { stdout: '' });
+      }
+    });
+    root = await mkdtemp(join(tmpdir(), 'condash-repo-watchers-b4-'));
+  });
+
+  afterEach(async () => {
+    await disposeRepoWatchers();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  /** Minimal RepoEntry — only the fields the watch-target derivation reads. */
+  const entry = (
+    name: string,
+    path: string,
+    worktrees: string[] = [],
+    parent?: string,
+  ): RepoEntry => ({
+    name,
+    handle: name,
+    path,
+    parent,
+    dirty: 0,
+    missing: false,
+    worktrees: worktrees.map((p) => ({ path: p, branch: 'main', primary: false })),
+  });
+
+  it('adds only the new worktree’s watchers on a structural re-sync', async () => {
+    await setRepoWatchersForRepos([entry('a', A, [A_WT1]), entry('b', B)]);
+    const createdAfterFull = h.created.length;
+
+    await syncRepoWatchersForPrimary([entry('a', A, [A_WT1, A_WT2])]);
+
+    const newWatchers = h.created.slice(createdAfterFull);
+    // One new path → exactly its worktree + git-meta watchers, nothing else.
+    expect(newWatchers).toHaveLength(2);
+    expect(newWatchers.some((w) => w.paths === A_WT2)).toBe(true);
+    expect(newWatchers.every((w) => !w.closed)).toBe(true);
+    // No pre-existing watcher was torn down or recreated.
+    expect(h.created.slice(0, createdAfterFull).every((w) => !w.closed)).toBe(true);
+  });
+
+  it('removes only the dropped worktree’s watchers', async () => {
+    await setRepoWatchersForRepos([entry('a', A, [A_WT1, A_WT2]), entry('b', B)]);
+
+    await syncRepoWatchersForPrimary([entry('a', A, [A_WT1])]);
+
+    // The a-2 scalar pair is closed…
+    expect(h.created.find((w) => w.paths === A_WT2)?.closed).toBe(true);
+    const a2GitMeta = h.created.find(
+      (w) => Array.isArray(w.paths) && w.paths[0] === join(A_WT2, '.git/index'),
+    );
+    expect(a2GitMeta?.closed).toBe(true);
+    // …while the kept paths’ watchers (both primaries’ roots incl. a’s
+    // structural watcher, the surviving worktree) live on untouched.
+    expect(h.created.find((w) => w.paths === A)?.closed).toBe(false);
+    expect(h.created.find((w) => w.paths === A_WT1)?.closed).toBe(false);
+    expect(h.created.find((w) => w.paths === B)?.closed).toBe(false);
+  });
+
+  it('rolls a submodule child’s targets into its primary’s slice', async () => {
+    await setRepoWatchersForRepos([entry('a', A, [A_WT1]), entry('a/s', S, [], 'a')]);
+    const createdAfterFull = h.created.length;
+
+    // The structural event fired on primary a; the re-listed entries include
+    // the submodule child, whose new worktree must be picked up even though
+    // the child is not itself a primary.
+    await syncRepoWatchersForPrimary([entry('a', A, [A_WT1]), entry('a/s', S, [S_WT1], 'a')]);
+
+    const newWatchers = h.created.slice(createdAfterFull);
+    expect(newWatchers).toHaveLength(2); // the submodule worktree’s pair only
+    expect(newWatchers.some((w) => w.paths === S_WT1)).toBe(true);
+    expect(h.created.slice(0, createdAfterFull).every((w) => !w.closed)).toBe(true);
+  });
+
+  it('an unknown primary leaves the watch set alone', async () => {
+    await setRepoWatchersForRepos([entry('a', A, [A_WT1]), entry('b', B)]);
+    const createdAfterFull = h.created.length;
+
+    await syncRepoWatchersForPrimary([]);
+
+    expect(h.created.length).toBe(createdAfterFull);
+    expect(h.created.every((w) => !w.closed)).toBe(true);
   });
 });
