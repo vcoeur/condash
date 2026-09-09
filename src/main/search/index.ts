@@ -114,7 +114,7 @@ export async function searchProjectReadmes(
 ): Promise<string[]> {
   const terms = parseQuery(query);
   if (terms.length === 0) return [];
-  const indexed = indexedReadmesMatching(conceptionPath, terms);
+  const indexed = await indexedReadmesMatching(conceptionPath, terms);
   if (indexed !== null) return indexed;
   // Boot gap: no index yet. Read only the READMEs, apply the same predicate.
   const projectFiles = await collectProjectFiles(join(conceptionPath, 'projects'));
