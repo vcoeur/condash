@@ -9,7 +9,7 @@
  * removed a second, accidental effect re-fire that used to write `true`
  * again after the dust settled (first-run-onboarding.spec.ts).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, createSignal } from 'solid-js';
 
 const getBootstrap = vi.hoisted(() => vi.fn());
@@ -29,6 +29,10 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 const setWelcomeInitShown = vi.fn();
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
