@@ -84,8 +84,18 @@ export function useWelcome(deps: UseWelcomeDeps): UseWelcome {
   };
 
   const handleTemplateInit = (): void => {
-    setWelcomeInitPending(true);
-    void window.condash.setWelcomeInitShown(false);
+    // Sequence the two writes: the one-shot effect above persists
+    // `initShown = true` the instant `welcomeInitPending` flips, so the
+    // `false` marker must be on disk FIRST. Flipping the signal before the
+    // write resolves makes the two `updateSettings` calls race — concurrent
+    // read-modify-write, last finisher wins — and the shown-marker can be
+    // clobbered (the welcome then re-shows on every launch). A rejected
+    // write still flips the pending marker: showing the welcome once more
+    // is the better failure mode than never showing it after an init.
+    const flipPending = (): void => {
+      setWelcomeInitPending(true);
+    };
+    void window.condash.setWelcomeInitShown(false).then(flipPending, flipPending);
   };
 
   return {
