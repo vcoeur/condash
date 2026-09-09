@@ -28,7 +28,10 @@ const CACHE_TTL_MS = 60_000;
 
 /** UI-triggered network lookup — cap it well below the house 60 s default so
  *  a wedged `gh` resolves to "no PR row" promptly instead of leaving the item
- *  pending for a minute. */
+ *  pending for a minute. Enforced via `exec`'s worker-thread spawn deadline
+ *  (with the plain execFile timeout as backstop) so a blocked main event
+ *  loop can't stretch the cap — the 24 s p50 in the perf corpus was exactly
+ *  that stretch. */
 const LOOKUP_TIMEOUT_MS = 15_000;
 
 /** Upper bound on open PRs read per repo for the Projects-pane batch. Well
@@ -146,7 +149,7 @@ export async function lookupPullRequest(
         '--limit',
         '1',
       ],
-      { cwd: path, timeout: LOOKUP_TIMEOUT_MS },
+      { cwd: path, timeout: LOOKUP_TIMEOUT_MS, spawnDeadlineMs: LOOKUP_TIMEOUT_MS },
     );
     value = parseGhPrList(stdout);
   } catch {
@@ -184,7 +187,7 @@ export async function listOpenPullRequests(cwd: string): Promise<OpenPullRequest
         '--limit',
         String(LIST_LIMIT),
       ],
-      { cwd, timeout: LOOKUP_TIMEOUT_MS },
+      { cwd, timeout: LOOKUP_TIMEOUT_MS, spawnDeadlineMs: LOOKUP_TIMEOUT_MS },
     );
     value = parseOpenPrList(stdout);
   } catch {

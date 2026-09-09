@@ -1,5 +1,6 @@
 import { execFile, type ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
+import { armSpawnDeadline } from './spawn-deadline';
 
 const execFileAsync = promisify(execFile);
 
@@ -9,6 +10,15 @@ const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
  *  Call sites that legitimately run long (e.g. the per-repo `install:`
  *  command in worktree setup) override with `timeout: 0`. */
 const DEFAULT_TIMEOUT_MS = 60_000;
+
+export interface ExecOptions extends ExecFileOptions {
+  /** Hard deadline enforced from a worker thread (see spawn-deadline.ts):
+   *  the child is killed `spawnDeadlineMs` after its spawn even when the
+   *  main event loop is too blocked to run `execFile`'s own JS timeout
+   *  timer. The internal `timeout` stays as a backstop. Intended for
+   *  UI-triggered network lookups (`gh`) whose cap must hold under load. */
+  spawnDeadlineMs?: number;
+}
 
 /**
  * Promisified `execFile` with house defaults. Was a bare
@@ -25,7 +35,7 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 export async function exec(
   file: string,
   args: readonly string[],
-  options: ExecFileOptions = {},
+  options: ExecOptions = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const env: NodeJS.ProcessEnv = { ...(options.env ?? process.env) };
   if (file === 'git') {
@@ -34,11 +44,27 @@ export async function exec(
     }
     env.LC_ALL = 'C';
   }
-  return execFileAsync(file, [...args], {
+  const { spawnDeadlineMs, ...rest } = options;
+  const merged = {
     maxBuffer: DEFAULT_MAX_BUFFER,
     timeout: DEFAULT_TIMEOUT_MS,
-    ...options,
+    ...rest,
     env,
-    encoding: 'utf8',
+    encoding: 'utf8' as const,
+  };
+  if (spawnDeadlineMs === undefined) {
+    return execFileAsync(file, [...args], merged);
+  }
+  // Deadline path: the callback form exposes the child pid, which the
+  // worker-thread deadline arms against. execFile's own `timeout` stays in
+  // `merged` as a backstop for a deadline-worker spawn failure.
+  return new Promise((resolve, reject) => {
+    let disarm = (): void => {};
+    const child = execFile(file, [...args], merged, (error, stdout, stderr) => {
+      disarm();
+      if (error) reject(error);
+      else resolve({ stdout, stderr });
+    });
+    if (child.pid != null) disarm = armSpawnDeadline(child.pid, spawnDeadlineMs);
   });
 }

@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createEffect, createSignal, type Accessor } from 'solid-js';
 import type { OpenPullRequest, Project } from '@shared/types';
 
 // Shared open-PR index behind the Projects-pane card badges.
@@ -86,4 +86,27 @@ export async function reloadPrIndex(projects: readonly Project[]): Promise<void>
   // this one's `gh` calls were in flight.
   if (mine !== generation) return;
   setPrIndex(new Map(entries));
+}
+
+/**
+ * Keep the badge index in sync with the project list, gated on the Projects
+ * pane actually being visible — the badges render nowhere else, so a lookup
+ * fired while the pane is hidden is pure `gh` fan-out against an invisible
+ * surface (the perf corpus: p50 24 s per call, one per projects-list churn
+ * event). The effect reads both signals: hiding the pane stops the fan-out
+ * (the last-known index stays put, so re-showing paints instantly and then
+ * refreshes), and showing it re-runs the effect, landing fresh badges.
+ *
+ * @param projects    The projects-store accessor.
+ * @param paneVisible Accessor — true when the Projects pane is on screen.
+ */
+export function createPrIndexSync(
+  projects: Accessor<readonly Project[]>,
+  paneVisible: Accessor<boolean>,
+): void {
+  createEffect(() => {
+    const list = projects();
+    if (!paneVisible()) return;
+    void reloadPrIndex(list);
+  });
 }

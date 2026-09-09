@@ -32,7 +32,7 @@ import { createBranchFilterStore } from './branch-filter-store';
 import { createReposStore } from './repos-store';
 import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
-import { reloadPrIndex } from './pr-index-store';
+import { createPrIndexSync } from './pr-index-store';
 import { reconcileStarred, reloadStarred, starredSlugs } from './star-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
@@ -190,14 +190,10 @@ function App() {
   const projectsStore = createProjectsStore({ conceptionPath });
   const { projects, loaded: projectsLoaded, mutate, reload: reloadProjects } = projectsStore;
 
-  // Keep the Projects-pane PR badges in sync with the project list: refetch the
-  // per-repo open-PR index whenever the project set changes — initial load, a
-  // watcher-driven card patch, a manual refresh, or a conception switch. The
-  // main-process lookups are TTL-cached per repo, so list churn doesn't spam
-  // `gh`; a conception with no branch-bearing projects clears the index.
-  createEffect(() => {
-    void reloadPrIndex(projects());
-  });
+  // Keep the Projects-pane PR badges in sync with the project list — but only
+  // while the pane is visible (badges render nowhere else; see the store for
+  // the perf rationale). Showing the pane re-arms the sync.
+  createPrIndexSync(projects, () => layout().projects && layout().leftView === 'projects');
 
   // Load the Projects-pane starred set for the active conception. Keyed on the
   // conception path, not the project list: the set lives in that conception's
