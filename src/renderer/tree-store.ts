@@ -1,6 +1,7 @@
 import { createEffect, createSignal } from 'solid-js';
 import type { Accessor } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+import { rendererPerf } from './perf-renderer';
 
 /**
  * Generic in-place store for the three tree panes (Knowledge, Resources,
@@ -82,19 +83,24 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   }
 
   const applySnapshot = (next: T | null): void => {
-    if (next === null) {
-      // Drop the prior tree wholesale. Reconcile against null is not
-      // well-defined when the store had a value — direct assignment
-      // releases the old references cleanly.
-      setBox('value', null);
-      return;
+    const span = rendererPerf.startSpan();
+    try {
+      if (next === null) {
+        // Drop the prior tree wholesale. Reconcile against null is not
+        // well-defined when the store had a value — direct assignment
+        // releases the old references cleanly.
+        setBox('value', null);
+        return;
+      }
+      if (box.value === null) {
+        // First non-null snapshot — nothing to reconcile against.
+        setBox('value', next);
+        return;
+      }
+      setBox('value', reconcile(next, { key: deps.key }));
+    } finally {
+      rendererPerf.endSpan('treeApplySnapshot', span);
     }
-    if (box.value === null) {
-      // First non-null snapshot — nothing to reconcile against.
-      setBox('value', next);
-      return;
-    }
-    setBox('value', reconcile(next, { key: deps.key }));
   };
 
   const reload = async (): Promise<void> => {

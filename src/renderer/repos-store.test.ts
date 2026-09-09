@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import type { RepoEntry } from '../shared/types';
-import { spliceFamilyAt } from './repos-store';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createRoot, createSignal } from 'solid-js';
+import type { RepoEntry, RepoEvent } from '../shared/types';
+import { createReposStore, spliceFamilyAt } from './repos-store';
+import { rendererPerf } from './perf-renderer';
 
 function entry(name: string, parent?: string): RepoEntry {
   return {
@@ -100,5 +102,84 @@ describe('spliceFamilyAt', () => {
     const next = spliceFamilyAt(current, { name: 'beta', path: '/r/beta' }, updated);
 
     expect(next.map((r) => r.name)).toEqual(['beta', 'beta/kept', 'gamma']);
+  });
+});
+
+describe('createReposStore — perf spans', () => {
+  const listRepos = vi.fn(async (): Promise<RepoEntry[]> => [entry('alpha')]);
+  const listReposForPrimary = vi.fn(
+    async (): Promise<RepoEntry[]> => [{ ...entry('alpha'), dirty: 3 }],
+  );
+  let repoEventsCb: ((events: RepoEvent[]) => void) | undefined;
+
+  function makeStore() {
+    repoEventsCb = undefined;
+    vi.stubGlobal('window', {
+      condash: {
+        listRepos,
+        listReposForPrimary,
+        onRepoEvents: (cb: (events: RepoEvent[]) => void) => {
+          repoEventsCb = cb;
+          return () => {
+            repoEventsCb = undefined;
+          };
+        },
+      },
+    });
+    const [conceptionPath] = createSignal<string | null>('/c');
+    let store!: ReturnType<typeof createReposStore>;
+    const dispose = createRoot((disposeRoot) => {
+      store = createReposStore({ conceptionPath, flashToast: () => undefined });
+      return disposeRoot;
+    });
+    return { store, dispose };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    rendererPerf.setEnabled(false);
+  });
+
+  it('records reposReload while recording is enabled', async () => {
+    rendererPerf.setEnabled(true);
+    const { store, dispose } = makeStore();
+    await store.reloadRepos();
+    expect(rendererPerf.takeReport()?.spans?.reposReload?.n).toBe(1);
+    dispose();
+  });
+
+  it('records reposApplyEvents synchronously per event batch', async () => {
+    rendererPerf.setEnabled(true);
+    const { store, dispose } = makeStore();
+    await store.reloadRepos();
+    repoEventsCb!([{ kind: 'repo-dirty', path: '/r/alpha', dirty: 2 }]);
+    const spans = rendererPerf.takeReport()?.spans;
+    expect(spans?.reposApplyEvents?.n).toBe(1);
+    expect(spans?.reposReload?.n).toBe(1);
+    dispose();
+  });
+
+  it('records reposReloadPrimary when a structural event triggers the debounced reload', async () => {
+    rendererPerf.setEnabled(true);
+    const { store, dispose } = makeStore();
+    await store.reloadRepos();
+    rendererPerf.takeReport(); // drain the initial reload's span
+
+    vi.useFakeTimers();
+    repoEventsCb!([{ kind: 'repo-worktrees-changed', repoPath: '/r/alpha' }]);
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(listReposForPrimary).toHaveBeenCalledWith('alpha');
+    expect(rendererPerf.takeReport()?.spans?.reposReloadPrimary?.n).toBe(1);
+    dispose();
+  });
+
+  it('records nothing while recording is disabled', async () => {
+    const { store, dispose } = makeStore();
+    await store.reloadRepos();
+    repoEventsCb!([{ kind: 'repo-dirty', path: '/r/alpha', dirty: 2 }]);
+    expect(rendererPerf.takeReport()).toBeUndefined();
+    dispose();
   });
 });
