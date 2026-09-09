@@ -6,9 +6,10 @@
  * closed. `reload()` is now gated on the same latch: a no-op before first
  * open, unchanged after.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { createRoot, createSignal } from 'solid-js';
 import { createTreeStore } from './tree-store';
+import { rendererPerf } from './perf-renderer';
 
 interface Node {
   relPath: string;
@@ -71,6 +72,32 @@ describe('createTreeStore — reload() is gated on first activation (B2a)', () =
     expect(fetcher).toHaveBeenCalledTimes(1);
     await store.reload();
     expect(fetcher).toHaveBeenCalledTimes(2);
+    dispose();
+  });
+});
+
+describe('createTreeStore — perf span (treeApplySnapshot)', () => {
+  afterEach(() => {
+    rendererPerf.setEnabled(false);
+  });
+
+  it('records a treeApplySnapshot span per applied snapshot while enabled', async () => {
+    rendererPerf.setEnabled(true);
+    // Ungated: the conception-path effect applies the first snapshot, the
+    // explicit reload the second — both are reconcile/first-set work.
+    const { store, dispose } = makeStore({ gated: false });
+    await flushEffects();
+    await store.reload();
+    const span = rendererPerf.takeReport()?.spans?.treeApplySnapshot;
+    expect(span?.n).toBeGreaterThanOrEqual(2);
+    dispose();
+  });
+
+  it('records nothing while recording is disabled', async () => {
+    const { store, dispose } = makeStore({ gated: false });
+    await flushEffects();
+    await store.reload();
+    expect(rendererPerf.takeReport()).toBeUndefined();
     dispose();
   });
 });

@@ -7,7 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal } from 'solid-js';
 import type { OpenPullRequest, Project } from '@shared/types';
-import { createPrIndexSync, matchProjectPrs } from './pr-index-store';
+import { createPrIndexSync, matchProjectPrs, reloadPrIndex } from './pr-index-store';
+import { rendererPerf } from './perf-renderer';
 
 const pr = (number: number, headRefName: string, isDraft = false): OpenPullRequest => ({
   number,
@@ -142,5 +143,33 @@ describe('createPrIndexSync — visibility gate (B3)', () => {
 
     await flushMicrotasks();
     expect(listOpenPullRequests).not.toHaveBeenCalled();
+  });
+});
+
+describe('reloadPrIndex — perf span (prIndexReload)', () => {
+  const listOpenPullRequests = vi.fn(async (): Promise<OpenPullRequest[]> => []);
+  const project = (apps: string[], branch: string | null): Project => ({ apps, branch }) as Project;
+
+  beforeEach(() => {
+    listOpenPullRequests.mockClear();
+    vi.stubGlobal('window', { condash: { listOpenPullRequests } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    rendererPerf.setEnabled(false);
+  });
+
+  it('records a prIndexReload span while recording is enabled', async () => {
+    rendererPerf.setEnabled(true);
+    await reloadPrIndex([project(['condash'], 'feature-x')]);
+    const span = rendererPerf.takeReport()?.spans?.prIndexReload;
+    expect(span?.n).toBe(1);
+    expect(listOpenPullRequests).toHaveBeenCalledWith('condash');
+  });
+
+  it('records nothing while recording is disabled', async () => {
+    await reloadPrIndex([project(['condash'], 'feature-x')]);
+    expect(rendererPerf.takeReport()).toBeUndefined();
   });
 });

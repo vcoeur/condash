@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, TreeEvent } from '@shared/types';
 import { applyTreeEvents, type TreeEventsDeps } from './tree-events';
+import { rendererPerf } from './perf-renderer';
 
 const README = '/c/projects/2026-07/slug/README.md';
 
@@ -82,5 +83,25 @@ describe('applyTreeEvents — unknown still fans out (regression guard)', () => 
     expect(deps.reloadSkills).toHaveBeenCalledTimes(1);
     expect(deps.reloadConfig).toHaveBeenCalledTimes(1);
     expect(deps.refetchRepos).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('applyTreeEvents — perf span (treeApplyEvents)', () => {
+  afterEach(() => {
+    rendererPerf.setEnabled(false);
+  });
+
+  it('records one treeApplyEvents span per batch while recording is enabled', async () => {
+    rendererPerf.setEnabled(true);
+    const deps = makeDeps();
+    await applyTreeEvents([{ kind: 'unknown' } as TreeEvent], deps);
+    await applyTreeEvents([{ kind: 'projects-reload' }], deps);
+    expect(rendererPerf.takeReport()?.spans?.treeApplyEvents?.n).toBe(2);
+  });
+
+  it('records nothing while recording is disabled', async () => {
+    const deps = makeDeps();
+    await applyTreeEvents([{ kind: 'unknown' } as TreeEvent], deps);
+    expect(rendererPerf.takeReport()).toBeUndefined();
   });
 });

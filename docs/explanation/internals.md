@@ -282,7 +282,14 @@ Two blocks beyond the terminal byte path ride the same record:
   uses, so the two are comparable), animation-frame counts including long frames, spans for the
   visible tab's `term.write`, the tab-switch replay burst, the demote `serialize()`, the worker RPC
   round trip and the mount, counters for demotes / promotes / RPC failures / writes into a collapsed
-  Code-pane row, and peaks (`maxima`) such as the transition buffer's depth. The write spans close on
+  Code-pane row, and peaks (`maxima`) such as the transition buffer's depth. Non-terminal store work
+  carries its own spans, so a long-frame window with no terminal activity still names its suspect:
+  `treeApplyEvents` (a watcher batch's dispatch fan-out), `treeApplySnapshot` (the tree panes' Solid
+  `reconcile` — synchronous main-thread work), `prIndexReload` (the awaited open-PR fetch plus the
+  badge-index map swap), and `reposReload` / `reposReloadPrimary` / `reposApplyEvents` (the Code-pane
+  repos store's full reload, per-primary reload, and structural-event apply). These spans are elapsed
+  wall time across an async reload unless stated — the reconcile-shaped ones (`treeApplySnapshot`,
+  `reposApplyEvents`) are the synchronous blocks. The write spans close on
   xterm's completion callback, since `term.write` only queues the parse — they are elapsed until
   processed, an upper bound on block time. The renderer drains on its own 2.5 s timer and sends **one
   message per drain, and nothing at all for an empty window** — never per frame. `reports` says how

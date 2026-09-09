@@ -4,6 +4,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import type { SetStoreFunction } from 'solid-js/store';
 import type { RepoEntry } from '@shared/types';
 import { applyRepoEvents } from './repo-events';
+import { rendererPerf } from './perf-renderer';
 
 export interface ReposStoreDeps {
   /** Read the current conception path. The store clears whenever this
@@ -67,18 +68,23 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
   const [reposLoaded, setReposLoaded] = createSignal(false);
 
   const reloadRepos = async (): Promise<void> => {
-    const path = deps.conceptionPath();
-    if (!path) {
-      setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
-      setReposLoaded(false);
-      return;
+    const span = rendererPerf.startSpan();
+    try {
+      const path = deps.conceptionPath();
+      if (!path) {
+        setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
+        setReposLoaded(false);
+        return;
+      }
+      const list = await window.condash.listRepos();
+      // Discard a stale result if the conception changed while the fetch was
+      // in flight — applying it would paint the previous conception's repos.
+      if (deps.conceptionPath() !== path) return;
+      setRepos(reconcile(list, { key: 'path' }));
+      setReposLoaded(true);
+    } finally {
+      rendererPerf.endSpan('reposReload', span);
     }
-    const list = await window.condash.listRepos();
-    // Discard a stale result if the conception changed while the fetch was
-    // in flight — applying it would paint the previous conception's repos.
-    if (deps.conceptionPath() !== path) return;
-    setRepos(reconcile(list, { key: 'path' }));
-    setReposLoaded(true);
   };
 
   /** Per-primary partial reload. Looks up the primary entry by `path`
@@ -87,27 +93,32 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
    *  `reloadRepos()` if the primary isn't in the store (defensive — a
    *  structural event for an unknown primary is unexpected). */
   const reloadPrimaryByPath = async (repoPath: string): Promise<void> => {
-    const conception = deps.conceptionPath();
-    if (!conception) return;
-    const primary = repos.find((r) => !r.parent && r.path === repoPath);
-    if (!primary) {
-      void reloadRepos();
-      return;
+    const span = rendererPerf.startSpan();
+    try {
+      const conception = deps.conceptionPath();
+      if (!conception) return;
+      const primary = repos.find((r) => !r.parent && r.path === repoPath);
+      if (!primary) {
+        void reloadRepos();
+        return;
+      }
+      const updated = await window.condash.listReposForPrimary(primary.name);
+      // Same staleness guard as reloadRepos — the conception may have
+      // switched while the per-primary fetch was in flight.
+      if (deps.conceptionPath() !== conception) return;
+      if (updated.length === 0) {
+        // Primary disappeared from condash.json between the watcher
+        // event and this fetch — reload everything to reconcile.
+        void reloadRepos();
+        return;
+      }
+      // Splice the freshly-fetched family back in at the primary's *current*
+      // index. Reconcile keyed on `path` does the diff/merge, preserving row
+      // identity for unaffected rows and any popovers anchored on them.
+      setRepos(reconcile(spliceFamilyAt(repos, primary, updated), { key: 'path' }));
+    } finally {
+      rendererPerf.endSpan('reposReloadPrimary', span);
     }
-    const updated = await window.condash.listReposForPrimary(primary.name);
-    // Same staleness guard as reloadRepos — the conception may have
-    // switched while the per-primary fetch was in flight.
-    if (deps.conceptionPath() !== conception) return;
-    if (updated.length === 0) {
-      // Primary disappeared from condash.json between the watcher
-      // event and this fetch — reload everything to reconcile.
-      void reloadRepos();
-      return;
-    }
-    // Splice the freshly-fetched family back in at the primary's *current*
-    // index. Reconcile keyed on `path` does the diff/merge, preserving row
-    // identity for unaffected rows and any popovers anchored on them.
-    setRepos(reconcile(spliceFamilyAt(repos, primary, updated), { key: 'path' }));
   };
 
   // Per-primary reload debouncer. Coalesces bursts of structural events
@@ -166,11 +177,16 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
     // tree — so the main process is responsible for tearing down watchers
     // on conception change (which it already does).
     if (!deps.conceptionPath()) return;
-    applyRepoEvents(events, {
-      repos,
-      setRepos,
-      onWorktreesChanged: schedulePrimaryReload,
-    });
+    const span = rendererPerf.startSpan();
+    try {
+      applyRepoEvents(events, {
+        repos,
+        setRepos,
+        onWorktreesChanged: schedulePrimaryReload,
+      });
+    } finally {
+      rendererPerf.endSpan('reposApplyEvents', span);
+    }
   });
   onCleanup(offRepoEvents);
 

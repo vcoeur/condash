@@ -1,5 +1,6 @@
 import { createEffect, createSignal, type Accessor } from 'solid-js';
 import type { OpenPullRequest, Project } from '@shared/types';
+import { rendererPerf } from './perf-renderer';
 
 // Shared open-PR index behind the Projects-pane card badges.
 //
@@ -63,29 +64,34 @@ export function prsForProject(project: Pick<Project, 'apps' | 'branch'>): OpenPu
  * @param projects The current project list (typically the store's accessor value).
  */
 export async function reloadPrIndex(projects: readonly Project[]): Promise<void> {
-  const apps = new Set<string>();
-  for (const project of projects) {
-    if (!project.branch) continue;
-    for (const app of project.apps) apps.add(app);
+  const span = rendererPerf.startSpan();
+  try {
+    const apps = new Set<string>();
+    for (const project of projects) {
+      if (!project.branch) continue;
+      for (const app of project.apps) apps.add(app);
+    }
+    const mine = ++generation;
+    if (apps.size === 0) {
+      setPrIndex(new Map());
+      return;
+    }
+    const entries = await Promise.all(
+      [...apps].map(async (app): Promise<[string, OpenPullRequest[]]> => {
+        try {
+          return [app, await window.condash.listOpenPullRequests(app)];
+        } catch {
+          return [app, []];
+        }
+      }),
+    );
+    // Drop a stale result: a newer reload (or a conception switch) started while
+    // this one's `gh` calls were in flight.
+    if (mine !== generation) return;
+    setPrIndex(new Map(entries));
+  } finally {
+    rendererPerf.endSpan('prIndexReload', span);
   }
-  const mine = ++generation;
-  if (apps.size === 0) {
-    setPrIndex(new Map());
-    return;
-  }
-  const entries = await Promise.all(
-    [...apps].map(async (app): Promise<[string, OpenPullRequest[]]> => {
-      try {
-        return [app, await window.condash.listOpenPullRequests(app)];
-      } catch {
-        return [app, []];
-      }
-    }),
-  );
-  // Drop a stale result: a newer reload (or a conception switch) started while
-  // this one's `gh` calls were in flight.
-  if (mine !== generation) return;
-  setPrIndex(new Map(entries));
 }
 
 /**

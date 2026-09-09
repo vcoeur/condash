@@ -1,4 +1,5 @@
 import type { Project, TreeEvent } from '@shared/types';
+import { rendererPerf } from './perf-renderer';
 
 /**
  * Per-channel callbacks for the renderer. The watcher emits typed
@@ -36,6 +37,15 @@ export interface TreeEventsDeps {
  * single batch (250 ms debounce); we coalesce within the batch.
  */
 export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Promise<void> {
+  const span = rendererPerf.startSpan();
+  try {
+    await dispatchTreeEvents(events, deps);
+  } finally {
+    rendererPerf.endSpan('treeApplyEvents', span);
+  }
+}
+
+async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Promise<void> {
   let knowledgeDirty = false;
   let resourcesDirty = false;
   let skillsDirty = false;
