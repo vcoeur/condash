@@ -65,6 +65,15 @@ export async function exec(
       if (error) reject(error);
       else resolve({ stdout, stderr });
     });
-    if (child.pid != null) disarm = armSpawnDeadline(child.pid, spawnDeadlineMs);
+    if (child.pid != null) {
+      // Worker construction can throw under resource pressure — the exec
+      // must still follow the child's own outcome (execFile's JS `timeout`
+      // backstop remains armed), not reject spuriously.
+      try {
+        disarm = armSpawnDeadline(child.pid, spawnDeadlineMs);
+      } catch {
+        disarm = (): void => {};
+      }
+    }
   });
 }

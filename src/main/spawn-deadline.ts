@@ -9,9 +9,12 @@
 // The worker is created per deadline and unref'd; its timer is ref'd inside
 // the worker so the worker lives until the deadline fires, and
 // `worker.unref()` keeps it from holding the app open. Disarming (the child
-// settled in time) terminates the worker outright — mandatory, not cosmetic:
-// after the child exits its pid can be recycled, and a lingering deadline
-// would signal an innocent process.
+// settled in time) terminates the worker — best-effort protection against pid
+// recycling: disarm runs on the main loop, so under a blocked loop the
+// deadline can still fire after the child exited and its pid was recycled,
+// delivering SIGTERM to an innocent process. That is the same exposure as
+// Node's own timeout kill; the deadline buys a bounded cap despite a blocked
+// loop, not a recycling guarantee.
 import { Worker } from 'node:worker_threads';
 
 const WORKER_SOURCE = `
@@ -31,8 +34,10 @@ parentPort.on('message', (job) => {
 
 /**
  * Kill `pid` with `signal` after `delayMs`, regardless of the main thread's
- * event-loop health. Returns a disarm function — call it the moment the
- * child settles so a recycled pid is never signalled. Idempotent; a dead
+ * event-loop health. Returns a disarm function — call it when the child
+ * settles to cancel the pending kill; it can only take effect once the main
+ * loop runs it, so a blocked loop leaves the same small pid-recycling window
+ * as Node's own timeout kill (see the module header). Idempotent; a dead
  * deadline worker (spawn failure) silently leaves the child alone, which is
  * what the internal `execFile` timeout backstop exists for.
  *
