@@ -16,8 +16,8 @@ static JSON literals. condash renders it in the in-app viewer and validates it
 with `condash mdx check`. Everything is local files; there is no hosted service.
 
 The condash-shipped **`/visual`** skill authors them all. One skill, one
-dialect; a frontmatter `kind` picks the posture and what the bottom
-question-form asks:
+dialect; a frontmatter `kind` picks the posture and what the open questions
+ask:
 
 - **`design`** — approaches still being weighed; the form asks *directions*.
 - **`plan`** — the reviewable approval gate before code; the form asks *approval*.

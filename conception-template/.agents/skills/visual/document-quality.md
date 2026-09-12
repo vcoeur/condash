@@ -39,9 +39,10 @@ vocabulary is `blocks.md` (`condash mdx blocks`); highlights:
   plain `code` block only for a throwaway snippet. Group several files in a
   vertical `tabs` block. If the exact code is unknown, show the smallest
   plausible planned shape or a commented stub.
-- For a decision: a genuinely open either/or goes in the bottom Open
-  Questions `question-form` as a `single` question with `recommended: true`
-  on your pick. An already-committed approach is settled prose or a
+- For a decision: a genuinely open either/or goes in an Open Questions
+  `question-form` — the bottom one, or the one below the section that
+  decision belongs to — as a `single` question with `recommended: true` on
+  your pick. An already-committed approach is settled prose or a
   `callout` with `tone="decision"`, optionally beside a `columns` comparison
   of the options weighed — never a mid-document form for a question you
   already answered.
@@ -65,15 +66,18 @@ vocabulary is `blocks.md` (`condash mdx blocks`); highlights:
   mockup or comparison, and it must read correctly in both themes via the
   `--wf-*` tokens.
 
-**Open questions live at the bottom as ONE form** — one block, holding as many
-questions as the document has open decisions. A final `question-form`
-block under an `### Open Questions` heading is the only place that
-enumerates them; a one-line pointer in the overview is fine, a second list
-is not. `single`/`multi` for clear choices, `freeform` for constraints,
+**Open questions live in ONE form by default** — one bottom form collecting
+every single or cross-cutting decision, holding as many questions as the
+document has open decisions, under an `### Open Questions` heading. A
+one-line pointer in the overview is fine, a second list is not. A note whose
+decision sections are independent may instead put one `question-form` below
+each decision section, so each question sits beside the options it decides —
+pick one shape and stay consistent within the note.
+`single`/`multi` for clear choices, `freeform` for constraints,
 `recommended: true` for your default. Non-answerable assumptions stay as
 concise `callout`s in the relevant section. For complex plans, do a final
 open-question audit: every meaningful decision is either committed with
-rationale or in the form with a recommended default.
+rationale or in a form with a recommended default.
 
 **Verification must exercise the real workflow.** Beyond typecheck/tests when
 the plan changes UI, files, or multi-app flows: at least one end-to-end smoke
