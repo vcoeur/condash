@@ -13,6 +13,7 @@
  *
  * Each helper does one thing — tests assemble the bits they need.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -115,6 +116,48 @@ export interface Captured {
   threw: unknown;
 }
 
+interface CaptureFrame {
+  readonly stdout: string[];
+  readonly stderr: string[];
+}
+
+/** Associates asynchronous writes with the capture that started their work. */
+const captureContext = new AsyncLocalStorage<CaptureFrame>();
+const captureStack: CaptureFrame[] = [];
+let originalOut: typeof process.stdout.write | undefined;
+let originalErr: typeof process.stderr.write | undefined;
+
+/** Return whether a frame remains live in the scoped capture stack. */
+function isActiveCapture(frame: CaptureFrame): boolean {
+  return captureStack.includes(frame);
+}
+
+/** Append a stream chunk to its owning frame, discarding work from a retired one. */
+function captureWrite(stream: 'stdout' | 'stderr', data: string | Uint8Array): boolean {
+  const contextualFrame = captureContext.getStore();
+  if (contextualFrame && !isActiveCapture(contextualFrame)) return true;
+
+  const frame = contextualFrame ?? captureStack.at(-1);
+  if (!frame) return false;
+
+  const chunks = stream === 'stdout' ? frame.stdout : frame.stderr;
+  chunks.push(typeof data === 'string' ? data : Buffer.from(data).toString('utf8'));
+  return true;
+}
+
+/** Restore the real stream writers only after the outermost capture finishes. */
+function removeCapture(frame: CaptureFrame): void {
+  const frameIndex = captureStack.lastIndexOf(frame);
+  if (frameIndex === -1) return;
+  captureStack.splice(frameIndex, 1);
+  if (captureStack.length !== 0) return;
+
+  if (originalOut) process.stdout.write = originalOut;
+  if (originalErr) process.stderr.write = originalErr;
+  originalOut = undefined;
+  originalErr = undefined;
+}
+
 /**
  * Run `fn`, capture everything it writes to stdout + stderr, and surface
  * any thrown error rather than letting it escape. Mirrors the pattern in
@@ -125,27 +168,30 @@ export function captureStdout(fn: () => Promise<void> | void): Promise<Captured>
   return new Promise((resolve) => {
     const out: string[] = [];
     const err: string[] = [];
-    const origOut = process.stdout.write.bind(process.stdout);
-    const origErr = process.stderr.write.bind(process.stderr);
+    const frame: CaptureFrame = { stdout: out, stderr: err };
+    if (!originalOut || !originalErr) {
+      originalOut = process.stdout.write;
+      originalErr = process.stderr.write;
+    }
     process.stdout.write = ((data: string | Uint8Array) => {
-      out.push(typeof data === 'string' ? data : Buffer.from(data).toString('utf8'));
-      return true;
+      if (captureWrite('stdout', data)) return true;
+      return originalOut?.call(process.stdout, data) ?? true;
     }) as typeof process.stdout.write;
     process.stderr.write = ((data: string | Uint8Array) => {
-      err.push(typeof data === 'string' ? data : Buffer.from(data).toString('utf8'));
-      return true;
-    }) as typeof process.stderr.write;
-    Promise.resolve()
-      .then(fn)
+      if (captureWrite('stderr', data)) return true;
+      return originalErr?.call(process.stderr, data) ?? true;
+    }) as typeof process.stdout.write;
+    captureStack.push(frame);
+
+    captureContext
+      .run(frame, () => Promise.resolve().then(fn))
       .then(
         () => {
-          process.stdout.write = origOut;
-          process.stderr.write = origErr;
+          removeCapture(frame);
           resolve({ stdout: out.join(''), stderr: err.join(''), threw: undefined });
         },
         (e) => {
-          process.stdout.write = origOut;
-          process.stderr.write = origErr;
+          removeCapture(frame);
           resolve({ stdout: out.join(''), stderr: err.join(''), threw: e });
         },
       );
