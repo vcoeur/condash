@@ -12,6 +12,7 @@ import { readHeader } from '../header-io';
 import { exec } from '../exec';
 import { isSectionMarker, walkRepos, type ConfigShape } from '../config-walk';
 import { getEffectiveConceptionConfig } from '../effective-config';
+import { appHandle } from '../../shared/app-color';
 
 export interface ConfigWithPaths extends ConfigShape {
   worktrees_path?: string;
@@ -39,7 +40,8 @@ export function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupEx
     // at the same lookup object, whose `.name` stays the canonical directory
     // name callers use for the worktree path.
     for (const key of [entry.handle, ...(entry.aliases ?? [])]) {
-      if (key && !map.has(key)) map.set(key, lookup);
+      const canonicalKey = key && appHandle(key);
+      if (canonicalKey && !map.has(canonicalKey)) map.set(canonicalKey, lookup);
     }
   });
   // Re-walk the raw config to pick up `pinned_branch`, `install`, and `env`
@@ -136,7 +138,7 @@ export function rootRepoFromApp(app: string): string {
   // table column) and is not part of the canonical repo name in
   // condash.json. The worktree is always at the top-level repo, so strip
   // both the `#` and the inner path.
-  return app.replace(/^#/, '').split('/')[0];
+  return appHandle(app.replace(/^#/, '').split('/')[0]);
 }
 
 /**

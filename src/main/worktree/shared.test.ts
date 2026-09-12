@@ -33,6 +33,11 @@ describe('rootRepoFromApp', () => {
   it('strips both `#` and sub-path together', () => {
     expect(rootRepoFromApp('#condash/frontend')).toBe('condash');
   });
+
+  it('normalises mixed-case handles through the canonical app handle', () => {
+    expect(rootRepoFromApp('#Vcoeur/frontend')).toBe('vcoeur');
+    expect(rootRepoFromApp('CONDASH/frontend')).toBe('condash');
+  });
 });
 
 describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
@@ -41,8 +46,8 @@ describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
   const config: ConfigWithPaths = {
     workspace_path: '/ws',
     repositories: [
-      { handle: 'vcoeur', path: 'vcoeur.com', aliases: ['vcoeur.com'] },
-      { name: 'condash' },
+      { handle: 'vcoeur', path: 'vcoeur.com', aliases: ['VcoeurLegacy'] },
+      { name: 'condash', submodules: ['frontend'] },
       // Collision: this repo's handle equals the *name* of the next repo.
       { handle: 'foo', name: 'bar' },
       { name: 'foo' },
@@ -59,6 +64,17 @@ describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
     const map = repoLookupMap(config);
     expect(resolveAppRepo('#vcoeur', map)?.name).toBe('vcoeur.com');
     expect(resolveAppRepo('vcoeur', map)?.name).toBe('vcoeur.com');
+  });
+
+  it('resolves mixed-case handle tokens to the canonical directory name', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('#VCOEUR/frontend', map)?.name).toBe('vcoeur.com');
+  });
+
+  it('resolves a distinct mixed-case alias, including a submodule token', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('VCOEURLegacy', map)?.name).toBe('vcoeur.com');
+    expect(resolveAppRepo('#VCOEURLegacy/docs', map)?.name).toBe('vcoeur.com');
   });
 
   it('resolves a directory-name or alias token too', () => {
