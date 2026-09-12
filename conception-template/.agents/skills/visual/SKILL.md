@@ -130,7 +130,9 @@ judgment calls to the Open Questions form.
   condash, where the diagram draws on a light card and opens in a lightbox
   with Download .svg. Read [`svg.md`](svg.md) before authoring one. The
   html/css `diagram` block stays for panel / layer / swimlane / matrix layouts
-  whose text must reflow; `mermaid` is no longer suggested.
+  whose text must reflow. Use `mermaid` only for textual and grammar-led
+  diagrams such as sequences and state transitions; `flowchart` and `graph`
+  sources warn without failing `mdx check`, so use `<Svg>` for spatial layouts.
 - **Non-visual notes** (architecture-only, backend, migrations, copy): no
   wireframes. A strong document with local inline `svg` / `diagram` /
   `data-model` / `api-endpoint` blocks next to the claims they support. Prefer

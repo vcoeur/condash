@@ -251,6 +251,11 @@ function normalizeElement(el: MdxJsxFlowElement, state: NormalizeState): PlanBlo
     state.issues.push({ severity: 'warning', message: `<${tag}>: ${emptiness}`, line });
   }
 
+  const mermaidWarning = spatialMermaidWarning(spec.type, data);
+  if (mermaidWarning) {
+    state.issues.push({ severity: 'warning', message: `<${tag}>: ${mermaidWarning}`, line });
+  }
+
   if (spec.type === 'tabs' || spec.type === 'code-tabs') {
     validateNestedRefs(data, state, tag, line);
   }
@@ -483,6 +488,15 @@ function emptyPayloadMessage(type: string, data: Record<string, unknown>): strin
   }
 }
 
+/** Warn when Mermaid's flowchart grammar is being used for a spatial layout. */
+function spatialMermaidWarning(type: string, data: Record<string, unknown>): string | null {
+  if (type !== 'mermaid' || typeof data.source !== 'string') return null;
+  const source = data.source.replace(/^\s*---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
+  return /^\s*(?:%%[^\r\n]*(?:\r?\n|$)\s*)*(?:flowchart|graph)\b/i.test(source)
+    ? 'flowchart/graph sources use spatial layout — use <Svg> for geometry and arrows'
+    : null;
+}
+
 /** Validate the {id,type,data} refs a container carries in JSON props,
  *  replacing failures with invalid placeholders (salvage at depth). */
 function validateNestedRefs(
@@ -555,6 +569,14 @@ function validateNestedRef(
     state.issues.push({
       severity: 'warning',
       message: `<${tag}> nested ${candidate.type} "${candidate.id}": ${emptiness}`,
+      line,
+    });
+  }
+  const mermaidWarning = spatialMermaidWarning(candidate.type, candidate.data);
+  if (mermaidWarning) {
+    state.issues.push({
+      severity: 'warning',
+      message: `<${tag}> nested ${candidate.type} "${candidate.id}": ${mermaidWarning}`,
       line,
     });
   }

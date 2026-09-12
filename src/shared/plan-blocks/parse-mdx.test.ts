@@ -312,6 +312,63 @@ describe('parsePlanMdx', () => {
     expect(doc.issues.filter((i) => i.severity === 'warning')).toHaveLength(1);
   });
 
+  it.each([
+    'flowchart TD\n  A --> B',
+    'flowchart LR\n  A --> B',
+    'graph TB\n  A --> B',
+    'graph RL\n  A --> B',
+    '%% a Mermaid comment\nflowchart BT\n  A --> B',
+  ])('warns on spatial Mermaid source %j', (source) => {
+    const doc = parsePlanMdx(`<Mermaid source={${JSON.stringify(source)}} />`);
+    expect(doc.issues).toEqual([
+      {
+        severity: 'warning',
+        message:
+          '<Mermaid>: flowchart/graph sources use spatial layout — use <Svg> for geometry and arrows',
+        line: 1,
+      },
+    ]);
+  });
+
+  it.each([
+    'sequenceDiagram\n  Alice->>Bob: Hello',
+    'stateDiagram-v2\n  [*] --> Ready',
+    'classDiagram\n  Animal <|-- Duck',
+    'erDiagram\n  USER ||--o{ ORDER : places',
+  ])('keeps non-spatial Mermaid source %j quiet', (source) => {
+    const doc = parsePlanMdx(`<Mermaid source={${JSON.stringify(source)}} />`);
+    expect(doc.issues).toEqual([]);
+  });
+
+  it('warns on a spatial Mermaid source after Mermaid frontmatter', () => {
+    const source = ['---', 'config:', '  theme: dark', '---', 'flowchart LR', '  A --> B'].join(
+      '\n',
+    );
+    const doc = parsePlanMdx(`<Mermaid source={${JSON.stringify(source)}} />`);
+    expect(doc.issues).toEqual([
+      {
+        severity: 'warning',
+        message:
+          '<Mermaid>: flowchart/graph sources use spatial layout — use <Svg> for geometry and arrows',
+        line: 1,
+      },
+    ]);
+  });
+
+  it('warns on a spatial Mermaid source nested in tabs', () => {
+    const doc = parsePlanMdx(
+      '<TabsBlock tabs={[{ id: "tab", label: "Tab", blocks: [{ id: "flow", type: "mermaid", data: { source: "graph TD\\n  A --> B" } }] }]} />',
+    );
+    expect(doc.issues).toEqual([
+      {
+        severity: 'warning',
+        message:
+          '<TabsBlock> nested mermaid "flow": flowchart/graph sources use spatial layout — use <Svg> for geometry and arrows',
+        line: 1,
+      },
+    ]);
+  });
+
   it('salvages an invalid nested tab block and keeps the rest', () => {
     const doc = parsePlanMdx(
       [
