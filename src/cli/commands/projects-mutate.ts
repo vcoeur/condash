@@ -72,22 +72,29 @@ export async function closeProject(
   const newStatus = (args.flags.status as string | undefined) ?? 'done';
   const summary = (args.flags.summary as string | undefined)?.trim();
   const noTouchDirty = args.flags['no-touch-dirty'] === true;
-  for (const k of ['status', 'summary', 'no-touch-dirty']) delete args.flags[k];
+  const knowledgeChecked = args.flags['knowledge-checked'] === true;
+  for (const k of ['status', 'summary', 'no-touch-dirty', 'knowledge-checked'])
+    delete args.flags[k];
   assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects close <slug>');
   if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
     validation(`Status '${newStatus}' not in {${KNOWN_STATUSES.join(', ')}}`);
   }
+  if (knowledgeChecked && newStatus !== 'done') {
+    validation('--knowledge-checked requires the close target status to be done');
+  }
 
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
   const transition = await transitionStatus(candidate.readmePath, newStatus, { summary });
 
-  // After closing, append the mandatory knowledge-promotion check entry.
-  // This guarantees "Closed." never follows the check — the check is always last.
-  const today = new Date().toISOString().slice(0, 10);
-  await appendTimelineEntry(candidate.readmePath, `- ${today} — Checked knowledge promotion`);
+  // The marker is an editorial attestation, not an automatic close side effect.
+  // Acknowledged close targets are always done; append after Closed. so it remains last.
+  if (knowledgeChecked) {
+    const today = new Date().toISOString().slice(0, 10);
+    await appendTimelineEntry(candidate.readmePath, `- ${today} — ${KNOWLEDGE_CHECK_TEXT}`);
+  }
 
   const dirtyMarker = noTouchDirty ? false : await touchDirtyMarker(conceptionPath, 'projects');
 
@@ -101,6 +108,7 @@ export async function closeProject(
       previousStatus: transition.previousStatus,
       newStatus: transition.newStatus,
       timelineAppended: transition.timelineAppended,
+      knowledgeChecked,
       dirtyMarkerTouched: dirtyMarker,
     },
     (d) => {
@@ -120,9 +128,9 @@ export async function closeProject(
  * itself is editorial work the `/knowledge` skill performs (the three-question
  * durability test plus real `/knowledge update` entries). `--record` is the
  * mechanical, consistently-dated recorder the skill calls *after* that review,
- * so the marker is never hand-typed; `close` records it the same way at the end
- * of the close ritual. There is no mass/backfill writer — a done project gets the
- * marker only once it has actually been reviewed.
+ * so the marker is never hand-typed. A close may record it only with its explicit
+ * `--knowledge-checked` acknowledgement. There is no mass/backfill writer — a done
+ * project gets the marker only once it has actually been reviewed.
  */
 export async function checkKnowledgeCommand(
   args: ParsedArgs,
@@ -140,8 +148,12 @@ export async function checkKnowledgeCommand(
   }
 
   const candidate = await resolveSlug(conceptionPath, slug);
+  const header = await readHeader(candidate.readmePath);
 
   if (record) {
+    if ((header.status ?? '').toLowerCase() !== 'done') {
+      validation('--record requires the project status to be done');
+    }
     const today = new Date().toISOString().slice(0, 10);
     const line = `- ${today} — ${KNOWLEDGE_CHECK_TEXT}`;
     await appendTimelineEntry(candidate.readmePath, line);

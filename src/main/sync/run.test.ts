@@ -617,7 +617,7 @@ describe('syncRun', () => {
     await settle(readme);
     await syncRun(root, RUN_DEFAULTS);
 
-    // The write-files-only close ritual: status flip + Closed. timeline entry.
+    // The ordinary write-files-only close ritual: status flip + Closed. timeline entry.
     await writeProjectReadme(root, 'alpha', {
       date: '2026-07-10',
       kind: 'project',
@@ -627,7 +627,6 @@ describe('syncRun', () => {
         '',
         '- 2026-07-10 — Opened.',
         '- 2026-07-12 — Closed. Did the thing.',
-        '- 2026-07-12 — Checked knowledge promotion',
       ].join('\n'),
     });
     await settle(readme);

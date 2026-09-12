@@ -67,15 +67,15 @@ Trigger: `/projects close <slug>`.
    - YYYY-MM-DD — Removed worktrees: <branch>/<repo>, …; deleted local branches: <branch> (<repo>).
    ```
 
-   Nothing removed or deleted → no entry. Cleanup runs **before** the status flip so the `Checked knowledge promotion` entry the close appends stays last.
+    Nothing removed or deleted → no entry. Cleanup runs **before** the status flip so an explicit `--knowledge-checked` acknowledgement remains last.
 
 6. **Flip status + append timeline:**
 
     ```bash
-    condash projects close <slug> --summary "<one-line outcome>" --json
+     condash projects close <slug> --summary "<one-line outcome>" --knowledge-checked --json
     ```
 
-    The CLI sets the status to `done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, then **automatically appends** `- YYYY-MM-DD — Checked knowledge promotion`. The check entry is always last — nothing may follow it without re-running the check. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
+     The ordinary CLI command sets the status to `done` and appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`; it does **not** automatically attest to the editorial review. Only if step 4 was completed in this close, pass `--knowledge-checked`: it then appends `- YYYY-MM-DD — Checked knowledge promotion` after `Closed.` as the last entry. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`. For an already-done item, complete the review and use `condash projects check-knowledge <slug> --record` instead.
 
 7. **Refresh dirty indexes.**
 

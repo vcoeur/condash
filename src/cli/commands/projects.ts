@@ -43,7 +43,12 @@ export const KNOWN_FLAGS_RESOLVE: readonly string[] = [];
 export const KNOWN_FLAGS_SEARCH = ['limit', 'status', 'kind'] as const;
 export const KNOWN_FLAGS_VALIDATE = ['all', 'path'] as const;
 export const KNOWN_FLAGS_STATUS = ['summary'] as const;
-export const KNOWN_FLAGS_CLOSE = ['status', 'summary', 'no-touch-dirty'] as const;
+export const KNOWN_FLAGS_CLOSE = [
+  'status',
+  'summary',
+  'no-touch-dirty',
+  'knowledge-checked',
+] as const;
 export const KNOWN_FLAGS_CHECK_KNOWLEDGE = ['record'] as const;
 export const KNOWN_FLAGS_REOPEN = ['status', 'summary'] as const;
 export const KNOWN_FLAGS_BACKFILL_CLOSED = ['dry-run'] as const;
@@ -230,18 +235,22 @@ function printHelp(verb: string | null): void {
       return;
     case 'close':
       writeBlock([
-        'condash projects close <slug> [--status <s>] [--summary <text>] [--no-touch-dirty]',
+        'condash projects close <slug> [--status <s>] [--summary <text>] [--knowledge-checked] [--no-touch-dirty]',
         '',
         'Flip status to done + append a closing Timeline entry; warn on leftover branch/worktree.',
+        'Use --knowledge-checked only after the editorial knowledge-promotion review;',
+        'it appends the acknowledgement marker after Closed. as the last Timeline entry.',
         '',
         'Optional:',
         '  --status           Override target status (default: done).',
         '  --summary          Annotate the Timeline entry.',
+        '  --knowledge-checked  With a done target, acknowledge a completed review; append its marker last.',
         '  --no-touch-dirty   Skip touching the projects dirty marker.',
         '',
         'Examples:',
         '  condash projects close condash-cli-ux-fixes',
         '  condash projects close condash-cli-ux-fixes --summary "shipped"',
+        '  condash projects close condash-cli-ux-fixes --knowledge-checked',
       ]);
       return;
     case 'reopen':
@@ -328,7 +337,8 @@ function printHelp(verb: string | null): void {
         '',
         '  --record    Append a dated "Checked knowledge promotion" entry (today) to',
         '              <slug>. The mechanical recorder the skill calls AFTER a real review,',
-        '              so the marker is never hand-typed; close records it the same way.',
+        '              so the marker is never hand-typed; `close --knowledge-checked`',
+        '              records it only for a done target.',
         '              There is no mass/backfill writer — a done project gets the marker',
         '              only once it has actually been reviewed.',
         '',

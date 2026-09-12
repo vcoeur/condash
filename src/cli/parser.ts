@@ -54,6 +54,7 @@ export const BOOL_FLAGS: ReadonlySet<string> = new Set([
   'with-meta',
   'redact',
   'record',
+  'knowledge-checked',
 ]);
 
 /**
