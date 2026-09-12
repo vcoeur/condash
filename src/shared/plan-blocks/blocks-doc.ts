@@ -48,6 +48,9 @@ ${deprecated.join('\n')}
   inline flex/grid layout. Never \`<html>\`/\`<style>\`/\`<script>\` tags, fonts, or hex colors.
 - \`<Diagram>\` carries its markup as \`\`\`html and \`\`\`css fences in the children; use the
   \`.diagram-*\` primitives and \`--wf-*\` tokens.
+- \`<Mermaid>\` is for textual and grammar-led diagrams such as sequences and state transitions.
+  \`flowchart\` and \`graph\` sources warn without failing the check; use \`<Svg>\` for spatial
+  layouts with geometry and arrows.
 - \`<Svg alt="…" caption="…">\` carries a real \`<svg viewBox="…">…</svg>\` as a \`\`\`svg fence
   in the children, plus an optional \`\`\`css fence for the classes its \`<text>\` uses (never a
   \`<style>\` element inside the svg — it is stripped). Inline only: no \`src\`, no sidecar file,

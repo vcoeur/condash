@@ -67,6 +67,25 @@ describe('mdx check', () => {
     expect(envelope.data?.warnings.some((w) => w.message.includes('kind'))).toBe(false);
   });
 
+  it('emits a non-failing warning for a spatial Mermaid source', async () => {
+    const file = join(planDir, 'plan.mdx');
+    await fs.writeFile(file, '<Mermaid source={"flowchart LR\\n  A --> B"} />\n', 'utf8');
+    const { stdout, threw } = await captureStdout(() =>
+      runMdx('check', args([file]), jsonCtx(), conceptionPath, false),
+    );
+    expect(threw).toBeUndefined();
+    const envelope = parseJsonEnvelope<{ warnings: { message: string; line?: number }[] }>(stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.data?.warnings).toEqual([
+      {
+        severity: 'warning',
+        message:
+          '<Mermaid>: flowchart/graph sources use spatial layout — use <Svg> for geometry and arrows',
+        line: 1,
+      },
+    ]);
+  });
+
   it('exits VALIDATION with the report on block errors', async () => {
     await fs.writeFile(join(planDir, 'plan.mdx'), '<Bogus id="b" />\n', 'utf8');
     const { threw } = await captureStdout(() =>

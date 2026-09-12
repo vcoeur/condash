@@ -123,8 +123,8 @@ export const BLOCK_SPECS: readonly BlockSpec[] = [
     tag: 'Mermaid',
     fields: 'source, caption?',
     description:
-      'A Mermaid diagram for cases where textual sequence/flowchart grammar is clearer than a ' +
-      'spatial layout.',
+      'A Mermaid diagram for textual and grammar-led diagrams such as sequences and state ' +
+      'transitions. Flowchart and graph sources warn; use <Svg> for spatial layouts.',
   },
   {
     type: 'diagram',
