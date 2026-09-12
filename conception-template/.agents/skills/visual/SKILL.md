@@ -21,8 +21,7 @@ imports, no expressions, no `${…}`.
 ## Four postures — set `kind`
 
 The document's posture is one frontmatter field, `kind`. It picks the reader's
-job and what the bottom `question-form` asks — nothing else about the dialect
-changes.
+job and what the open questions ask — nothing else about the dialect changes.
 
 | `kind` | You are asking | When | The form asks |
 |---|---|---|---|
@@ -117,7 +116,7 @@ Refresh tokens without re-login.
 risky notes): one adversarial pass over the written document — hard-to-reverse
 decisions made implicitly, steps not anchored in real files, a menu of options
 where the note should commit, padding. Apply clear-cut fixes; route genuine
-judgment calls to the Open Questions form.
+judgment calls to an open questions form.
 
 ## Visual surface choice
 
@@ -148,13 +147,14 @@ judgment calls to the Open Questions form.
 
 ## Open questions — answered in the viewer
 
-A note's open decisions live in ONE bottom `question-form` block under an
-`### Open Questions` heading, each with a recommended default — the single place
-they are enumerated. One block, as many questions as the document has open
-decisions: what is fixed is where they live, not how many there are. What they ask follows the posture: **directions** for a
-`design`, **approval** for a `plan`, **feedback** for a `review`; a `note`
-usually has none. Non-answerable assumptions stay as concise `callout`s in the
-relevant section.
+By default, a note's open decisions live in one bottom form collecting every
+single or cross-cutting decision, under an `### Open Questions` heading,
+each with a recommended default. A note with independent decision sections
+may instead put one `question-form` below each decision section, so each
+question sits beside the options it decides. What they ask follows the
+posture: **directions** for a `design`, **approval** for a `plan`,
+**feedback** for a `review`; a `note` usually has none. Non-answerable
+assumptions stay as concise `callout`s in the relevant section.
 
 condash renders the form **interactively**: the reader picks options (radio for
 `single`, checkboxes for `multi`) or types a `freeform` answer, then saves the
