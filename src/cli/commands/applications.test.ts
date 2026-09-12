@@ -132,6 +132,22 @@ describe('runApplications add', () => {
     expect(threw).toBeInstanceOf(CliError);
     expect((threw as CliError).exitCode).toBe(2);
   });
+
+  it('rejects an empty --path as USAGE without changing the config', async () => {
+    await seed({ repositories: [{ handle: 'gamma', path: 'gamma' }] });
+    const configPath = join(conceptionPath, 'condash.json');
+    const before = await fs.readFile(configPath, 'utf8');
+
+    const { threw } = await captureStdout(() =>
+      runApplications('set', args('set', ['gamma'], { path: '' }), jsonCtx(), conceptionPath),
+    );
+
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(2);
+    expect((threw as CliError).message).toContain('--path must be non-empty');
+    expect(await fs.readFile(configPath, 'utf8')).toBe(before);
+    await expect(fs.access(join(conceptionPath, '.condash', 'settings.json'))).rejects.toThrow();
+  });
 });
 
 describe('runApplications unknown verb', () => {

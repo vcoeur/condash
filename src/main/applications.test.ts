@@ -394,6 +394,32 @@ describe('add / set / rename round-trips', () => {
     await expect(addApplication(tmp, { handle: 'condash', path: 'x' })).rejects.toThrow(/exists/);
   });
 
+  it('rejects an empty path before writing and preserves the raw config', async () => {
+    writeConfig({ repositories: [{ handle: 'gamma', path: 'gamma' }] });
+    const configPath = join(tmp, 'condash.json');
+    const before = readFileSync(configPath, 'utf8');
+
+    await expect(setApplication(tmp, 'gamma', { path: '' })).rejects.toThrow(
+      /path must be non-empty.*locator/,
+    );
+
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+    expect(() => readFileSync(join(tmp, '.condash', 'settings.json'), 'utf8')).toThrow();
+  });
+
+  it('writes a valid path mutation that passes the conception schema', async () => {
+    writeConfig({ repositories: [{ handle: 'gamma', path: 'gamma' }] });
+
+    await setApplication(tmp, 'gamma', { path: 'gamma-moved' });
+
+    const written = readFileSync(join(tmp, '.condash', 'settings.json'), 'utf8');
+    const { conceptionConfigSchema } = await import('./config-schema');
+    expect(conceptionConfigSchema.safeParse(JSON.parse(written)).success).toBe(true);
+    expect(JSON.parse(written)).toMatchObject({
+      repositories: [{ handle: 'gamma', path: 'gamma-moved' }],
+    });
+  });
+
   it('rejects adding an app whose handle collides with a submodule (#335)', async () => {
     writeConfig({
       repositories: [{ name: 'parent-repo', submodules: [{ handle: 'child-a', name: 'child-a' }] }],
