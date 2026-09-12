@@ -20,6 +20,7 @@ import {
   writeProjectReadme,
 } from './test-helpers';
 import { CliError } from '../output';
+import { checkKnowledgeCheck } from '../../main/audit/check-knowledge';
 
 let conceptionPath: string;
 
@@ -133,7 +134,7 @@ describe('statusCommand set', () => {
 });
 
 describe('closeProject', () => {
-  it('flips status → done and writes a Closed timeline entry', async () => {
+  it('flips status → done and writes a Closed timeline entry without a knowledge marker', async () => {
     const readme = await writeProjectReadme(conceptionPath, 'alpha', {
       date: '2026-05-01',
       kind: 'project',
@@ -159,7 +160,63 @@ describe('closeProject', () => {
     const updated = await fs.readFile(readme, 'utf8');
     expect(updated).toMatch(/status: done/);
     expect(updated).toMatch(/—\s+Closed\.\s+Shipped in v3\.10\.4/);
-    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
+    expect(updated).not.toMatch(/—\s+Checked knowledge promotion/);
+    expect(await checkKnowledgeCheck(conceptionPath)).toHaveLength(1);
+  });
+
+  it('appends the knowledge marker last only with --knowledge-checked', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'now',
+      title: 'Alpha',
+      body: '## Timeline\n\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      closeProject(
+        {
+          noun: 'projects',
+          verb: 'close',
+          positional: ['alpha'],
+          flags: { 'knowledge-checked': true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    expect(parseJsonEnvelope<{ knowledgeChecked: boolean }>(stdout).data!.knowledgeChecked).toBe(
+      true,
+    );
+    const updated = await fs.readFile(readme, 'utf8');
+    expect(updated).toMatch(/—\s+Closed\.[\s\S]*—\s+Checked knowledge promotion\s*$/);
+    expect(await checkKnowledgeCheck(conceptionPath)).toEqual([]);
+  });
+
+  it('rejects --knowledge-checked for a non-done close target without mutating', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'now',
+      title: 'Alpha',
+      body: '## Timeline\n\n',
+    });
+    const before = await fs.readFile(readme, 'utf8');
+    const { threw } = await captureStdout(() =>
+      closeProject(
+        {
+          noun: 'projects',
+          verb: 'close',
+          positional: ['alpha'],
+          flags: { status: 'review', 'knowledge-checked': true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(3);
+    expect(await fs.readFile(readme, 'utf8')).toBe(before);
   });
 
   it('USAGE when slug is missing', async () => {
@@ -273,6 +330,32 @@ describe('checkKnowledgeCommand', () => {
     const updated = await fs.readFile(readme, 'utf8');
     // Marker is the last timeline entry and carries a complete date.
     expect(updated).toMatch(/-\s+\d{4}-\d{2}-\d{2}\s+—\s+Checked knowledge promotion\s*$/);
+  });
+
+  it('rejects --record for a non-done project without mutating', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'review',
+      title: 'Alpha',
+      body: '## Timeline\n\n- 2026-05-02 — Awaiting review.\n',
+    });
+    const before = await fs.readFile(readme, 'utf8');
+    const { threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        {
+          noun: 'projects',
+          verb: 'check-knowledge',
+          positional: ['alpha'],
+          flags: { record: true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(3);
+    expect(await fs.readFile(readme, 'utf8')).toBe(before);
   });
 
   it('USAGE when slug is missing', async () => {

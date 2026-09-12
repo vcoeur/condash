@@ -29,8 +29,8 @@
  *                   was never resolved by a later `[knowledge-recheck:done]`.
  *                   Checked across all statuses, `done` included.
  *  - `check-knowledge` — `done` projects whose last timeline entry isn't
- *                   `Checked knowledge promotion` — the promotion review is
- *                   missing or stale.
+ *                   `Checked knowledge promotion` — the explicit promotion-review
+ *                   acknowledgement is missing or stale.
  *  - `hooks`      — a hook script under `.claude/hooks/` that no settings
  *                   file registers, so it never runs while looking live.
  *

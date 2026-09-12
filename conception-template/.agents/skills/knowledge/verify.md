@@ -74,7 +74,7 @@ Items declaring an active `branch` field but no on-disk worktree. Offer `/projec
 A `status: done` project whose **last timeline entry isn't `Checked knowledge promotion`** — its promotion review is missing or stale. There is no one-shot auto-fix: the review is editorial. For each flagged project:
 
 1. Do the real review — `condash projects scan-promotions <slug>` surfaces candidate findings; walk each through the three-question durability test and promote the durable ones via `/knowledge update` (stamping the origin `**Transferred:**`).
-2. Record the result **mechanically, with a complete date**: `condash projects check-knowledge <slug> --record`. Never hand-type the marker — the verb keeps the date and format consistent. (`condash projects close` records it the same way at the end of the close ritual.)
+2. Record the result **mechanically, with a complete date**: `condash projects check-knowledge <slug> --record`. Never hand-type the marker — the verb keeps the date and format consistent. When closing only after this review, `condash projects close <slug> --knowledge-checked` records the same acknowledgement after `Closed.`; ordinary close does not.
 
 The check may light up a **large historical backlog** (legacy done projects that predate the rule). There is deliberately no mass/backfill writer: stamping `Checked knowledge promotion` on a project nobody reviewed would make the marker lie. Work the backlog down the honest way — a real review per project (step 1–2), oldest or most-likely-to-have-promotions first — or leave the rest flagged as the genuine "not yet reviewed" TODO it is.
 

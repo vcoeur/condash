@@ -1,10 +1,12 @@
 /**
- * `check-knowledge` audit check — projects that reached `status: done` without
- * a "Checked knowledge promotion" timeline entry as the last item.
+ * `check-knowledge` audit check — done projects without an explicit
+ * "Checked knowledge promotion" editorial attestation as their last timeline item.
  *
  * The invariant is simple: for any done project, the last timeline entry must
- * be "Checked knowledge promotion". If anything comes after it (including a
- * new "Closed." or "Reopened." entry), the check is stale and must be re-done.
+ * be "Checked knowledge promotion". A normal close deliberately has no marker;
+ * it remains an audit finding until a completed review is recorded. If anything
+ * comes after a marker (including a new "Closed." or "Reopened." entry), the
+ * check is stale and must be re-done.
  *
  * This replaces the old `[knowledge-recheck:pending]` / `[knowledge-recheck:done]`
  * state machine with a single, inspectable rule.

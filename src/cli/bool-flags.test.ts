@@ -76,8 +76,16 @@ describe('argv-level boolean-flag smoke tests (real parseArgs per noun)', () => 
       boolFlags: ['record'], // the regression that motivated this suite
     },
     {
-      argv: ['projects', 'close', 'my-slug', '--no-touch-dirty', '--summary', 'done'],
-      boolFlags: ['no-touch-dirty'],
+      argv: [
+        'projects',
+        'close',
+        'my-slug',
+        '--no-touch-dirty',
+        '--knowledge-checked',
+        '--summary',
+        'done',
+      ],
+      boolFlags: ['no-touch-dirty', 'knowledge-checked'],
     },
     {
       argv: ['knowledge', 'index', '--dry-run', '--rewrite-aggregated'],
