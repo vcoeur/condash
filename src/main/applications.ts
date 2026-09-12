@@ -436,6 +436,9 @@ export async function setApplication(
   handle: string,
   patch: { label?: string; path?: string; purpose?: string },
 ): Promise<void> {
+  if (patch.path === '') {
+    throw new Error('application path must be non-empty; a registered app needs a locator');
+  }
   const target = appHandle(handle);
   await mutateConfig(conceptionPath, (config) => {
     const slot = findRepoSlotByHandle(config as ConfigShape, target);

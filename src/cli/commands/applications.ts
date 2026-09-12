@@ -143,6 +143,12 @@ export async function runApplications(
         'Usage: condash applications set <handle> [--label <label>] [--purpose <text>] [--path <path>]',
       );
     }
+    if (path === '') {
+      throw new CliError(
+        ExitCodes.USAGE,
+        '--path must be non-empty; a registered app needs a locator',
+      );
+    }
     await setApplication(conceptionPath, handle, { label, path, purpose });
     emit(ctx, { ok: true, handle }, () => `updated #${handle}\n`);
     return;
