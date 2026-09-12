@@ -19,6 +19,9 @@
 }
 
 .modal-backdrop {
+  /* The terminal-aware bottom edge and 24px vertical padding define the space
+   * a modal may occupy. Individual modal types opt into this shared cap. */
+  --modal-available-height: max(0px, calc(100vh - var(--terminal-pane-height, 0px) - 48px));
   position: fixed;
   /* Stop the backdrop at the top of the terminal pane (its measured height is
    * published as --terminal-pane-height by TerminalPane) so a popup never
