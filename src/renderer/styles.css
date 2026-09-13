@@ -744,9 +744,10 @@ button:hover {
   border-radius: var(--radius-xl);
 }
 
-.pane-projects {
+.pane.pane-projects {
   /* Projects is a scanning surface, not another oversized card inside the
-   * shell. Status-group containers provide its local framing. */
+   * shell. Keep this pane-specific override stronger than the shared shell
+   * rule so stylesheet import order cannot restore the outer frame. */
   border: none;
   border-radius: 0;
 }
