@@ -120,7 +120,6 @@ test.describe('Projects pane spacing', () => {
         const stackBox = rect(stack);
         const cards = Array.from(now.querySelectorAll('.row'));
         const card = cards[0] ?? null;
-        const root = getComputedStyle(document.documentElement);
         const projectsPane = document.querySelector('.pane-projects')!;
         return {
           laneOrder: lanes.map(
@@ -155,12 +154,9 @@ test.describe('Projects pane spacing', () => {
           emptyLaneBorder: firstEmpty ? getComputedStyle(firstEmpty).borderTopWidth : null,
           emptyLaneBackground: firstEmpty ? getComputedStyle(firstEmpty).backgroundColor : null,
           panelBorderWidth: getComputedStyle(now).borderTopWidth,
-          // The panel edge is justified relative to the card frame, so assert
-          // the relationship rather than only the absolute.
           cardBorderWidth: card ? getComputedStyle(card).borderTopWidth : null,
           laneRadius: getComputedStyle(now).borderTopLeftRadius,
           laneBackground: getComputedStyle(now).backgroundColor,
-          radiusLgToken: root.getPropertyValue('--radius-lg').trim(),
           outerPaneBorder: getComputedStyle(projectsPane).borderTopWidth,
           outerPaneRadius: getComputedStyle(projectsPane).borderTopLeftRadius,
           headerRule: getComputedStyle(now.querySelector('.group-header')!).borderBottomWidth,
@@ -208,15 +204,13 @@ test.describe('Projects pane spacing', () => {
       expect(geometry.emptyLaneBorder).toBe('0px');
       expect(geometry.emptyLaneBackground).toBe('rgba(0, 0, 0, 0)');
 
-      // The status lane keeps its tinted, rounded container; its 1px border is
-      // still quieter than the reduced card's 2px frame. The outer Projects
-      // pane deliberately contributes neither an extra border nor a radius.
-      expect(geometry.panelBorderWidth).toBe('1px');
-      expect(geometry.cardBorderWidth).toBe('2px');
-      expect(Number.parseFloat(geometry.panelBorderWidth)).toBeLessThan(
-        Number.parseFloat(geometry.cardBorderWidth!),
-      );
-      expect(geometry.laneRadius).toBe(geometry.radiusLgToken);
+      // Status identity comes from its tinted wash/header/dot, while ordinary
+      // cards use elevated tone and spacing. Neither level adds a nested
+      // outline; the outer Projects pane contributes neither a border nor a
+      // radius either.
+      expect(geometry.panelBorderWidth).toBe('0px');
+      expect(geometry.cardBorderWidth).toBe('0px');
+      expect(geometry.laneRadius).toBe('0px');
       expect(geometry.laneBackground).not.toBe('rgba(0, 0, 0, 0)');
       expect(geometry.outerPaneBorder).toBe('0px');
       expect(geometry.outerPaneRadius).toBe('0px');

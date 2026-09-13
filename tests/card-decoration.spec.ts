@@ -145,7 +145,7 @@ test('a mid-tree node wears both borders simultaneously', async () => {
   }
 });
 
-test('a standalone card keeps the full neutral frame', async () => {
+test('a standalone card separates through tone, not an outline', async () => {
   const booted = await bootApp({ prepare: prepareHierarchy });
   try {
     const win = booted.window;
@@ -153,8 +153,8 @@ test('a standalone card keeps the full neutral frame', async () => {
     await expect(sample).not.toHaveClass(/is-parent/);
     await expect(sample).not.toHaveClass(/is-subproject/);
     for (const side of ['top', 'right', 'bottom', 'left'] as const) {
-      await expect(sample).toHaveCSS(`border-${side}-width`, '2px');
-      await expect(sample).toHaveCSS(`border-${side}-style`, 'solid');
+      await expect(sample).toHaveCSS(`border-${side}-width`, '0px');
+      await expect(sample).toHaveCSS(`border-${side}-style`, 'none');
     }
   } finally {
     await booted.cleanup();

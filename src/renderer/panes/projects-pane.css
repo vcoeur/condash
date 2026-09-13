@@ -189,9 +189,7 @@
   display: flex;
   flex-direction: column;
   contain: layout paint;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
+  transition: background 120ms ease;
   padding: 8px 0 16px;
 }
 
@@ -220,13 +218,11 @@
   margin-top: 24px;
 }
 
-/* A populated status lane keeps its status-coloured container. The cards remain
- * neutral or family-directional, so status framing and family membership keep
- * distinct meanings even in the denser card treatment. */
+/* A populated status lane is a status-coloured wash, not a nested panel. Its
+ * header and dot carry the status identity; tone and the larger lane spacing
+ * separate it from adjacent groups without adding a box around the cards. */
 .projects-stack > .group-block:not([data-empty='true']) {
   background: color-mix(in srgb, var(--col-status, var(--border-strong)) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-status, var(--border-strong)) 45%, transparent);
-  border-radius: var(--radius-lg);
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -451,12 +447,11 @@ body[data-dragging='project'] .row {
 }
 
 .row {
-  /* Neutral frame by default. Only a card in a family — one with children,
-   * or whose `parent:` resolves — carries a `.proj-family-<n>` class that
-   * overrides --row-stripe with the family's stable hue
-   * (shared/project-color.ts), so colour on this pane means "these belong
-   * together" and nothing else. The status is on the section rail, never on
-   * the card. */
+  /* Only a card in a family — one with children, or whose `parent:` resolves
+   * — carries a `.proj-family-<n>` class that overrides --row-stripe with the
+   * family's stable hue (shared/project-color.ts). Ordinary cards are
+   * separated by their elevated tone and the grid gap, never a full outline;
+   * family cards retain the directional edges below. */
   --row-stripe: var(--border-strong);
   /* Title ink: plain text by default; family cards mix a hint of the frame
    * hue in (see .row.in-family below). */
@@ -466,16 +461,8 @@ body[data-dragging='project'] .row {
   flex-direction: column;
   gap: 6px;
   padding: 7px 12px 7px 16px;
-  /* Full frame in --row-stripe: neutral for a standalone card. A family card
-   * (parent/subproject) drops the top/bottom sides and wears only its
-   * directional edge(s) in the family colour (status lives on the section's
-   * left rail); the edges encode the relationship — narrow solid LEFT for a
-   * parent, narrow dashed RIGHT for a subproject, both for a mid-tree node
-   * (see .row.is-* below). */
-  border: 2px solid var(--row-stripe);
-  /* Asymmetric card — flat left edge (carries the family frame) + rounded
-   * right, the vcoeur project-card silhouette. */
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border: none;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   box-shadow: none;
   cursor: pointer;
@@ -484,13 +471,11 @@ body[data-dragging='project'] .row {
   transition:
     background-color 140ms ease,
     box-shadow 140ms ease,
-    border-color 140ms ease,
     transform 140ms ease;
 }
 
 .row:hover {
   background: var(--bg-hover);
-  border-color: var(--row-stripe);
   box-shadow: var(--shadow-lift);
 }
 
@@ -529,13 +514,12 @@ body[data-dragging='project'] .row {
   --col-status: var(--col-unknown);
 }
 
-/* Family colour palette for the card frame (--row-stripe), applied only to
- * cards that are in a family (cards.tsx adds the class when the card has
+/* Family colour palette for the directional edges (--row-stripe), applied only
+ * to cards that are in a family (cards.tsx adds the class when the card has
  * children or a parent that resolves). The slot is a stable hash of the
  * family's root slug — every card in the chain shares it — resolved in
- * shared/project-color.ts. 16 vivid hues stepped around the wheel; mid-tone so
- * a thin frame reads on both the light and dark card background. Keep the slot
- * count in sync with PROJECT_COLOR_SLOT_COUNT. */
+ * shared/project-color.ts. Keep the slot count in sync with
+ * PROJECT_COLOR_SLOT_COUNT. */
 .row.proj-family-0 {
   --row-stripe: hsl(4 72% 57%);
 }
@@ -586,7 +570,6 @@ body[data-dragging='project'] .row {
 }
 
 .row:hover {
-  border-color: var(--row-stripe);
   background: var(--bg-hover);
   transform: translateY(-2px);
   /* Accent glow on hover — the alicepeintures painting-card lift (bold
@@ -606,7 +589,6 @@ body[data-dragging='project'] .row {
 .row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-color: var(--row-stripe);
 }
 
 /* Link decoration (manual card ↔ terminal-tab links). Keyed off the neutral
@@ -690,12 +672,11 @@ body[data-dragging='project'] .row {
   filter: brightness(1.06);
 }
 
-/* Relationship / hierarchy decoration (2026-07 left-edge frame; directional-
- * border semantics 2026-08-24). A family card wears only the directional
- * edge(s) of its family-coloured frame (see .row above,
+/* Relationship / hierarchy decoration (directional-edge semantics). A family
+ * card wears only its directional edge(s) in the family colour (see .row,
  * --row-stripe = the family colour set by its .proj-family-<n> class) and
  * tints the title with the same hue:
- *   • standalone project     → full neutral solid frame (the .row default)
+ *   • standalone project     → no edge or frame
  *   • parent (has children)  → narrow 3px SOLID LEFT edge in the family
  *     colour, marking the family root
  *   • subproject (`parent:`) → narrow 3px DASHED RIGHT edge in the family
@@ -704,9 +685,7 @@ body[data-dragging='project'] .row {
  * Direction is load-bearing — left = has children, right = has a parent —
  * so a mid-tree node wears both at once (the .row.is-parent.is-subproject
  * rule below), and hierarchy stays pure card decoration: cards are never
- * reordered, indented or nested to express it. Hover/focus keep the family
- * colour on the edges via the base .row:hover / :focus-visible rules (both
- * use --row-stripe). */
+ * reordered, indented or nested to express it. */
 .row.in-family {
   /* A hint of the family colour mixed into the near-white title, so the title
    * reads as belonging to its family. `in-family` is set by cards.tsx alongside
@@ -715,41 +694,20 @@ body[data-dragging='project'] .row {
    * whose `parent:` dangles — keep plain text ink. */
   --row-title-color: color-mix(in srgb, var(--row-stripe) 20%, var(--text));
 }
-.row.is-parent,
 .row.is-subproject {
-  /* Family cards drop the neutral full frame (top/bottom) and keep only their
-   * directional edge(s). Colour is inherited from the base .row border
-   * declaration, so hover/focus (border-color: var(--row-stripe)) keep
-   * recolouring the edges. */
-  border-top: none;
-  border-bottom: none;
-}
-.row.is-subproject {
-  /* A card with a `parent:` — the narrow dashed RIGHT edge. The left
-   * longhands zero the inherited frame side, so a child-only card wears no
-   * left border at all. */
-  border-left-width: 0;
-  border-left-style: none;
+  /* A card with a `parent:` — the narrow dashed RIGHT edge. */
   border-right-width: 3px;
   border-right-style: dashed;
+  border-right-color: var(--row-stripe);
 }
 .row.is-parent {
-  /* A card with one or more children — the narrow solid LEFT edge. Follows
-   * .row.is-subproject at equal specificity, so a mid-tree node keeps the
-   * solid left; the right longhands zero the child edge, restored by the
-   * .is-parent.is-subproject rule below. */
-  border-right-width: 0;
-  border-right-style: none;
+  /* A card with one or more children — the narrow solid LEFT edge. */
   border-left-width: 3px;
   border-left-style: solid;
+  border-left-color: var(--row-stripe);
 }
 .row.is-parent.is-subproject {
-  /* Both: the mid-tree node wears its parent's edge AND its own children's
-   * edge together — dashed right (its parent) + solid left (its children).
-   * Higher specificity than the two single-class rules, so neither side's
-   * zeroing above can eat the other's edge. */
-  border-right-width: 3px;
-  border-right-style: dashed;
+  /* Both directional edges deliberately coexist on a mid-tree node. */
 }
 
 .projects-empty {
