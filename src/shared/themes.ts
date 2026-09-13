@@ -59,7 +59,7 @@ export const THEME_PRESETS = [
     label: 'Warm Gallery',
     kind: 'dark',
     description: 'Gold on warm black — the gallery-dark lead theme.',
-    swatch: ['#151412', '#1a1815', '#c8a882'],
+    swatch: ['#151412', '#25211c', '#c8a882'],
   },
   {
     id: 'nocturne',

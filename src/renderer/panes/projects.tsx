@@ -63,9 +63,8 @@ export function ProjectsView(props: {
   onFocusTab: (sid: string) => void;
   projectActions?: ActionTemplate[];
   onProjectAction?: (project: Project, action: ActionTemplate) => void;
-  /** Open the "+ New project" modal. Rendered as a top-of-pane button when
-   * the user isn't searching. Optional so consumers that don't expose the
-   * create flow keep working unchanged. */
+  /** Open the "+ New project" modal. Optional so consumers that don't expose
+   * the NOW-lane creation flow keep working unchanged. */
   onNewProject?: () => void;
   newProjectActions?: ActionTemplate[];
   onNewProjectAction?: (action: ActionTemplate) => void;
@@ -219,16 +218,6 @@ export function ProjectsView(props: {
           <span class="pane-header-title">Projects</span>
           <span class="spacer" />
           <div class="pane-header-actions">
-            <Show when={props.onNewProject}>
-              <button
-                type="button"
-                class="pane-header-action"
-                onClick={() => props.onNewProject?.()}
-                title="Create a new project"
-              >
-                + New
-              </button>
-            </Show>
             <Show when={props.onRefresh}>
               <button
                 type="button"

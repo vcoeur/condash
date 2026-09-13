@@ -44,6 +44,14 @@ export interface RepoSectionGroup {
   repos: RepoEntry[];
 }
 
+/** One top-level repository and the direct submodules configured beneath it. */
+export interface RepoFamily {
+  /** The parentless repository that is always visible in the Code pane. */
+  parent: RepoEntry;
+  /** Direct configured submodules, kept in their declaration order. */
+  children: RepoEntry[];
+}
+
 /** Split an ordered repo list into one group per `section` value, preserving
  *  declaration order. Submodules inherit their parent's section so they stay
  *  in the same group as their parent. Empty groups are dropped. */
@@ -66,24 +74,40 @@ export function groupRepos(ordered: readonly RepoEntry[]): RepoSectionGroup[] {
 }
 
 /** Flatten the configured repo list into one ordered card sequence, with each
- *  submodule parent immediately followed by its children. Top-level entries
- *  with no children pass through in declaration order. */
+ * submodule parent immediately followed by its children. The configuration
+ * walk already emits a parent followed by its direct submodules, so this keeps
+ * that identity-bearing sequence rather than grouping on a non-unique name. */
 export function orderedRepos(repos: readonly RepoEntry[]): RepoEntry[] {
-  const childrenByParent = new Map<string, RepoEntry[]>();
-  for (const r of repos) {
-    if (!r.parent) continue;
-    const arr = childrenByParent.get(r.parent) ?? [];
-    arr.push(r);
-    childrenByParent.set(r.parent, arr);
-  }
   const out: RepoEntry[] = [];
-  for (const r of repos) {
-    if (r.parent) continue;
-    out.push(r);
-    const kids = childrenByParent.get(r.name);
-    if (kids) out.push(...kids);
+  let currentParent: RepoEntry | undefined;
+  for (const repo of repos) {
+    if (!repo.parent) {
+      currentParent = repo;
+      out.push(repo);
+    } else if (currentParent?.name === repo.parent) {
+      out.push(repo);
+    }
   }
   return out;
+}
+
+/** Group an ordered repository list into its one-level configured families.
+ *
+ * The configuration schema permits no nested submodules, so this intentionally
+ * models one parent card plus its direct children rather than a recursive tree.
+ */
+export function repoFamilies(repos: readonly RepoEntry[]): RepoFamily[] {
+  const families: RepoFamily[] = [];
+  let currentFamily: RepoFamily | undefined;
+  for (const repo of repos) {
+    if (!repo.parent) {
+      currentFamily = { parent: repo, children: [] };
+      families.push(currentFamily);
+    } else if (currentFamily?.parent.name === repo.parent) {
+      currentFamily.children.push(repo);
+    }
+  }
+  return families;
 }
 
 /** Synthesise the primary checkout as a Worktree-shaped row when the data

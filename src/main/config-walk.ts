@@ -45,6 +45,9 @@ export interface RepoLookup {
   purpose?: string;
   /** Parent name when this entry is a submodule. */
   parent?: string;
+  /** Resolved parent cwd when this entry is a submodule. This is the unique
+   * identity for parent worktree lookups; directory basenames can collide. */
+  parentCwd?: string;
   /** Resolved absolute cwd. */
   cwd: string;
   /** Configured run: command, if any. */
@@ -168,6 +171,7 @@ function visitOne(
       name: entry,
       handle: appHandle(entry),
       parent,
+      parentCwd,
       cwd: resolveCwd(parentCwd ?? workspace, undefined, entry),
       section,
     };
@@ -193,6 +197,7 @@ function visitOne(
     label: entry.label,
     purpose: entry.purpose,
     parent,
+    parentCwd,
     cwd: resolveCwd(parentCwd ?? workspace, undefined, dirName, entry.path),
     run: entry.run,
     forceStop: entry.force_stop,

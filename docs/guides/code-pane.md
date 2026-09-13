@@ -13,10 +13,10 @@ The Code pane is the right-hand working surface that shows the git repos this co
 
 ## Cards, rows, and the primary worktree
 
-![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-dark.png#only-dark)
+![Code pane — three top-level cards in declaration order: helio, helio-web, then helio-docs](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — three top-level cards in declaration order: helio, helio-web, then helio-docs](../assets/screenshots/code-pane-dark.png#only-dark)
 
-- **One card per configured repository**, rendered in declaration order and flowing left to right, then down, once the pane is wide enough for more than one column. The card header carries the `#handle` pill (its colour is hashed from the handle alone, so it is stable for a given repo but carries no grouping meaning), the repo's path chip, and a **Repo actions** menu.
+- **One card per top-level repository** is visible by default, in declaration order and flowing left to right, then down, once the pane is wide enough for more than one column. The card header carries the `#handle` pill (its colour is hashed from the handle alone, so it is stable for a given repo but carries no grouping meaning), the repo's path chip, and a **Repo actions** menu.
 - **Rows inside a card are checkouts**: the **primary worktree row** — the repo as checked out under `workspace_path` — is always visible and gets a subtly tinted background so it reads as the always-on reference row. Every other row is a branch, with its own worktree checkout under `worktrees_path` (see [Branches and worktrees](#branches-and-worktrees) below). Each row keeps its own dirty count and its own actions.
 - The **`N dirty` pill** on a row counts modified files in that checkout; clicking it pops a list of the files.
 
@@ -43,7 +43,7 @@ The mode and the selection persist per-machine in `settings.json` under `selecte
 
 ## Submodules in a monorepo
 
-A repo with declared submodules renders as a **family of top-level cards**: each submodule is its own card alongside the parent rather than a collapsible child under it, marked by the `submodule` tag in its header and by its parent-rooted path chip. Declaration order puts a parent immediately before its own submodules, so the family stays contiguous in the grid.
+A repo with declared submodules starts as one top-level parent card with a **Submodules _N_** disclosure. The parent and unrelated top-level repositories stay visible; pressing the disclosure reveals the direct configured child cards immediately below their parent, in declaration order. Press it again to collapse them. The disclosure state belongs only to the current Code view and is not saved in settings.
 
 Each row in the family — parent or submodule — keeps its own dirty count, its own `open_with` buttons, its own inline runner, and its own nested worktrees. A repo without declared submodules simply renders as a family of one. If a configured submodule path is missing in one of a repo's worktrees (the worktree predates the submodule's addition, or someone deleted the subdir), condash surfaces a greyed **"missing"** row in that family rather than silently omitting it — the visual family stays consistent across checkouts and the gap is obvious. The JSON that declares submodules is on [Repositories and open-with launchers](repositories-and-open-with.md#submodules-in-a-monorepo).
 

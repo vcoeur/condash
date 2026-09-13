@@ -21,12 +21,12 @@ function flatRepos(config: ConfigShape): FlatRepo[] {
   return flat;
 }
 
-/** Map every top-level repo to itself. Submodule entries are excluded;
- *  callers find them via `parent` lookups. */
-function parentByNameMap(flat: FlatRepo[]): Map<string, FlatRepo> {
+/** Map every top-level repo by its resolved path. Submodule entries are
+ * excluded; their `parentCwd` carries this stable identity. */
+function parentByCwdMap(flat: FlatRepo[]): Map<string, FlatRepo> {
   const map = new Map<string, FlatRepo>();
   for (const entry of flat) {
-    if (!entry.parent) map.set(entry.name, entry);
+    if (!entry.parent) map.set(toPosix(entry.cwd), entry);
   }
   return map;
 }
@@ -42,10 +42,10 @@ async function resolveParentWorktrees(
     Array.from(parents).map(async (parent) => {
       const exists = await pathExists(parent.cwd);
       if (!exists) {
-        out.set(parent.name, []);
+        out.set(toPosix(parent.cwd), []);
         return;
       }
-      out.set(parent.name, await listWorktrees(parent.cwd).catch(() => []));
+      out.set(toPosix(parent.cwd), await listWorktrees(parent.cwd).catch(() => []));
     }),
   );
   return out;
@@ -59,20 +59,19 @@ async function resolveParentWorktrees(
  * 29-entry registry of #475. It swallows failures to `[]` exactly as a direct
  * call does, so the reuse is otherwise identical.
  *
- * The identity check is what makes it safe. `parentByName` is keyed by bare
- * directory name and a duplicate collapses (two configured repos whose paths
- * end in the same basename — `{path: 'a/docs'}` and `{path: 'b/docs'}`), so
- * keying on the name alone would hand one of them the *other*'s branches and
- * dirty counts, silently. Anything the precomputed map doesn't positively
- * cover falls back to listing for itself.
+ * The identity check is what makes it safe. Parent cwd is unique even when two
+ * configured repos share a basename (`{path: 'a/docs'}` and `{path: 'b/docs'}`),
+ * so every precomputed list remains attached to its own checkout. Anything the
+ * map doesn't positively cover falls back to listing for itself.
  */
 async function topLevelWorktrees(
   entry: FlatRepo,
-  parentByName: Map<string, FlatRepo>,
+  parentByCwd: Map<string, FlatRepo>,
   parentWorktrees: Map<string, Worktree[]>,
 ): Promise<Worktree[]> {
-  if (parentByName.get(entry.name) === entry) {
-    const precomputed = parentWorktrees.get(entry.name);
+  const identity = toPosix(entry.cwd);
+  if (parentByCwd.get(identity) === entry) {
+    const precomputed = parentWorktrees.get(identity);
     if (precomputed) return precomputed;
   }
   return listWorktrees(entry.cwd).catch(() => []);
@@ -80,7 +79,7 @@ async function topLevelWorktrees(
 
 async function buildEntry(
   entry: FlatRepo,
-  parentByName: Map<string, FlatRepo>,
+  parentByCwd: Map<string, FlatRepo>,
   parentWorktrees: Map<string, Worktree[]>,
 ): Promise<RepoEntry> {
   const exists = await pathExists(entry.cwd);
@@ -93,6 +92,7 @@ async function buildEntry(
       label: entry.label,
       path: toPosix(entry.cwd),
       parent: entry.parent,
+      parentPath: entry.parentCwd ? toPosix(entry.parentCwd) : undefined,
       dirty: null,
       missing: true,
       hasForceStop,
@@ -105,8 +105,8 @@ async function buildEntry(
   let dirty: number | null;
   if (isGit) {
     worktrees = entry.parent
-      ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
-      : await topLevelWorktrees(entry, parentByName, parentWorktrees);
+      ? await deriveSubWorktrees(entry, parentByCwd, parentWorktrees)
+      : await topLevelWorktrees(entry, parentByCwd, parentWorktrees);
     const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
     dirty = await getDirtyCount(entry.cwd, dirtyOpts);
   } else {
@@ -119,6 +119,7 @@ async function buildEntry(
     label: entry.label,
     path: toPosix(entry.cwd),
     parent: entry.parent,
+    parentPath: entry.parentCwd ? toPosix(entry.parentCwd) : undefined,
     dirty,
     missing: false,
     isGit,
@@ -132,9 +133,9 @@ async function buildEntry(
 export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
   const config = await readConfig(conceptionPath);
   const flat = flatRepos(config);
-  const parentByName = parentByNameMap(flat);
-  const parentWorktrees = await resolveParentWorktrees(parentByName.values());
-  return Promise.all(flat.map((entry) => buildEntry(entry, parentByName, parentWorktrees)));
+  const parentByCwd = parentByCwdMap(flat);
+  const parentWorktrees = await resolveParentWorktrees(parentByCwd.values());
+  return Promise.all(flat.map((entry) => buildEntry(entry, parentByCwd, parentWorktrees)));
 }
 
 // Boot prewarm handoff (review finding S1). The whenReady handler kicks off a
@@ -233,17 +234,20 @@ export async function listReposReusingBoot(conceptionPath: string): Promise<Repo
  */
 export async function listReposForPrimary(
   conceptionPath: string,
-  primaryName: string,
+  primaryPath: string,
 ): Promise<RepoEntry[]> {
   const config = await readConfig(conceptionPath);
   const flat = flatRepos(config);
-  const primary = flat.find((e) => !e.parent && e.name === primaryName);
+  const primary = flat.find((entry) => !entry.parent && toPosix(entry.cwd) === primaryPath);
   if (!primary) return [];
-  const parentByName = parentByNameMap(flat);
+  const parentByCwd = parentByCwdMap(flat);
   const parentWorktrees = await resolveParentWorktrees([primary]);
   // The primary plus every submodule child of it (in flat-config order).
-  const affected = flat.filter((e) => e === primary || e.parent === primaryName);
-  return Promise.all(affected.map((e) => buildEntry(e, parentByName, parentWorktrees)));
+  const primaryIdentity = toPosix(primary.cwd);
+  const affected = flat.filter(
+    (entry) => entry === primary || toPosix(entry.parentCwd ?? '') === primaryIdentity,
+  );
+  return Promise.all(affected.map((entry) => buildEntry(entry, parentByCwd, parentWorktrees)));
 }
 
 /**
@@ -259,11 +263,12 @@ export async function listReposForPrimary(
  */
 async function deriveSubWorktrees(
   entry: FlatRepo,
-  parentByName: Map<string, FlatRepo>,
+  parentByCwd: Map<string, FlatRepo>,
   parentWorktrees: Map<string, Worktree[]>,
 ): Promise<Worktree[]> {
-  const parent = entry.parent ? parentByName.get(entry.parent) : undefined;
-  const parentList = entry.parent ? (parentWorktrees.get(entry.parent) ?? []) : [];
+  const parentIdentity = entry.parentCwd ? toPosix(entry.parentCwd) : undefined;
+  const parent = parentIdentity ? parentByCwd.get(parentIdentity) : undefined;
+  const parentList = parentIdentity ? (parentWorktrees.get(parentIdentity) ?? []) : [];
   if (!parent || parentList.length === 0) {
     const branch = await getCurrentBranch(entry.cwd).catch(() => null);
     return [{ path: toPosix(entry.cwd), branch, primary: true }];

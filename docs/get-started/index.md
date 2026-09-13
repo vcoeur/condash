@@ -171,10 +171,9 @@ Fuller treatment: **[Configure the conception path](../guides/configure-concepti
 
 ## Your first project
 
-The Projects pane is showing five empty sections — `NOW`, `REVIEW`, `LATER`, `BACKLOG`, `DONE`. There are three ways to open the create-item modal, all equivalent:
+The Projects pane is showing five empty sections — `NOW`, `REVIEW`, `LATER`, `BACKLOG`, `DONE`. There are two ways to open the create-item modal:
 
 - the **+ New project ▾** button riding the `NOW` section header,
-- the **+ New** button in the pane header,
 - **File → New project…** (`Ctrl+N`).
 
 ??? info "…unless you're looking at the Welcome screen instead"

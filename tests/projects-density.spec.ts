@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
 /**
- * The Projects pane's spacing contract, as rendered.
+ * The Projects pane's scan hierarchy contract, as rendered.
  *
  * This exists because the pane's spacing is reasoned about in prose. The rules
  * carry long comments asserting geometry ("a single dim line", "the row floors
@@ -121,7 +121,7 @@ test.describe('Projects pane spacing', () => {
         const cards = Array.from(now.querySelectorAll('.row'));
         const card = cards[0] ?? null;
         const root = getComputedStyle(document.documentElement);
-
+        const projectsPane = document.querySelector('.pane-projects')!;
         return {
           laneOrder: lanes.map(
             (el) => `${el.getAttribute('data-status')}${isEmptyLane(el) ? ':empty' : ''}`,
@@ -158,9 +158,16 @@ test.describe('Projects pane spacing', () => {
           // The panel edge is justified relative to the card frame, so assert
           // the relationship rather than only the absolute.
           cardBorderWidth: card ? getComputedStyle(card).borderTopWidth : null,
-          panelRadius: getComputedStyle(now).borderTopLeftRadius,
+          laneRadius: getComputedStyle(now).borderTopLeftRadius,
+          laneBackground: getComputedStyle(now).backgroundColor,
           radiusLgToken: root.getPropertyValue('--radius-lg').trim(),
+          outerPaneBorder: getComputedStyle(projectsPane).borderTopWidth,
+          outerPaneRadius: getComputedStyle(projectsPane).borderTopLeftRadius,
           headerRule: getComputedStyle(now.querySelector('.group-header')!).borderBottomWidth,
+          paneHeaderCreateControls: Array.from(
+            document.querySelectorAll('.projects-pane .pane-header-actions button'),
+          ).filter((button) => button.textContent?.includes('New')).length,
+          nowCreateControls: now.querySelectorAll('.new-project-button').length,
           headRowHeight: card ? round(rect(card.querySelector('.head-row')!).height) : null,
           starBox: card ? round(rect(card.querySelector('.star-toggle')!).height) : null,
           workOnHeight: card
@@ -185,7 +192,7 @@ test.describe('Projects pane spacing', () => {
 
       // Cards are discrete objects; sections are an order further apart. The
       // 40px is that 32px margin plus the stack's 8px gap.
-      expect(geometry.cardGap).toBe(20);
+      expect(geometry.cardGap).toBe(10);
       expect(geometry.sectionGap).toBe(40);
       expect(geometry.sectionGap).toBeGreaterThan(geometry.cardGap!);
 
@@ -201,17 +208,21 @@ test.describe('Projects pane spacing', () => {
       expect(geometry.emptyLaneBorder).toBe('0px');
       expect(geometry.emptyLaneBackground).toBe('rgba(0, 0, 0, 0)');
 
-      // The panel's drawn edge, quieter than a card's 2px frame. Compared
-      // against the live token, not a literal: the point of `var(--radius-lg)`
-      // is that a re-tune reaches the panel, so a re-tune must not fail this.
+      // The status lane keeps its tinted, rounded container; its 1px border is
+      // still quieter than the reduced card's 2px frame. The outer Projects
+      // pane deliberately contributes neither an extra border nor a radius.
       expect(geometry.panelBorderWidth).toBe('1px');
       expect(geometry.cardBorderWidth).toBe('2px');
       expect(Number.parseFloat(geometry.panelBorderWidth)).toBeLessThan(
         Number.parseFloat(geometry.cardBorderWidth!),
       );
-      expect(geometry.panelRadius).toBe(geometry.radiusLgToken);
-      // Redundant once the panel has an edge — removing it is deliberate.
+      expect(geometry.laneRadius).toBe(geometry.radiusLgToken);
+      expect(geometry.laneBackground).not.toBe('rgba(0, 0, 0, 0)');
+      expect(geometry.outerPaneBorder).toBe('0px');
+      expect(geometry.outerPaneRadius).toBe('0px');
       expect(geometry.headerRule).toBe('0px');
+      expect(geometry.paneHeaderCreateControls).toBe(0);
+      expect(geometry.nowCreateControls).toBe(1);
 
       // The chrome row floors on the star, NOT on the work-on control: the
       // control is shorter, so trimming it further would only cost hit area.
@@ -304,31 +315,6 @@ test.describe('Projects pane spacing', () => {
       expect(doneCard.hasStar).toBe(false);
       expect(doneCard.workOn).toBe(doneCard.link);
       expect(doneCard.headRow).toBe(doneCard.link);
-    } finally {
-      await booted.cleanup();
-    }
-  });
-
-  test('Console keeps its crisper panel corner', async () => {
-    test.setTimeout(90_000);
-    const booted = await boot('console');
-    const page = booted.window;
-    try {
-      await page.waitForSelector('.projects-stack .row', { timeout: 30_000 });
-      const radii = await page.evaluate(() => {
-        const panel = document.querySelector('.projects-stack > .group-block[data-status="now"]')!;
-        return {
-          panel: getComputedStyle(panel).borderTopLeftRadius,
-          token: getComputedStyle(document.documentElement).getPropertyValue('--radius-lg').trim(),
-          md: getComputedStyle(document.documentElement).getPropertyValue('--radius-md').trim(),
-        };
-      });
-      // The panel reads `--radius-lg`, not a literal, which is the whole reason
-      // Console's "a TUI draws boxes, not pills" override reaches it. Compared
-      // against the live token, and against `--radius-md` to prove the panel is
-      // on the larger of the two rather than having fallen back to `--radius`.
-      expect(radii.panel).toBe(radii.token);
-      expect(radii.panel).not.toBe(radii.md);
     } finally {
       await booted.cleanup();
     }

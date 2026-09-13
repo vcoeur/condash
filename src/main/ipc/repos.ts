@@ -51,10 +51,10 @@ export function registerReposIpc(): void {
   // replaced by the fresh entries' targets), so a structural event no
   // longer re-runs the whole-registry listRepos just to diff the watcher
   // set — that was an 8–15 s gitUpstream window in the perf corpus.
-  ipcMain.handle('listReposForPrimary', (event, primaryName: string) => {
+  ipcMain.handle('listReposForPrimary', (event, primaryPath: string) => {
     requireMainWindowSender(event);
     return withConception(async (conceptionPath) => {
-      const entries = await listReposForPrimary(conceptionPath, primaryName);
+      const entries = await listReposForPrimary(conceptionPath, primaryPath);
       await syncRepoWatchersForPrimary(entries);
       return entries;
     }, []);

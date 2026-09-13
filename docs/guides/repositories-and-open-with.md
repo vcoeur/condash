@@ -51,7 +51,7 @@ Branch names `condash worktrees remove` must **never** delete. Glob wildcards `*
 
 Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order — see [The Code pane](code-pane.md) for how cards, rows, and worktrees display. Keep the repos you touch most often first.
 
-Each repo renders as its own top-level card — including any sub-repos declared for it (see [Submodules in a monorepo](#submodules-in-a-monorepo) below), which are cards alongside the parent rather than children nested under it.
+Each top-level repo renders as its own card. A repo with declared submodules keeps those direct child cards collapsed under its **Submodules _N_** disclosure; see [Submodules in a monorepo](#submodules-in-a-monorepo) below.
 
 ## Pinning branches across cards
 
@@ -72,7 +72,7 @@ If you work in a monorepo where different subdirectories are edited independentl
 }
 ```
 
-A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name": "apps/web", "run": "make dev"}`). A plain string entry means "treat the whole repo as one unit". Each declared submodule renders as a **top-level card** alongside its parent (see [The Code pane](code-pane.md#submodules-in-a-monorepo) for how the family displays); a repo without declared submodules simply renders as a family of one.
+A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name": "apps/web", "run": "make dev"}`). A plain string entry means "treat the whole repo as one unit". Each declared submodule is a direct child card revealed by its parent's **Submodules _N_** disclosure (see [The Code pane](code-pane.md#submodules-in-a-monorepo) for how the family displays); a repo without declared submodules simply renders as a family of one.
 
 ## Other keys a repository entry accepts
 
@@ -85,7 +85,7 @@ A repository entry can be a bare string, or an object carrying any of:
 | `handle` | The canonical `#handle`. Defaults to the directory name, lowercased — see [Applications and handles](applications-and-handles.md). |
 | `aliases` | Legacy spellings that resolve to this handle; drives `applications validate`'s auto-fix suggestions. |
 | `label` | Display label for the card. |
-| `submodules` | Sub-repos rendered as sibling cards (above). |
+| `submodules` | Direct child repositories revealed from their parent's disclosure (above). |
 | `run` | Inline dev-server command (below). |
 | `force_stop` | Command run by the card's force-stop action when a dev server won't die. |
 | `install` | Command run after `condash worktrees setup` creates a worktree for this repo. Applied unconditionally when set; `--no-install` skips it. |

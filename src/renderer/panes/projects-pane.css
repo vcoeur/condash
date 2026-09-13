@@ -188,9 +188,10 @@
 .group-block {
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius);
   contain: layout paint;
-  transition: background 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
   padding: 8px 0 16px;
 }
 
@@ -219,18 +220,11 @@
   margin-top: 24px;
 }
 
-/* Status-coloured section wash — the status signal moved off the cards
- * (which now colour by project family) and onto a light full-section
- * tint of the status colour, replacing the former 3px left rail. Scoped to
- * top-level sections so the nested Done subgroups keep their own subtle
- * neutral rail. Symmetric horizontal padding insets the cards from the
- * rounded tint panel. */
+/* A populated status lane keeps its status-coloured container. The cards remain
+ * neutral or family-directional, so status framing and family membership keep
+ * distinct meanings even in the denser card treatment. */
 .projects-stack > .group-block:not([data-empty='true']) {
   background: color-mix(in srgb, var(--col-status, var(--border-strong)) 16%, transparent);
-  /* A drawn edge, so the panel ends somewhere definite. Deliberately quieter
-   * than a card's frame — 1px at 45% against the card's 2px at full strength
-   * — so it delimits without turning the pane into nested boxes. The radius
-   * token (not a literal) keeps Console's crisper 8px corners. */
   border: 1px solid color-mix(in srgb, var(--col-status, var(--border-strong)) 45%, transparent);
   border-radius: var(--radius-lg);
   padding-left: 16px;
@@ -399,7 +393,7 @@ body[data-dragging='project'] .group-block.drag-over {
    * feeds it the pane's min-width (settings.json `cardMinWidth.projects`;
    * the fallback mirrors DEFAULT_CARD_MIN_WIDTH) and the Projects gap. */
   --card-min: var(--card-min-projects, 520px);
-  --card-gap: 20px;
+  --card-gap: 10px;
   padding: 0;
 }
 
@@ -483,7 +477,7 @@ body[data-dragging='project'] .row {
    * right, the vcoeur project-card silhouette. */
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--bg-elevated);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
   cursor: pointer;
   contain: layout paint;
   animation: fade-up 0.45s ease-out both;

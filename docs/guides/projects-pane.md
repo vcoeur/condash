@@ -29,7 +29,7 @@ The status values and their meanings are defined in [Status model](../reference/
 
 Two head rows, then a meta row. The first row is the card's chrome: a **star** (see [Star the items that matter](#star); absent on a `done` card, which cannot be starred), the item's **dated slug** — its directory name verbatim, `YYYY-MM-DD-` prefix included; hover it when the card is too narrow to show it all — and the work-on action on the right. That row never wraps: a long slug ellipsises before the action moves. (Commands take the short form — the slug with that date prefix dropped — which is what `condash projects <verb> <slug>` resolves and what the `{shortSlug}` [action variable](../reference/config.md#terminalprojectactions) expands to.) The second row is the **kind glyph** — a small monochrome outline marking the kind (diamond = project, triangle = incident, page = document; a README whose `kind:` didn't parse gets none), hover it for the word — followed by the **title**, which flows on for as many lines as it needs and is never cut. Below that a single meta row: app pills, `branch:`, a badge per open PR on that branch, a warn glyph for a non-canonical status, the step progress, and the **date** of the item's last timeline entry (hover for first and last).
 
-The card frame is **neutral** — colour on this pane means "belongs together" and nothing else. A parent and its subprojects share one hue on their cards' directional edges and a hint of it in the title, so a plan and its spin-offs read as one group at a glance: a card with children wears a narrow **solid left** edge, a card that declares a `parent:` wears a narrow **dashed right** edge, and a mid-tree node wears both at once — hierarchy is decoration only, never reordering, indenting or nesting cards. Every other card keeps the plain frame and status stays on the section, not the card. A card whose only relation is a `parent:` that no longer resolves keeps the dashed right edge in the neutral frame colour — there is no second card for a hue to tie it to, but the declared edge still shows. A card in a family also grows a **Part of ↑** banner (child) or a **Subprojects** fold (parent) — collapsed by default, one row per child once opened; the open/closed state is remembered per parent. See [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
+The card frame is **neutral** — colour on this pane means "belongs together" and nothing else. A parent and its subprojects share one hue on their cards' directional edges and a hint of it in the title, so a plan and its spin-offs read as one group at a glance: a card with children wears a narrow **solid left** edge, a card that declares a `parent:` wears a narrow **dashed right** edge, and a mid-tree node wears both at once — hierarchy is decoration only, never reordering, indenting or nesting cards. Every other card keeps the plain frame and status stays on the section, not the card. Status sections retain their tinted, rounded containers and dot, while the outer Projects pane stays unframed so the lane remains the local grouping signal. A card whose only relation is a `parent:` that no longer resolves keeps the dashed right edge in the neutral frame colour — there is no second card for a hue to tie it to, but the declared edge still shows. A card in a family also grows a **Part of ↑** banner (child) or a **Subprojects** fold (parent) — collapsed by default, one row per child once opened; the open/closed state is remembered per parent. See [Parent / subprojects](../reference/readme-format.md#parent-subprojects).
 
 ### Linking a card to terminal tabs { #card-tab-links }
 
@@ -81,10 +81,9 @@ Read the list from a shell with `condash config get starredProjects`. There is n
 
 ## Create an item
 
-Three entry points open the same **New project** modal:
+Two entry points open the same **New project** modal:
 
 - the **+ New project ▾** button riding the `NOW` section header,
-- the **+ New** button in the pane header,
 - **File → New project…** (`Ctrl+N`).
 
 The modal asks for four things, in this order:

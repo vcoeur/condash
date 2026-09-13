@@ -10,6 +10,7 @@ function entry(name: string, parent?: string): RepoEntry {
     handle: name,
     path: `/r/${parent ? `${parent}/${name}` : name}`,
     parent,
+    parentPath: parent ? `/r/${parent}` : undefined,
     dirty: 0,
     missing: false,
     hasForceStop: false,
@@ -103,6 +104,25 @@ describe('spliceFamilyAt', () => {
 
     expect(next.map((r) => r.name)).toEqual(['beta', 'beta/kept', 'gamma']);
   });
+
+  it('does not replace another family that shares the primary basename', () => {
+    const first = { ...entry('docs'), path: '/r/a/docs' };
+    const second = { ...entry('docs'), path: '/r/b/docs' };
+    const firstChild = { ...entry('one', 'docs'), path: '/r/a/docs/one', parentPath: first.path };
+    const secondChild = { ...entry('two', 'docs'), path: '/r/b/docs/two', parentPath: second.path };
+
+    const next = spliceFamilyAt([first, firstChild, second, secondChild], first, [
+      { ...first, dirty: 1 },
+      firstChild,
+    ]);
+
+    expect(next.map((repo) => repo.path)).toEqual([
+      '/r/a/docs',
+      '/r/a/docs/one',
+      '/r/b/docs',
+      '/r/b/docs/two',
+    ]);
+  });
 });
 
 describe('createReposStore — perf spans', () => {
@@ -170,7 +190,7 @@ describe('createReposStore — perf spans', () => {
     repoEventsCb!([{ kind: 'repo-worktrees-changed', repoPath: '/r/alpha' }]);
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(listReposForPrimary).toHaveBeenCalledWith('alpha');
+    expect(listReposForPrimary).toHaveBeenCalledWith('/r/alpha');
     expect(rendererPerf.takeReport()?.spans?.reposReloadPrimary?.n).toBe(1);
     dispose();
   });

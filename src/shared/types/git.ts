@@ -136,6 +136,9 @@ export interface RepoEntry {
   path: string;
   /** When set, this entry is a submodule of the named parent repo. */
   parent?: string;
+  /** Resolved path of this submodule's parent repository. Used internally to
+   * keep same-basename repository families and partial reloads distinct. */
+  parentPath?: string;
   /** Count of modified+staged+untracked files; null if git status couldn't run. */
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */

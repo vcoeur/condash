@@ -133,6 +133,22 @@ describe('listRepos git budget (#475)', () => {
     expect(inner?.worktrees?.map((w) => w.path)).toEqual(['/ws/alpha/inner']);
   });
 
+  it('keeps duplicate-basename submodules on their own parent worktrees', async () => {
+    getEffectiveConceptionConfig.mockResolvedValue({
+      workspace_path: '/ws',
+      repositories: [
+        { path: 'a/docs', handle: 'alpha-docs', submodules: ['one'] },
+        { path: 'b/docs', handle: 'beta-docs', submodules: ['two'] },
+      ],
+    });
+
+    const entries = await listRepos(PATH_A);
+    const one = entries.find((entry) => entry.handle === 'one');
+    const two = entries.find((entry) => entry.handle === 'two');
+    expect(one?.worktrees?.map((worktree) => worktree.path)).toEqual(['/ws/a/docs/one']);
+    expect(two?.worktrees?.map((worktree) => worktree.path)).toEqual(['/ws/b/docs/two']);
+  });
+
   it('does not hand a name-colliding repo the other one’s worktrees', async () => {
     // Two configured repos whose paths end in the same basename share a bare
     // `name`, and the by-name parent map keeps only the last. Reusing the
@@ -152,7 +168,7 @@ describe('listRepos git budget (#475)', () => {
     // off that map correctly here too, or the structural-watcher path would
     // re-render the primary with no worktrees at all.
     const { listReposForPrimary } = await import('./repos');
-    const entries = await listReposForPrimary(PATH_A, 'beta');
+    const entries = await listReposForPrimary(PATH_A, '/ws/beta');
     expect(entries.map((e) => e.name)).toEqual(['beta']);
     expect(entries[0]?.worktrees?.map((w) => w.path)).toEqual(['/ws/beta']);
   });

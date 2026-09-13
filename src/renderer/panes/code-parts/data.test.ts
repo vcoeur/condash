@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { RepoEntry, Worktree } from '../../../shared/types';
-import { collectFilterableBranches, filterWorktrees, groupRepos, orderedRepos } from './data';
+import {
+  collectFilterableBranches,
+  filterWorktrees,
+  groupRepos,
+  orderedRepos,
+  repoFamilies,
+} from './data';
 
 function wt(branch: string | null, primary = false): Worktree {
   return {
@@ -153,6 +159,40 @@ describe('groupRepos', () => {
     expect(groups.map((g) => [g.section, g.key, g.repos.length])).toEqual([
       [null, '__default__', 1],
       ['Later', 'Later', 1],
+    ]);
+  });
+});
+
+describe('repoFamilies', () => {
+  it('keeps parent cards and direct submodules in configured order', () => {
+    const families = repoFamilies(
+      orderedRepos([
+        repo('helio', [wt('main', true)]),
+        { ...repo('parser', [wt('main', true)]), parent: 'helio' },
+        { ...repo('search', [wt('main', true)]), parent: 'helio' },
+        repo('helio-web', [wt('main', true)]),
+      ]),
+    );
+
+    expect(families.map((family) => family.parent.name)).toEqual(['helio', 'helio-web']);
+    expect(families[0]?.children.map((child) => child.name)).toEqual(['parser', 'search']);
+    expect(families[1]?.children).toEqual([]);
+  });
+
+  it('does not merge families whose configured paths share a basename', () => {
+    const families = repoFamilies(
+      orderedRepos([
+        { ...repo('docs', [wt('main', true)]), path: '/r/a/docs' },
+        { ...repo('one', [wt('main', true)]), parent: 'docs', path: '/r/a/docs/one' },
+        { ...repo('docs', [wt('main', true)]), path: '/r/b/docs' },
+        { ...repo('two', [wt('main', true)]), parent: 'docs', path: '/r/b/docs/two' },
+      ]),
+    );
+
+    expect(families.map((family) => family.parent.path)).toEqual(['/r/a/docs', '/r/b/docs']);
+    expect(families.map((family) => family.children.map((child) => child.path))).toEqual([
+      ['/r/a/docs/one'],
+      ['/r/b/docs/two'],
     ]);
   });
 });

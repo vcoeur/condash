@@ -271,10 +271,10 @@
    * clashing. The live/"running" signal adopts the gold accent (gold *is* the
    * life of the page) — see --dark-col-running below. */
   --dark-bg: #151412;
-  --dark-bg-panel: #1a1815;
-  --dark-bg-elevated: #1c1b18;
-  --dark-bg-subtle: #211f1c;
-  --dark-bg-hover: #252320;
+  --dark-bg-panel: #25211c;
+  --dark-bg-elevated: #302b25;
+  --dark-bg-subtle: #35302a;
+  --dark-bg-hover: #3b352e;
   --dark-text: #f0ebe4;
   --dark-text-body: #cabfae;
   --dark-text-muted: #9a9488;
@@ -745,7 +745,10 @@ button:hover {
 }
 
 .pane-projects {
-  /* No extra border; the panel surface is the divider. */
+  /* Projects is a scanning surface, not another oversized card inside the
+   * shell. Status-group containers provide its local framing. */
+  border: none;
+  border-radius: 0;
 }
 
 .empty {

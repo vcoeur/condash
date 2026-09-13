@@ -790,12 +790,12 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await requireContent(page, 'dashboard-overview', {
       root: '.projects-pane',
       items: '.row',
-      minItems: 5,
+      minItems: 3,
     });
     await requireContent(page, 'dashboard-overview', {
       root: '.repos-pane',
       items: '.repo-row',
-      minItems: 5,
+      minItems: 3,
     });
     await shoot(page, theme, 'dashboard-overview');
 
@@ -870,14 +870,14 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    legible, which they are not at 798px next to the Projects list.
     //    Captured with NO popover open: the page it serves
     //    (`repositories-and-open-with.md`) is about the card list, and the
-    //    popover covers one of the five cards.
+    //    popover covers one of the three top-level cards.
     await setProjectsBand(b, false);
     await settle(page, 600);
     await parkPointer(page);
     await requireContent(page, 'code-pane', {
       root: '.repos-pane',
       items: '.repo-row',
-      minItems: 5,
+      minItems: 3,
     });
     await shoot(page, theme, 'code-pane');
 

@@ -41,7 +41,7 @@ Read the README. The Description points at a specific test corpus, and `notes/st
 
 ## 2. Open the repo from the Code pane
 
-Switch to the **Code** pane. Five cards render in declaration order — `helio`, its two declared submodules `crates/parser` and `crates/search` (each tagged `submodule`), then `helio-web` and `helio-docs`. The `helio` card's branch row carries a `1 dirty` pill; click it and the popover lists the changed file — you left a WIP note there last week.
+Switch to the **Code** pane. Three top-level cards render in declaration order — `helio`, `helio-web`, and `helio-docs`. The `helio` card's **Submodules 2** disclosure reveals its two declared children, `crates/parser` and `crates/search`, each tagged `submodule`. The `helio` card's branch row carries a `1 dirty` pill; click it and the popover lists the changed file — you left a WIP note there last week.
 
 ![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-light.png#only-light)
 ![Code pane — helio's dirty-file popover open, listing README.md as the one modified file](../assets/screenshots/code-pane-dirty-dark.png#only-dark)

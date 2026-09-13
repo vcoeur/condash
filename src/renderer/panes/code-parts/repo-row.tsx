@@ -29,6 +29,14 @@ export function RepoRow(props: {
   onStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
+  /** Direct submodule count when this card heads a configured repository family. */
+  submoduleCount?: number;
+  /** Whether the direct submodule cards are currently rendered. */
+  submodulesExpanded?: boolean;
+  /** Id of the controlled submodule list, supplied by the family container. */
+  submoduleListId?: string;
+  /** Toggle the family disclosure without affecting repository data or filters. */
+  onToggleSubmodules?: () => void;
 }) {
   /** Primary pill — always the canonical `#handle`, so a code card and a
    * project card naming the same app read identically. */
@@ -101,6 +109,22 @@ export function RepoRow(props: {
           </Show>
         </span>
         <span class="spacer" />
+        <Show when={props.submoduleCount && props.submoduleCount > 0}>
+          <button
+            type="button"
+            class="repo-submodules-toggle"
+            aria-expanded={props.submodulesExpanded ?? false}
+            aria-controls={props.submoduleListId}
+            aria-label={`${props.submodulesExpanded ? 'Hide' : 'Show'} ${props.submoduleCount} submodules for ${handlePill()}`}
+            onClick={() => props.onToggleSubmodules?.()}
+          >
+            <span class="repo-submodules-caret" aria-hidden="true">
+              {props.submodulesExpanded ? '⌄' : '›'}
+            </span>
+            <span>Submodules</span>
+            <span class="repo-submodules-count">{props.submoduleCount}</span>
+          </button>
+        </Show>
         <Show when={props.repo.parent}>
           <span class="repo-kind-tag" title="Submodule, configured under repositories">
             submodule

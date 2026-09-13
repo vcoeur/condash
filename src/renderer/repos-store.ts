@@ -102,7 +102,7 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
         void reloadRepos();
         return;
       }
-      const updated = await window.condash.listReposForPrimary(primary.name);
+      const updated = await window.condash.listReposForPrimary(primary.path);
       // Same staleness guard as reloadRepos — the conception may have
       // switched while the per-primary fetch was in flight.
       if (deps.conceptionPath() !== conception) return;
@@ -213,8 +213,8 @@ export function spliceFamilyAt(
   updated: readonly RepoEntry[],
 ): RepoEntry[] {
   const updatedPaths = new Set(updated.map((e) => e.path));
-  const isFamily = (r: RepoEntry): boolean =>
-    updatedPaths.has(r.path) || r.parent === primary.name || r.path === primary.path;
+  const isFamily = (repo: RepoEntry): boolean =>
+    updatedPaths.has(repo.path) || repo.parentPath === primary.path || repo.path === primary.path;
   const primaryIdx = current.findIndex((r) => r.path === primary.path);
   if (primaryIdx === -1) {
     return [...current.filter((r) => !isFamily(r)), ...updated];

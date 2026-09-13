@@ -415,12 +415,12 @@ function watchTargetsWithOwners(repos: readonly RepoEntry[]): {
   targets: WatchedPath[];
   byPrimary: Map<string, WatchedPath[]>;
 } {
-  const byName = new Map(repos.map((r) => [r.name, r]));
+  const byPath = new Map(repos.map((repo) => [repo.path, repo]));
   const rootOf = (repo: RepoEntry): RepoEntry => {
     let cur = repo;
     // Config order caps the walk; a parent cycle can't spin forever.
     for (let guard = 0; cur.parent && guard < repos.length; guard++) {
-      const parent = byName.get(cur.parent);
+      const parent = cur.parentPath ? byPath.get(cur.parentPath) : undefined;
       if (!parent) break;
       cur = parent;
     }

@@ -231,11 +231,13 @@ describe('repo-watchers — incremental per-primary re-sync (B4)', () => {
     path: string,
     worktrees: string[] = [],
     parent?: string,
+    parentPath?: string,
   ): RepoEntry => ({
     name,
     handle: name,
     path,
     parent,
+    parentPath,
     dirty: 0,
     missing: false,
     worktrees: worktrees.map((p) => ({ path: p, branch: 'main', primary: false })),
@@ -275,13 +277,13 @@ describe('repo-watchers — incremental per-primary re-sync (B4)', () => {
   });
 
   it('rolls a submodule child’s targets into its primary’s slice', async () => {
-    await setRepoWatchersForRepos([entry('a', A, [A_WT1]), entry('a/s', S, [], 'a')]);
+    await setRepoWatchersForRepos([entry('a', A, [A_WT1]), entry('a/s', S, [], 'a', A)]);
     const createdAfterFull = h.created.length;
 
     // The structural event fired on primary a; the re-listed entries include
     // the submodule child, whose new worktree must be picked up even though
     // the child is not itself a primary.
-    await syncRepoWatchersForPrimary([entry('a', A, [A_WT1]), entry('a/s', S, [S_WT1], 'a')]);
+    await syncRepoWatchersForPrimary([entry('a', A, [A_WT1]), entry('a/s', S, [S_WT1], 'a', A)]);
 
     const newWatchers = h.created.slice(createdAfterFull);
     expect(newWatchers).toHaveLength(2); // the submodule worktree’s pair only

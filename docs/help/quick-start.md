@@ -72,9 +72,8 @@ Recent** for the last five.
 
 ## 3. Create an item
 
-Three equivalent ways to open the create-item modal: the **+ New
-project ▾** button on the `NOW` section header, the **+ New** button in
-the Projects pane header, or **File → New project…** (`Ctrl+N`).
+Two ways to open the create-item modal: the **+ New project ▾** button on
+the `NOW` section header, or **File → New project…** (`Ctrl+N`).
 
 A tree with **no projects and no `knowledge/` content** shows a
 **Welcome screen** first, with four cards — **Create your first

@@ -27,6 +27,25 @@
   --card-gap: 12px;
 }
 
+/* A family takes one ordinary grid cell. Its parent stays a full RepoRow;
+ * expanded direct submodules stack below it so none of their existing controls
+ * or worktree detail has to be summarised into a new aggregate surface. */
+.repo-family {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+
+.repo-submodules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-strong);
+}
+
 .repos-section {
   display: flex;
   flex-direction: column;
@@ -343,6 +362,51 @@
 
 .repo-head .spacer {
   flex: 1;
+}
+
+/* Repository-family disclosure is quiet header chrome, not a second action
+ * surface. The explicit text, count and native button semantics make the
+ * collapsed child inventory discoverable to keyboard and screen-reader users. */
+.repo-submodules-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.repo-submodules-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.repo-submodules-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.repo-submodules-caret {
+  width: 1ch;
+  text-align: center;
+}
+
+.repo-submodules-count {
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .repo-name {
