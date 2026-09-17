@@ -40,23 +40,27 @@ export async function checkLinks(conceptionPath: string): Promise<AuditIssue[]> 
     const source = await fs.readFile(filePath, 'utf8');
     const file = relative(conceptionPath, filePath);
     const lines = source.split(/\r?\n/);
+    const transferredLinks = new Map<string, number>();
     for (const { index, line } of iterUnfencedLines(lines)) {
       const transferTarget = transferredTarget(line);
-      if (transferTarget) {
-        const transferIssue = await transferredIssue(
-          conceptionPath,
-          file,
-          filePath,
-          index + 1,
-          transferTarget,
-        );
-        if (transferIssue) issues.push(transferIssue);
-        continue;
+      if (!transferTarget) continue;
+      const transferIssue = await transferredIssue(
+        conceptionPath,
+        file,
+        filePath,
+        index + 1,
+        transferTarget,
+      );
+      if (transferIssue) issues.push(transferIssue);
+      if (transferTarget.isMarkdownLink) {
+        const key = linkKey({ line: index + 1, target: transferTarget.target });
+        transferredLinks.set(key, (transferredLinks.get(key) ?? 0) + 1);
       }
-      for (const link of markdownLinks(line, index + 1)) {
-        const issue = await linkIssue(conceptionPath, filePath, file, link, anchorCache);
-        if (issue) issues.push(issue);
-      }
+    }
+    for (const link of markdownLinks(source)) {
+      if (consumeTransferredLink(link, transferredLinks)) continue;
+      const issue = await linkIssue(conceptionPath, filePath, file, link, anchorCache);
+      if (issue) issues.push(issue);
     }
   }
   return issues;
@@ -69,16 +73,57 @@ async function markdownFiles(conceptionPath: string): Promise<string[]> {
   return groups.flat().sort();
 }
 
-/** Extract Markdown link destinations from one non-fenced source line. */
-function markdownLinks(line: string, lineNumber: number): LinkReference[] {
-  const [inline] = markdown.parseInline(line, {});
+/** Extract Markdown link destinations from a complete source document. */
+function markdownLinks(source: string): LinkReference[] {
+  const tokens = markdown.parse(source, {});
   const links: LinkReference[] = [];
-  for (const token of inline?.children ?? []) {
-    if (token.type !== 'link_open') continue;
-    const target = token.attrGet('href');
-    if (target) links.push({ target, line: lineNumber });
+  for (const token of tokens) {
+    if (token.type !== 'inline') continue;
+    const firstLine = (token.map?.[0] ?? 0) + 1;
+    let searchStart = 0;
+    for (const child of token.children ?? []) {
+      if (child.type !== 'link_open') continue;
+      const target = child.attrGet('href');
+      if (!target) continue;
+      const location = inlineLinkLocation(token.content, target, searchStart);
+      if (location) searchStart = location.offset + 1;
+      links.push({
+        target,
+        line: firstLine + (location?.prefix.match(/\n/g)?.length ?? 0),
+      });
+    }
   }
   return links;
+}
+
+/** Locate a direct link destination in an inline token to preserve its source line. */
+function inlineLinkLocation(
+  source: string,
+  target: string,
+  searchStart: number,
+): { offset: number; prefix: string } | null {
+  const offset = source.indexOf(`](${target}`, searchStart);
+  if (offset === -1) return null;
+  const linkStart = source.lastIndexOf('[', offset);
+  return { offset, prefix: source.slice(0, linkStart === -1 ? offset : linkStart) };
+}
+
+/** Build a key for the single Markdown link represented by a transfer marker. */
+function linkKey(link: LinkReference): string {
+  return `${link.line}\u0000${link.target}`;
+}
+
+/** Skip one link already handled as a Transferred-marker target. */
+function consumeTransferredLink(
+  link: LinkReference,
+  transferredLinks: Map<string, number>,
+): boolean {
+  const key = linkKey(link);
+  const count = transferredLinks.get(key) ?? 0;
+  if (count === 0) return false;
+  if (count === 1) transferredLinks.delete(key);
+  else transferredLinks.set(key, count - 1);
+  return true;
 }
 
 /** Return one issue for a relative Markdown link, or null when it resolves. */
@@ -100,7 +145,7 @@ async function linkIssue(
       link.target,
     );
   }
-  if (!target.anchor) return null;
+  if (!target.anchor || !targetPath.toLowerCase().endsWith('.md')) return null;
 
   const anchors = cachedAnchors(targetPath, anchorCache);
   if ((await anchors).has(target.anchor)) return null;
@@ -218,7 +263,7 @@ function githubHeadingSlug(heading: string): string {
   return heading
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .replace(/\s+/g, '-');
 }
 

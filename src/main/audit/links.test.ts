@@ -60,6 +60,29 @@ describe('checkLinks', () => {
     await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
   });
 
+  it('accepts GitHub-style heading anchors containing underscores', async () => {
+    await writeFile('knowledge/target.md', '# foo_bar\n');
+    await writeFile('knowledge/source.md', '[Target](target.md#foo_bar)\n');
+
+    await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
+  });
+
+  it('reports reference-style and multi-line Markdown links', async () => {
+    await writeFile(
+      'knowledge/source.md',
+      '[Reference][missing-reference]\n\n[Multi-line\nlink](missing-multiline.md)\n\n[missing-reference]: missing-reference.md\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toHaveLength(2);
+    expect(issues.map((issue) => issue.line)).toEqual([1, 3]);
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Link target does not exist: missing-reference.md',
+      'Link target does not exist: missing-multiline.md',
+    ]);
+  });
+
   it('reports dead same-file and cross-file anchors', async () => {
     await writeFile('knowledge/target.md', '# Present\n');
     await writeFile(
@@ -112,6 +135,13 @@ describe('checkLinks', () => {
     await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
   });
 
+  it('does not check fragments on non-Markdown targets as heading anchors', async () => {
+    await writeFile('knowledge/asset.png', 'image bytes');
+    await writeFile('knowledge/source.md', '[Asset](asset.png#ignored)\n');
+
+    await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
+  });
+
   it('resolves bare Transferred targets from the conception root', async () => {
     await writeFile('knowledge/topics/promoted.md', '# Promoted\n');
     await writeFile(
@@ -130,6 +160,24 @@ describe('checkLinks', () => {
     );
 
     await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
+  });
+
+  it('audits ordinary links that share a Transferred-marker line', async () => {
+    await writeFile('knowledge/topics/promoted.md', '# Promoted\n');
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → [Promoted](../../../../knowledge/topics/promoted.md) [Gone](missing.md)\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toMatchObject([
+      {
+        file: 'projects/2026-09/2026-09-17-project/notes/01-work.md',
+        line: 1,
+        message: 'Link target does not exist: missing.md',
+      },
+    ]);
   });
 
   it('reports missing Transferred targets in both supported forms', async () => {
