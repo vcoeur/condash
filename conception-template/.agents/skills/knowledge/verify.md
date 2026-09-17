@@ -1,6 +1,6 @@
 # /knowledge — verify (conception-wide audit)
 
-Audit the conception tree for convention drift: stale `**Verified:**` stamps, LFS coverage gaps, large plain-git binaries, dangling cross-repo references from sibling apps pointing into conception, `knowledge/**/index.md` orphans/danglers, and done projects missing their knowledge-promotion check. Every check lives in `condash` — there is no separate Python script.
+Audit the conception tree for convention drift: stale `**Verified:**` stamps, LFS coverage gaps, large plain-git binaries, dangling cross-repo references from sibling apps pointing into conception, unresolved relative Markdown links / anchors and `**Transferred:**` targets, `knowledge/**/index.md` orphans/danglers, and done projects missing their knowledge-promotion check. Every check lives in `condash` — there is no separate Python script.
 
 This is the conception-wide **sweep**: the batched audit + verify + fix workflow. Every audit lives under these two verbs.
 
@@ -17,7 +17,7 @@ Trigger: `/knowledge verify`.
 
    Stamps are owned by `condash knowledge verify` (returns `data.stale[]`, `data.fresh`, `data.unstamped[]`, `data.maxAge`). Everything else lives under `condash audit` (returns `{summary, issues[]}` with one entry per finding). Both are pure read-only.
 
-   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,check-knowledge-deferred,check-knowledge`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
+   `condash audit` is the umbrella verb. `--include` accepts `all` or any subset of `lfs,binaries,cross-repo,worktrees,index,links,stale-index,stale-verification,check-knowledge-deferred,check-knowledge,hooks`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
 
 2. **Triage by check and severity.**
 
@@ -68,6 +68,10 @@ Items declaring an active `branch` field but no on-disk worktree. Offer `/projec
 ### `index` (auto-fix candidate)
 
 `knowledge/**/index.md` orphans (body files not listed in their parent index) and danglers (entries pointing at missing files). Both are fixed by `/knowledge index` (which calls `condash knowledge index`). Suggest running it.
+
+### `links` (editorial)
+
+Relative Markdown links under `knowledge/` and `projects/` whose target or heading anchor is missing, plus `**Transferred:**` markers whose bare-backticked or Markdown-link target no longer exists. The check ignores external schemes and code examples, and understands URL-encoded path segments, duplicate GitHub-style heading slugs, and explicit HTML anchors. Do not auto-fix: find the renamed target or remove the stale reference only after confirming the intended relationship.
 
 ### `check-knowledge` (editorial; mechanical recording)
 

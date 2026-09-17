@@ -10,6 +10,7 @@ export const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'cross-repo',
   'worktrees',
   'index',
+  'links',
   'stale-index',
   'stale-verification',
   'check-knowledge',

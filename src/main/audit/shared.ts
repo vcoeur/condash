@@ -18,6 +18,7 @@ export type AuditCheckName =
   | 'cross-repo'
   | 'worktrees'
   | 'index'
+  | 'links'
   | 'stale-index'
   | 'stale-verification'
   | 'check-knowledge'

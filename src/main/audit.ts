@@ -14,6 +14,8 @@
  *                   whose Status is not `done` are checked.)
  *  - `index`      — every directory under `knowledge/` carries an `index.md`
  *                   listing its children; flag dangling and orphan entries.
+ *  - `links`      — relative Markdown links, heading anchors, and
+ *                   `**Transferred:**` marker targets that no longer resolve.
  *  - `stale-index`— `index.md` files under `projects/` or `knowledge/` whose
  *                   content has drifted from the tree (regen dry-run would
  *                   rewrite them). Covers freshness where `index` covers
@@ -50,6 +52,7 @@ import { checkIndex } from './audit/index-check';
 import { checkKnowledgeCheck } from './audit/check-knowledge';
 import { checkKnowledgeRecheck } from './audit/check-knowledge-deferred';
 import { checkLfs } from './audit/lfs';
+import { checkLinks } from './audit/links';
 import { checkStaleIndex } from './audit/stale-index';
 import { checkStaleVerification } from './audit/stale-verification';
 import { checkWorktrees } from './audit/worktrees';
@@ -79,6 +82,9 @@ export async function runAudit(
           break;
         case 'index':
           issues.push(...(await checkIndex(conceptionPath)));
+          break;
+        case 'links':
+          issues.push(...(await checkLinks(conceptionPath)));
           break;
         case 'stale-index':
           issues.push(...(await checkStaleIndex(conceptionPath)));
