@@ -83,6 +83,54 @@ describe('checkLinks', () => {
     ]);
   });
 
+  it('reports a reference link on its own source line after preceding paragraph text', async () => {
+    await writeFile(
+      'knowledge/source.md',
+      'This paragraph starts with ordinary prose.\n[Reference][missing-reference]\n\n[missing-reference]: missing-reference.md\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toMatchObject([
+      {
+        file: 'knowledge/source.md',
+        line: 2,
+        message: 'Link target does not exist: missing-reference.md',
+      },
+    ]);
+  });
+
+  it('resolves duplicate reference definitions using the first definition', async () => {
+    await writeFile('knowledge/present.md', '# Present\n');
+    await writeFile(
+      'knowledge/source.md',
+      '[Reference][duplicate]\n\n[duplicate]: missing.md\n[duplicate]: present.md\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toMatchObject([
+      {
+        file: 'knowledge/source.md',
+        line: 1,
+        message: 'Link target does not exist: missing.md',
+      },
+    ]);
+  });
+
+  it('accepts decoded combining-mark and image-alt GitHub heading fragments', async () => {
+    await writeFile(
+      'knowledge/target.md',
+      '# Café ![Badge](badge.png)\n\n# ![Image only](image.png)\n',
+    );
+    await writeFile(
+      'knowledge/source.md',
+      '[Combined](target.md#cafe%CC%81-badge)\n[Image](target.md#image-only)\n',
+    );
+
+    await expect(checkLinks(conceptionPath)).resolves.toEqual([]);
+  });
+
   it('reports dead same-file and cross-file anchors', async () => {
     await writeFile('knowledge/target.md', '# Present\n');
     await writeFile(
@@ -171,10 +219,46 @@ describe('checkLinks', () => {
 
     const issues = await checkLinks(conceptionPath);
 
+    expect(issues).toHaveLength(1);
     expect(issues).toMatchObject([
       {
         file: 'projects/2026-09/2026-09-17-project/notes/01-work.md',
         line: 1,
+        message: 'Link target does not exist: missing.md',
+      },
+    ]);
+  });
+
+  it('reports a dead fragment in an existing linked Transferred target', async () => {
+    await writeFile('knowledge/topics/promoted.md', '# Present\n');
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → [Promoted](../../../../knowledge/topics/promoted.md#missing)\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toMatchObject([
+      {
+        file: 'projects/2026-09/2026-09-17-project/notes/01-work.md',
+        line: 1,
+        message: 'Anchor #missing does not exist in knowledge/topics/promoted.md',
+      },
+    ]);
+  });
+
+  it('does not treat a line-broken Transferred label as transfer metadata', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:**\n2026-09-17 → [Gone](missing.md)\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toMatchObject([
+      {
+        file: 'projects/2026-09/2026-09-17-project/notes/01-work.md',
+        line: 2,
         message: 'Link target does not exist: missing.md',
       },
     ]);
