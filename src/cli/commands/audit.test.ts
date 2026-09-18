@@ -72,6 +72,7 @@ describe('runAuditCommand', () => {
       'cross-repo',
       'worktrees',
       'index',
+      'links',
       'check-knowledge-deferred',
     ]) {
       expect(checks).toContain(c);

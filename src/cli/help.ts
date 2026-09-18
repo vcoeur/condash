@@ -39,7 +39,7 @@ Daily:
   applications list, add, set, rename, sync-docs, validate (the #handle registry)
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
-               index,stale-index,stale-verification,check-knowledge-deferred,
+               index,links,stale-index,stale-verification,check-knowledge-deferred,
                check-knowledge,hooks)
   sync         run, commit <item> --message "…"
                bare \`condash sync\` is a dry-run; \`sync run\` executes
