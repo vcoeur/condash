@@ -32,7 +32,7 @@ import { createBranchFilterStore } from './branch-filter-store';
 import { createReposStore } from './repos-store';
 import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
-import { createPrIndexSync } from './pr-index-store';
+import { createPrIndexSync, PR_INDEX_DEBOUNCE_MS } from './pr-index-store';
 import { reconcileStarred, reloadStarred, starredSlugs } from './star-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
@@ -192,8 +192,14 @@ function App() {
 
   // Keep the Projects-pane PR badges in sync with the project list — but only
   // while the pane is visible (badges render nowhere else; see the store for
-  // the perf rationale). Showing the pane re-arms the sync.
-  createPrIndexSync(projects, () => layout().projects && layout().leftView === 'projects');
+  // the perf rationale). Showing the pane re-arms the sync. Triggers coalesce
+  // behind a short trailing debounce so pane toggling / list churn lands as
+  // one batch instead of an overlapping series.
+  createPrIndexSync(
+    projects,
+    () => layout().projects && layout().leftView === 'projects',
+    PR_INDEX_DEBOUNCE_MS,
+  );
 
   // Load the Projects-pane starred set for the active conception. Keyed on the
   // conception path, not the project list: the set lives in that conception's

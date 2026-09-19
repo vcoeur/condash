@@ -51,6 +51,13 @@ interface ListCacheEntry {
 }
 const listCache = new Map<string, ListCacheEntry>();
 
+/** Settling-but-unfinished batch lookups by cwd. A parallel burst of calls
+ *  for the same repo — every `apps:` spelling of it resolves to one cwd in
+ *  the IPC handler — collapses onto one `gh` spawn instead of one per
+ *  caller. Entries are removed on settle (success or failure), so a promise
+ *  is never served after it has settled and a rejection is never cached. */
+const listInFlight = new Map<string, Promise<OpenPullRequest[]>>();
+
 const cacheKey = (path: string, branch: string): string => JSON.stringify([path, branch]);
 
 /** Shape of one element of `gh pr list --json …` output. Fields are `unknown`
@@ -164,7 +171,8 @@ export async function lookupPullRequest(
  * branch — the batch behind the Projects-pane card badges. One call covers
  * every card for that repo. Returns an empty array when the repo has no open
  * PRs or the lookup can't run (unauthenticated gh, no GitHub remote, gh
- * absent). Never throws; cached by `cwd` for `CACHE_TTL_MS`.
+ * absent). Never throws; cached by `cwd` for `CACHE_TTL_MS`, and concurrent
+ * callers for the same `cwd` share the one in-flight lookup (single-flight).
  *
  * @param cwd Absolute path to a checkout of the repo (any worktree of it).
  * @returns The repo's open PRs (possibly empty).
@@ -173,26 +181,40 @@ export async function listOpenPullRequests(cwd: string): Promise<OpenPullRequest
   const hit = listCache.get(cwd);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
-  let value: OpenPullRequest[] = [];
+  const pending = listInFlight.get(cwd);
+  if (pending) return pending;
+
+  const task = (async (): Promise<OpenPullRequest[]> => {
+    let value: OpenPullRequest[] = [];
+    try {
+      const { stdout } = await exec(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--state',
+          'open',
+          '--json',
+          'url,number,title,isDraft,headRefName',
+          '--limit',
+          String(LIST_LIMIT),
+        ],
+        { cwd, timeout: LOOKUP_TIMEOUT_MS, spawnDeadlineMs: LOOKUP_TIMEOUT_MS },
+      );
+      value = parseOpenPrList(stdout);
+    } catch {
+      value = [];
+    }
+    listCache.set(cwd, { at: Date.now(), value });
+    return value;
+  })();
+
+  listInFlight.set(cwd, task);
   try {
-    const { stdout } = await exec(
-      'gh',
-      [
-        'pr',
-        'list',
-        '--state',
-        'open',
-        '--json',
-        'url,number,title,isDraft,headRefName',
-        '--limit',
-        String(LIST_LIMIT),
-      ],
-      { cwd, timeout: LOOKUP_TIMEOUT_MS, spawnDeadlineMs: LOOKUP_TIMEOUT_MS },
-    );
-    value = parseOpenPrList(stdout);
-  } catch {
-    value = [];
+    return await task;
+  } finally {
+    // Identity-guarded delist: a late second caller settling here must not
+    // remove a newer lookup installed after this entry was already cleared.
+    if (listInFlight.get(cwd) === task) listInFlight.delete(cwd);
   }
-  listCache.set(cwd, { at: Date.now(), value });
-  return value;
 }
