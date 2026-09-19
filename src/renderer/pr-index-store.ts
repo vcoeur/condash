@@ -1,4 +1,4 @@
-import { createEffect, createSignal, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onCleanup, untrack, type Accessor } from 'solid-js';
 import type { OpenPullRequest, Project } from '@shared/types';
 import { rendererPerf } from './perf-renderer';
 
@@ -72,10 +72,14 @@ export function prsForProject(project: Pick<Project, 'apps' | 'branch'>): OpenPu
  * Refresh the index for the given projects. Collects the distinct `apps:`
  * tokens of every project that declares a branch and fetches each repo's
  * open PRs through a bounded pool (at most `RELOAD_POOL_LIMIT` in flight,
- * tokens drained in insertion order), merging each result into the index as
- * it lands so badges populate progressively instead of in one swap. A
- * no-op-shaped empty set clears the index. Never throws — a failed repo
- * fetch just contributes no badges.
+ * tokens drained in insertion order). Each landing entry merges into a view
+ * seeded from the current index and installs it, so badges populate
+ * progressively while entries still in flight — and entries this batch does
+ * not cover — keep their last-known badge mid-drain (a pane re-show after
+ * hide starts from a deliberately retained index). When the pool drains, one
+ * generation-guarded exact swap installs the batch's own result, pruning
+ * entries whose project left the list. A no-op-shaped empty set clears the
+ * index. Never throws — a failed repo fetch just contributes no badges.
  *
  * @param projects The current project list (typically the store's accessor value).
  */
@@ -93,7 +97,17 @@ export async function reloadPrIndex(projects: readonly Project[]): Promise<void>
       return;
     }
     const tokens = [...apps];
-    const merged = new Map<string, OpenPullRequest[]>();
+    // Progressive view, seeded from the current index: an entry whose lookup
+    // is still in flight — and an entry this batch does not cover — keeps its
+    // last-known badge mid-drain instead of blanking until its own lookup
+    // lands. Untracked because the fire-immediately sync path calls this
+    // inside the createPrIndexSync effect's tracking scope — the seed is
+    // data, not a dependency (a tracked read would re-run the effect on
+    // every merge and re-fire the reload forever).
+    const merged = new Map(untrack(() => prIndex()));
+    // The batch's own result: the only thing the final exact swap installs,
+    // so the end state is exactly this batch's outcome (stale entries pruned).
+    const batch = new Map<string, OpenPullRequest[]>();
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < tokens.length) {
@@ -110,6 +124,7 @@ export async function reloadPrIndex(projects: readonly Project[]): Promise<void>
         }
         // A newer reload owns the index now — this entry must not land.
         if (mine !== generation) return;
+        batch.set(app, prs);
         merged.set(app, prs);
         setPrIndex(new Map(merged));
       }
@@ -117,6 +132,9 @@ export async function reloadPrIndex(projects: readonly Project[]): Promise<void>
     await Promise.all(
       Array.from({ length: Math.min(RELOAD_POOL_LIMIT, tokens.length) }, () => worker()),
     );
+    // Exact swap once the pool drains: the seeded view was for mid-drain
+    // reads only — the end state is the batch's own result.
+    if (mine === generation) setPrIndex(batch);
   } finally {
     rendererPerf.endSpan('prIndexReload', span);
   }
@@ -136,8 +154,9 @@ export async function reloadPrIndex(projects: readonly Project[]): Promise<void>
  * `reloadPrIndex` fires once the window quiets, reading the latest list at
  * fire time — outside the effect's tracking window, so the reactivity that
  * re-runs the effect stays on the `projects` accessor read in the body. A
- * hidden pane still arms nothing, and hiding drops a timer already armed.
- * The production call site passes `PR_INDEX_DEBOUNCE_MS`; the default keeps
+ * hidden pane still arms nothing, and hiding drops a timer already armed;
+ * a scope disposed with one armed has it cleared on disposal. The
+ * production call site passes `PR_INDEX_DEBOUNCE_MS`; the default keeps
  * the shipped fire-immediately behaviour.
  *
  * @param projects    The projects-store accessor.
@@ -151,6 +170,15 @@ export function createPrIndexSync(
 ): void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   createEffect(() => {
+    // A scope disposed with a timer armed must not fire its reload into the
+    // dead scope. Solid also runs this before each re-run, where the body's
+    // own clears already cover it — this is for the disposal case.
+    onCleanup(() => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    });
     const list = projects();
     if (!paneVisible()) {
       // The gate: a hidden pane arms nothing — and a timer armed before the

@@ -5,7 +5,7 @@
  * churn only while visible.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSignal } from 'solid-js';
+import { createRoot, createSignal } from 'solid-js';
 import type { OpenPullRequest, Project } from '@shared/types';
 import { createPrIndexSync, matchProjectPrs, prsForProject, reloadPrIndex } from './pr-index-store';
 import { rendererPerf } from './perf-renderer';
@@ -241,6 +241,25 @@ describe('createPrIndexSync — trailing debounce', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 2);
     expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
   });
+
+  it('drops a timer still armed when the sync scope is disposed', async () => {
+    const [projects, setProjects] = createSignal<Project[]>([project(['alpha'], 'b')]);
+    const [visible] = createSignal(true);
+    const dispose = createRoot((disposeRoot) => {
+      createPrIndexSync(projects, visible, DEBOUNCE_MS);
+      return disposeRoot;
+    });
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS); // armed-on-create batch fires
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
+
+    // Re-arm, then tear the scope down before the window elapses: the armed
+    // fire must never land into the disposed scope.
+    setProjects([project(['alpha'], 'other-branch')]);
+    dispose();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 2);
+    expect(listOpenPullRequests).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('reloadPrIndex — bounded pool + progressive merges', () => {
@@ -359,5 +378,66 @@ describe('reloadPrIndex — bounded pool + progressive merges', () => {
     await releaseAll(); // the stale wave settles
     await stale;
     expect(order).toEqual(['s1', 's2', 's3', 's4', 's5', 's6']); // s7/s8 never pulled
+  });
+
+  it('keeps last-known badges for un-landed entries mid-drain over a populated index', async () => {
+    const { listOpenPullRequests, release } = gatedLookup();
+    vi.stubGlobal('window', { condash: { listOpenPullRequests } });
+    const both = [project(['a-app'], 'b'), project(['b-app'], 'b')];
+
+    // Batch 1 populates the index — the state a pane re-show after hide
+    // (or list churn) starts from, since the index is retained while hidden.
+    const first = reloadPrIndex(both);
+    await flush();
+    release('a-app', [pr(1, 'b')]);
+    release('b-app', [pr(2, 'b')]);
+    await first;
+    expect(prsForProject({ apps: ['b-app'], branch: 'b' }).map((p) => p.number)).toEqual([2]);
+
+    // Batch 2 re-fetches both; a-app resolves first. b-app must keep its
+    // batch-1 badge while its own lookup is in flight, not blank out.
+    const second = reloadPrIndex(both);
+    await flush();
+    release('a-app', [pr(3, 'b')]);
+    await flush();
+    expect(prsForProject({ apps: ['b-app'], branch: 'b' }).map((p) => p.number)).toEqual([2]);
+    expect(prsForProject({ apps: ['a-app'], branch: 'b' }).map((p) => p.number)).toEqual([3]);
+
+    release('b-app', [pr(4, 'b')]);
+    await second;
+    expect(prsForProject({ apps: ['b-app'], branch: 'b' }).map((p) => p.number)).toEqual([4]);
+  });
+
+  it('prunes entries whose project left the list once the drain completes', async () => {
+    const { listOpenPullRequests, release } = gatedLookup();
+    vi.stubGlobal('window', { condash: { listOpenPullRequests } });
+
+    const first = reloadPrIndex([
+      project(['stay-app'], 'b'),
+      project(['gone-app'], 'b'),
+      project(['parked-app'], 'b'),
+    ]);
+    await flush();
+    release('stay-app', [pr(1, 'b')]);
+    release('gone-app', [pr(2, 'b')]);
+    release('parked-app', [pr(9, 'b')]);
+    await first;
+
+    // The list churns: gone-app's project is no longer in it. Its lookup is
+    // not in the batch either — parked-app's stays in flight so the drain
+    // (and with it the exact swap) is still pending at the mid-drain read.
+    const second = reloadPrIndex([project(['stay-app'], 'b'), project(['parked-app'], 'b')]);
+    await flush();
+    release('stay-app', [pr(5, 'b')]);
+    await flush();
+    // Mid-drain the seeded view still carries gone-app's last-known badge...
+    expect(prsForProject({ apps: ['gone-app'], branch: 'b' }).map((p) => p.number)).toEqual([2]);
+    expect(prsForProject({ apps: ['stay-app'], branch: 'b' }).map((p) => p.number)).toEqual([5]);
+    release('parked-app', [pr(8, 'b')]);
+    await second;
+    // ...until the exact swap lands: the end state is the batch's own result.
+    expect(prsForProject({ apps: ['gone-app'], branch: 'b' })).toEqual([]);
+    expect(prsForProject({ apps: ['stay-app'], branch: 'b' }).map((p) => p.number)).toEqual([5]);
+    expect(prsForProject({ apps: ['parked-app'], branch: 'b' }).map((p) => p.number)).toEqual([8]);
   });
 });
