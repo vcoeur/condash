@@ -11,7 +11,7 @@ description: Browse saved terminal-session transcripts by day, read them in the 
 
 > **Prototype note.** Logs open from **View → Troubleshooting → Session logs** as a transient right-slot surface; they are not persisted and remain outside the default search index.
 
-The Logs pane is a **right-slot working surface**. Showing it swaps whichever surface was there out.
+The Logs pane is a **right-slot working surface**. Showing it swaps whichever surface was there out, and the swap is session-only — the persisted choice returns next launch.
 
 It browses `<conception>/.condash/logs/`, where one plain-text `.txt` is written per terminal session — see [Embedded terminal → Session logging](terminal.md#session-logging) for the file format and how capture is turned on. **Capture is opt-in and off by default**, so a fresh install shows an empty pane until you enable *Record terminal sessions to disk* under Settings → Terminal.
 

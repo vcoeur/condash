@@ -116,11 +116,11 @@ While a scheduled run is in flight it appears in a **Running** section at the bo
 
 The **Keep out of logs** toggle (per-task default in the editor, overridable per run in the popup) routes a *manual* run's `.txt` to `.condash/manual/<slug>/` instead of `.condash/logs/`. The tab stays visible and interactive; only its on-disk log location changes. With the flag off, the run logs normally.
 
-Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — are browsable from the Logs pane's **Task runs** view, and stay invisible to the normal Logs list, search, and reports.
+Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — are browsable from the Logs surface's **Task runs** view, and stay invisible to the normal Logs list, search, and reports.
 
 ## See also
 
 - **[Agent CLIs and model providers](agent-clis-and-models.md)** — define the agents a task references, including the `promptFlags` a task needs.
 - **[The Logs pane](logs-pane.md)** — where the Task-runs store is browsed.
-- **[The Deliverables pane](deliverables-pane.md)** and **[the Performance pane](performance-pane.md)** — the other left-band views that share the rail.
+- **[The Deliverables pane](deliverables-pane.md)** and **[the Performance pane](performance-pane.md)** — retired from the rail by the navigation prototype; Performance opens as Terminal diagnostics under **View → Troubleshooting**.
 - **[The embedded terminal](terminal.md)** — where a running task's agent tab opens.

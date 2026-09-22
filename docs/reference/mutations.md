@@ -119,7 +119,7 @@ These write on their own schedule, without a user action, and all live under the
 | Path | Written when | Deleted by |
 |---|---|---|
 | `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` | `terminal.logging.enabled` — one file per pty session | `logsDeleteDay` / `logsDeleteSession`, plus the in-app janitor's retention caps |
-| `.condash/{scheduled,manual}/<slug>/` | Every scheduled task run, and a manual run of a task flagged `excludeFromLogs` | Manually; the Logs pane's **Task runs** view reads it |
+| `.condash/{scheduled,manual}/<slug>/` | Every scheduled task run, and a manual run of a task flagged `excludeFromLogs` | Manually; the Logs surface's **Task runs** view reads it |
 | `.condash/dashboard/state.json` | Each dashboard engine cycle | Manually |
 | `.condash/perf/YYYY-MM-DD.jsonl` | `terminal.perf.enabled` | The perf janitor's caps |
 | `.condash/transcripts/<sid>.ndjson` | A cooperating agent appends in-band transcript frames for its tab | Manually |

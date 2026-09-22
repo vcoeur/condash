@@ -15,7 +15,7 @@ By the end, you'll have walked through the loop most people use condash for — 
 
 The screenshots on this page come from a demo conception tree that ships in the repo at **`tests/fixtures/conception-demo/`** — an imaginary CLI project called `helio` and its two companions. It is not in the installed app, only in a clone.
 
-- **If you cloned the repo**: copy that directory somewhere writable and open the copy (`File → Open…`). condash writes to `.condash/` on first boot, so work on a copy rather than the checkout. The Code pane will stay empty — the repos it names don't exist on your machine — but every Projects, Knowledge, and Deliverables surface is real.
+- **If you cloned the repo**: copy that directory somewhere writable and open the copy (`File → Open…`). condash writes to `.condash/` on first boot, so work on a copy rather than the checkout. The Code pane will stay empty — the repos it names don't exist on your machine — but the Projects and Knowledge surfaces are real.
 - **If you installed a binary**: follow along in your own tree. Steps 1, 4, 6, 7, and 8 work on any item; steps 2, 3, and 5 need a configured repo and an incident with notes — substitute your own where the demo names its own.
 
 ## The scenario
@@ -56,7 +56,7 @@ Pick your editor from **Open with…** and it launches in that directory. The la
 
 ## 3. Run the repro in the embedded terminal
 
-Press `` Ctrl+` `` (or **View → Show Terminal**) — a pane opens beneath the dashboard with a real shell prompt — your `$SHELL`.
+Press `` Ctrl+` `` (or **View → Core → Show Terminal**) — a pane opens beneath the dashboard with a real shell prompt — your `$SHELL`.
 
 ![The terminal pane open beneath the dashboard, one shell tab running a helio search command, with New shell ▼ in its header](../assets/screenshots/terminal-light.png#only-light)
 ![The terminal pane open beneath the dashboard, one shell tab running a helio search command, with New shell ▼ in its header](../assets/screenshots/terminal-dark.png#only-dark)

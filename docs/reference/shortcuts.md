@@ -11,7 +11,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 | Area | Bindings | Configurable? |
 |---|---|---|
-| Application menu (File / View) | 9 set by condash, plus 11 OS defaults | no |
+| Application menu (File / View) | 8 set by condash, plus 11 OS defaults | no |
 | Dashboard global | 3 | no |
 | Project cards | 6 | no |
 | Note modal | 5 | no |
@@ -33,19 +33,18 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
 | File | New project… | `Ctrl+N` / `Cmd+N` | Open the new-project modal. |
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
-| View | Show Projects | — | Toggle the Projects pane on the left edge. |
-| View | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show the Code pane in the working slot. |
+| View ▸ Core | Show Projects | — | Toggle the Projects pane on the left edge. |
+| View ▸ Core | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show the Code pane in the working slot. |
 | View | Reference ▸ | — | Prototype: Browse **Knowledge** / **Resources** / **Skills** as the persistent right-slot surface. |
 | View | Automation ▸ | — | Prototype: **Automations** (the former Tasks surface), session-only. |
 | View | Troubleshooting ▸ | — | Prototype: session-only **Session logs** and **Terminal diagnostics** (PerfView in the bottom band). |
-| View | Show Dashboard | `Ctrl+Shift+D` / `Cmd+Shift+D` | Swap the bottom band to the Dashboard body (live terminal-tab summaries) — also selectable from the always-first **Dashboard** tab in the terminal strip. |
-| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills / Logs) is in the working slot. |
-| View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
+| View ▸ Core | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills) is in the working slot. |
+| View ▸ Core | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). |
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
-The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.
+The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items. Choosing an Automations, Session logs, or Terminal diagnostics route leaves the persisted working-surface choice intact — it is restored the next time the window loads.
 
 ### OS-default menu items
 
@@ -160,7 +159,7 @@ These live inside xterm's `attachCustomKeyEventHandler` and only fire while a te
 
 Copy writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. Paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), because `navigator.clipboard.readText()` is permission-gated and unreliable in the renderer. There is no HTTP endpoint.
 
-**There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
+**There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Core → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
 
 **`Ctrl+Left` / `Ctrl+Right` are not intercepted here either.** The move-tab shortcuts live in the pane-level (global) handler above, which yields to anything inside `.xterm-host` — so while a terminal tab has focus they fall through to the shell, where word-wise cursor motion keeps working, and they move a tab only when focus is elsewhere in the app. See [Input focus rules](#input-focus-rules) below and [using the embedded terminal](../guides/terminal.md#power-user-shortcuts).
 

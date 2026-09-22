@@ -7,7 +7,7 @@ description: Browse every file under `resources/` as an action card — view in-
 
 > **Prototype note.** Resources open from **View → Reference → Browse Resources** and are the persisted right-slot choice.
 
-The Resources pane sits alongside **Code**, **Knowledge**, and **Skills** in the right working-surface slot. It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
+The Resources pane sits alongside **Code**, **Knowledge**, and **Skills** in the right working-surface slot. Open it from **View → Reference → Browse Resources** — it is one of the persisted right-slot choices in the prototype navigation. It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
 
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-light.png#only-light)
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-dark.png#only-dark)
@@ -76,5 +76,4 @@ The Resources pane reads `<conception>/resources/` unconditionally — the direc
 
 ## See also
 
-- **[The Deliverables pane](deliverables-pane.md)** — the per-project aggregation of `## Deliverables`, distinct from this conception-global file browser.
-- **[The knowledge tree](knowledge-tree.md)** — the same tree component, for durable reference material.
+- **[The knowledge tree](knowledge-tree.md)** — the same tree component, for durable reference material. (The Deliverables aggregation is retired in the navigation prototype.)

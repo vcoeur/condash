@@ -23,7 +23,7 @@ Two ways:
 
 The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact. Code-pane Run buttons no longer auto-open the pane — output stays in the per-row CodeRunRow inside the Code pane.
 
-**Auto-collapse under modals.** Opening a document or full-screen overlay — a note, project preview, PDF / HTML / image / plan viewer, or the search / settings / shortcuts / help / about panels — auto-collapses the pane so the modal takes the full window height, and re-opens it when you close the last one. Toggle the pane yourself (the shortcut, the strip handle, or **View → Show Terminal**) while a modal is open to keep it visible — your choice stands until that modal closes, after which the next one collapses it again. A project preview reopened over the terminal remains inside the upper workspace and scrolls its details when that workspace is short. Small confirmation dialogs (quit, force-stop) leave the pane alone. The collapse is display-only: your saved Show-Terminal preference in `settings.json` is never overwritten.
+**Auto-collapse under modals.** Opening a document or full-screen overlay — a note, project preview, PDF / HTML / image / plan viewer, or the search / settings / shortcuts / help / about panels — auto-collapses the pane so the modal takes the full window height, and re-opens it when you close the last one. Toggle the pane yourself (the shortcut, the strip handle, or **View → Core → Show Terminal**) while a modal is open to keep it visible — your choice stands until that modal closes, after which the next one collapses it again. A project preview reopened over the terminal remains inside the upper workspace and scrolls its details when that workspace is short. Small confirmation dialogs (quit, force-stop) leave the pane alone. The collapse is display-only: your saved Show-Terminal preference in `settings.json` is never overwritten.
 
 ## Single-column by default; drag to split
 
@@ -253,7 +253,7 @@ A full-screen TUI on the alternate screen has no scrollback, so its frames land 
 
 The body also carries periodic `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers at the `markerIntervalSec` cadence (default 60 s), emitted **only when new output has arrived** since the previous marker — so an idle tab is never stamped. A transcript marker sits inline at a message boundary; a grid snapshot collects its markers in a trailing `<!-- timeline -->` block (a repaint can't host them inline). The HTML-comment form stays invisible in rendered markdown and is skippable by a parser. Set `markerIntervalSec` to `0` to disable them.
 
-Toggling logging off does **not** delete past transcripts — the Logs pane keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
+Toggling logging off does **not** delete past transcripts — the Logs surface keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
 
 The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so nothing under it can leak into a commit. Besides `logs/`, that directory now holds `perf/` (performance records), `scheduled/` and `manual/` (task-run consoles), `transcripts/` (per-tab agent transcript sidecars), and the per-conception `settings.json` itself.
 
@@ -305,7 +305,7 @@ A janitor runs at app start and every 24 hours. It works in **whole days**, neve
 
 #### Migration from `.jsonl`
 
-condash ≤ 2.22 wrote a JSONL event stream (one record per pty burst) instead of the rendered `.txt`. Files in that format remain on disk if they were captured by an older version, but the Logs pane no longer reads them — only the janitor's age-based eviction touches them. To free space immediately, delete `<conception>/.condash/logs/` and start fresh on the new format.
+condash ≤ 2.22 wrote a JSONL event stream (one record per pty burst) instead of the rendered `.txt`. Files in that format remain on disk if they were captured by an older version, but the Logs surface no longer reads them — only the janitor's age-based eviction touches them. To free space immediately, delete `<conception>/.condash/logs/` and start fresh on the new format.
 
 ### Privacy
 
@@ -314,6 +314,6 @@ Terminal output routinely carries secrets: `gh auth login` paste, env-var dumps,
 - `.condash/` is gitignored by default — no accidental commit.
 - Logs never leave the host — no telemetry, no cloud sync.
 - `terminal.logging.enabled = false` cuts capture. It is a single global switch, not a per-conception one, so turning it off stops capture everywhere; existing files stay on disk for the janitor.
-- The Logs pane's session viewer has a `⌫` button that deletes one session at a time. Bulk cleanup is the janitor's job (`retentionDays` / `maxDirMb`).
+- The Logs surface's session viewer has a `⌫` button that deletes one session at a time. Bulk cleanup is the janitor's job (`retentionDays` / `maxDirMb`).
 
 No automatic redaction — pattern-based scrubbing is unreliable and gives false reassurance. To capture a sensitive command without recording its output, disable logging via the settings toggle before running it.

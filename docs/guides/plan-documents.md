@@ -60,8 +60,8 @@ Refresh tokens without re-login.
 
 ## Viewing
 
-Any `.mdx` file opens in the viewer — from a Deliverables entry, the
-Resources pane, or an `.mdx` link inside a note. The viewer renders each
+Any `.mdx` file opens in the viewer — from an item's `## Deliverables`
+entry, the Resources pane, or an `.mdx` link inside a note. The viewer renders each
 block natively (split diffs, collapsible endpoints, JSON explorers, themed
 wireframes), shows parse/validation issues in a banner, renders an invalid
 block as a labeled placeholder instead of blanking the document, and carries

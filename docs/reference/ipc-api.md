@@ -88,7 +88,7 @@ All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate
 | `openConceptionDirectory()` | Reveal the conception root in the OS file manager. |
 | `openExternal(target)` | Open `target` with the OS default handler. Accepted schemes: `http:`, `https:`, `mailto:`. Other schemes (including `file:`) reject — call `openPath` for filesystem paths. |
 | `openPath(target)` | Open a local filesystem path with the OS default handler. Used by the Settings modal's "Open externally" buttons for `.condash/settings.json` and the global `settings.json`. Caller passes an absolute path. |
-| `showInFolder(target)` | Reveal a file or directory in the OS file manager (selects it in its parent folder). Backs the "reveal in file manager" affordance on the Resources / Logs / Deliverables / Code card panes. Absolute path. |
+| `showInFolder(target)` | Reveal a file or directory in the OS file manager (selects it in its parent folder). Backs the "reveal in file manager" affordance on the Resources / Logs / Code card panes and item deliverable rows. Absolute path. |
 | `pdfToFileUrl(path)` | Build a `file://` URL for a local PDF (handles Windows drive letters and percent-encoding). Returns the URL plus the basename so the renderer can render it without doing its own POSIX-only path split. |
 
 ## PTY sessions
@@ -114,7 +114,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `onTermExit(cb)` | Subscribe to session-exit events. |
 | `onTermSessions(cb)` | Sessions changed (spawn / exit / close). Receives the full snapshot. |
 | `termTabsContext()` | The open, live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}` provided-var payload (capability 2), used to seed a manual task run. A manual run seeds `{UPDATED_TABS}` from the same list (no per-run watermark to diff against). |
-| `perfVitals()` | Read main-process performance vitals (recording state, write-failure latch, live event-loop delay, heap) without disturbing the recording window. Cheap enough for the Performance pane to poll. |
+| `perfVitals()` | Read main-process performance vitals (recording state, write-failure latch, live event-loop delay, heap) without disturbing the recording window. Cheap enough for the Terminal diagnostics view (the prototype's Performance surface) to poll. |
 | `perfSetEnabled(enabled)` | Flip `terminal.perf.enabled`, re-open the recorder against the active conception, and return the resulting vitals. Merges over the current terminal prefs — `setTerminalPrefs` replaces the whole block. |
 | `perfRendererReport(report)` | Ship one window of renderer counters (loop delay, frames, spans, counters, peaks) into the main-process perf record. Sent once per 2.5 s drain while recording and only when the window holds something — never per frame. The reply `{recording}` is authoritative: the renderer stops sampling on a `false`. |
 | `onPerfState(cb)` | Subscribe to performance-recording state on the `perf-state` channel, pushed whenever main applies `terminal.perf.enabled`. This is what starts and stops the renderer's own counters, so recording flipped from the pane, the Settings modal, a hand-edited `settings.json`, or a conception switch reaches both halves of the instrument. |
@@ -135,7 +135,7 @@ The opt-in [auto-commit engine](config.md#auto-commit) runs [`condash sync run`]
 
 ## Terminal log surfaces
 
-Per-session terminal capture (when `terminal.logging.enabled` is true) lands at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. The Logs working surface reads the directory tree through this set of verbs; deletions go through the same paths the in-app janitor uses, with `requirePathUnder` bounding every input against the conception's logs root.
+Per-session terminal capture (when `terminal.logging.enabled` is true) lands at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. The Logs surface (View → Troubleshooting → Session logs) reads the directory tree through this set of verbs; deletions go through the same paths the in-app janitor uses, with `requirePathUnder` bounding every input against the conception's logs root.
 
 | Verb | What it does |
 |---|---|
@@ -144,8 +144,8 @@ Per-session terminal capture (when `terminal.logging.enabled` is true) lands at 
 | `logsReadSession(filePath)` | Read one session file. Returns `TermLogSessionRead` — `{ text, meta }` with metadata header / footer stripped from the body. |
 | `logsDeleteDay(day)` | Delete an entire day directory. Returns `{ deleted: boolean }` — not a count. |
 | `logsDeleteSession(filePath)` | Delete one session file. Returns `{ deleted: boolean }`. Refuses paths outside `.condash/logs/` and files that don't end in `.txt`. |
-| `logsListTaskRuns()` | Enumerate the segregated task-run store under `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One `TaskRunGroup` per `<trigger>/<slug>`, runs newest-first. Never reads `.condash/logs/`; the Logs pane's **Task runs** view renders it. |
-| `listRunningTaskRuns()` | Snapshot of the headless scheduled runs currently in flight (capability 1) — `RunningTaskRun[]` of `{ slug, sid, startedAt, logPath }`. Feeds the Tasks pane's **Running** section. |
+| `logsListTaskRuns()` | Enumerate the segregated task-run store under `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One `TaskRunGroup` per `<trigger>/<slug>`, runs newest-first. Never reads `.condash/logs/`; the Logs surface's **Task runs** view renders it. |
+| `listRunningTaskRuns()` | Snapshot of the headless scheduled runs currently in flight (capability 1) — `RunningTaskRun[]` of `{ slug, sid, startedAt, logPath }`. Feeds the Automations surface's **Running** section (the prototype's Tasks surface). |
 | `killTaskRun(sid)` | Kill (SIGKILL) and discard the live run with this `sid`. Returns `false` when none is live. |
 
 ## Agents + tasks
@@ -161,7 +161,7 @@ Agents are terminal launchers (`ipc/agents.ts`); tasks are reusable parameterise
 | `deleteTask(slug)` | Delete a task directory by slug. |
 | `getTaskConfig()` | Per-task config map keyed by slug (`{schedule?, timeout?, runMode?, excludeFromLogs?, gateOnUpdatedTabs?}`) from the effective config. Empty when no conception. |
 | `setTaskConfig(slug, entry)` | Persist one task's config entry into the conception's `taskConfig`. An entry with no scheduling / routing fields is removed. |
-| `onTaskRuns(cb)` | Subscribe to the live headless task-run roster, pushed on each run start / exit so the Tasks pane's **Running** section updates without polling. Initial state seeded by `listRunningTaskRuns()`. Returns an unsubscribe function. |
+| `onTaskRuns(cb)` | Subscribe to the live headless task-run roster, pushed on each run start / exit so the Automations surface's **Running** section updates without polling. Initial state seeded by `listRunningTaskRuns()`. Returns an unsubscribe function. |
 
 ## Dashboard (live tab summaries)
 
@@ -215,7 +215,7 @@ Every one of the three normalises `dirRelPath` and then re-checks the joined res
 | Verb | What it does |
 |---|---|
 | `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'mist'` \| `'dark'` \| `'nocturne'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
-| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `leftView: 'projects' \| 'tasks' \| 'deliverables' \| 'perf'`, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
+| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `leftView: 'projects'` — the prototype keeps only Projects, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
 | `getWelcomeDismissed()` / `setWelcomeDismissed(value)` | Persistent first-launch welcome-screen flag (`welcome.dismissed` in `settings.json`). |
 | `getCardMinWidth()` / `setCardMinWidth(prefs)` | Read or write the per-pane card-grid min-width block (`projects`, `code`, `knowledge`, `resources`, `skills`, `logs`, `tasks`, `deliverables`). See [Config — CardMinWidth](config.md#cardminwidth). |
 | `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (`knowledge`, `resources`, `skills` for the conception scope, `skillsUser` for the Skills pane's user scope). Empty values mean every directory is collapsed — the on-purpose first-load state. |
@@ -247,7 +247,7 @@ Per-path tree events for projects + knowledge + resources + skills + logs + conf
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
 - `resources` — any file under `<conception>/resources/`. Coarse.
 - `skills` — any file under `<conception>/.agents/skills/`, the [agedum](skill.md#the-harness-launcher-agedum) source tree the Skills pane reads. Coarse.
-- `logs` — any session file under `.condash/logs/`. Drives the Logs pane's live refresh.
+- `logs` — any session file under `.condash/logs/`. Drives the Logs surface's live refresh.
 - `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
 - `unknown` — any classification failure. Forces a full re-render.
 
@@ -284,7 +284,7 @@ request-quit           browse-skills          help-cli
                        refresh
 ```
 
-Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
+Every entry maps one-to-one to a menu item — except `show-dashboard`, which the prototype's Dashboard pseudo-tab in the terminal strip dispatches (its View-menu accelerator was removed). See [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
 
 ## What is intentionally **not** here
 

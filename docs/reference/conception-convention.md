@@ -119,7 +119,7 @@ The parser preserves source order. Drag-and-drop reorder rewrites the affected s
 
 ## Deliverables
 
-The outputs an item produces — reports, executables, deployed pages, links — surfaced on the project card and in the **Deliverables** pane. Declared in a section literally named `## Deliverables`:
+The outputs an item produces — reports, executables, deployed pages, links — surfaced on the project card and preview. Declared in a section literally named `## Deliverables`:
 
 ```markdown
 ## Deliverables

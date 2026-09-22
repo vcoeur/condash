@@ -9,7 +9,7 @@ description: What the Code pane shows — repo cards, branch rows, worktree rows
 
 **When to read this.** You want to know what each row, tag, and badge in the Code pane means — or how a project's `branch:` field turns into a real checkout on disk.
 
-The Code pane is the right-hand working surface that shows the git repos this conception cares about (`Ctrl+Shift+C`, or the activity rail). It is a **view, not a manager**: it renders the configured repositories and their on-disk state, and it launches things (a shell, your IDE, a dev server). It never edits or runs your code — your IDE does that via the `open_with` slots ([Non-goals](../explanation/non-goals.md)). The JSON that configures everything on this page lives in [Repositories and open-with launchers](repositories-and-open-with.md); this page is about what you see.
+The Code pane is the right-hand working surface that shows the git repos this conception cares about (`Ctrl+Shift+C`, or the rail's second item). It is a **view, not a manager**: it renders the configured repositories and their on-disk state, and it launches things (a shell, your IDE, a dev server). It never edits or runs your code — your IDE does that via the `open_with` slots ([Non-goals](../explanation/non-goals.md)). The JSON that configures everything on this page lives in [Repositories and open-with launchers](repositories-and-open-with.md); this page is about what you see.
 
 ## Cards, rows, and the primary worktree
 

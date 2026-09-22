@@ -75,7 +75,7 @@ Titles come from the first `# Heading` line of the file. If the file has no top-
 
 ## The Knowledge pane
 
-Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, Skills, and Logs. Open it from the **activity rail** on the left edge, from **View → Show Knowledge**, or with `Ctrl+Shift+K`. (The status bar along the top has no pane switcher.)
+Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, and Skills. Open it from **View → Reference → Browse Knowledge** — the persisted right-slot choice in the prototype navigation. (The status bar along the top has no pane switcher.)
 
 The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 

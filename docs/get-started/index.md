@@ -274,7 +274,7 @@ Three ways to change an item's status: **drag its card** to another section, pre
 
 **Code** (right) lists the git repos this tree cares about, each with its branches, a `N dirty` pill you can click for the file list, and per-branch **Run** / **open a shell here** / **Open with…** actions. It is empty until you set `workspace_path` and `repositories` — Settings → **Workspace & paths** + **Repositories**, or `.condash/settings.json` directly. See **[The Code pane](../guides/code-pane.md)**.
 
-**Terminal** (bottom) is a real shell session — your `$SHELL` — in the same window. Toggle it with `` Ctrl+` `` or **View → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
+**Terminal** (bottom) is a real shell session — your `$SHELL` — in the same window. Toggle it with `` Ctrl+` `` or **View → Core → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
 
 ### Reference and utilities
 
@@ -290,7 +290,7 @@ The activity rail is deliberately small: **Projects** and **Code** are the two p
 
 Not on the rail:
 
-- **Dashboard** (`Ctrl+Shift+D`) — not the app itself: a bottom band that shares its space with the terminal and summarises what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
+- **Dashboard** — not the app itself: the bottom band's first pseudo-tab, sharing its space with the terminal and summarising what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
 - **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and (on request) logs. [Guide](../guides/search.md).
 - **Status-bar indicators** — the auto-commit state with a **Sync now** button, and the shipped-skills state with an **Install** button that runs `condash skills install` for you. See [Auto-commit](../guides/auto-commit.md) and [Extend the management skills](../guides/skill-extensions.md).
 

@@ -46,4 +46,4 @@ When no project links a deliverable, the pane shows a one-line pointer: link art
 
 - **[Deliverables and PDFs](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
 - **[The Resources pane](resources-pane.md)** — the conception-global file browser (right slot), distinct from this per-project aggregation.
-- **[The Tasks pane](tasks-pane.md)** and **[the Performance pane](performance-pane.md)** — the other left-band views.
+- **[The Tasks pane](tasks-pane.md)** — now the Automations route under **View → Automation**; **[the Performance pane](performance-pane.md)** — now Terminal diagnostics under **View → Troubleshooting**.

@@ -9,7 +9,7 @@ description: The `## Deliverables` section syntax, filename conventions, PDF gen
 
 **When to read this.** Your item produces a tangible output — a report, a design doc, an incident post-mortem — and you want it to show up on the card with a download link and an embedded viewer.
 
-Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more artifacts, and condash renders them in the expanded card, in the cross-project **[Deliverables pane](deliverables-pane.md)**, and opens each in a type-appropriate viewer.
+Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more artifacts, and condash renders them on the project card / preview and opens each in a type-appropriate viewer. (The cross-project **[Deliverables pane](deliverables-pane.md)** is retired in the navigation prototype.)
 
 A deliverable item can be **any local file** (PDF, Markdown, HTML, image, …), an **http(s) URL** (e.g. a deployed page), or a **`[[wikilink]]`** to another conception item. PDF-only was the pre-3.20 behaviour.
 
@@ -118,4 +118,4 @@ Do **not** check multiple versioned PDFs into the deliverables directory (`…-v
 ## Next
 
 - [Search](search.md) — a `.pdf` is not an indexed extension, so neither its text nor its path is searchable. Keep the source Markdown in `notes/` if you want the content findable.
-- [The Deliverables pane](deliverables-pane.md) — the same entries aggregated across every project.
+- [The Deliverables pane](deliverables-pane.md) — retired in the navigation prototype; the per-item entries remain the surface.

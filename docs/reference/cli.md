@@ -306,7 +306,7 @@ WantedBy=timers.target
 
 ### `logs`
 
-Navigate the per-conception terminal-session logs that the GUI writes under `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` (a `# condash:` JSON header line, the rendered xterm buffer, and — once the pty exits — a `# condash:` footer line). The noun is **read-only**: it never deletes a log (deletion stays a Logs-pane affordance). Logging is opt-in (`terminal.logging.enabled`), so the tree is empty until you turn it on.
+Navigate the per-conception terminal-session logs that the GUI writes under `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` (a `# condash:` JSON header line, the rendered xterm buffer, and — once the pty exits — a `# condash:` footer line). The noun is **read-only**: it never deletes a log (deletion stays a Logs-surface affordance). Logging is opt-in (`terminal.logging.enabled`), so the tree is empty until you turn it on.
 
 | Verb | What it does |
 |---|---|

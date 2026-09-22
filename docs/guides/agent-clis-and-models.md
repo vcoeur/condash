@@ -214,4 +214,4 @@ Mark an agent `"favorite": true` and the dropdown lists it inline with a ★; ev
 
 - [Use the embedded terminal](terminal.md) — the spawn dropdown and tabs that run these agents.
 - [Config files](../reference/config.md#agents) — the `agents` settings list.
-- [Tasks pane](tasks-pane.md) — bind a reusable prompt to an agent.
+- [Tasks pane](tasks-pane.md) — bind a reusable prompt to an agent (opened as Automations under View → Automation in the prototype navigation).
