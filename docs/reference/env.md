@@ -57,7 +57,7 @@ macOS and Windows ignore this variable — they use `~/Library/Application Suppo
 
 ## `ELECTRON_DISABLE_SANDBOX`
 
-Set by Electron itself when launched with `--no-sandbox` (the dev script in `package.json:dev:electron` does exactly this; the AppImage's patched `AppRun` does the same — see [Install](../get-started/index.md#linux-appimage)).
+Set by Electron itself when launched with `--no-sandbox` (the dev script in `package.json:dev:electron` does exactly this; the AppImage's patched `AppRun` does the same — see [Install](../get-started/index.md#install)).
 
 You should not set this manually for the production `.deb` build — it installs `chrome-sandbox` SUID-root at `/opt/condash/`, and disabling the sandbox there is a net regression.
 

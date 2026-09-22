@@ -88,7 +88,7 @@ All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate
 | `openConceptionDirectory()` | Reveal the conception root in the OS file manager. |
 | `openExternal(target)` | Open `target` with the OS default handler. Accepted schemes: `http:`, `https:`, `mailto:`. Other schemes (including `file:`) reject — call `openPath` for filesystem paths. |
 | `openPath(target)` | Open a local filesystem path with the OS default handler. Used by the Settings modal's "Open externally" buttons for `.condash/settings.json` and the global `settings.json`. Caller passes an absolute path. |
-| `showInFolder(target)` | Reveal a file or directory in the OS file manager (selects it in its parent folder). Backs the "reveal in file manager" affordance on the Resources and Logs cards and the PDF / HTML / image viewer headers. (The Code pane's "Open in file manager" goes through `openInEditor`; item deliverable rows open first and reveal from the viewer.) Absolute path. |
+| `showInFolder(target)` | Reveal a file or directory in the OS file manager (selects it in its parent folder). Backs the "reveal in file manager" affordance on the Resources and Logs cards and the PDF / HTML / image / MDX viewer headers. (The Code pane's "Open in file manager" goes through `openInEditor`; item deliverable rows open first and reveal from the viewer.) Absolute path. |
 | `pdfToFileUrl(path)` | Build a `file://` URL for a local PDF (handles Windows drive letters and percent-encoding). Returns the URL plus the basename so the renderer can render it without doing its own POSIX-only path split. |
 
 ## PTY sessions
