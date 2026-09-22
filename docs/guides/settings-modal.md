@@ -64,11 +64,11 @@ Closing the modal with staged edits — `Esc`, the `×`, or a backdrop click —
 
 Some keys are written by the app as you use it, or carried for round-trip only, and have no Settings section:
 
-- **Layout and UI state** — `layout` (including `leftView`), `selectedBranches`, `branchFilterStickyAll`, `treeExpansion`, `skillsActiveScope`.
+- **Layout and UI state** — `layout`, `selectedBranches`, `branchFilterStickyAll`, `treeExpansion`, `skillsActiveScope`.
 - **Welcome-screen dismissal** — `welcome`.
 - **Conception path tracking** — `lastConceptionPath` and `recentConceptionPaths` (the Recent conceptions section *shows* the list but the file is managed outside the modal).
 - **`pdf_viewer`** — present in the schema and preserved across saves, but not surfaced and not currently consumed. See [Deliverables and PDFs](deliverables.md#opening-pdfs-in-your-os-viewer).
-- **`retired_apps` and `taskConfig`** — conception keys written by `condash applications` and by the Automations surface (View → Automation) respectively.
+- **`retired_apps` and `taskConfig`** — conception keys written by `condash applications` and by the Automations surface respectively.
 
 For the exhaustive key list, see **[Config files → All config keys](../reference/config.md#all-config-keys)**.
 

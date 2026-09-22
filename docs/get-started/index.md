@@ -278,18 +278,20 @@ Three ways to change an item's status: **drag its card** to another section, pre
 
 ### Reference and utilities
 
-The activity rail is deliberately small: **Projects** and **Code** are the two primary routes. **View → Reference** opens persistent Knowledge, Resources, and Skills in the right slot. **View → Automation → Automations** and **View → Troubleshooting → Session logs** are session-only utilities, so they do not replace the saved Reference choice. Item-level `## Deliverables` remain in project previews; there is no aggregate Deliverables route.
+The activity rail is the complete navigation: **Projects** fills the left band (always visible), and every other rail item selects the one right-hand working pane — **Code**, **Knowledge**, **Resources**, **Skills**, **Automations**, **Logs**. A click selects directly and the choice is persisted; there is no close-first step. Item-level `## Deliverables` remain in project previews; there is no aggregate Deliverables route.
 
 | Route | What it is | Guide |
 |---|---|---|
 | Rail → Projects | Your items, grouped by status | [The Projects pane](../guides/projects-pane.md) |
 | Rail → Code | Repos, branches, dirty counts, launchers | [The Code pane](../guides/code-pane.md) |
-| View → Reference | Browse `knowledge/`, `resources/`, or `.agents/skills/` | [Knowledge](../guides/knowledge-tree.md), [Resources](../guides/resources-pane.md), [Skills](../guides/skills-pane.md) |
-| View → Automation → Automations | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
-| View → Troubleshooting | Saved session logs or live Terminal diagnostics | [Logs pane](../guides/logs-pane.md), [Performance pane](../guides/performance-pane.md) |
+| Rail → Knowledge / Resources / Skills | Browse `knowledge/`, `resources/`, or `.agents/skills/` | [Knowledge](../guides/knowledge-tree.md), [Resources](../guides/resources-pane.md), [Skills](../guides/skills-pane.md) |
+| Rail → Automations | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
+| Rail → Logs | Saved session logs | [Logs pane](../guides/logs-pane.md) |
+| View → Troubleshooting | Live Terminal diagnostics | [Performance pane](../guides/performance-pane.md) |
 
 Not on the rail:
 
+- **Terminal** — the bottom band, toggled with `` Ctrl+` `` or **View → Show Terminal**; the rail has no Terminal item because the pane never leaves the window.
 - **Dashboard** — not the app itself: the bottom band's first pseudo-tab, sharing its space with the terminal and summarising what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
 - **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and (on request) logs. [Guide](../guides/search.md).
 - **Status-bar indicators** — the auto-commit state with a **Sync now** button, and the shipped-skills state with an **Install** button that runs `condash skills install` for you. See [Auto-commit](../guides/auto-commit.md) and [Extend the management skills](../guides/skill-extensions.md).

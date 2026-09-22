@@ -65,7 +65,7 @@ The line is still on `4`, and by the scheme above that means nothing since 4.0.0
 
 | Landed in 4.x | What it added |
 |---|---|
-| The activity rail | The left icon rail (now reduced to Projects and Code by the navigation prototype). |
+| The activity rail | The left icon rail — the complete navigation: Projects, Code, Knowledge, Resources, Skills, Automations, Logs. |
 | The [Dashboard band](../guides/dashboard.md) | LLM summaries of what each terminal tab is doing. Off by default; needs an API key. |
 | [Auto-commit](../guides/auto-commit.md) + `condash sync run` | condash as the single git writer for a shared conception checkout. |
 | The RAM search index | Search stopped re-walking the tree per query. Logs stay on-disk-scanned. |

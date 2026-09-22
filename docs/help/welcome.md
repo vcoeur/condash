@@ -16,34 +16,35 @@ that one folder.
 
 ## What you'll see
 
-An **activity rail** runs down the left edge with two items in the
-prototype navigation: **Projects** fills the left of the window with
-your items as one scrolling stack of status sections (`now`, `review`,
-`later`, `backlog`, `done`, plus a trailing `?` for any other status;
-drag a card to another section to change its status), and **Code**
-(`Ctrl+Shift+C`) is the right-hand working surface — your repos, their
-branches, dirty counts, run / open-with buttons.
+An **activity rail** runs down the left edge with the complete
+navigation. **Projects** fills the left of the window with your items
+as one scrolling stack of status sections (`now`, `review`, `later`,
+`backlog`, `done`, plus a trailing `?` for any other status; drag a
+card to another section to change its status). The other rail items
+each select the one right-hand working pane — exactly one is ever
+showing, and your choice is remembered:
 
-Everything else lives in the **View** menu:
+- **Code** (`Ctrl+Shift+C`) — your repos, their branches, dirty
+  counts, run / open-with buttons.
+- **Knowledge** — your reference notes as cards.
+- **Resources** — every file under `resources/` as cards, with copy /
+  open / paste-to-term actions. Nothing to set up: drop a file in
+  `resources/` and the pane surfaces it.
+- **Skills** — the Markdown skills under `.agents/skills/`,
+  read-only; hosts the five shipped skills — `/projects`,
+  `/knowledge`, `/pr`, `/applications`, `/visual` — once
+  `condash skills install` has run, with a Conception/User segmented
+  control for user-scope sources.
+- **Automations** — saved agent prompts you can run on demand or on a
+  schedule.
+- **Logs** — the per-session terminal capture viewer. Sessions are a
+  collapsible card grid grouped by date; the viewer opens full-overlay
+  with virtualised text + case-insensitive search. Turn capture on
+  under Settings → Terminal → Logging.
 
-- **View → Reference** — persistent right-slot surfaces, one at a
-  time: **Knowledge** (your reference notes as cards), **Resources**
-  (every file under `resources/` as cards, with copy / open /
-  paste-to-term actions — nothing to set up: drop a file in
-  `resources/` and the pane surfaces it), and **Skills** (the Markdown
-  skills under `.agents/skills/`, read-only; hosts the five shipped
-  skills — `/projects`, `/knowledge`, `/pr`, `/applications`,
-  `/visual` — once `condash skills install` has run, with a
-  Conception/User segmented control for user-scope sources).
-- **View → Automation → Automations** — saved agent prompts you can
-  run on demand or on a schedule (session-only).
-- **View → Troubleshooting** — **Session logs**, the per-session
-  terminal capture viewer, and **Show Terminal diagnostics** (live
-  per-terminal memory, growth rate, and throttle state). Both are
-  session-only. Sessions are a collapsible card grid grouped by date;
-  the viewer opens full-overlay with virtualised text +
-  case-insensitive search. Turn capture on under Settings → Terminal →
-  Logging.
+The **View** menu mirrors the rail under **Working pane**, and carries
+**Troubleshooting → Terminal diagnostics** (live per-terminal memory,
+growth rate, and throttle state) alongside the Show Terminal toggle.
 
 Across the bottom:
 

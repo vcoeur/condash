@@ -11,9 +11,9 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.agents/skills/`, and `.condash/settings.json` tree and presents it through one app shell:
 
-- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — deliberately two items in the prototype navigation: Projects and Code.
+- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — the complete navigation: Projects (the fixed left band) plus one right-pane item per working surface (Code, Knowledge, Resources, Skills, Automations, Logs). A click selects directly; there is no transient surface machinery.
 - A **left view** — `projects` only (`LEFT_VIEWS` in `src/shared/types/layout.ts`); legacy `tasks` / `deliverables` / `perf` / `outputs` values migrate to `'projects'` on read.
-- A **working surface** on the right edge — one of Code / Knowledge / Resources / Skills, mutually exclusive and persisted. Automations and Session logs are session-only transient surfaces layered over the persisted choice.
+- A **working surface** on the right edge — one of Code / Knowledge / Resources / Skills / Automations / Logs, mutually exclusive and persisted. Terminal diagnostics is the one session-only surface: a bottom-band body swap, not a pane.
 - A **bottom band** shared by the Terminal, the Dashboard, and the session-only Terminal diagnostics, which never coexist.
 
 Search is a global modal (`Ctrl+Shift+F` / `Ctrl+K`), not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).

@@ -75,7 +75,7 @@ Titles come from the first `# Heading` line of the file. If the file has no top-
 
 ## The Knowledge pane
 
-Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, and Skills. Open it from **View → Reference → Browse Knowledge** — the persisted right-slot choice in the prototype navigation. (The status bar along the top has no pane switcher.)
+Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, Skills, Automations, and Logs. Open it from the rail's **Knowledge** item (or **View → Working pane → Show Knowledge**) — the selection is persisted, so Knowledge is where you left it on the next launch. (The status bar along the top has no pane switcher.)
 
 The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 
@@ -127,7 +127,7 @@ A tree that only ever grows quietly rots: duplicates accumulate, files outlive t
 
 ## Optional tree
 
-> **Prototype note.** Knowledge opens from **View → Reference → Browse Knowledge** and is the persisted right-slot choice.
+> **Prototype note.** Knowledge opens from the rail's **Knowledge** item and is the persisted right-slot choice.
 
 The `knowledge/` directory is optional. When it's missing the pane renders an empty state — *"No knowledge/ directory under the selected conception path."* There's no setup step to "enable knowledge mode"; the directory's presence is the signal.
 

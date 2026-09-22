@@ -9,9 +9,9 @@ description: Browse the markdown skills condash ships — the conception's .agen
 
 **When to read this.** You want to see which management skills are installed in this conception (or globally on your machine), and whether any have drifted from what condash shipped.
 
-> **Prototype note.** Skills open from **View → Reference → Browse Skills** and are the persisted right-slot choice, read-only.
+> **Prototype note.** Skills open from the rail's **Skills** item and are the persisted right-slot choice, read-only.
 
-The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot; open it from **View → Reference → Browse Skills** (a persisted right-slot choice in the prototype navigation). It is **read-only**: it surfaces skills for browsing. The source of truth is your [agedum](../reference/skill.md#the-harness-launcher-agedum) config, edited through its own flow — condash places the sources and never compiles or rewrites them.
+The Skills pane sits alongside **Code**, **Knowledge**, **Resources**, **Automations**, and **Logs** in the right working-surface slot; open it from the rail's **Skills** item (or **View → Working pane → Show Skills**) — the selection is persisted. It is **read-only**: it surfaces skills for browsing. The source of truth is your [agedum](../reference/skill.md#the-harness-launcher-agedum) config, edited through its own flow — condash places the sources and never compiles or rewrites them.
 
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)

@@ -9,7 +9,7 @@ description: Watch per-tab memory level, growth rate, and throttle state live �
 
 **When to read this.** The UI stutters, a tab disappeared without you closing it, or you want to know *which* tab is eating the machine before it takes the app down with it.
 
-> **Prototype note.** The Performance view opens as **Terminal diagnostics** from **View → Troubleshooting** in the bottom terminal band, session-only. Storage and the sampler are unchanged.
+> **Prototype note.** The Performance view opens as **Terminal diagnostics** from **View → Troubleshooting** in the bottom terminal band. Storage and the sampler are unchanged.
 
 ## What it answers
 

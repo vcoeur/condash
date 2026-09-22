@@ -5,9 +5,9 @@ description: Every project's `## Deliverables`, aggregated across the whole conc
 
 # Deliverables
 
-> **Prototype note.** The aggregate Deliverables pane is not part of the navigation prototype. Item-level `## Deliverables` still render in project previews and note modals.
+> **Prototype note.** The aggregate Deliverables pane is not part of the navigation. Item-level `## Deliverables` still render in project previews and note modals.
 
-The aggregate pane is retired from the prototype navigation; the `## Deliverables` section itself is unchanged.
+The aggregate pane is retired from the navigation; the `## Deliverables` section itself is unchanged.
 
 ## What it shows
 
@@ -46,4 +46,4 @@ When no project links a deliverable, the pane shows a one-line pointer: link art
 
 - **[Deliverables and PDFs](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
 - **[The Resources pane](resources-pane.md)** — the conception-global file browser (right slot), distinct from this per-project aggregation.
-- **[The Tasks pane](tasks-pane.md)** — now the Automations route under **View → Automation**; **[the Performance pane](performance-pane.md)** — now Terminal diagnostics under **View → Troubleshooting**.
+- **[The Tasks pane](tasks-pane.md)** — now the rail's **Automations** item; **[the Performance pane](performance-pane.md)** — now Terminal diagnostics under **View → Troubleshooting**.

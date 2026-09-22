@@ -135,7 +135,7 @@ The opt-in [auto-commit engine](config.md#auto-commit) runs [`condash sync run`]
 
 ## Terminal log surfaces
 
-Per-session terminal capture (when `terminal.logging.enabled` is true) lands at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. The Logs surface (View → Troubleshooting → Session logs) reads the directory tree through this set of verbs; deletions go through the same paths the in-app janitor uses, with `requirePathUnder` bounding every input against the conception's logs root.
+Per-session terminal capture (when `terminal.logging.enabled` is true) lands at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. The Logs surface (the rail's **Logs** item) reads the directory tree through this set of verbs; deletions go through the same paths the in-app janitor uses, with `requirePathUnder` bounding every input against the conception's logs root.
 
 | Verb | What it does |
 |---|---|
@@ -215,7 +215,7 @@ Every one of the three normalises `dirRelPath` and then re-checks the joined res
 | Verb | What it does |
 |---|---|
 | `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'mist'` \| `'dark'` \| `'nocturne'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
-| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects: bool`, `leftView: 'projects'` — the prototype keeps only Projects, `working: 'code' \| 'knowledge' \| 'resources' \| 'skills' \| null`, `terminal: bool`, `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
+| `getLayout()` / `setLayout(layout)` | Read or write the composite-layout snapshot (`projects` — always `true`, the left band is fixed; `working`: `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'automations' \| 'logs'`; `terminal: bool`; `projectsSplit: number`). See [Config — LayoutState](config.md#layoutstate). |
 | `getWelcomeDismissed()` / `setWelcomeDismissed(value)` | Persistent first-launch welcome-screen flag (`welcome.dismissed` in `settings.json`). |
 | `getCardMinWidth()` / `setCardMinWidth(prefs)` | Read or write the per-pane card-grid min-width block (`projects`, `code`, `knowledge`, `resources`, `skills`, `logs`, `tasks`, `deliverables`). See [Config — CardMinWidth](config.md#cardminwidth). |
 | `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (`knowledge`, `resources`, `skills` for the conception scope, `skillsUser` for the Skills pane's user scope). Empty values mean every directory is collapsed — the on-purpose first-load state. |
@@ -270,21 +270,19 @@ File-watcher status notices on the `watcher-status` channel — a chokidar `erro
 The full `MenuCommand` union dispatched by `onMenuCommand`:
 
 ```
-search                 toggle-projects        about
-open-folder            toggle-terminal        help-welcome
-open-conception        show-code              help-quick-start
-open-settings          browse-knowledge       help-shortcuts
-new-project            browse-resources       help-configuration
-request-quit           browse-skills          help-cli
-                       show-automations
-                       show-session-logs
+search                 toggle-terminal        about
+open-folder            show-code              help-welcome
+open-conception        show-knowledge         help-quick-start
+open-settings          show-resources         help-shortcuts
+new-project            show-skills            help-configuration
+request-quit           show-automations       help-cli
+                       show-logs
                        show-terminal-diagnostics
                        show-dashboard
-                       hide-working
                        refresh
 ```
 
-Every entry maps one-to-one to a menu item — except `show-dashboard`: its View-menu accelerator was removed and the strip's Dashboard pseudo-tab calls `selectBottomBand` directly, so the command currently has no dispatcher (the handler in `menu-commands.ts` stays for menu parity). See [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
+Every entry maps one-to-one to a menu item — except `show-dashboard`: its View-menu accelerator was removed and the strip's Dashboard pseudo-tab calls `selectBottomBand` directly, so the command currently has no dispatcher (the handler in `menu-commands.ts` stays for menu parity). The six `show-*` surface commands are direct selections of the persisted working pane, matching the rail's behaviour — there is no hide or toggle command. See [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
 
 ## What is intentionally **not** here
 

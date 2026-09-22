@@ -17,7 +17,7 @@ Each guide answers one specific question.
 
 **The panes**
 
-The prototype navigation keeps two routes on the left activity rail — **Projects** (left band) and **Code** (right slot). Knowledge, Resources, Skills are persistent right-slot surfaces under **View → Reference**; Automations and Session logs are session-only utilities under **View → Automation** and **View → Troubleshooting**.
+The left activity rail is the complete navigation: **Projects** (the fixed left band) and, across the right working slot, **Code**, **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs**. A rail click selects that pane directly and the choice is persisted — no close-first step, no hide state. The View menu mirrors the rail under **Working pane**.
 
 - **[The Projects pane](projects-pane.md)** — the status stack, changing status, creating items, closing and reopening.
 - **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.

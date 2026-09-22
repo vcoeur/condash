@@ -33,18 +33,15 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
 | File | New project… | `Ctrl+N` / `Cmd+N` | Open the new-project modal. |
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
-| View ▸ Core | Show Projects | — | Toggle the Projects pane on the left edge. |
-| View ▸ Core | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show the Code pane in the working slot. |
-| View | Reference ▸ | — | Prototype: Browse **Knowledge** / **Resources** / **Skills** as the persistent right-slot surface. |
-| View | Automation ▸ | — | Prototype: **Automations** (the former Tasks surface), session-only. |
-| View | Troubleshooting ▸ | — | Prototype: session-only **Session logs** and **Terminal diagnostics** (PerfView in the bottom band). |
-| View ▸ Core | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills) is in the working slot. |
+| View ▸ Working pane | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Select Code as the working pane (same direct selection as the rail click). |
+| View ▸ Working pane | Show Knowledge / Resources / Skills / Automations / Logs | — | Select that pane as the working pane. Exactly one is ever checked, and the choice is persisted. |
+| View | Troubleshooting ▸ | — | **Terminal diagnostics** — PerfView in the bottom band. |
 | View ▸ Core | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). |
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
-The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items. Choosing an Automations, Session logs, or Terminal diagnostics route leaves the persisted working-surface choice intact — it is restored the next time the window loads.
+The View items round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items. Selecting a working pane persists it; the Terminal toggle and Terminal diagnostics (a bottom-band body swap) do not move the pane selection.
 
 ### OS-default menu items
 
@@ -59,7 +56,7 @@ The Edit-menu roles act on whatever the OS considers focused. They are **not** t
 
 ### The activity rail
 
-The rail is deliberately two items in the prototype: **Projects** (left band) and **Code** (right working slot, `Ctrl+Shift+C`). Everything else lives in the View menu groups above. Clicking the active item hides its pane — the same tristate as before.
+The rail is the complete navigation: **Projects** (the left band, always visible), then **Code** (`Ctrl+Shift+C`), **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs** across the right working slot. Clicking an item selects it directly — exactly one working pane is ever showing, and the choice is persisted. There is no close-first step and no hide state.
 
 ## Dashboard global
 

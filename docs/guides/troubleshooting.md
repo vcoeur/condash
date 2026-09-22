@@ -135,7 +135,7 @@ xterm.js renders a lot of cells on every paint. Two knobs help:
 
 Both keys live under `terminal.xterm` in the **per-machine** `settings.json` — `terminal` is a global-only key, so there is one copy shared by every conception. The Settings modal's **Terminal** section edits them live; the modal has no tabs, just a scrolling surface with a section rail.
 
-If that doesn't account for it, measure rather than guess. Open **Terminal diagnostics** (**View → Troubleshooting → Show Terminal diagnostics**, session-only in the bottom band): per-tab memory, growth rate, and throttle state are always live, and pressing **Record** adds main-process event-loop delay — the most direct measure of UI stalls, since main is a single thread shared by every tab as well as git status, file watching, and all IPC. Records land in `<conception>/.condash/perf/`.
+If that doesn't account for it, measure rather than guess. Open **Terminal diagnostics** (**View → Troubleshooting → Terminal diagnostics**, in the bottom band): per-tab memory, growth rate, and throttle state are always live, and pressing **Record** adds main-process event-loop delay — the most direct measure of UI stalls, since main is a single thread shared by every tab as well as git status, file watching, and all IPC. Records land in `<conception>/.condash/perf/`.
 
 Disk logging (`terminal.logging.enabled`) is worth checking specifically: when it's on, the main process runs a second full ANSI parse of every byte, duplicating work the renderer already does. Turning it off is a quick A/B.
 

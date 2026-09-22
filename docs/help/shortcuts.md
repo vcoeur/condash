@@ -12,9 +12,8 @@ The few you'll actually use.
 | `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — full-text search across the tree |
 | `?` | Show the full shortcut overlay |
 | `Ctrl+Shift+C` | Show **Code** pane |
-| — | **View → Reference** — persistent Browse Knowledge / Resources / Skills |
-| — | **View → Automation** — session-only **Automations** |
-| — | **View → Troubleshooting** — session-only **Session logs**, **Terminal diagnostics** |
+| — | **View → Working pane** — select Knowledge / Resources / Skills / Automations / Logs |
+| — | **View → Troubleshooting** — **Terminal diagnostics** |
 | — | **Dashboard** — bottom-band pseudo-tab, first entry in the terminal strip |
 | `F5` | **Refresh** — re-read repos, drop git-status cache |
 | `Ctrl+Shift+R` | **Reload window** — full hard reload |

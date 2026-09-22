@@ -54,7 +54,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `autoSync`              | global      | object       | —        | GUI-driven periodic committer: `{enabled, intervalMinutes, quietPeriodSeconds, push, integration}`. While a conception is open, runs `condash sync run` on a timer. Off by default; set it in **Settings → Auto-commit**. [↓](#auto-commit)                                                                                    |
 | `theme`                 | global      | enum         | `system`  | Colour theme: `light` (Paper) \| `mist` (Mist) \| `dark` (Warm Gallery) \| `nocturne` (Nocturne) \| `console` (Console) \| `system` (follow the OS between Paper and Warm Gallery). [↓](#theme)                                                                     |
 | `uiFonts`               | global      | object       | —        | Per-category UI typography `{cardTitle, heading, body, code, terminal}`, each a `{family, weight, size}` object. Any field left `default` keeps the theme's value for that surface. [↓](#uifonts)                            |
-| `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` only in the prototype navigation). [↓](#layoutstate)                                                                                                                 |
+| `layout`                | global      | object       | —        | Persisted pane layout. [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | global      | object       | —        | `{ dismissed, initShown }` — first-launch welcome-screen state.                                                                                                                                                                     |
 | `cardMinWidth`          | global      | object       | —        | Per-surface minimum card width. [↓](#cardminwidth)                                                                                                                                                                       |
 | `treeExpansion`         | global      | object       | —        | Remembered expand/collapse state of the tree panes.                                                                                                                                                                      |
@@ -116,7 +116,7 @@ The body also carries periodic `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers (lo
 
 The writer pipes pty bytes through a headless xterm (`@xterm/headless`) and every 5 s reads the buffer via `IBufferLine.translateToString(true)`. Rows that have scrolled above the viewport can never change again, so the body is **appended**: those rows are written past the end of the file once, and only the ≤ 50-row live tail is truncated and rewritten. A flush therefore costs what the session just printed, not what the buffer still holds. Output is plain UTF-8 — no SGR, no CSI, no cursor-forward — so the file is grep-friendly and the viewer needs no ANSI parser. Colour / bold / underline fidelity belongs to the live terminal's **Save buffer** button.
 
-Typed keystrokes are _not_ captured separately — the pty echoes them back through stdout, so the rendered buffer already shows what was typed. The Logs surface (**View → Troubleshooting → Session logs**, transient in the prototype navigation) lists sessions grouped by day; clicking a card opens a full-overlay viewer modal with virtualised text + case-insensitive search.
+Typed keystrokes are _not_ captured separately — the pty echoes them back through stdout, so the rendered buffer already shows what was typed. The Logs surface (the rail's **Logs** item) lists sessions grouped by day; clicking a card opens a full-overlay viewer modal with virtualised text + case-insensitive search.
 
 | Key             | Type          | Default | Meaning                                                                                                                                                                                                                                                  |
 | --------------- | ------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -404,7 +404,7 @@ condash builds **no** provider environment and stores **no** secrets — model/p
 
 ### Tasks { #tasks }
 
-**Tasks** are reusable, parameterized agent prompts — like agents, they live under the conception (not a `condash.json` key), managed by the **Automations** surface (**View → Automation → Automations**; prototype navigation). A task is a referenced agent plus a markdown prompt with fillable `{markers}`.
+**Tasks** are reusable, parameterized agent prompts — like agents, they live under the conception (not a `condash.json` key), managed by the **Automations** surface (a rail item, alongside Code and Knowledge). A task is a referenced agent plus a markdown prompt with fillable `{markers}`.
 
 - **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `id` of an agent from the `agents` list above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
 - **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family. `{TABS}` and `{UPDATED_TABS}` are **condash-provided** (never fields) — both expand to the open-tab list `[{sid,cwd,repo,cmd}]`, `{UPDATED_TABS}` narrowed to the tabs that produced new output since the task's last scheduled run. A `{KEY:default}` marker must not have whitespace right after the `:` — code-like fragments such as `{key: .sid}` (e.g. inside an inline `jq` snippet) are not treated as markers.
@@ -562,7 +562,6 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   },
   "layout": {
     "projects": true,
-    "leftView": "projects",
     "working": "code",
     "terminal": false,
     "projectsSplit": 0.42
@@ -608,13 +607,12 @@ Personal/per-machine keys — `terminal`, `agents`, `open_with`, `pdf_viewer`, `
 
 | Field           | Type                                                                 | Meaning                                                                                                                                                                                                                                                                         |
 | --------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `projects`      | bool                                                                 | Show or hide the left band.                                                                                                                                                                                                                                                     |
-| `leftView`      | `'projects'`                                                         | Which pane fills the left band. Prototype navigation keeps only Projects; legacy `tasks` / `deliverables` / `perf` / `outputs` values migrate to `'projects'` on read. |
-| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| null`           | Five-state. `'code'`, `'knowledge'`, `'resources'`, or `'skills'` shows that pane in the working slot; `null` hides them all. A persisted `'logs'` migrates to `'code'` on read.                                                                                                                                          |
+| `projects`      | bool                                                                 | Always `true` — the left band is fixed Projects and can no longer be hidden. A legacy persisted `false` is forced back to `true` on read.                                                                                                                                        |
+| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'automations' \| 'logs'` | Which pane fills the working slot — the complete set the rail selects from, persisted across restarts. A legacy `null` (the retired hide state) migrates to `'code'` on read.                                                                                                                                          |
 | `terminal`      | bool                                                                 | Show or hide the Terminal pane at the bottom.                                                                                                                                                                                                                                   |
 | `projectsSplit` | number 0.02 – 0.98                                                   | Splitter position as a fraction of the band width, set by dragging. A fraction (not a pixel width) so the split stays proportional when the window is resized. The bounds are loose on purpose — the renderer's px clamp (a 200px floor per pane) is the real constraint, and a tighter fraction bound would disagree with it on a wide monitor and snap the handle away from where it was released. Upgrading from the older `projectsWidth` drops that key; an existing `projectsSplit` is kept, and only an absent or non-numeric one falls back to the default. The pixel value is not converted — the band width it was measured against is unknowable at parse time. |
 
-The IPC verbs `getLayout` / `setLayout` read and write this block atomically — toggling a pane via the View menu (or its keyboard shortcut) round-trips through `setLayout` so the change survives a restart.
+The IPC verbs `getLayout` / `setLayout` read and write this block atomically — selecting a surface from the rail or the View menu round-trips through `setLayout` so the choice survives a restart.
 
 ### CardMinWidth
 
@@ -723,7 +721,7 @@ Each section carries a **scope chip** naming the file it writes (`settings.json`
 
 The rail also carries **Open settings.json** and **Open .condash/settings.json** buttons (open the file in the OS default editor).
 
-Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag, the `welcome.initShown` one-shot — still need a hand-edit (or `condash config set`). Three more live outside it by design: `taskConfig` is written from the Automations surface (View → Automation), `starredProjects` from the Projects-pane card stars, and `retired_apps` from [`condash applications`](cli.md#applications). See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
+Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag, the `welcome.initShown` one-shot — still need a hand-edit (or `condash config set`). Three more live outside it by design: `taskConfig` is written from the Automations surface, `starredProjects` from the Projects-pane card stars, and `retired_apps` from [`condash applications`](cli.md#applications). See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
 
 Changes that **do** need a restart:
 

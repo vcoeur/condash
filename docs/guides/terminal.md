@@ -15,7 +15,7 @@ The embedded terminal is a real PTY driven by `node-pty` in the main process and
 
 Two ways:
 
-- **View → Core → Show Terminal** toggles the pane in the menu bar; **View → Troubleshooting → Show Terminal diagnostics** swaps the band to session-only diagnostics.
+- **View → Show Terminal** toggles the pane in the menu bar; **View → Troubleshooting → Terminal diagnostics** swaps the band to diagnostics.
 - Press the configured toggle shortcut. Default is `` Ctrl+` ``; change it under `terminal.shortcut` in `settings.json`.
 
 ![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-light.png#only-light)
@@ -259,7 +259,7 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 ### Browsing logs
 
-`View → Troubleshooting → Session logs` opens the Logs surface (transient) — sessions grouped by day, a virtualised viewer with search, and a **Task runs** switch for the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store. Logs are also a source of the global search modal, scanned only when you pick the **Logs** filter pill.
+The rail's **Logs** item (or **View → Working pane → Show Logs**) opens the Logs surface — sessions grouped by day, a virtualised viewer with search, and a **Task runs** switch for the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store. Logs are also a source of the global search modal, scanned only when you pick the **Logs** filter pill.
 
 **→ Full walkthrough: [The Logs pane](logs-pane.md).**
 
