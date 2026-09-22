@@ -1,6 +1,6 @@
 import { onCleanup } from 'solid-js';
 import type { Accessor } from 'solid-js';
-import type { LayoutState, WorkingSurface } from '@shared/types';
+import type { LayoutState } from '@shared/types';
 import type { HelpDoc } from './help-modal';
 
 export interface MenuRouterDeps {
@@ -13,10 +13,9 @@ export interface MenuRouterDeps {
   setQuitConfirmOpen: (open: boolean) => void;
   setAboutOpen: (open: boolean) => void;
   setHelpDoc: (doc: HelpDoc) => void;
-  toggleProjects: () => void;
   toggleTerminal: () => void;
-  selectWorking: (next: WorkingSurface) => void;
-  setTransientSurface: (surface: 'automations' | 'logs' | null) => void;
+  /** Select the right-pane surface directly (persisted; never a toggle). */
+  selectWorking: (next: LayoutState['working']) => void;
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
   showDiagnosticsBand: () => void;
@@ -63,36 +62,18 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       deps.toggleTerminal();
       return;
     }
-    if (command === 'toggle-projects') {
-      deps.toggleProjects();
-      return;
-    }
-    if (command === 'show-code') {
-      deps.setTransientSurface(null);
-      deps.selectWorking(deps.layout().working === 'code' ? null : 'code');
-      return;
-    }
-    if (command === 'browse-knowledge') {
-      deps.setTransientSurface(null);
-      deps.selectWorking('knowledge');
-      return;
-    }
-    if (command === 'browse-resources') {
-      deps.setTransientSurface(null);
-      deps.selectWorking('resources');
-      return;
-    }
-    if (command === 'browse-skills') {
-      deps.setTransientSurface(null);
-      deps.selectWorking('skills');
-      return;
-    }
-    if (command === 'show-automations') {
-      deps.setTransientSurface('automations');
-      return;
-    }
-    if (command === 'show-session-logs') {
-      deps.setTransientSurface('logs');
+    if (
+      command === 'show-code' ||
+      command === 'show-knowledge' ||
+      command === 'show-resources' ||
+      command === 'show-skills' ||
+      command === 'show-automations' ||
+      command === 'show-logs'
+    ) {
+      // Strip the `show-` prefix: the rest is the WorkingSurface name. Every
+      // command is a direct selection — the pane the menu names is the pane
+      // that shows, never a toggle (the rail is the complete navigation).
+      deps.selectWorking(command.slice('show-'.length) as LayoutState['working']);
       return;
     }
     if (command === 'show-terminal-diagnostics') {
@@ -101,10 +82,6 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
     }
     if (command === 'show-dashboard') {
       deps.toggleDashboardBand();
-      return;
-    }
-    if (command === 'hide-working') {
-      deps.selectWorking(null);
       return;
     }
     if (command === 'refresh') {

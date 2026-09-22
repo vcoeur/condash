@@ -4,7 +4,6 @@ import { clampSplit, maskTerminal, splitColumns } from './use-layout';
 
 const base: LayoutState = {
   projects: true,
-  leftView: 'projects',
   working: 'code',
   terminal: true,
   projectsSplit: 0.32,
@@ -22,7 +21,6 @@ describe('maskTerminal', () => {
   it('preserves every non-terminal field while masking', () => {
     const out = maskTerminal(base, true);
     expect(out.projects).toBe(true);
-    expect(out.leftView).toBe('projects');
     expect(out.working).toBe('code');
     expect(out.projectsSplit).toBe(0.32);
   });

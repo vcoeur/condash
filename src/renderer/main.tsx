@@ -1,13 +1,5 @@
 import { render } from 'solid-js/web';
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-} from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
 import { nextTheme, themeLabel } from '@shared/themes';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
@@ -89,8 +81,6 @@ function App() {
   const { theme, isDark, handleThemeChange, previewTheme, cycleTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
-  const [transientSurface, setTransientSurface] = createSignal<'automations' | 'logs' | null>(null);
-  const hasTransientWorking = (): boolean => transientSurface() !== null;
 
   const {
     modal,
@@ -137,17 +127,13 @@ function App() {
   const {
     layout,
     updateLayout,
-    toggleProjects,
     toggleTerminal,
-    toggleLeftView,
     selectWorking,
     ensureTerminalOpen,
     setTerminalAutoCollapsed,
-    topBandVisible,
     topBandStyle,
     startSplitterDrag,
-  } = useLayout({ flashToast, hasTransientWorking });
-  const effectiveWorkingSurface = createMemo(() => transientSurface() ?? layout().working);
+  } = useLayout({ flashToast });
 
   // Bottom-band body selector. The strip's Terminal / Dashboard handles switch
   // which body shows when the pane is open; re-selecting the active band's
@@ -199,11 +185,7 @@ function App() {
   // the perf rationale). Showing the pane re-arms the sync. Triggers coalesce
   // behind a short trailing debounce so pane toggling / list churn lands as
   // one batch instead of an overlapping series.
-  createPrIndexSync(
-    projects,
-    () => layout().projects && layout().leftView === 'projects',
-    PR_INDEX_DEBOUNCE_MS,
-  );
+  createPrIndexSync(projects, () => true, PR_INDEX_DEBOUNCE_MS);
 
   // Load the Projects-pane starred set for the active conception. Keyed on the
   // conception path, not the project list: the set lives in that conception's
@@ -526,13 +508,8 @@ function App() {
     setQuitConfirmOpen,
     setAboutOpen,
     setHelpDoc,
-    toggleProjects,
     toggleTerminal,
-    selectWorking: (next) => {
-      setTransientSurface(null);
-      selectWorking(next);
-    },
-    setTransientSurface,
+    selectWorking,
     toggleDashboardBand: () => selectBottomBand('dashboard'),
     showDiagnosticsBand: () => {
       setBottomView('diagnostics');
@@ -608,18 +585,13 @@ function App() {
 
       <div class="workspace">
         <ActivityRail
-          leftView={layout().leftView}
           workingSurface={layout().working}
-          projectsVisible={layout().projects}
           disabled={!handlesEnabled()}
-          onToggleLeftView={toggleLeftView}
-          onSelectWorking={(next) => {
-            setTransientSurface(null);
-            // Own the toggle here so the rail stays a dumb selector: the
-            // same close-on-active contract View → Show Code takes
-            // (menu-commands.ts), with one owner instead of two.
-            selectWorking(layout().working === next ? null : next);
+          onShowProjects={() => {
+            const el = document.querySelector('.projects-pane');
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
+          onSelectWorking={selectWorking}
         />
 
         <div class="workspace-center">
@@ -647,94 +619,44 @@ function App() {
                 onDismiss={handleWelcomeDismiss}
               />
             </Show>
-            <Show when={!shouldShowWelcome() && !topBandVisible() && !layout().terminal}>
-              <div class="all-panes-hidden-helper">
-                <h2>All panes are hidden</h2>
-                <p>Bring one back to start working:</p>
-                <div class="all-panes-hidden-actions">
-                  <button onClick={() => toggleLeftView('projects')}>Show Projects</button>
-                  <button
-                    onClick={() => {
-                      setTransientSurface(null);
-                      selectWorking('code');
-                    }}
-                  >
-                    Show Code
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTransientSurface(null);
-                      selectWorking('knowledge');
-                    }}
-                  >
-                    Browse Knowledge
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTransientSurface(null);
-                      selectWorking('resources');
-                    }}
-                  >
-                    Browse Resources
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTransientSurface(null);
-                      selectWorking('skills');
-                    }}
-                  >
-                    Browse Skills
-                  </button>
-                  <button onClick={toggleTerminal}>Show Terminal</button>
-                </div>
-              </div>
-            </Show>
-            <Show when={topBandVisible()}>
+            <Show when={!shouldShowWelcome()}>
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
-                <Show when={layout().projects}>
-                  <section class="pane pane-projects">
-                    <Switch>
-                      <Match when={layout().leftView === 'projects'}>
-                        <Show
-                          when={(projects() ?? []).length > 0}
-                          fallback={<div class="empty">No projects found under projects/.</div>}
-                        >
-                          <ProjectsView
-                            buckets={projectsTabGroups()}
-                            onOpen={handleOpenProject}
-                            onToggleStep={handleToggleStep}
-                            onDropProject={handleDropOnColumn}
-                            onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                            onToggleStar={(p) => void handleToggleStar(p)}
-                            onFocusTab={(sid) => void bridge.handleFocusLinkedTab(sid)}
-                            projectActions={projectActionItems()}
-                            onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
-                            onNewProject={() => setNewProjectOpen(true)}
-                            newProjectActions={newProjectActionItems()}
-                            onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
-                            onRefresh={() => {
-                              void reloadProjects();
-                              // Also re-read the starred set so a hand-edited
-                              // `.condash/settings.json` shows up without a
-                              // conception switch or restart.
-                              void reloadStarred();
-                            }}
-                          />
-                        </Show>
-                      </Match>
-                    </Switch>
-                  </section>
-                </Show>
+                <section class="pane pane-projects">
+                  <Show
+                    when={(projects() ?? []).length > 0}
+                    fallback={<div class="empty">No projects found under projects/.</div>}
+                  >
+                    <ProjectsView
+                      buckets={projectsTabGroups()}
+                      onOpen={handleOpenProject}
+                      onToggleStep={handleToggleStep}
+                      onDropProject={handleDropOnColumn}
+                      onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                      onToggleStar={(p) => void handleToggleStar(p)}
+                      onFocusTab={(sid) => void bridge.handleFocusLinkedTab(sid)}
+                      projectActions={projectActionItems()}
+                      onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
+                      onNewProject={() => setNewProjectOpen(true)}
+                      newProjectActions={newProjectActionItems()}
+                      onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
+                      onRefresh={() => {
+                        void reloadProjects();
+                        // Also re-read the starred set so a hand-edited
+                        // `.condash/settings.json` shows up without a
+                        // conception switch or restart.
+                        void reloadStarred();
+                      }}
+                    />
+                  </Show>
+                </section>
 
-                <Show when={layout().projects && effectiveWorkingSurface() !== null}>
-                  <div
-                    class="top-band-splitter"
-                    onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
-                    title="Drag to resize"
-                  />
-                </Show>
+                <div
+                  class="top-band-splitter"
+                  onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
+                  title="Drag to resize"
+                />
 
-                <Show when={effectiveWorkingSurface() === 'knowledge'}>
+                <Show when={layout().working === 'knowledge'}>
                   <section class="pane pane-working">
                     <Show
                       when={knowledge()}
@@ -760,7 +682,7 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={effectiveWorkingSurface() === 'resources'}>
+                <Show when={layout().working === 'resources'}>
                   <section class="pane pane-working">
                     <ResourcesView
                       root={resources() ?? null}
@@ -782,13 +704,13 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={effectiveWorkingSurface() === 'logs'}>
+                <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
                     <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
                   </section>
                 </Show>
 
-                <Show when={effectiveWorkingSurface() === 'skills'}>
+                <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
                       scope={skillsActiveScope()}
@@ -816,7 +738,7 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={effectiveWorkingSurface() === 'code'}>
+                <Show when={layout().working === 'code'}>
                   <section class="pane pane-working">
                     <Show
                       when={repos.length > 0}
@@ -868,7 +790,7 @@ function App() {
                     </Show>
                   </section>
                 </Show>
-                <Show when={effectiveWorkingSurface() === 'automations'}>
+                <Show when={layout().working === 'automations'}>
                   <section class="pane pane-working">
                     <TasksView
                       tasks={tasks}
@@ -897,8 +819,8 @@ function App() {
           the body open/closed. When closed, only the strip remains
           visible (height collapses to the strip height); when open,
           the body grows to its persisted height above the strip. The
-           left / right activity rails above end where this pane begins,
-          so the bottom band is genuinely full width. */}
+          rail and top band above end where this pane begins, so the
+          bottom band is genuinely full width. */}
       <TerminalPane
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
@@ -963,7 +885,7 @@ function App() {
         setSearchModalOpen={setSearchModalOpen}
         setLogsOpenRequest={setLogsOpenRequest}
         nextLogsOpenNonce={nextLogsOpenNonce}
-        showSessionLogs={() => setTransientSurface('logs')}
+        showSessionLogs={() => selectWorking('logs')}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
         settingsSection={settingsSection}
