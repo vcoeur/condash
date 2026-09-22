@@ -322,6 +322,10 @@ function App() {
   const bridge = createTerminalBridge({
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
+    showTerminalBand: () => {
+      setBottomView('terminal');
+      ensureTerminalOpen();
+    },
     terminalPrefs,
     agents,
     flashToast,
@@ -534,10 +538,6 @@ function App() {
       setBottomView('diagnostics');
       ensureTerminalOpen();
     },
-    showTerminalBand: () => {
-      setBottomView('terminal');
-      ensureTerminalOpen();
-    },
     handleRefresh: () => handleRefresh(),
     handlePick: () => handlePick(),
     flashToast,
@@ -615,7 +615,10 @@ function App() {
           onToggleLeftView={toggleLeftView}
           onSelectWorking={(next) => {
             setTransientSurface(null);
-            selectWorking(next);
+            // Own the toggle here so the rail stays a dumb selector: the
+            // same close-on-active contract View → Show Code takes
+            // (menu-commands.ts), with one owner instead of two.
+            selectWorking(layout().working === next ? null : next);
           }}
         />
 

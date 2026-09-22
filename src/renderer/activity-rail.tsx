@@ -26,7 +26,7 @@ export interface ActivityRailProps {
   projectsVisible: boolean;
   disabled: boolean;
   onToggleLeftView: (view: LeftView) => void;
-  onSelectWorking: (next: WorkingSurface) => void;
+  onSelectWorking: (next: Exclude<WorkingSurface, null>) => void;
 }
 
 export function ActivityRail(props: ActivityRailProps) {
@@ -41,9 +41,7 @@ export function ActivityRail(props: ActivityRailProps) {
     if (item.kind === 'left') {
       props.onToggleLeftView(item.key as LeftView);
     } else {
-      props.onSelectWorking(
-        props.workingSurface === item.key ? null : (item.key as WorkingSurface),
-      );
+      props.onSelectWorking(item.key as Exclude<WorkingSurface, null>);
     }
   };
 

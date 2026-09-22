@@ -22,17 +22,23 @@ async function seedNavigationFixture(conceptionDir: string): Promise<void> {
 }
 
 test('navigation prototype keeps reference persistent and utilities session-only', async () => {
-  const booted = await bootApp({ prepare: seedNavigationFixture });
+  const booted = await bootApp({
+    prepare: seedNavigationFixture,
+    extraConfig: { repositories: ['fixture-repo'] },
+  });
   try {
     const { app, window } = booted;
     await expect(window.locator('.rail-item')).toHaveCount(2);
     await expect(window.locator('.rail-item[title="Projects"]')).toBeVisible();
     await expect(window.locator('.rail-item[title^="Code"]')).toBeVisible();
+    await expect(window.locator('.repos-pane')).toBeVisible();
 
     // The active Code rail item keeps its original toggle contract.
-    await window.locator('.rail-item[title^="Code"]').click();
+    const codeRail = window.locator('.rail-item[title^="Code"]');
+    await codeRail.click();
     await expect(window.locator('.repos-pane')).toHaveCount(0);
-    await window.locator('.rail-item[title^="Code"]').click();
+    await expect(codeRail).toHaveAttribute('aria-pressed', 'false');
+    await codeRail.click();
     await expect(window.locator('.repos-pane')).toBeVisible();
 
     // View → Show Terminal uses the same toggle command as the terminal strip.
