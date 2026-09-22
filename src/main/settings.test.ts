@@ -65,14 +65,14 @@ describe('CONDASH_CONCEPTION_PATH override', () => {
 });
 
 describe('read-path legacy migration', () => {
-  it('migrates retired layout selections to the prototype defaults', async () => {
+  it('re-maps a prototype-era layout to the rail navigation defaults', async () => {
     await fs.writeFile(
       settingsFile,
       JSON.stringify({
         layout: {
-          projects: true,
-          leftView: 'outputs',
-          working: 'logs',
+          projects: false,
+          leftView: 'projects',
+          working: null,
           terminal: true,
           projectsSplit: 0.32,
         },
@@ -80,27 +80,26 @@ describe('read-path legacy migration', () => {
     );
     const { readSettings } = await loadSettingsModule();
     const settings = await readSettings();
-    expect(settings.layout?.leftView).toBe('projects');
+    expect(settings.layout?.projects).toBe(true);
     expect(settings.layout?.working).toBe('code');
   });
 
-  it.each(['tasks', 'deliverables', 'perf'])(
-    'migrates leftView %s to projects',
+  it.each(['automations', 'logs', 'knowledge', 'resources', 'skills'])(
+    'keeps working: %s persisted (the rail re-map widened the union)',
     async (leftView) => {
       await fs.writeFile(
         settingsFile,
         JSON.stringify({
           layout: {
             projects: true,
-            leftView,
-            working: 'code',
+            working: leftView,
             terminal: true,
             projectsSplit: 0.32,
           },
         }),
       );
       const { readSettings } = await loadSettingsModule();
-      expect((await readSettings()).layout?.leftView).toBe('projects');
+      expect((await readSettings()).layout?.working).toBe(leftView);
     },
   );
 });

@@ -460,7 +460,6 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
     const json = JSON.stringify({
       layout: {
         projects: true,
-        leftView: 'projects',
         working: 'code',
         terminal: true,
         projectsWidth: 320,
@@ -469,6 +468,61 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
     const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
     expect('projectsWidth' in parsed.layout).toBe(false);
     expect(parsed.layout.projectsSplit).toBe(0.32);
+  });
+});
+
+describe('migrateRawSettings — layout re-map to the rail navigation', () => {
+  // The rail re-map made the left band fixed Projects and the right pane
+  // always-visible: `leftView` has no reader, a hidden band/pane cannot be
+  // expressed, and `automations` / `logs` are valid persisted surfaces again
+  // (so the prototype's `working: 'logs' → 'code'` mapping is gone).
+  it('drops the retired leftView key whatever legacy value it carries', () => {
+    for (const legacy of ['projects', 'tasks', 'deliverables', 'perf', 'outputs']) {
+      const migrated = migrateRawSettings({
+        layout: { projects: true, leftView: legacy, working: 'code', terminal: true },
+      }) as Record<string, unknown>;
+      const layout = migrated.layout as Record<string, unknown>;
+      expect('leftView' in layout).toBe(false);
+    }
+  });
+
+  it('forces a persisted projects: false back to true (the band is fixed)', () => {
+    const migrated = migrateRawSettings({
+      layout: { projects: false, working: 'code', terminal: true },
+    }) as Record<string, unknown>;
+    expect((migrated.layout as Record<string, unknown>).projects).toBe(true);
+  });
+
+  it('keeps every valid working surface, including the re-added logs + automations', () => {
+    for (const working of ['code', 'knowledge', 'resources', 'skills', 'automations', 'logs']) {
+      const migrated = migrateRawSettings({
+        layout: { projects: true, working, terminal: true },
+      }) as Record<string, unknown>;
+      expect((migrated.layout as Record<string, unknown>).working).toBe(working);
+    }
+  });
+
+  it('maps a persisted null (the retired hide state) to the code default', () => {
+    const migrated = migrateRawSettings({
+      layout: { projects: true, working: null, terminal: true },
+    }) as Record<string, unknown>;
+    expect((migrated.layout as Record<string, unknown>).working).toBe('code');
+  });
+
+  it('a prototype-era body (hidden projects, null pane, leftView) parses and lands on defaults', () => {
+    const json = JSON.stringify({
+      layout: {
+        projects: false,
+        leftView: 'projects',
+        working: null,
+        terminal: true,
+        projectsSplit: 0.32,
+      },
+    });
+    const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
+    expect(parsed.layout.projects).toBe(true);
+    expect(parsed.layout.working).toBe('code');
+    expect('leftView' in parsed.layout).toBe(false);
   });
 });
 
@@ -685,8 +739,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     // setLayout
     layout: {
       projects: true,
-      leftView: 'projects',
-      working: 'code',
+      working: 'logs',
       terminal: true,
       projectsSplit: 0.32,
     },

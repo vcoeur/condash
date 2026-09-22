@@ -57,7 +57,6 @@ afterEach(async () => {
 describe('setLayout (lazily-imported config-schema seam)', () => {
   const validLayout = {
     projects: true,
-    leftView: 'projects',
     working: 'code',
     terminal: true,
     projectsSplit: 0.32,
@@ -78,20 +77,36 @@ describe('setLayout (lazily-imported config-schema seam)', () => {
     ).rejects.toThrow(/setLayout/);
   });
 
-  it('accepts EVERY LeftView the type allows', async () => {
-    // Regression guard for a whole bug class, not one value. `layoutSchema`'s
-    // leftView validator used to be a hand-written zod union; adding 'perf' to
-    // the TS type left it stale, and tsc could not see the drift. The failure
-    // was app-wide, not local to the new pane: `updateLayout` spreads the
-    // persisted layout into every later write, so one unlisted view made every
-    // subsequent layout save throw for as long as it stayed selected.
-    // The schema is now built from LEFT_VIEWS; this asserts the two agree.
-    const { LEFT_VIEWS } = await import('../../shared/types/layout');
+  it('accepts EVERY WorkingSurface the type allows', async () => {
+    // Same regression guard, transposed onto the working union: the schema's
+    // `working` validator must cover every value the TS type allows, because
+    // `updateLayout` spreads the persisted layout into every later write — one
+    // unlisted surface would make every subsequent layout save throw for as
+    // long as it stayed selected. Enumerate from the type's DEFAULT_LAYOUT +
+    // a literal over the union so a new surface cannot silently go untested.
+    const { DEFAULT_LAYOUT } = await import('../settings');
     const { drainSettingsQueue } = await import('../settings');
-    for (const leftView of LEFT_VIEWS) {
-      await handlers.setLayout(trustedEvent, { ...validLayout, leftView });
+    const surfaces = ['code', 'knowledge', 'resources', 'skills', 'automations', 'logs'] as const;
+    for (const working of surfaces) {
+      await handlers.setLayout(trustedEvent, { ...validLayout, working });
       await drainSettingsQueue();
-      expect(await handlers.getLayout(trustedEvent)).toMatchObject({ leftView });
+      expect(await handlers.getLayout(trustedEvent)).toMatchObject({
+        ...DEFAULT_LAYOUT,
+        working,
+      });
     }
+  });
+
+  it('rejects a retired shape: leftView key or a hidden working pane', async () => {
+    // The strict schema is the migration backstop: a layout carrying the
+    // retired `leftView` key, or `working: null` (the retired hide state), is
+    // rejected at the IPC boundary rather than persisted. migrateRawSettings
+    // maps legacy FILES before they reach this handler.
+    await expect(
+      handlers.setLayout(trustedEvent, { ...validLayout, leftView: 'projects' }),
+    ).rejects.toThrow(/setLayout/);
+    await expect(
+      handlers.setLayout(trustedEvent, { ...validLayout, working: null }),
+    ).rejects.toThrow(/setLayout/);
   });
 });

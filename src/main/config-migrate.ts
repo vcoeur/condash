@@ -51,6 +51,19 @@ import {
  *   unknowable at parse time, and guessing one mis-scales the pane badly on any
  *   other display. Backfilling the default is what keeps the whole settings
  *   file parseable — `projectsSplit` is required whenever `layout` exists.
+ * - `layout.leftView` — dropped (the left band is fixed Projects now). Legacy
+ *   specialist selections (`tasks` / `deliverables` / `perf` / `outputs`)
+ *   carried no data beyond the pointer itself, so dropping the key is the
+ *   whole migration; `projects` visibility never depended on it.
+ * - `layout.projects: false` — forced back to `true`: the left band is always
+ *   visible, and the prototype era persisted a hide. Nothing else in the file
+ *   is touched.
+ * - `layout.working` widens rather than narrows: the rail re-map re-adds
+ *   `automations` and `logs` as valid persisted surfaces, so the prototype's
+ *   `working: 'logs' → 'code'` migration is gone. A `null` (the prototype's
+ *   hide-the-pane state) maps to `'code'` because the schema no longer accepts
+ *   a hidden right pane. Values are left alone when already valid, so no
+ *   mapped surface is ever degraded by a re-map.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
@@ -82,21 +95,27 @@ export function migrateRawSettings(parsed: unknown): unknown {
     }
     delete root.projectCardTitleFont;
   }
-  // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
-  // The navigation prototype then retired all specialist left-band selections;
-  // map them to Projects before strict layout parsing, without touching any
-  // feature storage.
   if (root.layout && typeof root.layout === 'object') {
     const layout = root.layout as Record<string, unknown>;
-    if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
-    if (
-      layout.leftView === 'tasks' ||
-      layout.leftView === 'deliverables' ||
-      layout.leftView === 'perf'
-    ) {
-      layout.leftView = 'projects';
+    // The left band is fixed Projects: the prototype retired every specialist
+    // left-band selection and the rail re-map dropped the hide affordance, so
+    // the field itself has no reader left. Drop it rather than keep a key the
+    // strict schema no longer lists.
+    delete layout.leftView;
+    if (layout.projects === false) layout.projects = true;
+    // The right pane is always showing something; a persisted `null` (the
+    // prototype's hide-the-pane state) falls back to the Code default.
+    const WORKING_SURFACES = new Set([
+      'code',
+      'knowledge',
+      'resources',
+      'skills',
+      'automations',
+      'logs',
+    ]);
+    if (typeof layout.working !== 'string' || !WORKING_SURFACES.has(layout.working)) {
+      layout.working = 'code';
     }
-    if (layout.working === 'logs') layout.working = 'code';
     // The splitter position went from CSS pixels to a fraction of the band, so
     // it survives a window resize. The pixel value is deliberately NOT
     // converted: the band width it was measured against is unknowable here, and

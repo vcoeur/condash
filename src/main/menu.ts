@@ -45,14 +45,16 @@ function prettyRecentLabel(path: string): string {
 }
 
 /**
- * Build the application menu. The View submenu mirrors the unified
- * layout's pane-visibility state — Show/Hide Projects + Show/Hide
- * Terminal as toggles, plus a three-state group (Code | Knowledge |
- * neither) for the right-slot working surface. Pass the current layout
- * so check marks line up with what's actually shown; rebuild the menu
- * after any layout change so the marks refresh. No Quit accelerator on
- * purpose: Ctrl+Q is too easy to hit by accident, and File → Quit
- * routes through a renderer-side confirmation modal anyway.
+ * Build the application menu. The View submenu mirrors the rail: one
+ * checked item per right-pane surface (exactly one is ever active — the
+ * rail click that selects it persists the choice), a Show Terminal
+ * toggle for the bottom band, and Terminal diagnostics under
+ * Troubleshooting. Projects has no menu entry — the left band is always
+ * visible. Pass the current layout so check marks line up with what's
+ * actually shown; rebuild the menu after any layout change so the marks
+ * refresh. No Quit accelerator on purpose: Ctrl+Q is too easy to hit by
+ * accident, and File → Quit routes through a renderer-side confirmation
+ * modal anyway.
  */
 export function buildMenu(
   layout: LayoutState = DEFAULT_LAYOUT,
@@ -127,14 +129,8 @@ export function buildMenu(
 
   const viewSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'Core',
+      label: 'Working pane',
       submenu: [
-        {
-          label: 'Show Projects',
-          type: 'checkbox',
-          checked: layout.projects,
-          click: () => send('toggle-projects'),
-        },
         {
           label: 'Show Code',
           type: 'checkbox',
@@ -143,52 +139,40 @@ export function buildMenu(
           click: () => send('show-code'),
         },
         {
-          label: 'Show Terminal',
-          type: 'checkbox',
-          checked: layout.terminal,
-          accelerator: 'CommandOrControl+`',
-          click: () => send('toggle-terminal'),
-        },
-        {
-          label: 'Hide working surface',
-          enabled: layout.working !== null,
-          click: () => send('hide-working'),
-        },
-      ],
-    },
-    {
-      label: 'Reference',
-      submenu: [
-        {
-          label: 'Browse Knowledge',
+          label: 'Show Knowledge',
           type: 'checkbox',
           checked: layout.working === 'knowledge',
-          click: () => send('browse-knowledge'),
+          click: () => send('show-knowledge'),
         },
         {
-          label: 'Browse Resources',
+          label: 'Show Resources',
           type: 'checkbox',
           checked: layout.working === 'resources',
-          click: () => send('browse-resources'),
+          click: () => send('show-resources'),
         },
         {
-          label: 'Browse Skills',
+          label: 'Show Skills',
           type: 'checkbox',
           checked: layout.working === 'skills',
-          click: () => send('browse-skills'),
+          click: () => send('show-skills'),
+        },
+        {
+          label: 'Show Automations',
+          type: 'checkbox',
+          checked: layout.working === 'automations',
+          click: () => send('show-automations'),
+        },
+        {
+          label: 'Show Logs',
+          type: 'checkbox',
+          checked: layout.working === 'logs',
+          click: () => send('show-logs'),
         },
       ],
-    },
-    {
-      label: 'Automation',
-      submenu: [{ label: 'Automations', click: () => send('show-automations') }],
     },
     {
       label: 'Troubleshooting',
-      submenu: [
-        { label: 'Session logs', click: () => send('show-session-logs') },
-        { label: 'Show Terminal diagnostics', click: () => send('show-terminal-diagnostics') },
-      ],
+      submenu: [{ label: 'Terminal diagnostics', click: () => send('show-terminal-diagnostics') }],
     },
     { type: 'separator' },
     {

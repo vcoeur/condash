@@ -7,34 +7,26 @@
 // `main/menu.ts` all reference these shapes — so the main process and the
 // renderer must agree on one definition.
 
-/** Right-slot working surface — picks which of Code / Knowledge / Resources /
- * Skills is shown in the top-band right pane, or `null` to leave it
- * hidden. All are mutually exclusive: showing one swaps the others out. (The
+/** The persisted working surface. The rail selects exactly one right-pane
+ * surface at a time and the choice survives a restart; the full working union
+ * is Code, Knowledge, Resources, Skills, Automations, and Logs. `null` is not
+ * part of the type — the right pane is always showing something (the rail is
+ * the complete navigation; there is no "hide the working surface" state). (The
  * Dashboard is not a working surface — it lives in the bottom band next to
  * Terminal.) */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | null;
-
-/** Every left-band view, in rail order. The single source of truth: `LeftView`
- * is derived from it and `config-schema.ts` builds its runtime validator with
- * `z.enum(LEFT_VIEWS)`, so a new view cannot be added to the type while the
- * persistence validator silently rejects it. */
-export const LEFT_VIEWS = ['projects'] as const;
-
-/** Left-band view — which pane fills the left band when it is visible.
- * Selected by the left activity-rail items. */
-export type LeftView = (typeof LEFT_VIEWS)[number];
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'automations' | 'logs';
 
 /** Composite-layout state. The unified window has a top band (Projects on
- * the left, working surface on the right) and a bottom band (Terminal).
- * Each band can be hidden independently; the working surface is also
- * tristate. Sizes are persisted alongside visibility so re-showing a pane
- * restores its previous dimensions. */
+ * the left, always visible; the working surface on the right, exactly one of
+ * the six rail-selected surfaces) and a bottom band (Terminal). Sizes are
+ * persisted alongside visibility so re-showing the terminal restores its
+ * previous dimensions. */
 export interface LayoutState {
+  /** Always `true` — the left band is fixed Projects. Kept so a legacy
+   * persisted layout keeps parsing; no writer ever sets it `false`. */
   projects: boolean;
-  /** Which view fills the left band when it is visible. Projects is the only
-   * persisted left-band surface in the navigation prototype. */
-  leftView: LeftView;
-  /** Code / Knowledge / hidden — single right-slot tristate. */
+  /** Code / Knowledge / Resources / Skills / Automations / Logs — single
+   * right-slot surface, chosen directly by rail click and persisted. */
   working: WorkingSurface;
   terminal: boolean;
   /** Where the Projects ↔ working-surface splitter sits, as a **fraction of the

@@ -21,7 +21,7 @@ import type {
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { THEME_VALUES } from '../shared/themes';
-import { LEFT_VIEWS, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
+import { MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -379,6 +379,9 @@ const terminalSettings = z
  *  the same shape check the settings save path enforces. */
 export const layoutSchema = z
   .object({
+    // Always `true` — the left band is fixed Projects. Optional so a layout
+    // persisted before the key existed parses; migrateRawSettings forces a
+    // stale `false` back to `true` before this validator runs.
     projects: z.boolean(),
     // Optional: layouts persisted before `leftView` existed omit it; the read
     // path back-fills from DEFAULT_LAYOUT. Legacy specialist views are migrated
@@ -388,14 +391,7 @@ export const layoutSchema = z
     // failure mode was silent and app-wide: `setLayout` throws on the unknown
     // value, and since updateLayout spreads the persisted layout into every
     // subsequent write, ONE unlisted view breaks every later layout save too.
-    leftView: z.enum(LEFT_VIEWS).optional(),
-    working: z.union([
-      z.literal('code'),
-      z.literal('knowledge'),
-      z.literal('resources'),
-      z.literal('skills'),
-      z.null(),
-    ]),
+    working: z.enum(['code', 'knowledge', 'resources', 'skills', 'automations', 'logs']),
     terminal: z.boolean(),
     /** Splitter position as a fraction of the band width. The bounds are loose
      *  on purpose — the renderer's px clamp is the real constraint, and a
