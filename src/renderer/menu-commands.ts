@@ -20,7 +20,6 @@ export interface MenuRouterDeps {
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
   showDiagnosticsBand: () => void;
-  showTerminalBand: () => void;
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -62,10 +61,6 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
     }
     if (command === 'toggle-terminal') {
       deps.toggleTerminal();
-      return;
-    }
-    if (command === 'show-terminal') {
-      deps.showTerminalBand();
       return;
     }
     if (command === 'toggle-projects') {

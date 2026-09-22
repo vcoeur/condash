@@ -322,10 +322,6 @@ function App() {
   const bridge = createTerminalBridge({
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
-    showTerminalBand: () => {
-      setBottomView('terminal');
-      ensureTerminalOpen();
-    },
     terminalPrefs,
     agents,
     flashToast,

@@ -585,7 +585,6 @@ export type MenuCommand =
   | 'request-quit'
   | 'toggle-projects'
   | 'toggle-terminal'
-  | 'show-terminal'
   | 'show-code'
   | 'browse-knowledge'
   | 'browse-resources'

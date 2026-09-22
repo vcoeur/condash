@@ -147,7 +147,7 @@ export function buildMenu(
           type: 'checkbox',
           checked: layout.terminal,
           accelerator: 'CommandOrControl+`',
-          click: () => send('show-terminal'),
+          click: () => send('toggle-terminal'),
         },
         {
           label: 'Hide working surface',

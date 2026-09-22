@@ -41,7 +41,9 @@ export function ActivityRail(props: ActivityRailProps) {
     if (item.kind === 'left') {
       props.onToggleLeftView(item.key as LeftView);
     } else {
-      props.onSelectWorking(item.key as WorkingSurface);
+      props.onSelectWorking(
+        props.workingSurface === item.key ? null : (item.key as WorkingSurface),
+      );
     }
   };
 

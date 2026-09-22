@@ -29,6 +29,18 @@ test('navigation prototype keeps reference persistent and utilities session-only
     await expect(window.locator('.rail-item[title="Projects"]')).toBeVisible();
     await expect(window.locator('.rail-item[title^="Code"]')).toBeVisible();
 
+    // The active Code rail item keeps its original toggle contract.
+    await window.locator('.rail-item[title^="Code"]').click();
+    await expect(window.locator('.repos-pane')).toHaveCount(0);
+    await window.locator('.rail-item[title^="Code"]').click();
+    await expect(window.locator('.repos-pane')).toBeVisible();
+
+    // View → Show Terminal uses the same toggle command as the terminal strip.
+    await sendMenu(app, 'toggle-terminal');
+    await expect(window.locator('.terminal-pane')).toHaveClass(/closed/);
+    await sendMenu(app, 'toggle-terminal');
+    await expect(window.locator('.terminal-pane')).not.toHaveClass(/closed/);
+
     await sendMenu(app, 'browse-knowledge');
     await expect(window.getByText('Fixture knowledge')).toBeVisible();
     await sendMenu(app, 'browse-resources');

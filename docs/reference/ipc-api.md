@@ -272,11 +272,10 @@ The full `MenuCommand` union dispatched by `onMenuCommand`:
 ```
 search                 toggle-projects        about
 open-folder            toggle-terminal        help-welcome
-open-conception        show-terminal          help-quick-start
-open-settings          show-code              help-shortcuts
-new-project            browse-knowledge       help-configuration
-request-quit           browse-resources       help-cli
-                       browse-skills          help-why-markdown
+open-conception        show-code              help-quick-start
+open-settings          browse-knowledge       help-shortcuts
+new-project            browse-resources       help-configuration
+request-quit           browse-skills          help-cli
                        show-automations
                        show-session-logs
                        show-terminal-diagnostics
