@@ -70,7 +70,7 @@ const seed = async (conceptionDir: string): Promise<void> => {
 
 const boot = (theme: 'dark' | 'console') =>
   bootApp({
-    globalConfig: { theme, layout: { projects: true, leftView: 'projects', terminal: false } },
+    globalConfig: { theme, layout: { projects: true, working: 'code', terminal: false } },
     prepare: seed,
   });
 

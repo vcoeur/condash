@@ -707,9 +707,9 @@ async function shootClip(
 
 /** Send a menu-command IPC to the renderer. The composite layout has no
  *  in-window tab strip — pane visibility is driven by the application menu
- *  ('toggle-projects', 'show-code', 'browse-knowledge', 'hide-working',
- *  'open-settings', 'toggle-terminal', 'search'), so screenshot prep goes
- *  through the same channel a real menu click would. */
+ *  ('show-code', 'show-knowledge', 'open-settings', 'toggle-terminal',
+ *  'search'), so screenshot prep goes through the same channel a real menu
+ *  click would. */
 async function sendMenu(app: ElectronApplication, command: string): Promise<void> {
   await app.evaluate(({ BrowserWindow }, cmd) => {
     const w = BrowserWindow.getAllWindows()[0];
@@ -726,44 +726,26 @@ async function railPressed(page: Page, label: string): Promise<boolean> {
 }
 
 /**
- * Fill the left band with one of its views.
- *
- * `toggleLeftView` hides the band when the requested view is already the
- * active one (`use-layout.ts`), so the `aria-pressed` guard is what keeps this
- * a "show", not a toggle.
- */
-async function showLeftView(page: Page, label: 'Projects'): Promise<void> {
-  if (!(await railPressed(page, label))) {
-    await page.locator(`.rail-item[title^="${label}"]`).first().click();
-  }
-  await settle(page);
-}
-
-/**
  * Show one pane in the working-surface slot.
  *
- * Reference commands are persistent, idempotent selections. Code retains its
- * rail-style toggle, so it alone needs the active guard.
+ * Every command is a persistent, idempotent selection now: the rail item is
+ * always active for Projects and exactly one surface is active at a time, so
+ * the active guard keeps a re-selection from churning the view.
  */
 async function showWorking(
   b: Booted,
   label: 'Code' | 'Knowledge' | 'Resources' | 'Skills',
 ): Promise<void> {
-  if (label === 'Code' && (await railPressed(b.page, label))) return;
+  // Direct selection: re-selecting the visible pane is a no-op, so no
+  // per-label active guard is needed.
+  if (await railPressed(b.page, label)) return;
   const command = {
     Code: 'show-code',
-    Knowledge: 'browse-knowledge',
-    Resources: 'browse-resources',
-    Skills: 'browse-skills',
+    Knowledge: 'show-knowledge',
+    Resources: 'show-resources',
+    Skills: 'show-skills',
   }[label];
   await sendMenu(b.app, command);
-  await settle(b.page, 400);
-}
-
-/** Show or hide the whole left band, whatever view it currently holds. */
-async function setProjectsBand(b: Booted, visible: boolean): Promise<void> {
-  const shown = await b.page.locator('.projects-pane').count();
-  if (shown > 0 !== visible) await sendMenu(b.app, 'toggle-projects');
   await settle(b.page, 400);
 }
 
@@ -773,7 +755,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
   try {
     // 1. dashboard-overview — the composite landing view: Projects on the left,
     //    Code in the working slot.
-    await showLeftView(page, 'Projects');
     await showWorking(b, 'Code');
     await settle(page, 600);
     await parkPointer(page);
@@ -798,7 +779,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await requireContent(page, 'activity-rail', {
         root: '.rail',
         items: '.rail-item',
-        minItems: 2,
+        minItems: 7,
       });
       const rail = await page.locator('.rail').first().boundingBox();
       const lastItem = await page.locator('.rail-item').last().boundingBox();
@@ -861,7 +842,8 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    Captured with NO popover open: the page it serves
     //    (`repositories-and-open-with.md`) is about the card list, and the
     //    popover covers one of the five cards.
-    await setProjectsBand(b, false);
+    //    The left band is fixed Projects now, so this is a full-window shot
+    //    of the right pane only — the working surface keeps its 50/50 share.
     await settle(page, 600);
     await parkPointer(page);
     await requireContent(page, 'code-pane', {
@@ -889,8 +871,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     });
     await shoot(page, theme, 'code-pane-dirty');
     await page.keyboard.press('Escape');
-    await setProjectsBand(b, true);
-    await showLeftView(page, 'Projects');
 
     // 6. knowledge-pane — the tree's directory sections are pre-expanded via
     //    the seeded `treeExpansion`, so the shot shows the tree, not three
@@ -1019,7 +999,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 12. item-document-with-pdf — open a document item that has a PDF
     //     deliverable. The demo fixture's `2026-04-10-plugin-api-proposal/
     //     deliverables/` ships a PDF; click that card to open the note modal.
-    await showLeftView(page, 'Projects');
     const docCard = page.locator('.row', { hasText: /plugin API proposal/i }).first();
     if (await docCard.count()) {
       await docCard.click();
@@ -1053,9 +1032,10 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await shoot(page, theme, 'status-unknown-badge');
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    // 14. tasks-pane — the session-only Automations surface. The fixture ships two
-    //     `tasks/<slug>/{task.json,prompt.md}` directories whose `agent` ids
-    //     resolve against the seeded agents list, so Run… is enabled.
+    // 14. tasks-pane — the Automations surface (a rail item now, persisted).
+    //     The fixture ships two `tasks/<slug>/{task.json,prompt.md}`
+    //     directories whose `agent` ids resolve against the seeded agents
+    //     list, so Run… is enabled.
     await sendMenu(b.app, 'show-automations');
     await settle(page, 500);
     await parkPointer(page);
@@ -1065,8 +1045,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
       minItems: 2,
     });
     await shoot(page, theme, 'tasks-pane');
-
-    await showLeftView(page, 'Projects');
 
     // 15. settings-modal — opened, never saved.
     await sendMenu(b.app, 'open-settings');

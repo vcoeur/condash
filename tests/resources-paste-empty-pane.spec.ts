@@ -30,7 +30,7 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
   const booted = await bootApp({
     globalConfig: {
       // Pane open, nothing in it — the state the defect needs.
-      layout: { projects: true, leftView: 'projects', working: 'code', terminal: true },
+      layout: { projects: true, working: 'code', terminal: true },
     },
     prepare: async (conceptionDir) => {
       await mkdir(join(conceptionDir, 'resources'), { recursive: true });
@@ -68,7 +68,7 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
       });
     });
 
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
     await window
       .locator('.resources-card', { hasText: 'spec.txt' })

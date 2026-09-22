@@ -56,7 +56,7 @@ test('MDX plan opens in the block viewer with issues banner and source toggle', 
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
 
     await window

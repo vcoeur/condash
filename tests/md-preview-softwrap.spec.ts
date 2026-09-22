@@ -71,7 +71,7 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
 
     // Rendered markdown: the fence wraps, so the block has nothing to scroll…

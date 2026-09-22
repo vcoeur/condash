@@ -72,7 +72,7 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     }, target);
 
     await win.setViewportSize({ width: 1400, height: 900 });
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await win
       .locator('.resources-card', { hasText: 'svg-demo.mdx' })
       .locator('.resources-card-body')

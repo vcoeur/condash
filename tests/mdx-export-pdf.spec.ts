@@ -46,7 +46,7 @@ test('Export as PDF prints the open visual note, and blocks fill the document wi
     }, target);
 
     await win.setViewportSize({ width: 1400, height: 900 });
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await win
       .locator('.resources-card', { hasText: 'export-me.mdx' })
       .locator('.resources-card-body')
@@ -100,7 +100,7 @@ test('the export button is absent in source mode', async () => {
   });
   try {
     const win = booted.window;
-    await sendMenu(booted.app, 'browse-resources');
+    await sendMenu(booted.app, 'show-resources');
     await win
       .locator('.resources-card', { hasText: 'export-me.mdx' })
       .locator('.resources-card-body')

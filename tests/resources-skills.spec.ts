@@ -31,7 +31,7 @@ test('Resources pane: handle, render, copy path, edit markdown', async () => {
 
     // The resources tree is read on-demand when its persistent Reference route
     // is selected; watcher events still refresh it after activation.
-    await sendMenu(app, 'browse-resources');
+    await sendMenu(app, 'show-resources');
 
     await expect(window.locator('.resources-pane')).toBeVisible();
     await expect(
@@ -162,7 +162,7 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
   });
   const { app, window, cleanup } = booted;
   try {
-    await sendMenu(app, 'browse-skills');
+    await sendMenu(app, 'show-skills');
 
     await expect(window.locator('.skills-pane')).toBeVisible();
     // Expand the `projects/` sub-directory so its SKILL.md surfaces. The

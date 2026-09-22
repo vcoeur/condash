@@ -54,7 +54,7 @@ test('Skills pane: conception/user scope toggle + refresh', async () => {
   });
   const { window, cleanup } = booted;
   try {
-    await sendMenu(booted.app, 'browse-skills');
+    await sendMenu(booted.app, 'show-skills');
     await expect(window.locator('.skills-pane')).toBeVisible();
 
     // Both scope buttons render; Conception is the default + active. The scope
