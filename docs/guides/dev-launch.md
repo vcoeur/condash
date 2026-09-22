@@ -35,7 +35,7 @@ make dev
 
 **There is no typechecker in the loop.** esbuild strips types without checking them, so a type error will not stop `make dev` — run `npm run typecheck` (`tsc --noEmit` over both tsconfigs) yourself, or let CI catch it.
 
-Renderer edits hot-reload. Main / preload edits are rebundled but need the window reloaded to take effect: **`Ctrl+Shift+R`** (View → Reload window). Note that `Ctrl+R` is *not* reload here — that accelerator is given to **View → Show Resources**, which is more useful day to day.
+Renderer edits hot-reload. Main / preload edits are rebundled but need the window reloaded to take effect: **`Ctrl+Shift+R`** (View → Reload window).
 
 If port `5600` is in use, `make kill` frees it. The production preview served by `vite preview` uses `5601`; both are `strictPort`, so a busy port fails loudly rather than silently sliding to the next one.
 

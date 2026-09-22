@@ -9,7 +9,7 @@ description: Save reusable, parameterized agent prompts as tasks, fill their mar
 
 A **task** is a reusable, parameterized agent prompt: a name, a referenced [agent](agent-clis-and-models.md), and a markdown prompt that carries fillable `{markers}`. You fill the markers in a form, click **Run**, and condash spawns the agent in a fresh terminal tab and submits the filled prompt.
 
-The Tasks pane is a **left-band view** with its own activity-rail item. The rail's four left views are ordered **Projects · Tasks · Deliverables · [Performance](performance-pane.md)**. Click the **Tasks** item to fill the left band with it (clicking the active item hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
+> **Prototype note.** In the prototype navigation this surface is **Automations**, opened from **View → Automation → Automations**; it is session-only and does not replace a persisted Reference choice. Storage under `tasks/` is unchanged.
 
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-light.png#only-light)
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-dark.png#only-dark)
@@ -71,7 +71,7 @@ Only the tabs that actually exist are injected — no prior titles, no closed ta
 
 A task card carries a single **Run…** button — clicking it opens the **run popup**:
 
-1. Open the **Tasks** rail item and click **Run…** on a task card.
+1. Open **View → Automation → Automations** and click **Run…** on a task card.
 2. At the top, the **Agent** select defaults to the task's stored agent — leave it, or switch it to run this one time with a different agent (only prompt-seedable agents are selectable). The **Run** button sits beside it.
 3. Fill the markers below — pick an app / project where prompted, edit the text fields (prefilled from defaults).
 4. A **Run mode** select and a **Keep out of logs** checkbox sit beside the agent picker, each prefilled from the task's default (below). Run mode switches this one run between **Interactive (`--prompt`)** and **One-shot (`--run`)** (disabled for an opaque agent). When *Keep out of logs* is ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible.

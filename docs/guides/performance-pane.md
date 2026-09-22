@@ -9,7 +9,7 @@ description: Watch per-tab memory level, growth rate, and throttle state live �
 
 **When to read this.** The UI stutters, a tab disappeared without you closing it, or you want to know *which* tab is eating the machine before it takes the app down with it.
 
-The Performance pane is the fourth **left-band view**, alongside Projects, Tasks, and Deliverables. Click the **Performance** item in the activity rail to fill the left band with it (clicking the active item hides the band). Like the other left views it has no keyboard accelerator — the rail is the way in. Which view was last shown is remembered across launches (the `leftView` layout field).
+> **Prototype note.** The Performance view opens as **Terminal diagnostics** from **View → Troubleshooting** in the bottom terminal band, session-only. Storage and the sampler are unchanged.
 
 ## What it answers
 

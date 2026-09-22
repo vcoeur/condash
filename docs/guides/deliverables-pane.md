@@ -3,9 +3,11 @@ title: The Deliverables pane · condash guide
 description: Every project's `## Deliverables`, aggregated across the whole conception, grouped by project and opened in a type-appropriate viewer.
 ---
 
-# The Deliverables pane
+# Deliverables
 
-The Deliverables pane is a **separate left-band pane with its own activity-rail item**, peer to Projects — *not* a tab inside the Projects pane, and *not* in the right working-surface slot with Code / Knowledge / Resources / Skills / Logs. The left activity rail carries four stacked items: **Projects**, **[Tasks](tasks-pane.md)**, **Deliverables**, and **[Performance](performance-pane.md)**. Click an item to fill the left band with that pane (clicking the active one hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
+> **Prototype note.** The aggregate Deliverables pane is not part of the navigation prototype. Item-level `## Deliverables` still render in project previews and note modals.
+
+The aggregate pane is retired from the prototype navigation; the `## Deliverables` section itself is unchanged.
 
 ## What it shows
 

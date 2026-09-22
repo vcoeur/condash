@@ -5,7 +5,9 @@ description: Browse every file under `resources/` as an action card — view in-
 
 # The Resources pane
 
-The Resources pane sits alongside **Code**, **Knowledge**, **Skills**, and **Logs** in the right working-surface slot (`Ctrl+R` to switch in, or the activity rail). It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
+> **Prototype note.** Resources open from **View → Reference → Browse Resources** and are the persisted right-slot choice.
+
+The Resources pane sits alongside **Code**, **Knowledge**, and **Skills** in the right working-surface slot. It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
 
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-light.png#only-light)
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-dark.png#only-dark)

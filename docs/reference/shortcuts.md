@@ -11,7 +11,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 | Area | Bindings | Configurable? |
 |---|---|---|
-| Application menu (File / View) | 13 set by condash, plus 11 OS defaults | no |
+| Application menu (File / View) | 9 set by condash, plus 11 OS defaults | no |
 | Dashboard global | 3 | no |
 | Project cards | 6 | no |
 | Note modal | 5 | no |
@@ -35,15 +35,14 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
 | View | Show Projects | — | Toggle the Projects pane on the left edge. |
 | View | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show the Code pane in the working slot. |
-| View | Show Knowledge | `Ctrl+Shift+K` / `Cmd+Shift+K` | Show the Knowledge pane in the working slot. |
-| View | Show Resources | `Ctrl+R` / `Cmd+R` | Show the Resources pane in the working slot. |
-| View | Show Skills | `Ctrl+L` / `Cmd+L` | Show the Skills pane in the working slot. |
-| View | Show Logs | `Ctrl+Shift+L` / `Cmd+Shift+L` | Show the Logs pane (per-session terminal log viewer) in the working slot. |
+| View | Reference ▸ | — | Prototype: Browse **Knowledge** / **Resources** / **Skills** as the persistent right-slot surface. |
+| View | Automation ▸ | — | Prototype: **Automations** (the former Tasks surface), session-only. |
+| View | Troubleshooting ▸ | — | Prototype: session-only **Session logs** and **Terminal diagnostics** (PerfView in the bottom band). |
 | View | Show Dashboard | `Ctrl+Shift+D` / `Cmd+Shift+D` | Swap the bottom band to the Dashboard body (live terminal-tab summaries) — also selectable from the always-first **Dashboard** tab in the terminal strip. |
 | View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills / Logs) is in the working slot. |
 | View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
-| View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). The bare `Ctrl+R` slot is taken by **Show Resources**. |
+| View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). |
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
 The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.
@@ -61,12 +60,7 @@ The Edit-menu roles act on whatever the OS considers focused. They are **not** t
 
 ### The activity rail
 
-Every View toggle above has a pointer twin on the **activity rail** down the left edge. Top to bottom: **Projects · Tasks · Deliverables · Performance**, a divider, then **Code · Knowledge · Resources · Skills · Logs**. The first group fills the left band; the second fills the right working slot. The active item is highlighted. Hovering shows the item's name; the five working-slot items add their shortcut in brackets, and the four left-band items have no keyboard shortcut, so their tooltip is the bare name.
-
-![Activity rail — Projects, Tasks, Deliverables, Performance, then a divider, then Code, Knowledge, Resources, Skills, Logs](../assets/screenshots/activity-rail-light.png#only-light)
-![Activity rail — Projects, Tasks, Deliverables, Performance, then a divider, then Code, Knowledge, Resources, Skills, Logs](../assets/screenshots/activity-rail-dark.png#only-dark)
-
-Clicking the item that is already active hides its pane — the same tristate the `Show …` menu items have.
+The rail is deliberately two items in the prototype: **Projects** (left band) and **Code** (right working slot, `Ctrl+Shift+C`). Everything else lives in the View menu groups above. Clicking the active item hides its pane — the same tristate as before.
 
 ## Dashboard global
 

@@ -12,10 +12,9 @@ The few you'll actually use.
 | `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — full-text search across the tree |
 | `?` | Show the full shortcut overlay |
 | `Ctrl+Shift+C` | Show **Code** pane |
-| `Ctrl+Shift+K` | Show **Knowledge** pane |
-| `Ctrl+R` | Show **Resources** pane |
-| `Ctrl+L` | Show **Skills** pane |
-| `Ctrl+Shift+L` | Show **Logs** pane (per-session terminal log viewer) |
+| — | **View → Reference** — persistent Browse Knowledge / Resources / Skills |
+| — | **View → Automation** — session-only **Automations** |
+| — | **View → Troubleshooting** — session-only **Session logs**, **Terminal diagnostics** |
 | `Ctrl+Shift+D` | Show **Dashboard** (bottom band, shared with the terminal) |
 | `F5` | **Refresh** — re-read repos, drop git-status cache |
 | `Ctrl+Shift+R` | **Reload window** — full hard reload |

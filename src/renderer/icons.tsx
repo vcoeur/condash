@@ -265,55 +265,6 @@ export function ProjectsIcon() {
   );
 }
 
-/** Tasks rail icon — checkmark, the universal done/undo language. */
-export function TasksIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-  );
-}
-
-/** Deliverables rail icon — shield, signifying shipped artifacts. */
-export function DeliverablesIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 2l7 4v6c0 5-3.5 9-7 10-3.5-1-7-5-7-10V6l7-4z" />
-    </svg>
-  );
-}
-
-/** Performance rail icon — a pulse trace, signifying live vitals. */
-export function PerfIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 12h4l3-7 4 14 3-7h4" />
-    </svg>
-  );
-}
-
 /** Code rail icon — angle brackets, the classic code symbol. */
 export function CodeIcon() {
   return (
