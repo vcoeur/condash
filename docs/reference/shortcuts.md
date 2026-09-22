@@ -16,7 +16,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 | Project cards | 6 | no |
 | Note modal | 5 | no |
 | Terminal — pane | 4 | yes (`terminal.*`) |
-| Terminal — xterm | 4 xterm-level (+ 2 pane-level re-listed for context) | no |
+| Terminal — xterm | 5 xterm-level (+ 1 pane-level re-listed for context) | no |
 
 "Set by condash" means an explicit `accelerator:` in [`src/main/menu.ts`](https://github.com/vcoeur/condash/blob/main/src/main/menu.ts). The 11 OS defaults come from Electron `role:` menu items — the whole Edit menu plus zoom / devtools / fullscreen — and carry whatever binding the platform assigns; they are listed below but counted separately because condash does not choose them.
 

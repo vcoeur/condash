@@ -233,7 +233,7 @@ Edits 2 and 3 are therefore **pty-only**. Open-with launchers (`src/main/launche
 
 **That is the whole scrub.** Interpreter-specific variables an AppImage runtime can leak — `PYTHONHOME`, `PYTHONPATH`, `PERLLIB`, `PERL5LIB`, `QT_PLUGIN_PATH`, `GSETTINGS_SCHEMA_DIR` — are **not** unset anywhere in the codebase. Two source comments still claim otherwise — `src/main/shell-env.ts`, which cites this very anchor, and `src/shared/shell-quote.ts`, where the choice of `-c` over `-lc` is justified as protecting a scrub that was never written. Where they and this page disagree, the grep wins. If a spawned `python3` inside the AppImage build ever reports `No module named 'encodings'`, that is a real open gap, not a defence already in place: the fix would be an extra scrub in `spawnPtyEnv`. Treat this paragraph as the known state, not as a to-do that has been done.
 
-The AppImage build *is* patched, but for an unrelated reason: `.github/workflows/_build.yml` rewrites the `exec "$BIN" …` lines in the repacked AppImage's `AppRun` to inject `--no-sandbox`, and verifies the patch landed by re-extracting the image. It touches no environment variable. See [Install — Linux AppImage](../get-started/index.md#linux-appimage).
+The AppImage build *is* patched, but for an unrelated reason: `.github/workflows/_build.yml` rewrites the `exec "$BIN" …` lines in the repacked AppImage's `AppRun` to inject `--no-sandbox`, and verifies the patch landed by re-extracting the image. It touches no environment variable. See [Install](../get-started/index.md#install).
 
 ## The search index { #search-index }
 
