@@ -379,18 +379,13 @@ const terminalSettings = z
  *  the same shape check the settings save path enforces. */
 export const layoutSchema = z
   .object({
-    // Always `true` — the left band is fixed Projects. Optional so a layout
-    // persisted before the key existed parses; migrateRawSettings forces a
-    // stale `false` back to `true` before this validator runs.
+    // Always `true` — the left band is fixed Projects. migrateRawSettings
+    // forces a stale persisted `false` back to `true` before this runs.
     projects: z.boolean(),
-    // Optional: layouts persisted before `leftView` existed omit it; the read
-    // path back-fills from DEFAULT_LAYOUT. Legacy specialist views are migrated
-    // to Projects in migrateRawSettings before this strict validator runs.
-    // Built from LEFT_VIEWS (shared/types/layout.ts) rather than hand-listed, so
-    // a new LeftView cannot compile while leaving this validator stale — the
-    // failure mode was silent and app-wide: `setLayout` throws on the unknown
-    // value, and since updateLayout spreads the persisted layout into every
-    // subsequent write, ONE unlisted view breaks every later layout save too.
+    // Hand-listed — keep in sync with `WorkingSurface` in
+    // shared/types/layout.ts. An unlisted surface would not just fail one
+    // save: updateLayout spreads the persisted layout into every later write,
+    // so ONE stale value breaks every subsequent layout save too.
     working: z.enum(['code', 'knowledge', 'resources', 'skills', 'automations', 'logs']),
     terminal: z.boolean(),
     /** Splitter position as a fraction of the band width. The bounds are loose
