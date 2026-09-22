@@ -381,8 +381,8 @@ export const layoutSchema = z
   .object({
     projects: z.boolean(),
     // Optional: layouts persisted before `leftView` existed omit it; the read
-    // path back-fills from DEFAULT_LAYOUT. The legacy `'outputs'` value (v3.20.0)
-    // is migrated to `'deliverables'` in migrateRawSettings.
+    // path back-fills from DEFAULT_LAYOUT. Legacy specialist views are migrated
+    // to Projects in migrateRawSettings before this strict validator runs.
     // Built from LEFT_VIEWS (shared/types/layout.ts) rather than hand-listed, so
     // a new LeftView cannot compile while leaving this validator stale — the
     // failure mode was silent and app-wide: `setLayout` throws on the unknown
@@ -394,7 +394,6 @@ export const layoutSchema = z
       z.literal('knowledge'),
       z.literal('resources'),
       z.literal('skills'),
-      z.literal('logs'),
       z.null(),
     ]),
     terminal: z.boolean(),

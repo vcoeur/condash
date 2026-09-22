@@ -35,7 +35,6 @@ import type { UseConception } from './hooks/use-conception';
 import type { UseRepoActions } from './hooks/use-repo-actions';
 import type { UseToast } from './hooks/use-toast';
 import type { UsePromptModal } from './hooks/use-prompt-modal';
-import type { UseLayout } from './hooks/use-layout';
 
 /** Props for {@link ModalHost} — the full set of state accessors, setters, and
  *  handlers the modal tree reads, passed through verbatim from App. Field types
@@ -92,7 +91,7 @@ export interface ModalHostProps {
   setSearchModalOpen: UseModals['setSearchModalOpen'];
   setLogsOpenRequest: UseModals['setLogsOpenRequest'];
   nextLogsOpenNonce: UseModals['nextLogsOpenNonce'];
-  selectWorking: UseLayout['selectWorking'];
+  showSessionLogs: () => void;
   // --- Settings modal ---
   settingsOpen: UseModals['settingsOpen'];
   setSettingsOpen: UseModals['setSettingsOpen'];
@@ -177,7 +176,7 @@ export function ModalHost(props: ModalHostProps) {
     setSearchModalOpen,
     setLogsOpenRequest,
     nextLogsOpenNonce,
-    selectWorking,
+    showSessionLogs,
     settingsOpen,
     setSettingsOpen,
     settingsSection,
@@ -333,7 +332,7 @@ export function ModalHost(props: ModalHostProps) {
             // to. Nonce bumps every time so reactivating the same path
             // still fires the createEffect.
             setLogsOpenRequest({ path, nonce: nextLogsOpenNonce() });
-            selectWorking('logs');
+            showSessionLogs();
           }}
         />
       </Show>

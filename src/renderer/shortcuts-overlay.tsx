@@ -28,12 +28,7 @@ const GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'Panes',
-    entries: [
-      { keys: 'Ctrl + R', description: 'Show Resources pane' },
-      { keys: 'Ctrl + L', description: 'Show Skills pane' },
-      { keys: 'Ctrl + Shift + L', description: 'Show Logs pane' },
-      { keys: 'Ctrl + `', description: 'Toggle Terminal' },
-    ],
+    entries: [{ keys: 'Ctrl + `', description: 'Toggle Terminal' }],
   },
   {
     title: 'Project cards',

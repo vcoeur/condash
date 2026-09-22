@@ -16,8 +16,11 @@ export interface MenuRouterDeps {
   toggleProjects: () => void;
   toggleTerminal: () => void;
   selectWorking: (next: WorkingSurface) => void;
+  setTransientSurface: (surface: 'automations' | 'logs' | null) => void;
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
+  showDiagnosticsBand: () => void;
+  showTerminalBand: () => void;
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -61,28 +64,44 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       deps.toggleTerminal();
       return;
     }
+    if (command === 'show-terminal') {
+      deps.showTerminalBand();
+      return;
+    }
     if (command === 'toggle-projects') {
       deps.toggleProjects();
       return;
     }
     if (command === 'show-code') {
+      deps.setTransientSurface(null);
       deps.selectWorking(deps.layout().working === 'code' ? null : 'code');
       return;
     }
-    if (command === 'show-knowledge') {
-      deps.selectWorking(deps.layout().working === 'knowledge' ? null : 'knowledge');
+    if (command === 'browse-knowledge') {
+      deps.setTransientSurface(null);
+      deps.selectWorking('knowledge');
       return;
     }
-    if (command === 'show-resources') {
-      deps.selectWorking(deps.layout().working === 'resources' ? null : 'resources');
+    if (command === 'browse-resources') {
+      deps.setTransientSurface(null);
+      deps.selectWorking('resources');
       return;
     }
-    if (command === 'show-skills') {
-      deps.selectWorking(deps.layout().working === 'skills' ? null : 'skills');
+    if (command === 'browse-skills') {
+      deps.setTransientSurface(null);
+      deps.selectWorking('skills');
       return;
     }
-    if (command === 'show-logs') {
-      deps.selectWorking(deps.layout().working === 'logs' ? null : 'logs');
+    if (command === 'show-automations') {
+      deps.setTransientSurface('automations');
+      return;
+    }
+    if (command === 'show-session-logs') {
+      deps.setTransientSurface('logs');
+      return;
+    }
+    if (command === 'show-terminal-diagnostics') {
+      deps.showDiagnosticsBand();
       return;
     }
     if (command === 'show-dashboard') {

@@ -685,8 +685,8 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     // setLayout
     layout: {
       projects: true,
-      leftView: 'deliverables',
-      working: 'logs',
+      leftView: 'projects',
+      working: 'code',
       terminal: true,
       projectsSplit: 0.32,
     },

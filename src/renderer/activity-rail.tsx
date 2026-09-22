@@ -1,16 +1,6 @@
-import { For, Show } from 'solid-js';
+import { For } from 'solid-js';
 import type { LeftView, WorkingSurface } from '@shared/types';
-import {
-  CodeIcon,
-  DeliverablesIcon,
-  KnowledgeIcon,
-  LogsIcon,
-  PerfIcon,
-  ProjectsIcon,
-  ResourcesIcon,
-  SkillsIcon,
-  TasksIcon,
-} from './icons';
+import { CodeIcon, ProjectsIcon } from './icons';
 import type { JSX } from 'solid-js';
 
 interface RailItemDef {
@@ -23,32 +13,7 @@ interface RailItemDef {
 
 const RAIL_ITEMS: RailItemDef[] = [
   { key: 'projects', label: 'Projects', shortcut: '', icon: ProjectsIcon, kind: 'left' },
-  { key: 'tasks', label: 'Tasks', shortcut: '', icon: TasksIcon, kind: 'left' },
-  {
-    key: 'deliverables',
-    label: 'Deliverables',
-    shortcut: '',
-    icon: DeliverablesIcon,
-    kind: 'left',
-  },
-  { key: 'perf', label: 'Performance', shortcut: '', icon: PerfIcon, kind: 'left' },
   { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon, kind: 'working' },
-  {
-    key: 'knowledge',
-    label: 'Knowledge',
-    shortcut: 'Ctrl+Shift+K',
-    icon: KnowledgeIcon,
-    kind: 'working',
-  },
-  {
-    key: 'resources',
-    label: 'Resources',
-    shortcut: 'Ctrl+R',
-    icon: ResourcesIcon,
-    kind: 'working',
-  },
-  { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L', icon: SkillsIcon, kind: 'working' },
-  { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L', icon: LogsIcon, kind: 'working' },
 ];
 
 /** Index of the first `working` item — where the rail's group separator goes.
@@ -76,9 +41,7 @@ export function ActivityRail(props: ActivityRailProps) {
     if (item.kind === 'left') {
       props.onToggleLeftView(item.key as LeftView);
     } else {
-      props.onSelectWorking(
-        props.workingSurface === item.key ? null : (item.key as WorkingSurface),
-      );
+      props.onSelectWorking(item.key as WorkingSurface);
     }
   };
 
@@ -91,15 +54,10 @@ export function ActivityRail(props: ActivityRailProps) {
     <aside class="rail" aria-label="Activity rail">
       <For each={RAIL_ITEMS}>
         {(item, index) => {
-          // Separator before the FIRST working item, derived rather than a
-          // literal index: the old `index() === 3` silently stopped matching the
-          // moment a left item was inserted, dropping the divider for everyone.
           const divider = item.kind === 'working' && index() === FIRST_WORKING_INDEX;
           return (
             <>
-              <Show when={divider}>
-                <div class="rail-divider" />
-              </Show>
+              {divider && <div class="rail-divider" />}
               <button
                 type="button"
                 class="rail-item"

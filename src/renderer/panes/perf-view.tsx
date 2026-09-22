@@ -64,6 +64,8 @@ function formatEta(seconds: number | undefined): string | undefined {
 export interface PerfViewProps {
   /** Live terminal sessions, from the same broadcast the tab strip reads. */
   sessions: () => readonly TermSession[];
+  /** Contextual heading for the host surface. */
+  title?: string;
 }
 
 export function PerfView(props: PerfViewProps) {
@@ -100,7 +102,7 @@ export function PerfView(props: PerfViewProps) {
   return (
     <div class="perf-view">
       <div class="perf-header">
-        <h3>Performance</h3>
+        <h3>{props.title ?? 'Performance'}</h3>
         <button
           type="button"
           class="perf-toggle"

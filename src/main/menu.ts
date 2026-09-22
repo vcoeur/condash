@@ -4,6 +4,7 @@ import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
 import type { LayoutState } from '../shared/types';
+import type { MenuCommand } from '../shared/api';
 
 type Recents = { paths: string[]; current: string | null };
 
@@ -59,7 +60,7 @@ export function buildMenu(
 ): void {
   lastLayout = layout;
   lastRecents = recents;
-  const send = (command: string): void => {
+  const send = (command: MenuCommand): void => {
     sendToMain(EVENT_CHANNELS.menuCommand, command);
   };
 
@@ -126,65 +127,68 @@ export function buildMenu(
 
   const viewSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'Show Projects',
-      type: 'checkbox',
-      checked: layout.projects,
-      click: () => send('toggle-projects'),
+      label: 'Core',
+      submenu: [
+        {
+          label: 'Show Projects',
+          type: 'checkbox',
+          checked: layout.projects,
+          click: () => send('toggle-projects'),
+        },
+        {
+          label: 'Show Code',
+          type: 'checkbox',
+          checked: layout.working === 'code',
+          accelerator: 'CommandOrControl+Shift+C',
+          click: () => send('show-code'),
+        },
+        {
+          label: 'Show Terminal',
+          type: 'checkbox',
+          checked: layout.terminal,
+          accelerator: 'CommandOrControl+`',
+          click: () => send('show-terminal'),
+        },
+        {
+          label: 'Hide working surface',
+          enabled: layout.working !== null,
+          click: () => send('hide-working'),
+        },
+      ],
     },
     {
-      label: 'Show Code',
-      type: 'checkbox',
-      checked: layout.working === 'code',
-      accelerator: 'CommandOrControl+Shift+C',
-      click: () => send('show-code'),
+      label: 'Reference',
+      submenu: [
+        {
+          label: 'Browse Knowledge',
+          type: 'checkbox',
+          checked: layout.working === 'knowledge',
+          click: () => send('browse-knowledge'),
+        },
+        {
+          label: 'Browse Resources',
+          type: 'checkbox',
+          checked: layout.working === 'resources',
+          click: () => send('browse-resources'),
+        },
+        {
+          label: 'Browse Skills',
+          type: 'checkbox',
+          checked: layout.working === 'skills',
+          click: () => send('browse-skills'),
+        },
+      ],
     },
     {
-      label: 'Show Knowledge',
-      type: 'checkbox',
-      checked: layout.working === 'knowledge',
-      accelerator: 'CommandOrControl+Shift+K',
-      click: () => send('show-knowledge'),
+      label: 'Automation',
+      submenu: [{ label: 'Automations', click: () => send('show-automations') }],
     },
     {
-      label: 'Show Resources',
-      type: 'checkbox',
-      checked: layout.working === 'resources',
-      accelerator: 'CommandOrControl+R',
-      click: () => send('show-resources'),
-    },
-    {
-      label: 'Show Skills',
-      type: 'checkbox',
-      checked: layout.working === 'skills',
-      accelerator: 'CommandOrControl+L',
-      click: () => send('show-skills'),
-    },
-    {
-      label: 'Show Logs',
-      type: 'checkbox',
-      checked: layout.working === 'logs',
-      accelerator: 'CommandOrControl+Shift+L',
-      click: () => send('show-logs'),
-    },
-    {
-      // The Dashboard lives in the bottom band next to Terminal, not the
-      // right-slot working surface, so this toggles that band rather than
-      // syncing a working-surface checkbox.
-      label: 'Show Dashboard',
-      accelerator: 'CommandOrControl+Shift+D',
-      click: () => send('show-dashboard'),
-    },
-    {
-      label: 'Hide working surface',
-      enabled: layout.working !== null,
-      click: () => send('hide-working'),
-    },
-    {
-      label: 'Show Terminal',
-      type: 'checkbox',
-      checked: layout.terminal,
-      accelerator: 'CommandOrControl+`',
-      click: () => send('toggle-terminal'),
+      label: 'Troubleshooting',
+      submenu: [
+        { label: 'Session logs', click: () => send('show-session-logs') },
+        { label: 'Show Terminal diagnostics', click: () => send('show-terminal-diagnostics') },
+      ],
     },
     { type: 'separator' },
     {

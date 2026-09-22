@@ -233,7 +233,7 @@ export function TasksView(props: {
   return (
     <div class="tasks-pane">
       <header class="tasks-pane-header">
-        <h2>Tasks</h2>
+        <h2>Automations</h2>
         <div class="tasks-pane-actions">
           <button
             type="button"
@@ -242,21 +242,24 @@ export function TasksView(props: {
             onClick={() => void startCreate()}
             disabled={!props.hasConception()}
           >
-            + New task
+            + New automation
           </button>
         </div>
       </header>
 
       <Show
         when={props.hasConception()}
-        fallback={<p class="tasks-pane-empty pane-empty">Open a conception to manage its tasks.</p>}
+        fallback={
+          <p class="tasks-pane-empty pane-empty">Open a conception to manage automations.</p>
+        }
       >
         <Show
           when={props.tasks().length > 0}
           fallback={
             <p class="tasks-pane-empty pane-empty">
-              No tasks yet. A task is a referenced agent plus a markdown prompt with fillable{' '}
-              <code>{'{markers}'}</code>. Click <strong>+ New task</strong> to define one.
+              No automations yet. An automation is a referenced agent plus a markdown prompt with
+              fillable <code>{'{markers}'}</code>. Click <strong>+ New automation</strong> to define
+              one.
             </p>
           }
         >

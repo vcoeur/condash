@@ -173,7 +173,7 @@ const demoGlobalSettings = {
  *  or sliver capture (the committed `projects-done` pair was 1.7 kB). */
 const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'dashboard-overview', minBytes: 150_000 },
-  { slug: 'activity-rail', minBytes: 5_000 },
+  { slug: 'activity-rail', minBytes: 3_000 },
   { slug: 'projects-done', minBytes: 25_000 },
   { slug: 'code-pane', minBytes: 80_000 },
   { slug: 'code-pane-dirty', minBytes: 80_000 },
@@ -186,8 +186,6 @@ const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'resources-pane', minBytes: 150_000 },
   { slug: 'skills-pane', minBytes: 150_000 },
   { slug: 'tasks-pane', minBytes: 100_000 },
-  { slug: 'deliverables-pane', minBytes: 150_000 },
-  { slug: 'plan-document', minBytes: 150_000 },
   { slug: 'settings-modal', minBytes: 150_000 },
 ];
 
@@ -709,7 +707,7 @@ async function shootClip(
 
 /** Send a menu-command IPC to the renderer. The composite layout has no
  *  in-window tab strip — pane visibility is driven by the application menu
- *  ('toggle-projects', 'show-code', 'show-knowledge', 'hide-working',
+ *  ('toggle-projects', 'show-code', 'browse-knowledge', 'hide-working',
  *  'open-settings', 'toggle-terminal', 'search'), so screenshot prep goes
  *  through the same channel a real menu click would. */
 async function sendMenu(app: ElectronApplication, command: string): Promise<void> {
@@ -734,10 +732,7 @@ async function railPressed(page: Page, label: string): Promise<boolean> {
  * active one (`use-layout.ts`), so the `aria-pressed` guard is what keeps this
  * a "show", not a toggle.
  */
-async function showLeftView(
-  page: Page,
-  label: 'Projects' | 'Tasks' | 'Deliverables',
-): Promise<void> {
+async function showLeftView(page: Page, label: 'Projects'): Promise<void> {
   if (!(await railPressed(page, label))) {
     await page.locator(`.rail-item[title^="${label}"]`).first().click();
   }
@@ -747,32 +742,27 @@ async function showLeftView(
 /**
  * Show one pane in the working-surface slot.
  *
- * `show-code` / `show-knowledge` / `show-resources` / `show-skills` are
- * **tristate toggles**, not idempotent "show" commands: each sets the slot to
- * `null` when its own surface is already there (`menu-commands.ts`). The boot
- * layout persists `working: 'code'`, so an unguarded `show-code` HID the
- * working surface and produced a blank right half — which is exactly what the
- * committed `code-pane-{light,dark}.png` used to show. Guard on `aria-pressed`.
+ * Reference commands are persistent, idempotent selections. Code retains its
+ * rail-style toggle, so it alone needs the active guard.
  */
 async function showWorking(
   b: Booted,
   label: 'Code' | 'Knowledge' | 'Resources' | 'Skills',
 ): Promise<void> {
-  if (!(await railPressed(b.page, label))) {
-    const command = {
-      Code: 'show-code',
-      Knowledge: 'show-knowledge',
-      Resources: 'show-resources',
-      Skills: 'show-skills',
-    }[label];
-    await sendMenu(b.app, command);
-  }
+  if (label === 'Code' && (await railPressed(b.page, label))) return;
+  const command = {
+    Code: 'show-code',
+    Knowledge: 'browse-knowledge',
+    Resources: 'browse-resources',
+    Skills: 'browse-skills',
+  }[label];
+  await sendMenu(b.app, command);
   await settle(b.page, 400);
 }
 
 /** Show or hide the whole left band, whatever view it currently holds. */
 async function setProjectsBand(b: Booted, visible: boolean): Promise<void> {
-  const shown = await b.page.locator('.projects-pane, .tasks-pane, .deliverables-stack').count();
+  const shown = await b.page.locator('.projects-pane').count();
   if (shown > 0 !== visible) await sendMenu(b.app, 'toggle-projects');
   await settle(b.page, 400);
 }
@@ -808,7 +798,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await requireContent(page, 'activity-rail', {
         root: '.rail',
         items: '.rail-item',
-        minItems: 9,
+        minItems: 2,
       });
       const rail = await page.locator('.rail').first().boundingBox();
       const lastItem = await page.locator('.rail-item').last().boundingBox();
@@ -1063,10 +1053,10 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await shoot(page, theme, 'status-unknown-badge');
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    // 14. tasks-pane — the left band's Tasks view. The fixture ships two
+    // 14. tasks-pane — the session-only Automations surface. The fixture ships two
     //     `tasks/<slug>/{task.json,prompt.md}` directories whose `agent` ids
     //     resolve against the seeded agents list, so Run… is enabled.
-    await showLeftView(page, 'Tasks');
+    await sendMenu(b.app, 'show-automations');
     await settle(page, 500);
     await parkPointer(page);
     await requireContent(page, 'tasks-pane', {
@@ -1076,45 +1066,9 @@ async function captureForTheme(theme: Theme): Promise<void> {
     });
     await shoot(page, theme, 'tasks-pane');
 
-    // 15. deliverables-pane — the left band's Deliverables view, aggregating
-    //     every `## Deliverables` section. The fixture exercises the wiki /
-    //     url / pdf / md / image / file type tags.
-    await showLeftView(page, 'Deliverables');
-    await settle(page, 500);
-    await parkPointer(page);
-    await requireContent(page, 'deliverables-pane', {
-      root: '.deliverables-stack',
-      items: '.deliverable-button',
-      minItems: 6,
-    });
-    await shoot(page, theme, 'deliverables-pane');
-
-    // 16. plan-document — the MDX viewer, opened from the plan deliverable of
-    //     `2026-04-02-fuzzy-search-v2`.
-    {
-      const planRow = page
-        .locator('.deliverable-button', { hasText: 'Trigram index plan' })
-        .first();
-      if (await planRow.count()) {
-        await planRow.click();
-        await page.locator('.mdx-modal').waitFor({ state: 'visible', timeout: 10_000 });
-        await settle(page, 800);
-        await parkPointer(page);
-        await requireContent(page, 'plan-document', {
-          root: '.mdx-modal',
-          items: '.plan-block',
-          minItems: 4,
-        });
-        await shoot(page, theme, 'plan-document');
-        await page.keyboard.press('Escape');
-        await settle(page);
-      } else {
-        console.warn(`[shoot] ${theme}/plan-document: plan deliverable not found`);
-      }
-    }
     await showLeftView(page, 'Projects');
 
-    // 17. settings-modal — opened, never saved.
+    // 15. settings-modal — opened, never saved.
     await sendMenu(b.app, 'open-settings');
     await page.locator('.settings-modal').waitFor({ state: 'visible', timeout: 10_000 });
     await settle(page, 800);

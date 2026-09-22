@@ -1,4 +1,5 @@
 import { createMemo, createSignal } from 'solid-js';
+import type { Accessor } from 'solid-js';
 import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
 import { DEFAULT_PROJECTS_SPLIT, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '@shared/types';
 import { getBootstrap } from '../bootstrap';
@@ -71,6 +72,8 @@ export function maskTerminal(base: LayoutState, autoCollapsed: boolean): LayoutS
 
 export interface UseLayoutDeps {
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
+  /** A session-only right-slot surface is visible. It never enters LayoutState. */
+  hasTransientWorking: Accessor<boolean>;
 }
 
 export interface UseLayout {
@@ -162,11 +165,12 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     setAutoCollapsed(collapsed);
   };
 
-  const topBandVisible = (): boolean => layout().projects || layout().working !== null;
+  const topBandVisible = (): boolean =>
+    layout().projects || layout().working !== null || deps.hasTransientWorking();
 
   const topBandStyle = (): Record<string, string> => {
     const l = layout();
-    if (l.projects && l.working !== null) {
+    if (l.projects && (l.working !== null || deps.hasTransientWorking())) {
       return { 'grid-template-columns': splitColumns(l.projectsSplit) };
     }
     return { 'grid-template-columns': '1fr' };

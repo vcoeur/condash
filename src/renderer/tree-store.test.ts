@@ -22,7 +22,7 @@ const TREE: Node = { relPath: '', children: [{ relPath: 'a.md' }] };
 const flushEffects = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function makeStore(opts: { gated: boolean }) {
-  const [conceptionPath] = createSignal<string | null>('/c');
+  const [conceptionPath, setConceptionPath] = createSignal<string | null>('/c');
   const [active, setActive] = createSignal(false);
   const fetcher = vi.fn(async () => TREE);
   let store!: ReturnType<typeof createTreeStore<Node>>;
@@ -35,7 +35,7 @@ function makeStore(opts: { gated: boolean }) {
     });
     return disposeRoot;
   });
-  return { store, fetcher, setActive, dispose };
+  return { store, fetcher, setActive, setConceptionPath, dispose };
 }
 
 describe('createTreeStore — reload() is gated on first activation (B2a)', () => {
@@ -72,6 +72,49 @@ describe('createTreeStore — reload() is gated on first activation (B2a)', () =
     expect(fetcher).toHaveBeenCalledTimes(1);
     await store.reload();
     expect(fetcher).toHaveBeenCalledTimes(2);
+    dispose();
+  });
+});
+
+describe('createTreeStore — contextual loading', () => {
+  it('deduplicates concurrent context loads without selecting the pane', async () => {
+    let resolveFetch!: (value: Node) => void;
+    const { store, fetcher, dispose } = makeStore({ gated: true });
+    fetcher.mockImplementation(
+      () =>
+        new Promise<Node>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const first = store.loadForContext();
+    const second = store.loadForContext();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    resolveFetch(TREE);
+    await Promise.all([first, second]);
+    expect(store.root()).toEqual(TREE);
+    dispose();
+  });
+
+  it('discards a context result from a conception that changed mid-fetch and loads the new tree', async () => {
+    const resolves: ((value: Node) => void)[] = [];
+    const { store, fetcher, setConceptionPath, dispose } = makeStore({ gated: true });
+    fetcher.mockImplementation(
+      () =>
+        new Promise<Node>((resolve) => {
+          resolves.push(resolve);
+        }),
+    );
+    const pending = store.loadForContext();
+    setConceptionPath('/next');
+    await flushEffects();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    resolves[0](TREE);
+    await pending;
+    expect(store.root()).toBeNull();
+    resolves[1]({ relPath: '', children: [{ relPath: 'next.md' }] });
+    await flushEffects();
+    expect(store.root()).toEqual({ relPath: '', children: [{ relPath: 'next.md' }] });
+    expect(store.loaded()).toBe(true);
     dispose();
   });
 });

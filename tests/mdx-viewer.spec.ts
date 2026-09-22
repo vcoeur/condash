@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * End-to-end for the visual-note MDX viewer: a `.mdx` file opens in the
@@ -56,7 +56,7 @@ test('MDX plan opens in the block viewer with issues banner and source toggle', 
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    await window.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
 
     await window

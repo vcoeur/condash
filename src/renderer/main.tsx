@@ -14,8 +14,6 @@ import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
 import { ProjectsView } from './panes/projects';
-import { DeliverablesView } from './panes/deliverables';
-import { PerfView } from './panes/perf-view';
 import { TasksView } from './panes/tasks';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
@@ -91,6 +89,9 @@ function App() {
   const { theme, isDark, handleThemeChange, previewTheme, cycleTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
+  const [transientSurface, setTransientSurface] = createSignal<'automations' | 'logs' | null>(null);
+  const hasTransientWorking = (): boolean => transientSurface() !== null;
+
   const {
     modal,
     setModal,
@@ -145,12 +146,15 @@ function App() {
     topBandVisible,
     topBandStyle,
     startSplitterDrag,
-  } = useLayout({ flashToast });
+  } = useLayout({ flashToast, hasTransientWorking });
+  const effectiveWorkingSurface = createMemo(() => transientSurface() ?? layout().working);
 
   // Bottom-band body selector. The strip's Terminal / Dashboard handles switch
   // which body shows when the pane is open; re-selecting the active band's
   // handle closes the pane. Ephemeral per-session UI state (not persisted).
-  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard'>('terminal');
+  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard' | 'diagnostics'>(
+    'terminal',
+  );
   const selectBottomBand = (view: 'terminal' | 'dashboard'): void => {
     if (layout().terminal && bottomView() === view) {
       toggleTerminal();
@@ -318,8 +322,6 @@ function App() {
   const bridge = createTerminalBridge({
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
-    // Same shape as TerminalPane's onShowTerminalBand: the band must flip to
-    // the terminal body for a focused linked tab, not just open the pane.
     showTerminalBand: () => {
       setBottomView('terminal');
       ensureTerminalOpen();
@@ -393,6 +395,7 @@ function App() {
     router,
     projects,
     knowledge,
+    loadKnowledgeForContext: knowledgeStore.loadForContext,
     mutate,
     setModal,
     setPreviewPath,
@@ -525,8 +528,20 @@ function App() {
     setHelpDoc,
     toggleProjects,
     toggleTerminal,
-    selectWorking,
+    selectWorking: (next) => {
+      setTransientSurface(null);
+      selectWorking(next);
+    },
+    setTransientSurface,
     toggleDashboardBand: () => selectBottomBand('dashboard'),
+    showDiagnosticsBand: () => {
+      setBottomView('diagnostics');
+      ensureTerminalOpen();
+    },
+    showTerminalBand: () => {
+      setBottomView('terminal');
+      ensureTerminalOpen();
+    },
     handleRefresh: () => handleRefresh(),
     handlePick: () => handlePick(),
     flashToast,
@@ -602,7 +617,10 @@ function App() {
           projectsVisible={layout().projects}
           disabled={!handlesEnabled()}
           onToggleLeftView={toggleLeftView}
-          onSelectWorking={selectWorking}
+          onSelectWorking={(next) => {
+            setTransientSurface(null);
+            selectWorking(next);
+          }}
         />
 
         <div class="workspace-center">
@@ -636,12 +654,38 @@ function App() {
                 <p>Bring one back to start working:</p>
                 <div class="all-panes-hidden-actions">
                   <button onClick={() => toggleLeftView('projects')}>Show Projects</button>
-                  <button onClick={() => toggleLeftView('tasks')}>Show Tasks</button>
-                  <button onClick={() => toggleLeftView('deliverables')}>Show Deliverables</button>
-                  <button onClick={() => selectWorking('code')}>Show Code</button>
-                  <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
-                  <button onClick={() => selectWorking('resources')}>Show Resources</button>
-                  <button onClick={() => selectWorking('skills')}>Show Skills</button>
+                  <button
+                    onClick={() => {
+                      setTransientSurface(null);
+                      selectWorking('code');
+                    }}
+                  >
+                    Show Code
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTransientSurface(null);
+                      selectWorking('knowledge');
+                    }}
+                  >
+                    Browse Knowledge
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTransientSurface(null);
+                      selectWorking('resources');
+                    }}
+                  >
+                    Browse Resources
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTransientSurface(null);
+                      selectWorking('skills');
+                    }}
+                  >
+                    Browse Skills
+                  </button>
                   <button onClick={toggleTerminal}>Show Terminal</button>
                 </div>
               </div>
@@ -649,41 +693,8 @@ function App() {
             <Show when={topBandVisible()}>
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
                 <Show when={layout().projects}>
-                  <section
-                    class="pane pane-projects"
-                    classList={{
-                      'pane-deliverables': layout().leftView === 'deliverables',
-                      'pane-tasks': layout().leftView === 'tasks',
-                    }}
-                  >
-                    {/* Left band shows one pane at a time, selected by the left
-                        activity-rail items (Projects / Tasks / Deliverables). */}
+                  <section class="pane pane-projects">
                     <Switch>
-                      <Match when={layout().leftView === 'deliverables'}>
-                        <DeliverablesView
-                          projects={projects() ?? []}
-                          onOpenDeliverable={openDeliverable}
-                          onReveal={(p) => void window.condash.showInFolder(p)}
-                        />
-                      </Match>
-                      <Match when={layout().leftView === 'tasks'}>
-                        <TasksView
-                          tasks={tasks}
-                          reload={() => void reloadTasks()}
-                          hasConception={() => conceptionPath() !== null}
-                          conceptionPath={conceptionPath}
-                          agents={agents}
-                          projects={() => projects() ?? []}
-                          apps={appOptions}
-                          flashToast={flashToast}
-                          onRun={(agentId, text, taskName, opts) =>
-                            void bridge.runTask(agentId, text, taskName, opts)
-                          }
-                        />
-                      </Match>
-                      <Match when={layout().leftView === 'perf'}>
-                        <PerfView sessions={allSessions} />
-                      </Match>
                       <Match when={layout().leftView === 'projects'}>
                         <Show
                           when={(projects() ?? []).length > 0}
@@ -716,7 +727,7 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().projects && layout().working !== null}>
+                <Show when={layout().projects && effectiveWorkingSurface() !== null}>
                   <div
                     class="top-band-splitter"
                     onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
@@ -724,7 +735,7 @@ function App() {
                   />
                 </Show>
 
-                <Show when={layout().working === 'knowledge'}>
+                <Show when={effectiveWorkingSurface() === 'knowledge'}>
                   <section class="pane pane-working">
                     <Show
                       when={knowledge()}
@@ -750,7 +761,7 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'resources'}>
+                <Show when={effectiveWorkingSurface() === 'resources'}>
                   <section class="pane pane-working">
                     <ResourcesView
                       root={resources() ?? null}
@@ -772,13 +783,13 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'logs'}>
+                <Show when={effectiveWorkingSurface() === 'logs'}>
                   <section class="pane pane-working">
                     <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'skills'}>
+                <Show when={effectiveWorkingSurface() === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
                       scope={skillsActiveScope()}
@@ -806,7 +817,7 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'code'}>
+                <Show when={effectiveWorkingSurface() === 'code'}>
                   <section class="pane pane-working">
                     <Show
                       when={repos.length > 0}
@@ -858,6 +869,23 @@ function App() {
                     </Show>
                   </section>
                 </Show>
+                <Show when={effectiveWorkingSurface() === 'automations'}>
+                  <section class="pane pane-working">
+                    <TasksView
+                      tasks={tasks}
+                      reload={() => void reloadTasks()}
+                      hasConception={() => conceptionPath() !== null}
+                      conceptionPath={conceptionPath}
+                      agents={agents}
+                      projects={() => projects() ?? []}
+                      apps={appOptions}
+                      flashToast={flashToast}
+                      onRun={(agentId, text, taskName, opts) =>
+                        void bridge.runTask(agentId, text, taskName, opts)
+                      }
+                    />
+                  </section>
+                </Show>
               </div>
             </Show>
           </Show>
@@ -881,6 +909,7 @@ function App() {
           setBottomView('terminal');
           ensureTerminalOpen();
         }}
+        sessions={allSessions}
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
@@ -935,7 +964,7 @@ function App() {
         setSearchModalOpen={setSearchModalOpen}
         setLogsOpenRequest={setLogsOpenRequest}
         nextLogsOpenNonce={nextLogsOpenNonce}
-        selectWorking={selectWorking}
+        showSessionLogs={() => setTransientSurface('logs')}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
         settingsSection={settingsSection}

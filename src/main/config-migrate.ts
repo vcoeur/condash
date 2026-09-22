@@ -83,9 +83,20 @@ export function migrateRawSettings(parsed: unknown): unknown {
     delete root.projectCardTitleFont;
   }
   // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
+  // The navigation prototype then retired all specialist left-band selections;
+  // map them to Projects before strict layout parsing, without touching any
+  // feature storage.
   if (root.layout && typeof root.layout === 'object') {
     const layout = root.layout as Record<string, unknown>;
     if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
+    if (
+      layout.leftView === 'tasks' ||
+      layout.leftView === 'deliverables' ||
+      layout.leftView === 'perf'
+    ) {
+      layout.leftView = 'projects';
+    }
+    if (layout.working === 'logs') layout.working = 'code';
     // The splitter position went from CSS pixels to a fraction of the band, so
     // it survives a window resize. The pixel value is deliberately NOT
     // converted: the band width it was measured against is unknowable here, and

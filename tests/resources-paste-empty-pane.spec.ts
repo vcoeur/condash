@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * Resources → "→ term" on a terminal pane that has no tab yet.
@@ -68,7 +68,7 @@ test('pasting a resource path into an empty terminal pane reaches the spawned ta
       });
     });
 
-    await window.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
     await window
       .locator('.resources-card', { hasText: 'spec.txt' })

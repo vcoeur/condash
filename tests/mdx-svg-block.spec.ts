@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * End-to-end for the `svg` block: the markup renders on the light card
@@ -72,7 +72,7 @@ test('svg block renders sanitized on a light card, opens a lightbox, downloads a
     }, target);
 
     await win.setViewportSize({ width: 1400, height: 900 });
-    await win.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await win
       .locator('.resources-card', { hasText: 'svg-demo.mdx' })
       .locator('.resources-card-body')

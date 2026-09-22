@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * Regression for 2026-08-19-md-preview-code-softwrap: rendered markdown never
@@ -71,7 +71,7 @@ test('note modal soft-wraps verbatim text: fenced code, prose, source read view'
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    await window.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
 
     // Rendered markdown: the fence wraps, so the block has nothing to scroll…

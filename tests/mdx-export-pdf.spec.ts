@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * End-to-end export pipeline for visual notes: open an `.mdx` in the MDX
@@ -46,7 +46,7 @@ test('Export as PDF prints the open visual note, and blocks fill the document wi
     }, target);
 
     await win.setViewportSize({ width: 1400, height: 900 });
-    await win.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await win
       .locator('.resources-card', { hasText: 'export-me.mdx' })
       .locator('.resources-card-body')
@@ -100,7 +100,7 @@ test('the export button is absent in source mode', async () => {
   });
   try {
     const win = booted.window;
-    await win.locator('.rail-item[title*="Resources"]').click();
+    await sendMenu(booted.app, 'browse-resources');
     await win
       .locator('.resources-card', { hasText: 'export-me.mdx' })
       .locator('.resources-card-body')

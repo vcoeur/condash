@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * End-to-end for the in-app file viewers + reveal affordance added by
@@ -40,8 +40,7 @@ test('Resources viewers: image, highlighted code, HTML rendered/source, reveal',
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    const resourcesHandle = window.locator('.rail-item[title*="Resources"]');
-    await resourcesHandle.click();
+    await sendMenu(booted.app, 'browse-resources');
     await expect(window.locator('.resources-pane')).toBeVisible();
 
     // Every card carries the reveal affordance.

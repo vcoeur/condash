@@ -24,6 +24,7 @@ import { Show } from 'solid-js';
 import type {
   Agent,
   TaskRunContext,
+  TermSession,
   TermSide,
   TermSpawnRequest,
   TerminalXtermPrefs,
@@ -33,6 +34,7 @@ import { DRAG_MIME } from './terminal-pane/drag-drop';
 import { type Column } from './terminal-pane/types';
 import { createTerminalController } from './terminal-pane/controller';
 import { DashboardView } from './panes/dashboard';
+import { PerfView } from './panes/perf-view';
 import './panes/app-pill.css';
 import './terminal-pane.css';
 
@@ -86,10 +88,10 @@ export interface TerminalPaneHandle {
 export interface TerminalPaneProps {
   open: boolean;
   onClose: () => void;
-  /** Which body the bottom band shows when open: the terminals or the
-   *  Dashboard. The Dashboard pseudo-tab toggles to 'dashboard'; activating any
+  /** Which body the bottom band shows when open: terminals, Dashboard, or
+   *  session-only diagnostics. Activating any
    *  real terminal tab returns to 'terminal'. */
-  bottomView: 'terminal' | 'dashboard';
+  bottomView: 'terminal' | 'dashboard' | 'diagnostics';
   /** Toggle a bottom-band view from the strip. The parent decides the
    *  open/close semantics (re-selecting the active band closes the pane); this
    *  just reports the intent. The Dashboard pseudo-tab fires it with
@@ -99,6 +101,8 @@ export interface TerminalPaneProps {
    *  a real terminal tab is activated, so picking a tab always lands on its
    *  terminal (opening the pane if needed) and never closes it. */
   onShowTerminalBand: () => void;
+  /** Live terminal sessions displayed by the diagnostics body. */
+  sessions: () => readonly TermSession[];
   registerHandle: (handle: TerminalPaneHandle | null) => void;
   /** Configured agents (the `agents` settings list). Each renders as an option
    *  in the tab-strip spawn dropdown (alongside "New shell"). */
@@ -198,6 +202,7 @@ export function TerminalPane(props: TerminalPaneProps) {
       classList={{
         closed: !props.open,
         'dashboard-active': props.open && props.bottomView === 'dashboard',
+        'diagnostics-active': props.open && props.bottomView === 'diagnostics',
       }}
       style={{ height: `${paneHeight()}px` }}
       ref={registerPaneSection}
@@ -269,6 +274,11 @@ export function TerminalPane(props: TerminalPaneProps) {
               if (activateSession(sid)) props.onShowTerminalBand();
             }}
           />
+        </div>
+      </Show>
+      <Show when={props.open && props.bottomView === 'diagnostics'}>
+        <div class="terminal-dashboard-band">
+          <PerfView sessions={props.sessions} title="Terminal diagnostics" />
         </div>
       </Show>
       {search.SearchBar()}

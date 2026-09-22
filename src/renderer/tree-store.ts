@@ -38,6 +38,8 @@ export interface TreeStore<T> {
    *  the conception-path effect instead. Once the pane has activated the
    *  latch stays true and every reload runs as before. */
   reload: () => Promise<void>;
+  /** Load a gated tree for a contextual action without selecting its pane. */
+  loadForContext: () => Promise<void>;
 }
 
 export interface TreeStoreDeps<T> {
@@ -76,6 +78,8 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   // Until it flips, the conception-path effect below holds off the first
   // fetch, so a never-opened tree pane costs no startup IPC.
   const [activated, setActivated] = createSignal(deps.active === undefined);
+  let inFlight: Promise<void> | null = null;
+  let inFlightPath: string | null = null;
   if (deps.active) {
     createEffect(() => {
       if (deps.active!()) setActivated(true);
@@ -103,26 +107,44 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
     }
   };
 
-  const reload = async (): Promise<void> => {
+  const reload = (): Promise<void> => {
     // Watcher-driven and View→Refresh reloads alike: before the pane has
     // ever activated there is no data to refresh, and the resources tree in
     // particular is a full recursive walk with per-markdown head reads —
     // reloading it on every watcher batch while the pane stays closed was
     // the 2026-08-30 storm (B2a). The latch stays true after first open, so
     // explicit reloads from a live pane are unaffected.
-    if (!activated()) return;
+    if (!activated()) return Promise.resolve();
     const path = deps.conceptionPath();
     if (!path) {
       applySnapshot(null);
       setLoaded(false);
-      return;
+      return Promise.resolve();
     }
-    const next = await deps.fetcher();
-    // Discard a stale result if the conception changed while the fetch was
-    // in flight — applying it would paint the previous conception's tree.
-    if (deps.conceptionPath() !== path) return;
-    applySnapshot(next);
-    setLoaded(true);
+    if (inFlight && inFlightPath === path) return inFlight;
+    const flight = deps
+      .fetcher()
+      .then((next) => {
+        // Discard a stale result if the conception changed while the fetch was
+        // in flight — applying it would paint the previous conception's tree.
+        if (deps.conceptionPath() !== path) return;
+        applySnapshot(next);
+        setLoaded(true);
+      })
+      .finally(() => {
+        if (inFlight === flight) {
+          inFlight = null;
+          inFlightPath = null;
+        }
+      });
+    inFlight = flight;
+    inFlightPath = path;
+    return flight;
+  };
+
+  const loadForContext = (): Promise<void> => {
+    if (!activated()) setActivated(true);
+    return reload();
   };
 
   // Clear on conception-path drop; reload on every non-null path once the
@@ -145,5 +167,6 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
     root: () => box.value,
     loaded,
     reload,
+    loadForContext,
   };
 }

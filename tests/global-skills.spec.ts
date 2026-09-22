@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { bootApp } from './fixtures/electron-app';
+import { bootApp, sendMenu } from './fixtures/electron-app';
 
 /**
  * End-to-end for the Skills pane's conception/user scope toggle (+ refresh).
@@ -54,7 +54,7 @@ test('Skills pane: conception/user scope toggle + refresh', async () => {
   });
   const { window, cleanup } = booted;
   try {
-    await window.locator('.rail-item[title*="Skills"]').click();
+    await sendMenu(booted.app, 'browse-skills');
     await expect(window.locator('.skills-pane')).toBeVisible();
 
     // Both scope buttons render; Conception is the default + active. The scope
