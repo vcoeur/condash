@@ -9,7 +9,7 @@ description: Save reusable, parameterized agent prompts as tasks, fill their mar
 
 A **task** is a reusable, parameterized agent prompt: a name, a referenced [agent](agent-clis-and-models.md), and a markdown prompt that carries fillable `{markers}`. You fill the markers in a form, click **Run**, and condash spawns the agent in a fresh terminal tab and submits the filled prompt.
 
-> **Prototype note.** This surface is **Automations**, opened from the rail's **Automations** item (or **View → Working pane → Show Automations**); the selection is persisted like every other working pane. Storage under `tasks/` is unchanged.
+> **Current route.** This surface is **Automations**, opened from the rail's **Automations** item (or **View → Working pane → Show Automations**); the selection is persisted like every other working surface. Storage under `tasks/` is unchanged.
 
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-light.png#only-light)
 ![Tasks pane — two task cards, each with its agent, its marker chips, and a Run… button](../assets/screenshots/tasks-pane-dark.png#only-dark)
@@ -122,5 +122,6 @@ Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — a
 
 - **[Agent CLIs and model providers](agent-clis-and-models.md)** — define the agents a task references, including the `promptFlags` a task needs.
 - **[The Logs pane](logs-pane.md)** — where the Task-runs store is browsed.
-- **[The Deliverables pane](deliverables-pane.md)** and **[the Performance pane](performance-pane.md)** — retired from the rail by the navigation prototype; Performance opens as Terminal diagnostics under **View → Troubleshooting**.
+- **[Retired Deliverables pane](deliverables-pane.md)** — historical description of the removed aggregate; item-level deliverables remain available from project previews.
+- **[Terminal diagnostics](performance-pane.md)** — performance readings under **View → Troubleshooting**.
 - **[The embedded terminal](terminal.md)** — where a running task's agent tab opens.

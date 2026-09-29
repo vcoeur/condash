@@ -5,16 +5,15 @@ description: Every project's `## Deliverables`, aggregated across the whole conc
 
 # Deliverables
 
-> **Prototype note.** The aggregate Deliverables pane is not part of the navigation. Item-level `## Deliverables` still render in project previews and note modals.
+> **Retired surface.** This page preserves the former aggregate pane's behavior for historical reference. It is not available in current navigation. Item-level `## Deliverables` still render in project previews and note modals.
 
-The aggregate pane is retired from the navigation; the `## Deliverables` section itself is unchanged.
+The aggregate pane is retired; the `## Deliverables` section itself is unchanged. To open an item, use its project preview.
 
 ## What it shows
 
 Every project whose README has a `## Deliverables` section, **grouped by project**. A summary line at the top counts what you're looking at — `5 projects · 12 items`. Groups are sorted newest-first (the item slug starts with its ISO date, so a descending slug sort is a date sort) and all start **expanded**. Each group header shows the project title, a status pill, and the date; collapse the ones you're done with.
 
-![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-light.png#only-light)
-![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-dark.png#only-dark)
+Former pane screenshots (historical): ![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-light.png#only-light) ![Deliverables pane — five project groups, with WIKI, URL, PDF, MD, IMAGE, and FILE type tags](../assets/screenshots/deliverables-pane-dark.png#only-dark)
 
 It is **parse-only**: the pane reuses the deliverables already parsed from each README for the Projects pane — there is no separate filesystem scan and no dedicated `outputs/` directory to maintain. A project appears here the moment it links at least one deliverable, and disappears when it links none.
 
@@ -46,4 +45,4 @@ When no project links a deliverable, the pane shows a one-line pointer: link art
 
 - **[Deliverables and PDFs](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
 - **[The Resources pane](resources-pane.md)** — the conception-global file browser (right slot), distinct from this per-project aggregation.
-- **[The Tasks pane](tasks-pane.md)** — now the rail's **Automations** item; **[the Performance pane](performance-pane.md)** — now Terminal diagnostics under **View → Troubleshooting**.
+- **[Automations (tasks)](tasks-pane.md)** — the current rail surface for reusable prompts; **[Terminal diagnostics](performance-pane.md)** — performance readings under **View → Troubleshooting**.

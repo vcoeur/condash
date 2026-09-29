@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createEffect, createMemo, createResource, createSignal, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, on, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
 import { nextTheme, themeLabel } from '@shared/themes';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
@@ -122,6 +122,9 @@ function App() {
     setLogsOpenRequest,
     nextLogsOpenNonce,
   } = useModals();
+
+  // A search-open request belongs to its original conception, not a later Logs mount.
+  createEffect(on(conceptionPath, () => setLogsOpenRequest(null), { defer: true }));
 
   // --- Layout (toggle helpers + splitter drag) --------------------------
   const {
@@ -592,6 +595,8 @@ function App() {
             el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           onSelectWorking={selectWorking}
+          terminalOpen={layout().terminal}
+          onToggleTerminal={toggleTerminal}
         />
 
         <div class="workspace-center">
@@ -706,7 +711,12 @@ function App() {
 
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
-                    <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
+                    {/* A conception switch replaces the list, lazy-day cache, and open viewer together. */}
+                    <Show when={conceptionPath()} keyed>
+                      {(_path) => (
+                        <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
+                      )}
+                    </Show>
                   </section>
                 </Show>
 

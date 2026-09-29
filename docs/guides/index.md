@@ -17,17 +17,17 @@ Each guide answers one specific question.
 
 **The panes**
 
-The left activity rail is the complete navigation: **Projects** (the fixed left band) and, across the right working slot, **Code**, **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs**. A rail click selects that pane directly and the choice is persisted — no close-first step, no hide state. The View menu mirrors the rail under **Working pane**.
+The activity rail is the complete navigation: **Projects** (the fixed left band), a **Terminal** toggle for the bottom band, and the right working slot's **Code**, **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs**. A working-surface rail click selects it directly and the choice is persisted — no close-first step, no hide state. The View menu mirrors the working surfaces under **Working pane** and includes the Terminal toggle; **Terminal diagnostics** remains under **View → Troubleshooting**.
 
 - **[The Projects pane](projects-pane.md)** — the status stack, changing status, creating items, closing and reopening.
 - **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.
-- **[The Tasks pane](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
-- **[The Deliverables pane](deliverables-pane.md)** — every project's `## Deliverables`, aggregated and grouped by project.
-- **[The Performance pane](performance-pane.md)** — per-tab memory, growth rate, and throttle state, plus main-process event-loop delay.
+- **[Automations (tasks)](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
 - **[The knowledge tree](knowledge-tree.md)** — durable reference material as cards, with freshness stamps.
 - **[The Resources pane](resources-pane.md)** — every file under `resources/` as a card with view / open / copy / paste-to-term actions.
 - **[The Skills pane](skills-pane.md)** — browse the markdown skills condash ships under `.agents/skills/`, with shipped/diverged chips.
 - **[The Logs pane](logs-pane.md)** — saved session transcripts by day, a virtualised viewer with search, and the task-run store.
+- **[Retired Deliverables pane](deliverables-pane.md)** — historical description of the removed aggregate; item-level deliverables remain available from project previews.
+- **[Terminal diagnostics](performance-pane.md)** — per-tab memory, growth rate, and throttle state, plus main-process event-loop delay.
 
 **Daily**
 

@@ -34,6 +34,8 @@ The xterm v6 line only ships as `beta.NNN` prereleases on npm — there is no st
 
 ## Locked decisions
 
+The activity rail keeps Projects fixed on the left and selects exactly one of Code, Knowledge, Resources, Skills, Automations, or Logs on the right. Its Terminal item and View → Show Terminal toggle the persisted bottom band, never a right-pane surface; View → Troubleshooting → Terminal diagnostics is session-only. Logs mounts afresh on conception changes while selected, including its lazy-day and task-run lists, so a prior tree's entries cannot remain visible. The regression in `tests/navigation-prototype.spec.ts` exercises the native menu toggle and a two-conception switch against the built Electron app.
+
 The load-bearing design choices — UI framework (Solid + Solid signals), styling (plain CSS files + CSS variables), IPC contract shape (single typed `CondashApi` in `src/shared/api.ts`), window architecture (single `BrowserWindow`, in-renderer overlays), data shape (plain serialisable objects in `src/shared/types/`), file-watching protocol (single global chokidar rooted at `<conception>/`, 250 ms debounce), config format (JSON: per-machine `settings.json` + per-conception `.condash/settings.json`, gitignored by default), and build tool (esbuild for main/preload, Vite for renderer) — are captured in this file and in [`docs/explanation/internals.md`](docs/explanation/internals.md). Treat them as locked: changing any of them is a PR with a dated rationale in the commit message, not a silent in-flight edit.
 
 ## Dev ports

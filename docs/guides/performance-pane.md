@@ -1,15 +1,15 @@
 ---
-title: The Performance pane · condash guide
+title: Terminal diagnostics · condash guide
 description: Watch per-tab memory level, growth rate, and throttle state live — and record main-process counters when you need to prove where a stall came from.
 ---
 
-# The Performance pane
+# Terminal diagnostics
 
 > **Audience.** Daily user — anyone whose terminal tabs feel slow, or whose tabs keep dying.
 
 **When to read this.** The UI stutters, a tab disappeared without you closing it, or you want to know *which* tab is eating the machine before it takes the app down with it.
 
-> **Prototype note.** The Performance view opens as **Terminal diagnostics** from **View → Troubleshooting** in the bottom terminal band. Storage and the sampler are unchanged.
+> **Current route.** Open **Terminal diagnostics** from **View → Troubleshooting**. Diagnostics live in the bottom terminal band; they are not a right working-surface pane. Storage and the sampler are unchanged.
 
 ## What it answers
 

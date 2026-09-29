@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootApp, sendMenu } from './fixtures/electron-app';
 
@@ -22,7 +23,16 @@ async function seedNavigationFixture(conceptionDir: string): Promise<void> {
 }
 
 /** Every rail item by label, in rail order. */
-const RAIL_LABELS = ['Projects', 'Code', 'Knowledge', 'Resources', 'Skills', 'Automations', 'Logs'];
+const RAIL_LABELS = [
+  'Projects',
+  'Code',
+  'Knowledge',
+  'Resources',
+  'Skills',
+  'Automations',
+  'Logs',
+  'Terminal',
+];
 
 function railItem(window: import('@playwright/test').Page, label: string) {
   // `Code` carries a shortcut in its tooltip ("Code (Ctrl+Shift+C)"), so
@@ -41,15 +51,16 @@ test('the rail is the complete navigation — one click swaps any right pane', a
   try {
     const { app, window } = booted;
 
-    // The rail carries all seven items, in order, with Projects first.
+    // The rail carries the six working surfaces plus Projects and Terminal.
     const items = window.locator('.rail-item');
-    await expect(items).toHaveCount(7);
+    await expect(items).toHaveCount(8);
     for (const label of RAIL_LABELS) {
       await expect(railItem(window, label)).toBeVisible({ timeout: 10_000 });
     }
     await expect(items.nth(0)).toHaveAttribute('title', 'Projects');
     await expect(items.nth(1)).toHaveAttribute('title', 'Code (Ctrl+Shift+C)');
     await expect(items.nth(6)).toHaveAttribute('title', 'Logs');
+    await expect(items.nth(7)).toHaveAttribute('title', 'Terminal');
 
     // The default working surface is Code; Projects is always visible.
     await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'true');
@@ -106,13 +117,34 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     ).toBeVisible();
     await expect(restartedOnAutomations.window.locator('.logs-pane')).toHaveCount(0);
 
-    // Terminal stays the bottom band: the rail has no Terminal item; the
-    // menu toggle and the strip handle both work.
-    await expect(railItem(restartedOnAutomations.window, 'Terminal')).toHaveCount(0);
-    await sendMenu(restartedOnAutomations.app, 'toggle-terminal');
-    await expect(restartedOnAutomations.window.locator('.terminal-pane')).toHaveClass(/closed/);
-    await sendMenu(restartedOnAutomations.app, 'toggle-terminal');
-    await expect(restartedOnAutomations.window.locator('.terminal-pane')).not.toHaveClass(/closed/);
+    // Terminal is a bottom-band toggle, not another right-pane surface.
+    const terminalRail = railItem(restartedOnAutomations.window, 'Terminal');
+    const terminalPane = restartedOnAutomations.window.locator('.terminal-pane');
+    await terminalRail.click();
+    await expect(terminalPane).toHaveClass(/closed/);
+    await expect(terminalRail).toHaveAttribute('aria-pressed', 'false');
+    await expect(
+      restartedOnAutomations.window.getByRole('heading', { name: 'Automations' }),
+    ).toBeVisible();
+    await terminalRail.click();
+    await expect(terminalPane).not.toHaveClass(/closed/);
+    await expect(terminalRail).toHaveAttribute('aria-pressed', 'true');
+    // Invoke the native View item itself, not merely the same IPC command.
+    await restartedOnAutomations.app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
+      const toggle = view?.submenu?.items.find((item) => item.label === 'Show Terminal');
+      if (!toggle?.click) throw new Error('View → Show Terminal is missing');
+      toggle.click(toggle, undefined, undefined);
+    });
+    await expect(terminalPane).toHaveClass(/closed/);
+    await expect(terminalRail).toHaveAttribute('aria-pressed', 'false');
+    await restartedOnAutomations.app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
+      const toggle = view?.submenu?.items.find((item) => item.label === 'Show Terminal');
+      if (!toggle?.click) throw new Error('View → Show Terminal is missing');
+      toggle.click(toggle, undefined, undefined);
+    });
+    await expect(terminalPane).not.toHaveClass(/closed/);
 
     // Terminal diagnostics remains a View → Troubleshooting route into the
     // bottom band, session-only (not a rail item, not persisted).
@@ -159,5 +191,62 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     });
   } finally {
     await booted.cleanup();
+  }
+});
+
+test('Logs replaces the previous conception’s sessions while selected', async () => {
+  test.setTimeout(90_000);
+  const secondConception = await mkdtemp(join(tmpdir(), 'condash-test-second-conception-'));
+  const booted = await bootApp({
+    prepare: async (firstConception) => {
+      await mkdir(join(firstConception, '.condash', 'logs', '2026', '09', '29'), {
+        recursive: true,
+      });
+      await writeFile(
+        join(firstConception, '.condash', 'logs', '2026', '09', '29', '120000-t-first.txt'),
+        'first conception\n',
+      );
+      await mkdir(join(secondConception, '.condash', 'logs', '2026', '09', '28'), {
+        recursive: true,
+      });
+      await writeFile(join(secondConception, '.condash', 'settings.json'), '{}\n');
+      await writeFile(
+        join(secondConception, '.condash', 'logs', '2026', '09', '28', '120000-t-second.txt'),
+        'second conception\n',
+      );
+      await mkdir(join(secondConception, 'projects', '2026-09', '2026-09-28-second'), {
+        recursive: true,
+      });
+      await writeFile(
+        join(secondConception, 'projects', '2026-09', '2026-09-28-second', 'README.md'),
+        '# Second project\n\n**Status**: now\n**Kind**: project\n\n## Goal\n\nSecond tree.\n',
+      );
+    },
+  });
+  try {
+    const { app, window } = booted;
+    await railItem(window, 'Logs').click();
+    await expect(window.locator('.logs-pane')).toBeVisible();
+    await expect(window.locator('.logs-pane')).toContainText('Sep 29');
+    await sendMenu(app, 'search');
+    await expect(window.locator('.modal.search-modal')).toBeVisible();
+    await window.locator('.search-modal-input').fill('first conception');
+    await window.locator('.search-filter-btn').filter({ hasText: 'Logs' }).click();
+    await expect(window.locator('.search-row').filter({ hasText: '2026-09-29' })).toBeVisible();
+    await window.locator('.search-row').filter({ hasText: '2026-09-29' }).click();
+    await expect(window.locator('.modal.logs-modal')).toBeVisible();
+    await window.locator('.modal.logs-modal [aria-label="Close"]').click();
+    await expect(window.locator('.modal.logs-modal')).toHaveCount(0);
+    await app.evaluate(({ BrowserWindow }, path) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send('menu-open-recent', path);
+    }, secondConception);
+    await expect(window.locator('.status-bar-path')).toHaveText(secondConception);
+    await expect(window.locator('.logs-pane')).toContainText('Sep 28');
+    await expect(window.locator('.logs-pane')).not.toContainText('Sep 29');
+    await expect(window.locator('.modal.logs-modal')).toHaveCount(0);
+    await expect(railItem(window, 'Logs')).toHaveAttribute('aria-pressed', 'true');
+  } finally {
+    await booted.cleanup();
+    await rm(secondConception, { recursive: true, force: true });
   }
 });

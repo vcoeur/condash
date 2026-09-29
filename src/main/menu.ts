@@ -171,6 +171,12 @@ export function buildMenu(
       ],
     },
     {
+      label: 'Show Terminal',
+      type: 'checkbox',
+      checked: layout.terminal,
+      click: () => send('toggle-terminal'),
+    },
+    {
       label: 'Troubleshooting',
       submenu: [{ label: 'Terminal diagnostics', click: () => send('show-terminal-diagnostics') }],
     },

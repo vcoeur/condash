@@ -8,19 +8,18 @@ import {
   ProjectsIcon,
   ResourcesIcon,
   SkillsIcon,
+  TerminalIcon,
 } from './icons';
 import type { JSX } from 'solid-js';
 
 interface RailItemDef {
-  key: 'projects' | WorkingSurface;
+  key: 'projects' | 'terminal' | WorkingSurface;
   label: string;
   shortcut: string;
   icon: () => JSX.Element;
 }
 
-/** The rail is the complete navigation: the Projects item fills the fixed
- *  left band; every other item selects the one right-pane working surface,
- *  directly and persistently (no close-first step, no session-only surface). */
+/** The rail selects the fixed Projects band, a working pane, or the bottom Terminal band. */
 const RAIL_ITEMS: RailItemDef[] = [
   { key: 'projects', label: 'Projects', shortcut: '', icon: ProjectsIcon },
   { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon },
@@ -29,6 +28,7 @@ const RAIL_ITEMS: RailItemDef[] = [
   { key: 'skills', label: 'Skills', shortcut: '', icon: SkillsIcon },
   { key: 'automations', label: 'Automations', shortcut: '', icon: AutomationsIcon },
   { key: 'logs', label: 'Logs', shortcut: '', icon: LogsIcon },
+  { key: 'terminal', label: 'Terminal', shortcut: '', icon: TerminalIcon },
 ];
 
 /** Index of the first right-pane item — where the rail's group separator goes.
@@ -38,22 +38,27 @@ const FIRST_WORKING_INDEX = RAIL_ITEMS.findIndex((item) => item.key !== 'project
 export interface ActivityRailProps {
   /** The surface currently filling the right pane. */
   workingSurface: WorkingSurface;
+  terminalOpen: boolean;
   disabled: boolean;
   onShowProjects: () => void;
   onSelectWorking: (next: WorkingSurface) => void;
+  onToggleTerminal: () => void;
 }
 
 export function ActivityRail(props: ActivityRailProps) {
   const isActive = (item: RailItemDef): boolean => {
     if (item.key === 'projects') return true;
+    if (item.key === 'terminal') return props.terminalOpen;
     return props.workingSurface === item.key;
   };
 
   const handleClick = (item: RailItemDef): void => {
     if (item.key === 'projects') {
       props.onShowProjects();
+    } else if (item.key === 'terminal') {
+      props.onToggleTerminal();
     } else {
-      props.onSelectWorking(item.key as WorkingSurface);
+      props.onSelectWorking(item.key);
     }
   };
 
