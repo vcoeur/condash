@@ -157,7 +157,7 @@ function emitReport(ctx: OutputContext, report: SyncReport): void {
   }
   if (report.diverged) {
     warnings.push(
-      'conception has diverged from origin — commits stay local. After your work is settled, run `git pull --rebase` (or `git merge origin/main`), then sync again. Do not `git reset --hard`.',
+      'conception has diverged from upstream — commits stay local. Opt-in autoSync.integration=safe-merge can recover clean/generated-row divergence on a clean sweep. Otherwise settle work, run `git pull --rebase` (or `git merge` against your upstream), then sync again. For generated index conflicts, preserve prose/curated rows and regenerate projects/knowledge indexes; never blindly take a whole side or discard local commits.',
     );
   }
   if (report.integrateError) {
@@ -238,9 +238,12 @@ function printHelp(verb: string | null): void {
           '',
           'Before committing, the sweep fetches the remote and fast-forwards it',
           'when the remote is ahead-only, so its own commits keep the push a',
-          'fast-forward. When both sides gained commits the push is refused and',
-          'the local commits stay local: run `git pull --rebase` once your work is',
-          'settled, then sync again — never `git reset --hard`. The fetch-first',
+          'fast-forward. Default ff-only refuses divergence; opt-in safe-merge',
+          'recovers clean/generated-row-only divergence in isolation, applying',
+          'only to a rechecked clean checkout. Otherwise settle work and reconcile',
+          'manually with `git pull --rebase` or `git merge` against upstream.',
+          'Preserve index prose/curated rows and regenerate projects/knowledge',
+          'indexes after resolving drafts. Never discard local commits. Fetch-first',
           "behaviour is off when `autoSync.integration` is `'off'`.",
           '',
           'Bare `condash sync` (no verb) is a dry-run: it prints what a sweep',

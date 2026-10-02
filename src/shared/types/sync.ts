@@ -18,9 +18,9 @@ export interface AutoSyncSettings {
   quietPeriodSeconds?: number;
   /** Push after committing. Default true. */
   push?: boolean;
-  /** Fetch + fast-forward the remote before pushing (`'ff-only'`, the default)
-   *  or behave exactly as before (`'off'`). */
-  integration?: 'off' | 'ff-only';
+  /** Default ff-only; opt-in safe-merge recovers clean/drafted-index divergence;
+   * off skips fetch/integration. */
+  integration?: 'off' | 'ff-only' | 'safe-merge';
 }
 
 /** Resolved auto-sync config (defaults applied, numbers clamped), used inside
@@ -30,9 +30,8 @@ export interface AutoSyncConfig {
   intervalMinutes: number;
   quietPeriodSeconds: number;
   push: boolean;
-  /** Whether the sweeper fetches + fast-forwards before pushing (`'ff-only'`)
-   *  or behaves exactly as before (`'off'`). */
-  integration: 'off' | 'ff-only';
+  /** Default ff-only; safe-merge adds isolated divergence recovery; off skips integration. */
+  integration: 'off' | 'ff-only' | 'safe-merge';
 }
 
 /** Where the engine is in its cycle — drives the Settings status line. */
@@ -105,4 +104,6 @@ export interface AutoSyncStatus {
   lastResult: AutoSyncLastResult | null;
   /** A refusal/error from the last sweep (mid-merge, conflict, …), else null. */
   lastError: string | null;
+  /** Session-scoped episode, retained across idle/syncing and disable/re-enable. */
+  blockedEpisode?: { since: number; waitingCommits: number | null } | null;
 }

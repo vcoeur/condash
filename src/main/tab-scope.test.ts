@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   appScopeSetPropertyArgv,
@@ -28,6 +29,32 @@ describe('parseSize', () => {
 });
 
 describe('scopeArgv', () => {
+  it('leaves dollar expansion to a real scoped shell when available', (context) => {
+    if (process.platform !== 'linux' || !process.env.XDG_RUNTIME_DIR) {
+      context.skip();
+      return;
+    }
+    const help = spawnSync('systemd-run', ['--help'], { encoding: 'utf8', timeout: 5000 });
+    const probe = spawnSync('systemd-run', probeArgv(), { encoding: 'utf8', timeout: 5000 });
+    if (help.status !== 0 || probe.status !== 0) {
+      context.skip();
+      return;
+    }
+    for (const kind of ['term', 'task'] as const) {
+      const command =
+        'VALUE=from-shell; printf "%s\\n" "PID:$$" "$VALUE" "${VALUE:-fallback}" "$(printf substitution)"';
+      const argv = scopeArgv(
+        '/bin/bash',
+        ['-c', command],
+        { high: '64M', max: '128M', swapMax: '0' },
+        scopeUnitName(kind, `t-test-${process.pid}`),
+        help.stdout.includes('--expand-environment='),
+      );
+      const result = spawnSync('systemd-run', argv, { encoding: 'utf8', timeout: 5000 });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toMatch(/^PID:\d+\nfrom-shell\nfrom-shell\nsubstitution\n$/);
+    }
+  });
   it('applies the default limits when prefs are absent', () => {
     const argv = scopeArgv(
       '/bin/bash',
@@ -40,6 +67,7 @@ describe('scopeArgv', () => {
       '--scope',
       '--quiet',
       '--collect',
+      '--expand-environment=no',
       '--unit=condash-term-t-01.scope',
       '-p',
       'MemoryHigh=6G',
@@ -74,6 +102,19 @@ describe('scopeArgv', () => {
 });
 
 describe('scopeUnitName', () => {
+  it.each(['term', 'task'] as const)('preserves dollar syntax for %s shells', (kind) => {
+    const command = 'printf "%s\\n" "$$" "$HOME" "${VALUE:-fallback}" "$(printf substitution)"';
+    const argv = scopeArgv('/bin/bash', ['-c', command], undefined, scopeUnitName(kind, 't-test'));
+    expect(argv).toContain('--expand-environment=no');
+    expect(argv.slice(argv.indexOf('--') + 1)).toEqual(['/bin/bash', '-c', command]);
+  });
+
+  it('omits the unsupported option on older systemd without changing argv', () => {
+    const argv = scopeArgv('/bin/bash', ['-c', 'echo $$ $HOME'], undefined, 'old.scope', false);
+    expect(argv).not.toContain('--expand-environment=no');
+    expect(argv.slice(argv.indexOf('--') + 1)).toEqual(['/bin/bash', '-c', 'echo $$ $HOME']);
+  });
+
   it('namespaces by kind so a tab and a scheduled run cannot collide', () => {
     // Both id generators mint `t-<8 hex>` from independent random sources, so
     // the kind is the only thing keeping the unit names apart. A collision would

@@ -39,3 +39,31 @@ test('status bar shows live auto-sync + shipped-skills indicators', async () => 
     await booted.cleanup();
   }
 });
+
+test('blocked episode remains visible during idle and disabled scheduling', async ({}, testInfo) => {
+  const booted = await bootApp();
+  try {
+    for (const phase of ['idle', 'disabled']) {
+      await booted.app.evaluate(({ BrowserWindow }, phase) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('auto-sync-status', {
+          phase,
+          enabled: phase === 'idle',
+          intervalMinutes: 10,
+          lastRunAt: 1_700_000_000_000,
+          nextRunAt: null,
+          lastResult: null,
+          lastError: null,
+          blockedEpisode: { since: 1_700_000_000_000, waitingCommits: null },
+        });
+      }, phase);
+      const pill = booted.window.locator('.status-bar .status-pill').first();
+      await expect(pill).toHaveText('Integration needed');
+      await expect(pill).toHaveAttribute('title', /unknown waiting commits · first detected/);
+    }
+    await booted.window
+      .locator('.status-bar')
+      .screenshot({ path: testInfo.outputPath('blocked-episode-status.png') });
+  } finally {
+    await booted.cleanup();
+  }
+});

@@ -146,6 +146,25 @@ export function SyncSection(props: SyncSectionProps): JSX.Element {
           />
           <span>Push after committing</span>
         </label>
+        <label>
+          <span>Upstream integration</span>
+          <select
+            value={autoSync().integration ?? 'ff-only'}
+            onChange={(event) =>
+              void update({
+                integration: event.currentTarget.value as AutoSyncSettings['integration'],
+              })
+            }
+          >
+            <option value="off">Off — no fetch or integration</option>
+            <option value="ff-only">Fast-forward only (default)</option>
+            <option value="safe-merge">Safe merge (opt-in)</option>
+          </select>
+          <small class="settings-field-hint">
+            Safe merge preserves both histories, prose and curated rows. Requires a clean checkout;
+            handwritten conflicts still need manual reconciliation. Never rebases or force-pushes.
+          </small>
+        </label>
       </div>
 
       <div class="settings-dashboard-test">
@@ -169,9 +188,22 @@ export function SyncSection(props: SyncSectionProps): JSX.Element {
                   </>
                 )}
               </Show>
-              <Show when={current.lastResult?.diverged}>
+              <Show when={current.blockedEpisode} keyed>
+                {(episode) => (
+                  <span class="settings-dashboard-test-error">
+                    {' · Integration needed: '}
+                    {episode.waitingCommits ?? 'unknown'} waiting commits
+                    {' · first detected '}
+                    {new Date(episode.since).toLocaleString()}
+                    {
+                      ' · settle work, reconcile upstream, then sync again. Preserve index prose/curated rows when regenerating.'
+                    }
+                  </span>
+                )}
+              </Show>
+              <Show when={current.lastResult?.diverged && !current.blockedEpisode}>
                 <span class="settings-dashboard-test-error">
-                  {' · Integration needed — run git pull --rebase'}
+                  {' · Integration needed — settle work, then reconcile upstream and sync again'}
                 </span>
               </Show>
               <Show when={current.lastResult?.integrateError} keyed>

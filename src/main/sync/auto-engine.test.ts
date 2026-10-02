@@ -12,11 +12,13 @@ const h = vi.hoisted(() => ({
   },
   throwConfig: false,
   syncRun: vi.fn(),
+  notify: vi.fn(),
 }));
 
 // The engine imports electron (BrowserWindow) at load and broadcasts via
 // getAllWindows(); stub it to an empty window list so pushes are no-ops.
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
+vi.mock('./notification', () => ({ notifyBlockedSync: h.notify }));
 
 // Replace the real git-shelling sweeper with a spy.
 vi.mock('./run', () => ({
@@ -54,6 +56,7 @@ beforeEach(() => {
   };
   h.throwConfig = false;
   h.syncRun.mockReset();
+  h.notify.mockReset();
   h.syncRun.mockResolvedValue({ commits: [], pushed: false, pushError: null });
 });
 
@@ -218,5 +221,126 @@ describe('auto-sync engine', () => {
     h.config = { ...h.config, enabled: true };
     await tick(CONCEPTION);
     expect(h.syncRun).not.toHaveBeenCalled();
+  });
+
+  it('notifies once across idle/syncing, disable/re-enable and skipped integration', async () => {
+    await setSyncConception(CONCEPTION);
+    h.config.enabled = true;
+    h.syncRun.mockResolvedValue({
+      commits: [{}, {}],
+      ahead: 7,
+      behind: 3,
+      diverged: true,
+      integrateError: null,
+      pushError: null,
+    });
+    await syncNow();
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenCalledWith(CONCEPTION, { since: BASE, waitingCommits: 7 });
+    vi.setSystemTime(BASE + MINUTE);
+    await tick(CONCEPTION);
+    expect(getAutoSyncStatus().phase).toBe('idle');
+    expect(getAutoSyncStatus().blockedEpisode?.since).toBe(BASE);
+    await syncNow();
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    h.config.enabled = false;
+    await tick(CONCEPTION);
+    expect(getAutoSyncStatus().blockedEpisode?.since).toBe(BASE);
+    h.config.enabled = true;
+    await tick(CONCEPTION);
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      ahead: 7,
+      behind: null,
+      diverged: false,
+      integrateError: null,
+      pushError: null,
+    });
+    await syncNow();
+    expect(getAutoSyncStatus().blockedEpisode?.since).toBe(BASE);
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      ahead: 9,
+      behind: 4,
+      diverged: true,
+      integrateError: null,
+      pushError: null,
+    });
+    await syncNow();
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(getAutoSyncStatus().blockedEpisode).toEqual({ since: BASE, waitingCommits: 9 });
+  });
+
+  it('clears only on verified reconciliation, then notifies a new episode with unknown count', async () => {
+    await setSyncConception(CONCEPTION);
+    h.syncRun.mockResolvedValue({ commits: [], ahead: 4, behind: 2, diverged: true });
+    await syncNow();
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      ahead: 0,
+      behind: 0,
+      diverged: false,
+      pushError: null,
+    });
+    await syncNow();
+    expect(getAutoSyncStatus().blockedEpisode).toBeNull();
+    vi.setSystemTime(BASE + MINUTE);
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      ahead: null,
+      behind: null,
+      integrateError: 'fetch failed',
+    });
+    await syncNow();
+    expect(h.notify).toHaveBeenCalledTimes(2);
+    expect(h.notify).toHaveBeenLastCalledWith(CONCEPTION, {
+      since: BASE + MINUTE,
+      waitingCommits: null,
+    });
+  });
+
+  it('notification failure cannot fail the sweep or repeatedly notify', async () => {
+    await setSyncConception(CONCEPTION);
+    h.notify.mockImplementation(() => {
+      throw new Error('desktop unavailable');
+    });
+    h.syncRun.mockResolvedValue({
+      commits: [],
+      ahead: null,
+      behind: null,
+      integrateError: 'fetch failed',
+    });
+    await syncNow();
+    await syncNow();
+    expect(getAutoSyncStatus().phase).toBe('integration-needed');
+    expect(getAutoSyncStatus().lastError).toBeNull();
+    expect(h.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a stale sweep result after switching conception and resets episode suppression', async () => {
+    await setSyncConception(CONCEPTION);
+    h.syncRun.mockResolvedValue({ commits: [], ahead: 4, behind: 2, diverged: true });
+    await syncNow();
+    let finish!: (value: unknown) => void;
+    h.syncRun.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const old = syncNow();
+    await Promise.resolve();
+    await setSyncConception('/tmp/new-conception');
+    finish({ commits: [], ahead: 8, behind: 2, diverged: true });
+    await old;
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(getAutoSyncStatus().blockedEpisode).toBeNull();
+    h.syncRun.mockResolvedValue({ commits: [], ahead: 1, behind: 2, diverged: true });
+    await syncNow();
+    expect(h.notify).toHaveBeenCalledTimes(2);
+    expect(h.notify).toHaveBeenLastCalledWith('/tmp/new-conception', {
+      since: BASE,
+      waitingCommits: 1,
+    });
   });
 });

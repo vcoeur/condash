@@ -47,6 +47,10 @@ describe('resolveAutoSyncConfig', () => {
     expect(resolveAutoSyncConfig(undefined).integration).toBe('ff-only');
   });
 
+  it('preserves opt-in safe-merge without changing the default', () => {
+    expect(resolveAutoSyncConfig({ integration: 'safe-merge' }).integration).toBe('safe-merge');
+  });
+
   it('passes an explicit off through', () => {
     expect(resolveAutoSyncConfig({ integration: 'off' }).integration).toBe('off');
   });

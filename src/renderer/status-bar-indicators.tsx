@@ -120,7 +120,7 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     if (a?.phase === 'error') return 'error';
     // A refused push leaves the commits local and ahead — that is not "to
     // push", it is a divergence the human must reconcile.
-    if (a?.phase === 'integration-needed') return 'integration-needed';
+    if (a?.blockedEpisode || a?.phase === 'integration-needed') return 'integration-needed';
     if (s && (s.pendingCount > 0 || s.ahead > 0)) return 'pending';
     if (a && !a.enabled) return 'off';
     if (!s && !a) return 'unknown';
@@ -153,8 +153,12 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   const syncTitle = (): string => {
     const s = sync();
     const a = auto();
-    if (a?.phase === 'integration-needed') {
-      return 'Integration needed — run `git pull --rebase`, then sync again. Do not `git reset --hard`.';
+    if (a?.blockedEpisode || a?.phase === 'integration-needed') {
+      const episode = a.blockedEpisode;
+      const evidence = episode
+        ? `${episode.waitingCommits ?? 'unknown'} waiting commits · first detected ${new Date(episode.since).toLocaleString()} — `
+        : '';
+      return `${evidence}Integration needed — settle work and reconcile upstream, then sync again. For generated index conflicts, preserve prose/curated rows and regenerate projects/knowledge indexes. Never discard local commits.`;
     }
     const parts: string[] = [];
     if (s) {

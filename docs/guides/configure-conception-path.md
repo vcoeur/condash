@@ -60,6 +60,8 @@ On startup condash checks, in order:
 
 Those are the GUI's steps. The CLI resolves through a longer chain — a `--conception` flag, `CLAUDE_PROJECT_DIR`, and a cwd walk-up all take precedence over `lastConceptionPath` — see [CLI → Conception-path resolution](../reference/cli.md#conception-path-resolution) for the full picture.
 
+For the CLI, `--conception` is a hard choice, followed by `CONDASH_CONCEPTION_PATH` (or the legacy `CONDASH_CONCEPTION` when the canonical variable is unset). An invalid selected override stops immediately with `NO_CONCEPTION` (exit 5), reporting the selected path and detection reason; it never falls back to another tree. A valid flag wins over either environment variable, and the canonical variable wins over the legacy one. Detection requires a `projects/` directory and one of `.condash/settings.json`, `condash.json`, or `configuration.json`. Without an explicit override, `CLAUDE_PROJECT_DIR`, the cwd walk, and the saved path remain advisory fallbacks. Help/version and `init` need no existing resolved tree. `config conception-path --help` bypasses resolution, but an ordinary `config conception-path` resolves normally and only prints the path/source, failing on an invalid explicit selection. Change the saved path with `config set lastConceptionPath <path>`; `config conception-path` is not a setter.
+
 **File → Open…** doesn't fit this list because it runs after startup: it triggers the same picker as step 3 on demand, then stores its result the same way.
 
 ## When to use a scratch tree

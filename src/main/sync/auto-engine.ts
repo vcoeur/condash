@@ -11,6 +11,8 @@ import { safeSend } from '../safe-send';
 import type { AutoSyncConfig, AutoSyncLastResult, AutoSyncStatus } from '../../shared/types';
 import { AUTO_SYNC_DEFAULTS, readAutoSyncConfig } from './auto-config';
 import { syncRun } from './run';
+import { BlockedEpisode } from './blocked-episode';
+import { notifyBlockedSync } from './notification';
 
 /** Base poll interval. Each tick re-reads config (cheap) and checks whether the
  *  cadence has elapsed, so an enable/interval change in Settings takes effect
@@ -31,6 +33,7 @@ let nextDueAt = 0;
 /** Epoch ms of the last *completed* sweep (for display), or 0 if none yet. */
 let lastSweepAt = 0;
 let inFlight = false;
+let blocked = new BlockedEpisode();
 let status: AutoSyncStatus = disabledStatus();
 /** Bumped on every re-point / teardown; a cycle captures it at entry and
  *  re-checks after each await, so a sweep straddling a conception switch cannot
@@ -47,6 +50,7 @@ function disabledStatus(): AutoSyncStatus {
     nextRunAt: null,
     lastResult: null,
     lastError: null,
+    blockedEpisode: blocked.value,
   };
 }
 
@@ -79,6 +83,8 @@ function publish(next: AutoSyncStatus): void {
     status.lastRunAt === next.lastRunAt &&
     status.nextRunAt === next.nextRunAt &&
     status.lastError === next.lastError &&
+    status.blockedEpisode?.since === next.blockedEpisode?.since &&
+    status.blockedEpisode?.waitingCommits === next.blockedEpisode?.waitingCommits &&
     sameResult(status.lastResult, next.lastResult)
   ) {
     return;
@@ -106,6 +112,7 @@ export async function setSyncConception(conceptionPath: string | null): Promise<
   nextDueAt = 0;
   lastSweepAt = 0;
   inFlight = false;
+  blocked = new BlockedEpisode();
   status = disabledStatus();
   if (!conceptionPath) return;
   const interval = setInterval(() => void tick(conceptionPath), TICK_MS);
@@ -124,6 +131,7 @@ function idleStatus(config: AutoSyncConfig, dueAt: number): AutoSyncStatus {
     nextRunAt: dueAt,
     lastResult: status.lastResult,
     lastError: status.lastError,
+    blockedEpisode: blocked.value,
   };
 }
 
@@ -207,6 +215,7 @@ async function sweep(path: string, config: AutoSyncConfig, myGeneration: number)
       integration: config.integration,
     });
     if (generation !== myGeneration) return;
+    blocked.observe(report, Date.now(), (episode) => notifyBlockedSync(path, episode));
     lastSweepAt = Date.now();
     nextDueAt = config.enabled ? lastSweepAt + intervalMs : 0;
     const base = {
@@ -215,6 +224,7 @@ async function sweep(path: string, config: AutoSyncConfig, myGeneration: number)
       lastRunAt: lastSweepAt,
       nextRunAt: config.enabled ? nextDueAt : null,
       lastError: null,
+      blockedEpisode: blocked.value,
     } as const;
     if (report.diverged || report.integrateError) {
       // The push was refused and the local commits stay — the human reconciles
@@ -258,6 +268,7 @@ async function sweep(path: string, config: AutoSyncConfig, myGeneration: number)
       nextRunAt: config.enabled ? nextDueAt : null,
       lastResult: status.lastResult,
       lastError: err instanceof Error ? err.message : String(err),
+      blockedEpisode: blocked.value,
     });
   } finally {
     if (generation === myGeneration) inFlight = false;

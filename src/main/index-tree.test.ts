@@ -5,10 +5,40 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { knowledgeStrategy } from './index-knowledge';
 import { projectsStrategy } from './index-projects';
-import { regenerateIndex } from './index-tree';
+import { indexHumanContent, regenerateIndex } from './index-tree';
 
 let conceptionDir: string;
 let knowledgeDir: string;
+
+describe('index merge ownership proof', () => {
+  it('strips only strict unfenced drafted child rows, retaining prose, curation and ambiguous markers', () => {
+    const drafted = '- [`child.md`](child.md) — *Draft.* `[tag]` <!-- draft -->';
+    const retained =
+      [
+        '# Human index',
+        'Intro <!-- draft -->',
+        '- [`curated.md`](curated.md) — *Curated.* `[tag]`',
+        '- [`external`](https://example.com) — *External.* <!-- draft -->',
+        '- [`escape`](../elsewhere.md) — *Escaped.* <!-- draft -->',
+        '- [`loose.md`](loose.md) malformed <!-- draft -->',
+        '- [`interior.md`](interior.md) — *Interior.* <!-- draft --> annotation',
+        '```md',
+        drafted,
+        '```',
+      ].join('\r\n') + '\r\n';
+    expect(indexHumanContent(drafted + '\r\n' + retained)).toBe(retained);
+  });
+  it.each([
+    '- [`child.md`](child.md) — *Draft.* <!-- keep human annotation --> <!-- draft -->',
+    '- [`child.md`](child.md) — *Draft.* `[tag]` <!-- first --> <!-- second --> <!-- draft -->',
+    '- [`child.md`](child.md) — *Draft.* <!-- draft --> <!-- keep human annotation -->',
+    '- [`child.md`](child.md) — *Draft <!-- keep body annotation --> text.* <!-- draft -->',
+    '- [`child.md`](child.md) — *Draft.* <!-- draft --> <!-- draft -->',
+    '- [`child.md`](child.md) — *Draft <!-- incomplete annotation.* <!-- draft -->',
+  ])('retains ambiguous annotated row verbatim: %s', (row) => {
+    expect(indexHumanContent(row + '\n')).toBe(row + '\n');
+  });
+});
 
 beforeEach(async () => {
   conceptionDir = await mkdtemp(join(tmpdir(), 'condash-index-test-'));

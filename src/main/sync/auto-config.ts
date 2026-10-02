@@ -52,7 +52,8 @@ export function resolveAutoSyncConfig(raw: AutoSyncSettings | undefined): AutoSy
     // Enum coercion: the zod schema rejects an unknown value at config-write
     // time, but a hand-edited or pre-schema file can still carry one — fall
     // back to the safe default rather than refusing to resolve.
-    integration: raw?.integration === 'off' ? 'off' : 'ff-only',
+    integration:
+      raw?.integration === 'off' || raw?.integration === 'safe-merge' ? raw.integration : 'ff-only',
   };
 }
 
