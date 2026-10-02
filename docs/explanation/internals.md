@@ -11,10 +11,15 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.agents/skills/`, and `.condash/settings.json` tree and presents it through one app shell:
 
-- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — the complete navigation: Projects (the fixed left band) plus one right-pane item per working surface (Code, Knowledge, Resources, Skills, Automations, Logs). A click selects directly; there is no transient surface machinery.
-- A **left view** — `projects` only (`LEFT_VIEWS` in `src/shared/types/layout.ts`); legacy `tasks` / `deliverables` / `perf` / `outputs` values migrate to `'projects'` on read.
-- A **working surface** on the right edge — one of Code / Knowledge / Resources / Skills / Automations / Logs, mutually exclusive and persisted. Terminal diagnostics is the one session-only surface: a bottom-band body swap, not a pane.
-- A **bottom band** shared by the Terminal, the Dashboard, and the session-only Terminal diagnostics, which never coexist.
+- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — Projects (the fixed left band), four right-pane working surfaces (Code, Knowledge, Resources, Skills), and the Terminal toggle. A working-pane click selects directly.
+- A **fixed Projects band** — old `leftView` keys are removed on read; item-level Deliverables stay in project previews.
+- A **working surface** on the right edge — Code / Knowledge / Resources / Skills, mutually exclusive and persisted in global `layout`. Retired `working: automations|logs` maps to Code before parsing. Both raw settings inputs are shape-migrated before scope partition; an already-owned global layout wins conflicting leaves.
+- A **bottom band** shared by Terminal and Dashboard; xterm tabs remain mounted while hidden.
+- Three **full-window utility overlays** — Automations, Logs, Diagnostics — launched by labelled buttons beside Settings, not rail/native View routes. `activeModal` is their single session-only owner in `hooks/use-modals.ts`; `modal-host.tsx` mounts them on demand, keyed by conception. Automations guards dirty drafts/fill fields before dismissal, replacement, or conception IPC, and rejects late task-read responses by owner epoch. Logs consumes Search activation once and discards all viewer/list state on switch. Diagnostics vitals polling and automation roster/tail timers stop on disposal; their main-owned recording/scheduler survives overlay closure.
+
+`SurfaceOverlay` portals the utility shell into `document.body`, traps focus in its deepest visible dialog, and restores launcher focus on dismissal. Its window-capture Escape listener checks child ownership before document listeners run. Nested `Modal` handlers inside it accept Escape only for the topmost visible child: same-document `stopPropagation()` cannot enforce ordering. The shell masks terminal height without writing terminal visibility or height preferences.
+
+Conception-transition ownership spans the leave guard, main switch/picker IPC and renderer path commit, excluding utility launches and overlapping switches until the roots agree. If switching fails after main commits its root, the renderer reconciles that root before releasing ownership. Automations departure waits for every persistent definition/config mutation step; disposal suppresses late UI updates, never required config follow-ups. Logs disposal guards deletion continuations and refresh entry points against new disk reads. Focus traversal uses browser `tabIndex`/visibility/disabled state, including native `<summary>` controls, rather than a hand-maintained list of control tags.
 
 Search is a global modal (`Ctrl+Shift+F` / `Ctrl+K`), not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).
 
@@ -243,7 +248,7 @@ The four Markdown sources (projects incl. notes, knowledge, resources, skills) a
 
 ## Terminal performance recording { #terminal-performance-recording }
 
-`terminal.perf` is the user-facing toggle — **off by default**, flipped from **Settings → Terminal → Performance recording** or the **Performance** pane's Record button; the key row, the retention caps, and the "records are safe to delete" contract live in [Config files → Terminal perf](../reference/config.md#terminal-perf). This section is the deep dive: what each record carries, how the counters are meant to be read, and the `scripts/perf-load.mjs` harness for reproducing load deliberately.
+`terminal.perf` is the user-facing toggle — **off by default**, flipped from **Settings → Terminal → Performance recording** or the top-bar **Diagnostics** overlay's Record button; the key row, the retention caps, and the "records are safe to delete" contract live in [Config files → Terminal perf](../reference/config.md#terminal-perf). This section is the deep dive: what each record carries, how the counters are meant to be read, and the `scripts/perf-load.mjs` harness for reproducing load deliberately.
 
 ### What a record carries
 

@@ -23,16 +23,7 @@ async function seedNavigationFixture(conceptionDir: string): Promise<void> {
 }
 
 /** Every rail item by label, in rail order. */
-const RAIL_LABELS = [
-  'Projects',
-  'Code',
-  'Knowledge',
-  'Resources',
-  'Skills',
-  'Automations',
-  'Logs',
-  'Terminal',
-];
+const RAIL_LABELS = ['Projects', 'Code', 'Knowledge', 'Resources', 'Skills', 'Terminal'];
 
 function railItem(window: import('@playwright/test').Page, label: string) {
   // `Code` carries a shortcut in its tooltip ("Code (Ctrl+Shift+C)"), so
@@ -51,16 +42,28 @@ test('the rail is the complete navigation — one click swaps any right pane', a
   try {
     const { app, window } = booted;
 
-    // The rail carries the six working surfaces plus Projects and Terminal.
+    // The rail carries four working panes plus Projects and Terminal.
     const items = window.locator('.rail-item');
-    await expect(items).toHaveCount(8);
+    await expect(items).toHaveCount(6);
     for (const label of RAIL_LABELS) {
       await expect(railItem(window, label)).toBeVisible({ timeout: 10_000 });
     }
     await expect(items.nth(0)).toHaveAttribute('title', 'Projects');
     await expect(items.nth(1)).toHaveAttribute('title', 'Code (Ctrl+Shift+C)');
-    await expect(items.nth(6)).toHaveAttribute('title', 'Logs');
-    await expect(items.nth(7)).toHaveAttribute('title', 'Terminal');
+    await expect(items.nth(5)).toHaveAttribute('title', 'Terminal');
+    await expect(
+      window.locator('.rail-item[title="Automations"], .rail-item[title="Logs"]'),
+    ).toHaveCount(0);
+    const viewLabels = await app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
+      return view?.submenu?.items.flatMap((item) => [
+        item.label,
+        ...(item.submenu?.items.map((child) => child.label) ?? []),
+      ]);
+    });
+    expect(viewLabels).not.toEqual(expect.arrayContaining(['Show Automations']));
+    expect(viewLabels).not.toEqual(expect.arrayContaining(['Show Logs']));
+    expect(viewLabels).not.toEqual(expect.arrayContaining(['Terminal diagnostics']));
 
     // The default working surface is Code; Projects is always visible.
     await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'true');
@@ -85,36 +88,38 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     await expect(window.getByText('Fixture resource')).toBeVisible();
     await railItem(window, 'Skills').click();
     await expect(window.getByText('fixture-skill')).toBeVisible();
-    await railItem(window, 'Automations').click();
+    await window.getByRole('button', { name: 'Automations', exact: true }).click();
     await expect(window.getByRole('heading', { name: 'Automations' })).toBeVisible();
-    await railItem(window, 'Logs').click();
+    await window.locator('.surface-back').click();
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
     // …and switching back to Code works from the far end of the rail too.
+    await window.locator('.surface-back').click();
     await railItem(window, 'Code').click();
     await expect(window.locator('.repos-pane')).toBeVisible();
 
     // View → Working pane mirrors the rail with direct selections.
-    await sendMenu(app, 'show-logs');
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
-    await sendMenu(app, 'show-automations');
+    await window.keyboard.press('Escape');
+    await window.getByRole('button', { name: 'Automations', exact: true }).click();
     await expect(window.getByRole('heading', { name: 'Automations' })).toBeVisible();
+    await window.keyboard.press('Escape');
     await sendMenu(app, 'show-knowledge');
     await expect(window.getByText('Fixture knowledge')).toBeVisible();
 
-    // The selection persists across a restart — including the re-added
-    // logs and automations surfaces.
-    await sendMenu(app, 'show-logs');
+    // Working-pane selection persists; utility overlays do not reopen on restart.
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
     const restartedOnLogs = await booted.restart();
-    await expect(restartedOnLogs.window.locator('.logs-pane')).toBeVisible();
-    await sendMenu(restartedOnLogs.app, 'show-automations');
+    await expect(restartedOnLogs.window.locator('.logs-pane')).toHaveCount(0);
+    await expect(restartedOnLogs.window.getByText('Fixture knowledge')).toBeVisible();
+    await restartedOnLogs.window.getByRole('button', { name: 'Automations', exact: true }).click();
     await expect(
       restartedOnLogs.window.getByRole('heading', { name: 'Automations' }),
     ).toBeVisible();
     const restartedOnAutomations = await booted.restart();
-    await expect(
-      restartedOnAutomations.window.getByRole('heading', { name: 'Automations' }),
-    ).toBeVisible();
+    await expect(restartedOnAutomations.window.locator('.surface-overlay')).toHaveCount(0);
     await expect(restartedOnAutomations.window.locator('.logs-pane')).toHaveCount(0);
 
     // Terminal is a bottom-band toggle, not another right-pane surface.
@@ -123,9 +128,7 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     await terminalRail.click();
     await expect(terminalPane).toHaveClass(/closed/);
     await expect(terminalRail).toHaveAttribute('aria-pressed', 'false');
-    await expect(
-      restartedOnAutomations.window.getByRole('heading', { name: 'Automations' }),
-    ).toBeVisible();
+    await expect(restartedOnAutomations.window.getByText('Fixture knowledge')).toBeVisible();
     await terminalRail.click();
     await expect(terminalPane).not.toHaveClass(/closed/);
     await expect(terminalRail).toHaveAttribute('aria-pressed', 'true');
@@ -146,10 +149,16 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     });
     await expect(terminalPane).not.toHaveClass(/closed/);
 
-    // Terminal diagnostics remains a View → Troubleshooting route into the
-    // bottom band, session-only (not a rail item, not persisted).
-    await sendMenu(restartedOnAutomations.app, 'show-terminal-diagnostics');
+    // Diagnostics is a session-only full-window overlay, not a terminal body.
+    await restartedOnAutomations.window
+      .getByRole('button', { name: 'Diagnostics', exact: true })
+      .click();
     await expect(restartedOnAutomations.window.getByText('Terminal diagnostics')).toBeVisible();
+    await expect(restartedOnAutomations.window.locator('.surface-overlay')).toHaveAttribute(
+      'aria-label',
+      'Diagnostics',
+    );
+    await expect(restartedOnAutomations.window.locator('.terminal-pane .perf-pane')).toHaveCount(0);
     const afterDiagnostics = await booted.restart();
     await expect(afterDiagnostics.window.locator('.terminal-pane.diagnostics-active')).toHaveCount(
       0,
@@ -225,7 +234,7 @@ test('Logs replaces the previous conception’s sessions while selected', async 
   });
   try {
     const { app, window } = booted;
-    await railItem(window, 'Logs').click();
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
     await expect(window.locator('.logs-pane')).toContainText('Sep 29');
     await sendMenu(app, 'search');
@@ -241,10 +250,14 @@ test('Logs replaces the previous conception’s sessions while selected', async 
       BrowserWindow.getAllWindows()[0]?.webContents.send('menu-open-recent', path);
     }, secondConception);
     await expect(window.locator('.status-bar-path')).toHaveText(secondConception);
+    await expect(window.locator('.surface-overlay')).toHaveCount(0);
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toContainText('Sep 28');
     await expect(window.locator('.logs-pane')).not.toContainText('Sep 29');
     await expect(window.locator('.modal.logs-modal')).toHaveCount(0);
-    await expect(railItem(window, 'Logs')).toHaveAttribute('aria-pressed', 'true');
+    await window.keyboard.press('Escape');
+    await window.getByRole('button', { name: 'Logs', exact: true }).click();
+    await expect(window.locator('.modal.logs-modal')).toHaveCount(0);
   } finally {
     await booted.cleanup();
     await rm(secondConception, { recursive: true, force: true });

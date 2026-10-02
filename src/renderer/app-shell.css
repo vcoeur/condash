@@ -4,7 +4,8 @@
 /* Status bar — thin top band showing conception context, sync state,
  * counts, search, theme toggle, and settings. */
 .status-bar {
-  height: 30px;
+  min-height: 30px;
+  flex-wrap: wrap;
   flex-shrink: 0;
   /* Frosted chrome — translucent over the page with a backdrop blur, the
    * vcoeur/alicepeintures sticky-nav treatment (bold redesign, 2026-07). */
@@ -29,6 +30,9 @@
 }
 
 .status-bar .status-bar-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   color: var(--text);
 }
@@ -43,12 +47,15 @@
 }
 
 .status-bar .status-item {
+  min-width: 0;
+  max-width: 35vw;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
 .status-bar .status-bar-action {
+  flex-shrink: 0;
   padding: 3px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);

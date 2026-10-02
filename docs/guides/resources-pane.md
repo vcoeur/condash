@@ -7,7 +7,7 @@ description: Browse every file under `resources/` as an action card — view in-
 
 > **Prototype note.** Resources open from the rail's **Resources** item and are the persisted right-slot choice.
 
-The Resources pane sits alongside **Code**, **Knowledge**, **Skills**, **Automations**, and **Logs** in the right working-surface slot. Open it from the rail's **Resources** item (or **View → Working pane → Show Resources**) — the selection is persisted. It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
+The Resources pane sits alongside **Code**, **Knowledge**, and **Skills** in the right working-surface slot. Open it from the rail's **Resources** item (or **View → Working pane → Show Resources**) — the selection is persisted. It browses the file hierarchy under `resources/` at the conception root and surfaces every file as a small action card.
 
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-light.png#only-light)
 ![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-dark.png#only-dark)

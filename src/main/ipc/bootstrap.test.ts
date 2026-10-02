@@ -70,7 +70,7 @@ describe('bootstrap IPC', () => {
     terminal: { shell: 'bash', screenshot_dir: '/tmp/shots' },
     layout: {
       projects: true,
-      working: 'automations',
+      working: 'knowledge',
       terminal: false,
       projectsSplit: 0.4,
     },

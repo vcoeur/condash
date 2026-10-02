@@ -21,7 +21,11 @@ export function TaskEditor(props: {
   agents: () => readonly Agent[];
   onSave: () => void;
   onCancel: () => void;
+  /** Guard incidental dismissal; explicit Cancel retains its existing semantics. */
+  onDismiss: () => void;
   onDelete: () => void;
+  busy: () => boolean;
+  repairPending: () => boolean;
 }): JSX.Element {
   const d = props.draft;
   const markers = createMemo(() => extractMarkers(d().prompt));
@@ -32,7 +36,7 @@ export function TaskEditor(props: {
   // listeners both run), so the confirm closes and this no-ops, matching the
   // pre-shell behaviour.
   const close = (): void => {
-    if (!confirmDelete()) props.onCancel();
+    if (!confirmDelete()) props.onDismiss();
   };
 
   // Agent options keyed by id (the stored identity) with the display label and
@@ -71,8 +75,8 @@ export function TaskEditor(props: {
       title={d().editingSlug ? `Edit ${d().editingSlug}` : 'New task'}
       onClose={close}
     >
-      <section class="tasks-editor">
-        <div class="tasks-editor-scroll">
+      <section class="tasks-editor" aria-busy={props.busy()}>
+        <fieldset class="tasks-editor-scroll" disabled={props.busy()}>
           <label>
             <span>Name</span>
             <input type="text" value={d().name} onInput={(e) => onName(e.currentTarget.value)} />
@@ -201,7 +205,7 @@ export function TaskEditor(props: {
               <For each={markers()}>{(marker) => <MarkerChip marker={marker} />}</For>
             </div>
           </Show>
-        </div>
+        </fieldset>
 
         <ActionBar class="tasks-editor-actions">
           <Show when={d().editingSlug}>
@@ -211,14 +215,27 @@ export function TaskEditor(props: {
               size="sm"
               class="tasks-editor-delete"
               onClick={() => setConfirmDelete(true)}
+              disabled={props.busy() || props.repairPending()}
             >
               Delete
             </Button>
           </Show>
-          <Button type="button" variant="default" size="sm" onClick={props.onCancel}>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={props.onCancel}
+            disabled={props.busy() || props.repairPending()}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="primary" size="sm" onClick={props.onSave}>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={props.onSave}
+            disabled={props.busy()}
+          >
             Save
           </Button>
         </ActionBar>

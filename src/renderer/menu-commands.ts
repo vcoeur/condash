@@ -6,7 +6,6 @@ import type { HelpDoc } from './help-modal';
 export interface MenuRouterDeps {
   conceptionPath: Accessor<string | null>;
   layout: Accessor<LayoutState>;
-  setConceptionPath: (next: string | null) => void;
   setSearchModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setNewProjectOpen: (open: boolean) => void;
@@ -18,7 +17,7 @@ export interface MenuRouterDeps {
   selectWorking: (next: LayoutState['working']) => void;
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
-  showDiagnosticsBand: () => void;
+  openRecent: (path: string) => Promise<void>;
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -66,18 +65,12 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       command === 'show-code' ||
       command === 'show-knowledge' ||
       command === 'show-resources' ||
-      command === 'show-skills' ||
-      command === 'show-automations' ||
-      command === 'show-logs'
+      command === 'show-skills'
     ) {
       // Strip the `show-` prefix: the rest is the WorkingSurface name. Every
       // command is a direct selection — the pane the menu names is the pane
       // that shows, never a toggle (the rail is the complete navigation).
       deps.selectWorking(command.slice('show-'.length) as LayoutState['working']);
-      return;
-    }
-    if (command === 'show-terminal-diagnostics') {
-      deps.showDiagnosticsBand();
       return;
     }
     if (command === 'show-dashboard') {
@@ -102,17 +95,7 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
   onCleanup(offMenu);
 
   const offMenuOpenRecent = window.condash.onMenuOpenRecent((path) => {
-    void window.condash
-      .openConception(path)
-      .then((newPath) => {
-        // Setting the conception path cascades through every store's
-        // `createEffect(conceptionPath)` (projects, knowledge, resources,
-        // skills, repos, config), so no explicit refresh bump is needed.
-        deps.setConceptionPath(newPath);
-      })
-      .catch((err) => {
-        deps.flashToast(`Open failed: ${(err as Error).message}`, 'error');
-      });
+    void deps.openRecent(path);
   });
   onCleanup(offMenuOpenRecent);
 

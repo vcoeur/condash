@@ -1,10 +1,8 @@
 import { For } from 'solid-js';
 import type { WorkingSurface } from '@shared/types';
 import {
-  AutomationsIcon,
   CodeIcon,
   KnowledgeIcon,
-  LogsIcon,
   ProjectsIcon,
   ResourcesIcon,
   SkillsIcon,
@@ -26,8 +24,6 @@ const RAIL_ITEMS: RailItemDef[] = [
   { key: 'knowledge', label: 'Knowledge', shortcut: '', icon: KnowledgeIcon },
   { key: 'resources', label: 'Resources', shortcut: '', icon: ResourcesIcon },
   { key: 'skills', label: 'Skills', shortcut: '', icon: SkillsIcon },
-  { key: 'automations', label: 'Automations', shortcut: '', icon: AutomationsIcon },
-  { key: 'logs', label: 'Logs', shortcut: '', icon: LogsIcon },
   { key: 'terminal', label: 'Terminal', shortcut: '', icon: TerminalIcon },
 ];
 

@@ -191,11 +191,13 @@ export function PerfView(props: PerfViewProps) {
                         cwd, and two tabs opened in one directory render
                         identically under it — which reads as a duplicated row
                         rather than as two tabs. */}
-                    <td class="perf-tab-name">
-                      <span>{session.repo ?? session.cwd ?? session.id}</span>
-                      <Show when={session.repo !== undefined || session.cwd !== undefined}>
-                        <span class="perf-tab-id">{session.id}</span>
-                      </Show>
+                    <td>
+                      <div class="perf-tab-name">
+                        <span>{session.repo ?? session.cwd ?? session.id}</span>
+                        <Show when={session.repo !== undefined || session.cwd !== undefined}>
+                          <span class="perf-tab-id">{session.id}</span>
+                        </Show>
+                      </div>
                     </td>
                     <td class="num">
                       <Show when={session.memBytes !== undefined} fallback="—">

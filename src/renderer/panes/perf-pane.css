@@ -1,11 +1,11 @@
-/* Performance pane — live main-thread vitals plus per-tab memory trajectory.
- * Sits in the left band alongside Projects / Tasks / Deliverables. */
+/* Diagnostics overlay — live main-thread vitals plus per-tab memory trajectory. */
 
 .perf-view {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: 12px;
+  padding: 12px 18px;
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
@@ -13,7 +13,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .perf-header h3 {
@@ -36,7 +36,7 @@
 .perf-toggle.recording {
   border-color: transparent;
   background: var(--accent);
-  color: var(--accent-fg, #fff);
+  color: var(--bg-elevated);
 }
 
 /* Writes are failing — recording is on in name only. Warn rather than reassure. */
@@ -54,8 +54,8 @@
 .perf-vitals {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  gap: var(--space-2);
-  padding: var(--space-2);
+  gap: 8px;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-subtle);
@@ -87,6 +87,7 @@
 .perf-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: var(--text-xs);
 }
 
@@ -95,8 +96,13 @@
   font-weight: 500;
   color: var(--text-muted);
   font-size: var(--text-2xs);
-  padding-bottom: 4px;
+  padding: 0 8px 4px;
   border-bottom: 1px solid var(--border);
+}
+
+.perf-table th:first-child {
+  width: 45%;
+  padding-left: 0;
 }
 
 .perf-table th.num,
@@ -107,8 +113,12 @@
 }
 
 .perf-table td {
-  padding: 4px 0;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+.perf-table td:first-child {
+  padding-left: 0;
 }
 
 /* A throttled row is the one worth noticing: the kernel is reclaiming against
@@ -123,11 +133,12 @@
 .perf-tab-name {
   display: flex;
   align-items: baseline;
-  max-width: 0;
-  width: 100%;
+  min-width: 0;
+  gap: 8px;
 }
 
 .perf-tab-name > span:first-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -137,9 +148,8 @@
    carry the same label, so without this the rows are indistinguishable. Muted
    and shrink-proof: it is a disambiguator, not something to read. */
 .perf-tab-id {
-  margin-left: 0.5em;
   opacity: 0.45;
-  font-size: 0.85em;
+  font-size: var(--text-3xs);
   flex: none;
 }
 

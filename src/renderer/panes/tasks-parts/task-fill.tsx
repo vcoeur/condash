@@ -27,6 +27,8 @@ export function TaskFill(props: {
   projects: () => readonly Project[];
   conceptionPath: () => string | null;
   onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
+  /** Guard closing typed run fields without running them. */
+  onDismiss: () => void;
 }): JSX.Element {
   // Derive markers from the prompt alone, not the whole fill signal. The prompt
   // is immutable during a fill session, so this `prompt` memo's `===` output is
@@ -115,7 +117,7 @@ export function TaskFill(props: {
       class="tasks-fill-modal"
       ariaLabel={`Run ${props.fill().def.name}`}
       title={`Run ${props.fill().def.name}`}
-      onClose={close}
+      onClose={props.onDismiss}
     >
       <section class="tasks-editor tasks-fill">
         {/* Top control row: pick the agent and run, above the variable

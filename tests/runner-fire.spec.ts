@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
 test('Run on a configured repo spawns the run: command and emits its output', async () => {
@@ -44,13 +46,15 @@ test('Run on a configured repo spawns the run: command and emits its output', as
  * tear down.
  */
 async function readPid(window: import('@playwright/test').Page, id: string): Promise<number> {
+  let lastOutput = '';
   for (let attempt = 0; attempt < 50; attempt++) {
     const attached = await window.evaluate((sid) => window.condash.termAttach(sid), id);
-    const match = (attached?.output ?? '').match(/PID:(\d+)/);
+    lastOutput = attached?.output ?? '(session missing)';
+    const match = lastOutput.match(/PID:(\d+)/);
     if (match) return Number(match[1]);
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error('did not see PID line in run output');
+  throw new Error(`did not see PID line in run output: ${JSON.stringify(lastOutput.slice(-1000))}`);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -62,16 +66,24 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-test('termClose tears down the process tree (parity-batch-7 Stop pipeline)', async () => {
-  const booted = await bootApp({
-    extraConfig: {
-      workspace_path: '/tmp',
-      // `exec sleep 30` makes the pid we print *become* the sleep process —
-      // so if the kill only reaches the wrapping bash and not its child,
-      // the test harness will still see this pid alive after termClose.
-      repositories: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
+/** Keep PID expansion in a script, beyond the scope launcher's argv expansion. */
+async function bootPidRun() {
+  return bootApp({
+    prepare: async (root) => {
+      await writeFile(join(root, 'pid-fixture.sh'), 'echo PID:$$\nexec sleep 30\n');
+      await writeFile(
+        join(root, '.condash', 'settings.json'),
+        JSON.stringify({
+          workspace_path: root,
+          repositories: [{ name: '.', run: '/bin/sh ./pid-fixture.sh' }],
+        }),
+      );
     },
   });
+}
+
+test('termClose tears down the process tree (parity-batch-7 Stop pipeline)', async () => {
+  const booted = await bootPidRun();
   try {
     const session = await booted.window.evaluate(() =>
       window.condash.termSpawn({ side: 'code', repo: '.' }),
@@ -98,12 +110,7 @@ test('termClose tears down the process tree (parity-batch-7 Stop pipeline)', asy
 });
 
 test('spawning a second run for the same repo replaces the first', async () => {
-  const booted = await bootApp({
-    extraConfig: {
-      workspace_path: '/tmp',
-      repositories: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
-    },
-  });
+  const booted = await bootPidRun();
   try {
     const first = await booted.window.evaluate(() =>
       window.condash.termSpawn({ side: 'code', repo: '.' }),

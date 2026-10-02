@@ -472,10 +472,7 @@ describe('migrateRawSettings — layout.projectsWidth → layout.projectsSplit',
 });
 
 describe('migrateRawSettings — layout re-map to the rail navigation', () => {
-  // The rail re-map made the left band fixed Projects and the right pane
-  // always-visible: `leftView` has no reader, a hidden band/pane cannot be
-  // expressed, and `automations` / `logs` are valid persisted surfaces again
-  // (so the prototype's `working: 'logs' → 'code'` mapping is gone).
+  // Fixed Projects and four persisted right panes; utilities are transient overlays.
   it('drops the retired leftView key whatever legacy value it carries', () => {
     for (const legacy of ['projects', 'tasks', 'deliverables', 'perf', 'outputs']) {
       const migrated = migrateRawSettings({
@@ -493,14 +490,33 @@ describe('migrateRawSettings — layout re-map to the rail navigation', () => {
     expect((migrated.layout as Record<string, unknown>).projects).toBe(true);
   });
 
-  it('keeps every valid working surface, including the re-added logs + automations', () => {
-    for (const working of ['code', 'knowledge', 'resources', 'skills', 'automations', 'logs']) {
+  it('keeps every valid working surface', () => {
+    for (const working of ['code', 'knowledge', 'resources', 'skills']) {
       const migrated = migrateRawSettings({
         layout: { projects: true, working, terminal: true },
       }) as Record<string, unknown>;
       expect((migrated.layout as Record<string, unknown>).working).toBe(working);
     }
   });
+
+  it.each(['automations', 'logs'])(
+    'migrates %s without changing feature preferences and is idempotent',
+    (working) => {
+      const original = {
+        layout: { projects: true, working, terminal: false, projectsSplit: 0.45 },
+        cardMinWidth: { tasks: 400, logs: 420 },
+        terminal: { logging: { enabled: true }, perf: { enabled: true } },
+        treeExpansion: { knowledge: ['topics'] },
+      };
+      const expected = { ...original, layout: { ...original.layout, working: 'code' } };
+      const migrated = migrateRawSettings(structuredClone(original));
+      expect(migrated).toEqual(expected);
+      expect(migrateRawSettings(structuredClone(migrated))).toEqual(expected);
+      expect(JSON.parse(validateAndCanonicaliseGlobalSettings(JSON.stringify(original)))).toEqual(
+        expected,
+      );
+    },
+  );
 
   it('maps a persisted null (the retired hide state) to the code default', () => {
     const migrated = migrateRawSettings({
@@ -739,7 +755,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     // setLayout
     layout: {
       projects: true,
-      working: 'logs',
+      working: 'knowledge',
       terminal: true,
       projectsSplit: 0.32,
     },

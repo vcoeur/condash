@@ -84,7 +84,7 @@ describe('read-path legacy migration', () => {
     expect(settings.layout?.working).toBe('code');
   });
 
-  it.each(['automations', 'logs', 'knowledge', 'resources', 'skills'])(
+  it.each(['knowledge', 'resources', 'skills'])(
     'keeps working: %s persisted (the rail re-map widened the union)',
     async (leftView) => {
       await fs.writeFile(

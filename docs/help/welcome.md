@@ -16,11 +16,11 @@ that one folder.
 
 ## What you'll see
 
-An **activity rail** runs down the left edge with the complete
-navigation. **Projects** fills the left of the window with your items
+An **activity rail** runs down the left edge with the working panes and
+Terminal toggle. **Projects** fills the left of the window with your items
 as one scrolling stack of status sections (`now`, `review`, `later`,
 `backlog`, `done`, plus a trailing `?` for any other status; drag a
-card to another section to change its status). The other rail items
+card to another section to change its status). The four working rail items
 each select the one right-hand working pane — exactly one is ever
 showing, and your choice is remembered:
 
@@ -35,6 +35,8 @@ showing, and your choice is remembered:
   `/knowledge`, `/pr`, `/applications`, `/visual` — once
   `condash skills install` has run, with a Conception/User segmented
   control for user-scope sources.
+Top-bar utility overlays:
+
 - **Automations** — saved agent prompts you can run on demand or on a
   schedule.
 - **Logs** — the per-session terminal capture viewer. Sessions are a
@@ -42,9 +44,12 @@ showing, and your choice is remembered:
   with virtualised text + case-insensitive search. Turn capture on
   under Settings → Terminal → Logging.
 
-The **View** menu mirrors the rail under **Working pane**, and carries
-**Troubleshooting → Terminal diagnostics** (live per-terminal memory,
-growth rate, and throttle state) alongside the Show Terminal toggle.
+The **View** menu mirrors Code, Knowledge, Resources, and Skills under **Working pane**
+and carries **Show Terminal**. **Automations**, **Logs**, and **Diagnostics** are labelled
+buttons beside Settings in the top bar; they open full-window overlays without changing
+the working pane. Diagnostics shows live per-terminal memory, growth rate, and throttle
+state. `Esc` closes a child dialog before its parent; unsaved automation fields require
+an explicit discard decision when dismissing incidentally or switching conceptions.
 
 Across the bottom:
 

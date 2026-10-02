@@ -1,7 +1,7 @@
 /**
  * Tasks pane e2e — boots the production build against a fixture conception that
- * carries one agent and one task, opens the Tasks pane from its own left
- * rail item (a peer of Projects / Deliverables), verifies the card +
+ * carries one agent and one task, opens the top-bar Automations overlay,
+ * verifies the card +
  * marker chips, then opens the fill view and checks the app picker plus the
  * live preview substitution. Doubles as the manual-verification screenshot
  * source (tests/screenshots-out/tasks/).
@@ -54,7 +54,7 @@ test('tasks pane lists a task and fills its markers', async () => {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
 
-    await sendMenu(booted.app, 'show-automations');
+    await booted.window.getByRole('button', { name: 'Automations', exact: true }).click();
 
     // One card, named, with the parsed marker chips (one app picker, one field).
     const rows = window.locator('.tasks-row');
@@ -120,7 +120,7 @@ test('typing a multi-char value into a param field keeps focus', async () => {
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
-    await sendMenu(booted.app, 'show-automations');
+    await booted.window.getByRole('button', { name: 'Automations', exact: true }).click();
 
     await window.locator('.tasks-row-actions button', { hasText: 'Run…' }).click();
     await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
@@ -174,7 +174,7 @@ test('typing a param value does not change the selected agent', async () => {
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
-    await sendMenu(booted.app, 'show-automations');
+    await booted.window.getByRole('button', { name: 'Automations', exact: true }).click();
 
     await window.locator('.tasks-row-actions button', { hasText: 'Run…' }).click();
     await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
@@ -206,7 +206,7 @@ test('new task editor creates a task end-to-end', async () => {
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
-    await sendMenu(booted.app, 'show-automations');
+    await booted.window.getByRole('button', { name: 'Automations', exact: true }).click();
 
     await window.locator('.tasks-pane-actions button', { hasText: 'New automation' }).click();
     await expect(window.locator('.modal-backdrop .tasks-editor-modal')).toBeVisible();
@@ -237,7 +237,7 @@ test('clicking a card opens the editor; delete is confirmed and removes the task
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
-    await sendMenu(booted.app, 'show-automations');
+    await booted.window.getByRole('button', { name: 'Automations', exact: true }).click();
 
     await expect(window.locator('.tasks-row')).toHaveCount(1);
 

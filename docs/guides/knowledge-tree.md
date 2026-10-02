@@ -75,7 +75,7 @@ Titles come from the first `# Heading` line of the file. If the file has no top-
 
 ## The Knowledge pane
 
-Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, Skills, Automations, and Logs. Open it from the rail's **Knowledge** item (or **View → Working pane → Show Knowledge**) — the selection is persisted, so Knowledge is where you left it on the next launch. (The status bar along the top has no pane switcher.)
+Knowledge is a **right-slot working surface**, sharing that slot with Code, Resources, and Skills. Open it from the rail's **Knowledge** item (or **View → Working pane → Show Knowledge**) — the selection is persisted, so Knowledge is where you left it on the next launch. The top bar launches utility overlays, not working panes.
 
 The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 

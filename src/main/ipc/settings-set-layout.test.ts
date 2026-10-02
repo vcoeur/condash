@@ -86,7 +86,7 @@ describe('setLayout (lazily-imported config-schema seam)', () => {
     // a literal over the union so a new surface cannot silently go untested.
     const { DEFAULT_LAYOUT } = await import('../settings');
     const { drainSettingsQueue } = await import('../settings');
-    const surfaces = ['code', 'knowledge', 'resources', 'skills', 'automations', 'logs'] as const;
+    const surfaces = ['code', 'knowledge', 'resources', 'skills'] as const;
     for (const working of surfaces) {
       await handlers.setLayout(trustedEvent, { ...validLayout, working });
       await drainSettingsQueue();
@@ -98,6 +98,11 @@ describe('setLayout (lazily-imported config-schema seam)', () => {
   });
 
   it('rejects a retired shape: leftView key or a hidden working pane', async () => {
+    for (const working of ['automations', 'logs']) {
+      await expect(handlers.setLayout(trustedEvent, { ...validLayout, working })).rejects.toThrow(
+        /setLayout/,
+      );
+    }
     // The strict schema is the migration backstop: a layout carrying the
     // retired `leftView` key, or `working: null` (the retired hide state), is
     // rejected at the IPC boundary rather than persisted. migrateRawSettings

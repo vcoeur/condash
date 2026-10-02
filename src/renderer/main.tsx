@@ -6,12 +6,10 @@ import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
 import { ProjectsView } from './panes/projects';
-import { TasksView } from './panes/tasks';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
-import { LogsView } from './panes/logs';
 import { usableActionTemplates, type Section } from './settings-modal-parts/data';
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
@@ -83,6 +81,15 @@ function App() {
   const { uiFonts, handleUiFontsChange } = useUiFonts();
 
   const {
+    activeModal,
+    setActiveModal,
+    focusReturnTarget,
+    focusReturnPending,
+    requestFocusReturn,
+    clearFocusReturn,
+    registerLeaveGuard,
+    withConceptionChange,
+    transitionPending,
     modal,
     setModal,
     previewPath,
@@ -124,7 +131,34 @@ function App() {
   } = useModals();
 
   // A search-open request belongs to its original conception, not a later Logs mount.
-  createEffect(on(conceptionPath, () => setLogsOpenRequest(null), { defer: true }));
+  createEffect(
+    on(
+      conceptionPath,
+      () => {
+        setLogsOpenRequest(null);
+        if (['automations', 'logs', 'diagnostics', 'search'].includes(activeModal()?.kind ?? ''))
+          setActiveModal(null);
+      },
+      { defer: true },
+    ),
+  );
+
+  createEffect(() => {
+    if (!focusReturnPending()) return;
+    if (activeModal() !== null) {
+      clearFocusReturn();
+      return;
+    }
+    if (transitionPending()) return;
+    const target = focusReturnTarget();
+    if (!target?.isConnected) {
+      clearFocusReturn();
+      return;
+    }
+    if (target.matches(':disabled')) return;
+    target.focus();
+    clearFocusReturn();
+  });
 
   // --- Layout (toggle helpers + splitter drag) --------------------------
   const {
@@ -141,9 +175,7 @@ function App() {
   // Bottom-band body selector. The strip's Terminal / Dashboard handles switch
   // which body shows when the pane is open; re-selecting the active band's
   // handle closes the pane. Ephemeral per-session UI state (not persisted).
-  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard' | 'diagnostics'>(
-    'terminal',
-  );
+  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard'>('terminal');
   const selectBottomBand = (view: 'terminal' | 'dashboard'): void => {
     if (layout().terminal && bottomView() === view) {
       toggleTerminal();
@@ -474,7 +506,8 @@ function App() {
   });
 
   // --- Conception lifecycle (pick / refresh / init / quit) --------------
-  const { handleRefresh, handlePick, runInit, handleConfirmQuit } = useConception({
+  const { handleRefresh, handlePick, openRecent, runInit, handleConfirmQuit } = useConception({
+    withConceptionChange,
     conceptionPath,
     setConceptionPath,
     knowledgeStore,
@@ -502,9 +535,9 @@ function App() {
     setShortcutsOpen,
   });
   createMenuRouter({
+    openRecent,
     conceptionPath,
     layout,
-    setConceptionPath,
     setSearchModalOpen,
     setSettingsOpen,
     setNewProjectOpen,
@@ -514,10 +547,6 @@ function App() {
     toggleTerminal,
     selectWorking,
     toggleDashboardBand: () => selectBottomBand('dashboard'),
-    showDiagnosticsBand: () => {
-      setBottomView('diagnostics');
-      ensureTerminalOpen();
-    },
     handleRefresh: () => handleRefresh(),
     handlePick: () => handlePick(),
     flashToast,
@@ -578,6 +607,31 @@ function App() {
           <button
             type="button"
             class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'automations' }, event.currentTarget)}
+          >
+            Automations
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'logs' }, event.currentTarget)}
+          >
+            Logs
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'diagnostics' }, event.currentTarget)}
+          >
+            Diagnostics
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
             onClick={() => setSettingsOpen(true)}
             title="Settings"
           >
@@ -709,17 +763,6 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'logs'}>
-                  <section class="pane pane-working">
-                    {/* A conception switch replaces the list, lazy-day cache, and open viewer together. */}
-                    <Show when={conceptionPath()} keyed>
-                      {(_path) => (
-                        <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
-                      )}
-                    </Show>
-                  </section>
-                </Show>
-
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
@@ -800,23 +843,6 @@ function App() {
                     </Show>
                   </section>
                 </Show>
-                <Show when={layout().working === 'automations'}>
-                  <section class="pane pane-working">
-                    <TasksView
-                      tasks={tasks}
-                      reload={() => void reloadTasks()}
-                      hasConception={() => conceptionPath() !== null}
-                      conceptionPath={conceptionPath}
-                      agents={agents}
-                      projects={() => projects() ?? []}
-                      apps={appOptions}
-                      flashToast={flashToast}
-                      onRun={(agentId, text, taskName, opts) =>
-                        void bridge.runTask(agentId, text, taskName, opts)
-                      }
-                    />
-                  </section>
-                </Show>
               </div>
             </Show>
           </Show>
@@ -840,7 +866,6 @@ function App() {
           setBottomView('terminal');
           ensureTerminalOpen();
         }}
-        sessions={allSessions}
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
@@ -851,6 +876,17 @@ function App() {
       />
 
       <ModalHost
+        activeModal={activeModal}
+        setActiveModal={setActiveModal}
+        requestFocusReturn={requestFocusReturn}
+        registerLeaveGuard={registerLeaveGuard}
+        tasks={tasks}
+        reloadTasks={() => void reloadTasks()}
+        agents={agents}
+        apps={appOptions}
+        allSessions={allSessions}
+        logsOpenRequest={logsOpenRequest}
+        logsRefreshTick={logsRefreshTick}
         previewProject={previewProject}
         projects={() => projects() ?? []}
         handleOpenProject={handleOpenProject}
@@ -895,7 +931,7 @@ function App() {
         setSearchModalOpen={setSearchModalOpen}
         setLogsOpenRequest={setLogsOpenRequest}
         nextLogsOpenNonce={nextLogsOpenNonce}
-        showSessionLogs={() => selectWorking('logs')}
+        showSessionLogs={() => setActiveModal({ kind: 'logs' })}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
         settingsSection={settingsSection}

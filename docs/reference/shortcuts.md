@@ -27,21 +27,20 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | Menu | Item | Shortcut | What it does |
 |---|---|---|---|
 | File | Open… | `Ctrl+O` / `Cmd+O` | Reopen the conception folder picker. |
-| File | Open Recent ▸ | — | Submenu of the last five conception paths, plus **Clear menu**. Picking one switches the active conception immediately. |
+| File | Open Recent ▸ | — | Submenu of the last five conception paths, plus **Clear menu**. Picking one switches conception after any automation discard decision. |
 | File | Open conception directory | — | Reveal the current conception in the OS file manager. |
 | File | Settings | `Ctrl+,` / `Cmd+,` | Open the Settings modal. |
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
 | File | New project… | `Ctrl+N` / `Cmd+N` | Open the new-project modal. |
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
 | View ▸ Working pane | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Select Code as the working pane (same direct selection as the rail click). |
-| View ▸ Working pane | Show Knowledge / Resources / Skills / Automations / Logs | — | Select that pane as the working pane. Exactly one is ever checked, and the choice is persisted. |
-| View | Troubleshooting ▸ | — | **Terminal diagnostics** — PerfView in the bottom band. |
-| View ▸ Core | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
+| View ▸ Working pane | Show Knowledge / Resources / Skills | — | Select that pane as the working pane. Exactly one is ever checked, and the choice is persisted. |
+| View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). |
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
-The View items round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items. Selecting a working pane persists it; the Terminal toggle and Terminal diagnostics (a bottom-band body swap) do not move the pane selection.
+The View items round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items. Selecting a working pane persists it; the Terminal toggle does not move the pane selection. Automations, Logs, and Diagnostics have no native View launcher: use their labelled top-bar buttons beside Settings.
 
 ### OS-default menu items
 
@@ -56,7 +55,7 @@ The Edit-menu roles act on whatever the OS considers focused. They are **not** t
 
 ### The activity rail
 
-The rail is the complete navigation: **Projects** (the left band, always visible), then **Code** (`Ctrl+Shift+C`), **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs** across the right working slot. Clicking an item selects it directly — exactly one working pane is ever showing, and the choice is persisted. There is no close-first step and no hide state.
+The rail contains **Projects** (the left band, always visible), then **Code** (`Ctrl+Shift+C`), **Knowledge**, **Resources**, and **Skills** across the right working slot, plus the **Terminal** bottom-band toggle. Clicking a working item selects it directly — exactly one working pane is showing, and the choice is persisted. There is no close-first step and no hide state. **Automations**, **Logs**, and **Diagnostics** open full-window overlays from the top bar; **Back** or `Esc` returns to the unchanged working pane, with child-first dismissal and a discard decision for dirty automation fields.
 
 ## Dashboard global
 
@@ -156,7 +155,7 @@ These live inside xterm's `attachCustomKeyEventHandler` and only fire while a te
 
 Copy writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. Paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), because `navigator.clipboard.readText()` is permission-gated and unreliable in the renderer. There is no HTTP endpoint.
 
-**There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Core → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
+**There is no `Ctrl+Shift+C` "always copy".** The xterm handler requires `!shiftKey`, and the accelerator belongs to **View → Working pane → Show Code**, which wins globally. Use `Ctrl+C` with a selection — it copies and clears the selection, and only falls through to `SIGINT` when nothing is selected.
 
 **`Ctrl+Left` / `Ctrl+Right` are not intercepted here either.** The move-tab shortcuts live in the pane-level (global) handler above, which yields to anything inside `.xterm-host` — so while a terminal tab has focus they fall through to the shell, where word-wise cursor motion keeps working, and they move a tab only when focus is elsewhere in the app. See [Input focus rules](#input-focus-rules) below and [using the embedded terminal](../guides/terminal.md#power-user-shortcuts).
 

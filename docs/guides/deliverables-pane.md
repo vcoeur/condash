@@ -45,4 +45,4 @@ When no project links a deliverable, the pane shows a one-line pointer: link art
 
 - **[Deliverables and PDFs](deliverables.md)** — the `## Deliverables` syntax, accepted item types, and how each opens.
 - **[The Resources pane](resources-pane.md)** — the conception-global file browser (right slot), distinct from this per-project aggregation.
-- **[Automations (tasks)](tasks-pane.md)** — the current rail surface for reusable prompts; **[Terminal diagnostics](performance-pane.md)** — performance readings under **View → Troubleshooting**.
+- **[Automations (tasks)](tasks-pane.md)** — the top-bar overlay for reusable prompts; **[Terminal diagnostics](performance-pane.md)** — performance readings from the top-bar **Diagnostics** button.

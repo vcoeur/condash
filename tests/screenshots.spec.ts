@@ -186,6 +186,8 @@ const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'resources-pane', minBytes: 150_000 },
   { slug: 'skills-pane', minBytes: 150_000 },
   { slug: 'tasks-pane', minBytes: 100_000 },
+  { slug: 'logs-overlay', minBytes: 30_000 },
+  { slug: 'diagnostics-overlay', minBytes: 30_000 },
   { slug: 'settings-modal', minBytes: 150_000 },
 ];
 
@@ -302,6 +304,28 @@ async function boot(theme: Theme): Promise<Booted> {
   await writeFile(conceptionConfigPath, JSON.stringify(conceptionConfig, null, 2) + '\n', 'utf8');
   await seedWorkspace(workspacePath);
   await seedDemoShell();
+  const now = new Date();
+  const logDay = [
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ];
+  const logDir = join(conceptionDir, '.condash', 'logs', ...logDay);
+  await mkdir(logDir, { recursive: true });
+  await writeFile(
+    join(logDir, '091203-t-demo.txt'),
+    '# condash: ' +
+      JSON.stringify({
+        sid: 't-demo',
+        side: 'my',
+        cwd: conceptionDir,
+        cmd: 'helio',
+        argv: ['search'],
+        started: now.toISOString(),
+        kind: 'transcript',
+      }) +
+      '\n3 hits · first hit 0.14 s\n',
+  );
 
   await mkdir(join(userDataDir, 'condash'), { recursive: true });
   // Layout: projects + code visible at 50/50 (798px each + 4px splitter on
@@ -779,7 +803,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await requireContent(page, 'activity-rail', {
         root: '.rail',
         items: '.rail-item',
-        minItems: 7,
+        minItems: 6,
       });
       const rail = await page.locator('.rail').first().boundingBox();
       const lastItem = await page.locator('.rail-item').last().boundingBox();
@@ -1032,19 +1056,40 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await shoot(page, theme, 'status-unknown-badge');
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    // 14. tasks-pane — the Automations surface (a rail item now, persisted).
-    //     The fixture ships two `tasks/<slug>/{task.json,prompt.md}`
+    // 14. tasks-pane — the full-window Automations overlay.
+    //     The fixture ships six `tasks/<slug>/{task.json,prompt.md}`
     //     directories whose `agent` ids resolve against the seeded agents
     //     list, so Run… is enabled.
-    await sendMenu(b.app, 'show-automations');
+    await page.getByRole('button', { name: 'Automations', exact: true }).click();
     await settle(page, 500);
     await parkPointer(page);
     await requireContent(page, 'tasks-pane', {
       root: '.tasks-pane',
       items: '.tasks-row',
-      minItems: 2,
+      minItems: 6,
     });
     await shoot(page, theme, 'tasks-pane');
+    await page.locator('.surface-back').click();
+
+    await page.getByRole('button', { name: 'Logs', exact: true }).click();
+    await requireContent(page, 'logs-overlay', {
+      root: '.logs-pane',
+      items: '.logs-session-card',
+      minItems: 1,
+    });
+    await parkPointer(page);
+    await shoot(page, theme, 'logs-overlay');
+    await page.locator('.surface-back').click();
+
+    await page.getByRole('button', { name: 'Diagnostics', exact: true }).click();
+    await requireContent(page, 'diagnostics-overlay', {
+      root: '.perf-view',
+      items: '.perf-vital',
+      minItems: 4,
+    });
+    await parkPointer(page);
+    await shoot(page, theme, 'diagnostics-overlay');
+    await page.locator('.surface-back').click();
 
     // 15. settings-modal — opened, never saved.
     await sendMenu(b.app, 'open-settings');

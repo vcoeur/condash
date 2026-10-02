@@ -17,7 +17,7 @@ Each guide answers one specific question.
 
 **The panes**
 
-The activity rail is the complete navigation: **Projects** (the fixed left band), a **Terminal** toggle for the bottom band, and the right working slot's **Code**, **Knowledge**, **Resources**, **Skills**, **Automations**, and **Logs**. A working-surface rail click selects it directly and the choice is persisted — no close-first step, no hide state. The View menu mirrors the working surfaces under **Working pane** and includes the Terminal toggle; **Terminal diagnostics** remains under **View → Troubleshooting**.
+The activity rail carries **Projects** (the fixed left band), a **Terminal** toggle for the bottom band, and the right working slot's **Code**, **Knowledge**, **Resources**, and **Skills**. A working-pane click selects it directly and the choice is persisted — no close-first step, no hide state. The View menu mirrors these four working panes and includes the Terminal toggle. **Automations**, **Logs**, and **Diagnostics** are labelled top-bar buttons beside Settings; each opens a session-only full-window overlay, not a rail or native View route.
 
 - **[The Projects pane](projects-pane.md)** — the status stack, changing status, creating items, closing and reopening.
 - **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.

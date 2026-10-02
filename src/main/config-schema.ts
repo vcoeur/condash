@@ -386,7 +386,7 @@ export const layoutSchema = z
     // shared/types/layout.ts. An unlisted surface would not just fail one
     // save: updateLayout spreads the persisted layout into every later write,
     // so ONE stale value breaks every subsequent layout save too.
-    working: z.enum(['code', 'knowledge', 'resources', 'skills', 'automations', 'logs']),
+    working: z.enum(['code', 'knowledge', 'resources', 'skills']),
     terminal: z.boolean(),
     /** Splitter position as a fraction of the band width. The bounds are loose
      *  on purpose — the renderer's px clamp is the real constraint, and a

@@ -9,23 +9,23 @@
 
 /** The persisted working surface. The rail selects exactly one right-pane
  * surface at a time and the choice survives a restart; the full working union
- * is Code, Knowledge, Resources, Skills, Automations, and Logs. `null` is not
+ * is Code, Knowledge, Resources, and Skills. `null` is not
  * part of the type — the right pane is always showing something (the rail is
  * the complete navigation; there is no "hide the working surface" state). (The
  * Dashboard is not a working surface — it lives in the bottom band next to
  * Terminal.) */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'automations' | 'logs';
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills';
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, always visible; the working surface on the right, exactly one of
- * the six rail-selected surfaces) and a bottom band (Terminal). Sizes are
+ * the four rail-selected surfaces) and a bottom band (Terminal). Sizes are
  * persisted alongside visibility so re-showing the terminal restores its
  * previous dimensions. */
 export interface LayoutState {
   /** Always `true` — the left band is fixed Projects. Kept so a legacy
    * persisted layout keeps parsing; no writer ever sets it `false`. */
   projects: boolean;
-  /** Code / Knowledge / Resources / Skills / Automations / Logs — single
+  /** Code / Knowledge / Resources / Skills — single
    * right-slot surface, chosen directly by rail click and persisted. */
   working: WorkingSurface;
   terminal: boolean;

@@ -577,8 +577,8 @@ export function TerminalFields(props: {
           renders — to <code>.condash/perf/</code> as JSONL, one record every 2.5 s. Off by default;
           while off the instrumentation is inert and an ordinary run pays nothing. Records older
           than 14 days are pruned automatically, as are the oldest files whenever the directory
-          exceeds 200 MB — copy anything you need to keep. The same toggle sits in the{' '}
-          <strong>Performance</strong> pane, next to the figures it feeds.
+          exceeds 200 MB — copy anything you need to keep. The same toggle sits in the top-bar{' '}
+          <strong>Diagnostics</strong> overlay, next to the figures it feeds.
         </p>
         <div class="settings-grid">
           <label class="settings-checkbox">

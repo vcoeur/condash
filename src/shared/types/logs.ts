@@ -52,6 +52,8 @@ export interface TermLogSessionRead {
  * (future scroll-to-line); the search box is left as the user typed. */
 export interface LogsOpenRequest {
   path: string;
+  /** Renderer activation belongs to this conception; main still derives its own root. */
+  conceptionPath: string;
   /** Identity nonce so the same path activated twice in a row still
    * fires the reaction effect. */
   nonce: number;

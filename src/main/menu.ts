@@ -156,18 +156,6 @@ export function buildMenu(
           checked: layout.working === 'skills',
           click: () => send('show-skills'),
         },
-        {
-          label: 'Show Automations',
-          type: 'checkbox',
-          checked: layout.working === 'automations',
-          click: () => send('show-automations'),
-        },
-        {
-          label: 'Show Logs',
-          type: 'checkbox',
-          checked: layout.working === 'logs',
-          click: () => send('show-logs'),
-        },
       ],
     },
     {
@@ -175,10 +163,6 @@ export function buildMenu(
       type: 'checkbox',
       checked: layout.terminal,
       click: () => send('toggle-terminal'),
-    },
-    {
-      label: 'Troubleshooting',
-      submenu: [{ label: 'Terminal diagnostics', click: () => send('show-terminal-diagnostics') }],
     },
     { type: 'separator' },
     {

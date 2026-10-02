@@ -52,7 +52,19 @@ export interface ModalProps {
  * with a richer head or Esc contract (note, settings) keep their own layout.
  */
 export function Modal(props: ModalProps): JSX.Element {
-  useModalEscHandler(() => props.onClose());
+  let panel!: HTMLDivElement;
+  useModalEscHandler(
+    () => props.onClose(),
+    () => {
+      const surface = panel.closest('.surface-overlay');
+      if (!surface) return true;
+      return (
+        [...surface.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')]
+          .filter((dialog) => dialog.getClientRects().length > 0)
+          .at(-1) === panel
+      );
+    },
+  );
   const backdrop = createBackdropClose(() => props.onClose());
 
   return (
@@ -63,6 +75,7 @@ export function Modal(props: ModalProps): JSX.Element {
       onClick={backdrop.onClick}
     >
       <div
+        ref={panel}
         class={`modal ${props.class}`}
         role={props.role ?? 'dialog'}
         aria-modal="true"

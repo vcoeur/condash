@@ -135,7 +135,7 @@ xterm.js renders a lot of cells on every paint. Two knobs help:
 
 Both keys live under `terminal.xterm` in the **per-machine** `settings.json` — `terminal` is a global-only key, so there is one copy shared by every conception. The Settings modal's **Terminal** section edits them live; the modal has no tabs, just a scrolling surface with a section rail.
 
-If that doesn't account for it, measure rather than guess. Open **Terminal diagnostics** (**View → Troubleshooting → Terminal diagnostics**, in the bottom band): per-tab memory, growth rate, and throttle state are always live, and pressing **Record** adds main-process event-loop delay — the most direct measure of UI stalls, since main is a single thread shared by every tab as well as git status, file watching, and all IPC. Records land in `<conception>/.condash/perf/`.
+If that doesn't account for it, measure rather than guess. Open the top-bar **Diagnostics** full-window overlay: per-tab memory, growth rate, and throttle state are always live, and pressing **Record** adds main-process event-loop delay — the most direct measure of UI stalls, since main is a single thread shared by every tab as well as git status, file watching, and all IPC. Records land in `<conception>/.condash/perf/`.
 
 Disk logging (`terminal.logging.enabled`) is worth checking specifically: when it's on, the main process runs a second full ANSI parse of every byte, duplicating work the renderer already does. Turning it off is a quick A/B.
 
@@ -153,7 +153,7 @@ The verdicts that matter:
 
 The same verdict is written into the session's log footer under `.condash/logs/`, so a tab that died while you were away can still be diagnosed after the fact.
 
-To catch the second case before it kills anything, watch **Terminal diagnostics** (**View → Troubleshooting**): a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
+To catch the second case before it kills anything, watch **Terminal diagnostics** (the top-bar **Diagnostics** button): a tab marked **throttled** is one the kernel is actively reclaiming against, and that is the state tabs die in.
 
 ### If every tab shows the same memory figure
 

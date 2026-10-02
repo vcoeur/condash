@@ -15,7 +15,7 @@ The embedded terminal is a real PTY driven by `node-pty` in the main process and
 
 Two ways:
 
-- **View → Show Terminal** toggles the pane in the menu bar; **View → Troubleshooting → Terminal diagnostics** swaps the band to diagnostics.
+- **View → Show Terminal** toggles the pane in the menu bar; the top-bar **Diagnostics** button opens Terminal diagnostics in a separate in-renderer full-window overlay without disposing these tabs.
 - Press the configured toggle shortcut. Default is `` Ctrl+` ``; change it under `terminal.shortcut` in `settings.json`.
 
 ![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-light.png#only-light)
@@ -23,7 +23,7 @@ Two ways:
 
 The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact. Code-pane Run buttons no longer auto-open the pane — output stays in the per-row CodeRunRow inside the Code pane.
 
-**Auto-collapse under modals.** Opening a document or full-screen overlay — a note, project preview, PDF / HTML / image / plan viewer, or the search / settings / shortcuts / help / about panels — auto-collapses the pane so the modal takes the full window height, and re-opens it when you close the last one. Toggle the pane yourself (the shortcut, the strip handle, or **View → Core → Show Terminal**) while a modal is open to keep it visible — your choice stands until that modal closes, after which the next one collapses it again. A project preview reopened over the terminal remains inside the upper workspace and scrolls its details when that workspace is short. Small confirmation dialogs (quit, force-stop) leave the pane alone. The collapse is display-only: your saved Show-Terminal preference in `settings.json` is never overwritten.
+**Auto-collapse under modals.** Opening a document or full-screen overlay — a note, project preview, PDF / HTML / image / plan viewer, or the search / settings / automations / logs / diagnostics / shortcuts / help / about panels — auto-collapses the pane so the modal takes the full window height, and re-opens it when you close the last one. Toggle the pane yourself (the shortcut, the strip handle, or **View → Show Terminal**) while a modal is open to override the collapse mask — your choice stands until that modal closes, after which the next one collapses it again. Full-window utility overlays still cover the whole window. A project preview reopened over the terminal remains inside the upper workspace and scrolls its details when that workspace is short. Small confirmation dialogs (quit, force-stop) leave the pane alone. The collapse is display-only: your saved Show-Terminal preference in `settings.json` is never overwritten.
 
 ## Single-column by default; drag to split
 
@@ -201,7 +201,7 @@ Plus six nested blocks:
 | `terminal.xterm` | Typography, cursor, scrollback depth, ligatures, the ANSI palette — [reference](../reference/config.md#terminalxterm). |
 | `terminal.logging` | Session capture: on/off, retention, directory cap, marker cadence — [Session logging](#session-logging) below. |
 | `terminal.memory` | Per-tab `MemoryHigh` / `MemoryMax` / swap caps, plus an `appScope` set for condash itself — [reference](../reference/config.md#terminal-memory). |
-| `terminal.perf` | Main-process performance recording — [The Performance pane](performance-pane.md). |
+| `terminal.perf` | Main-process performance recording — [Diagnostics](performance-pane.md). |
 | `terminal.projectActions` | Per-project action buttons, each able to link the tab it fires in — [reference](../reference/config.md#terminalprojectactions). |
 | `terminal.newProjectActions` | Actions offered when a project is created — [reference](../reference/config.md#terminalnewprojectactions). |
 
@@ -259,7 +259,7 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 ### Browsing logs
 
-The rail's **Logs** item (or **View → Working pane → Show Logs**) opens the Logs surface — sessions grouped by day, a virtualised viewer with search, and a **Task runs** switch for the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store. Logs are also a source of the global search modal, scanned only when you pick the **Logs** filter pill.
+The top-bar **Logs** button opens its full-window overlay — sessions grouped by day, a virtualised viewer with search, and a **Task runs** switch for the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store. Logs are also a source of the global search modal, scanned only when you pick the **Logs** filter pill.
 
 **→ Full walkthrough: [The Logs pane](logs-pane.md).**
 

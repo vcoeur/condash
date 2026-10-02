@@ -4,6 +4,7 @@ import type { createTreeStore } from '../tree-store';
 export interface UseConceptionDeps {
   conceptionPath: () => string | null;
   setConceptionPath: (next: string | null) => void;
+  withConceptionChange: (change: () => Promise<void>) => Promise<boolean>;
   knowledgeStore: { reload: () => Promise<void> };
   resourcesStore: { reload: () => Promise<void> };
   skillsStore: ReturnType<typeof createTreeStore<SkillNode>>;
@@ -38,6 +39,7 @@ export interface UseConception {
    *  reposStore's createEffect only fires on conception-path change. */
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
+  openRecent: (path: string) => Promise<void>;
   runInit: (path: string) => Promise<void>;
   /** The quit confirmation (a ConfirmModal) already surfaces the noteDirty
    *  warning inline, so by the time the user clicks Quit they've accepted
@@ -84,15 +86,37 @@ export function useConception(deps: UseConceptionDeps): UseConception {
     }
   };
 
+  const changeConception = async (select: () => Promise<string | null>): Promise<string | null> => {
+    let picked: string | null = null;
+    try {
+      await deps.withConceptionChange(async () => {
+        try {
+          picked = await select();
+        } catch (error) {
+          // Main may already have committed its trust root before a later
+          // setup step failed. Reconcile before releasing transition ownership.
+          deps.setConceptionPath(await window.condash.getConceptionPath().catch(() => null));
+          throw error;
+        }
+        if (!picked) return;
+        const prior = deps.conceptionPath();
+        deps.setConceptionPath(picked);
+        if (prior === picked) void reloadAll();
+      });
+      return picked;
+    } catch (error) {
+      deps.flashToast(`Open failed: ${(error as Error).message}`, 'error');
+      return null;
+    }
+  };
+
+  const openRecent = async (path: string): Promise<void> => {
+    await changeConception(() => window.condash.openConception(path));
+  };
+
   const handlePick = async (): Promise<void> => {
-    const picked = await window.condash.pickConceptionPath();
+    const picked = await changeConception(() => window.condash.pickConceptionPath());
     if (!picked) return;
-    const prior = deps.conceptionPath();
-    deps.setConceptionPath(picked);
-    // Picking the same path is a "refresh me" gesture — the per-store
-    // createEffect only fires on actual change, so fan out a full reload
-    // to honour that.
-    if (prior === picked) void reloadAll();
 
     // Surface the bundled-template init when the picked folder lacks the
     // conception markers (projects/ + a condash config file). Init never overwrites
@@ -101,6 +125,7 @@ export function useConception(deps: UseConceptionDeps): UseConception {
     // keyboard handling matches the rest of the app).
     try {
       const state = await window.condash.detectConceptionState(picked);
+      if (deps.conceptionPath() !== picked) return;
       if (state.pathExists && !state.looksInitialised) {
         const missing: string[] = [];
         if (!state.hasProjects) missing.push('projects/');
@@ -116,5 +141,5 @@ export function useConception(deps: UseConceptionDeps): UseConception {
     void window.condash.quitApp();
   };
 
-  return { reloadAll, handleRefresh, handlePick, runInit, handleConfirmQuit };
+  return { reloadAll, handleRefresh, handlePick, openRecent, runInit, handleConfirmQuit };
 }

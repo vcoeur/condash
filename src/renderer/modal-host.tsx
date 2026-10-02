@@ -6,8 +6,14 @@
 // (signal accessor, setter, handler, or sub-controller object) passed straight
 // through from App, so the modals render exactly when and how they did inline.
 
-import { createEffect, Show } from 'solid-js';
-import type { ActionTemplate, Deliverable, Project } from '@shared/types';
+import { createEffect, createSignal, Show } from 'solid-js';
+import type { ActionTemplate, Agent, Deliverable, Project, TermSession } from '@shared/types';
+import type { TaskListItem } from '@shared/tasks';
+import type { AppOption } from './panes/tasks-parts/data';
+import { TasksView } from './panes/tasks';
+import { LogsView } from './panes/logs';
+import { PerfView } from './panes/perf-view';
+import { SurfaceOverlay } from './surface-overlay';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { PdfModal } from './pdf-modal';
@@ -40,6 +46,17 @@ import type { UsePromptModal } from './hooks/use-prompt-modal';
  *  handlers the modal tree reads, passed through verbatim from App. Field types
  *  reuse the owning hook / store interfaces so the surface stays exact. */
 export interface ModalHostProps {
+  activeModal: UseModals['activeModal'];
+  setActiveModal: UseModals['setActiveModal'];
+  requestFocusReturn: UseModals['requestFocusReturn'];
+  registerLeaveGuard: UseModals['registerLeaveGuard'];
+  tasks: () => readonly TaskListItem[];
+  reloadTasks: () => void;
+  agents: () => readonly Agent[];
+  apps: () => readonly AppOption[];
+  allSessions: () => readonly TermSession[];
+  logsOpenRequest: UseModals['logsOpenRequest'];
+  logsRefreshTick: () => number;
   // --- Project preview (always mounted) + its row callbacks ---
   previewProject: () => Project | null;
   /** Full project list — the preview resolves parent + subprojects from it. */
@@ -131,6 +148,15 @@ export interface ModalHostProps {
  *  on its own `Show` (or always-on for the preview / prompt) exactly as it was
  *  inline in App. */
 export function ModalHost(props: ModalHostProps) {
+  const [surfaceChildOpen, setSurfaceChildOpen] = createSignal(false);
+  const surfaceKind = () => {
+    const kind = props.activeModal()?.kind;
+    return kind === 'automations' || kind === 'logs' || kind === 'diagnostics' ? kind : null;
+  };
+  createEffect(() => {
+    surfaceKind();
+    setSurfaceChildOpen(false);
+  });
   const {
     previewProject,
     projects,
@@ -331,10 +357,62 @@ export function ModalHost(props: ModalHostProps) {
             // Open the Logs pane and post an open-request the pane reacts
             // to. Nonce bumps every time so reactivating the same path
             // still fires the createEffect.
-            setLogsOpenRequest({ path, nonce: nextLogsOpenNonce() });
+            setSearchModalOpen(false);
+            setLogsOpenRequest({
+              path,
+              conceptionPath: conceptionPath()!,
+              nonce: nextLogsOpenNonce(),
+            });
             showSessionLogs();
           }}
         />
+      </Show>
+
+      <Show when={surfaceKind()} keyed>
+        {(kind) => (
+          <Show when={conceptionPath()} keyed>
+            {(_path) => (
+              <SurfaceOverlay
+                title={
+                  kind === 'automations' ? 'Automations' : kind === 'logs' ? 'Logs' : 'Diagnostics'
+                }
+                childOpen={surfaceChildOpen}
+                onFocusReturn={props.requestFocusReturn}
+                onClose={() => props.setActiveModal(null)}
+              >
+                <Show when={kind === 'automations'}>
+                  <TasksView
+                    tasks={props.tasks}
+                    reload={props.reloadTasks}
+                    hasConception={() => !!conceptionPath()}
+                    conceptionPath={conceptionPath}
+                    agents={props.agents}
+                    projects={projects}
+                    apps={props.apps}
+                    flashToast={flashToast}
+                    onChildOpen={setSurfaceChildOpen}
+                    registerLeaveGuard={props.registerLeaveGuard}
+                    onRun={(agentId, text, taskName, opts) =>
+                      void bridge.runTask(agentId, text, taskName, opts)
+                    }
+                  />
+                </Show>
+                <Show when={kind === 'logs'}>
+                  <LogsView
+                    conceptionPath={conceptionPath}
+                    openRequest={props.logsOpenRequest}
+                    refreshSignal={props.logsRefreshTick}
+                    onRequestConsumed={() => setLogsOpenRequest(null)}
+                    onChildOpen={setSurfaceChildOpen}
+                  />
+                </Show>
+                <Show when={kind === 'diagnostics'}>
+                  <PerfView sessions={props.allSessions} title="Terminal diagnostics" />
+                </Show>
+              </SurfaceOverlay>
+            )}
+          </Show>
+        )}
       </Show>
 
       <Show when={settingsOpen() && conceptionPath()}>

@@ -37,6 +37,46 @@ function readConception(): Record<string, unknown> {
 }
 
 describe('partitionSettingsScopes', () => {
+  it.each(['automations', 'logs'])(
+    'shape-migrates misplaced %s layout before moving or owner-wins merging',
+    async (working) => {
+      const misplaced = { projects: true, working, terminal: false, projectsSplit: 0.47 };
+      const taskConfig = { review: { schedule: '5m' } };
+      writeGlobal({ terminal: { logging: { enabled: true }, perf: { enabled: true } } });
+      writeConception({ layout: misplaced, taskConfig });
+      await partitionSettingsScopes(tmp, globalFile);
+      expect(readGlobal().layout).toEqual({ ...misplaced, working: 'code' });
+      expect(readConception()).toEqual({ taskConfig });
+
+      writeGlobal({
+        layout: { projects: true, working: 'knowledge', terminal: true, projectsSplit: 0.41 },
+      });
+      writeConception({ layout: misplaced, taskConfig });
+      await partitionSettingsScopes(tmp, globalFile);
+      expect(readGlobal().layout).toEqual({
+        projects: true,
+        working: 'knowledge',
+        terminal: true,
+        projectsSplit: 0.41,
+      });
+      expect(readConception()).toEqual({ taskConfig });
+      const once = readGlobal();
+      await partitionSettingsScopes(tmp, globalFile);
+      expect(readGlobal()).toEqual(once);
+
+      // Shape normalization fills owner working/split before incoming leaves merge.
+      writeGlobal({ layout: { terminal: true } });
+      writeConception({ layout: misplaced, taskConfig });
+      await partitionSettingsScopes(tmp, globalFile);
+      expect(readGlobal().layout).toEqual({
+        projects: true,
+        working: 'code',
+        terminal: true,
+        projectsSplit: 0.32,
+      });
+      expect(readConception()).toEqual({ taskConfig });
+    },
+  );
   it('(a) lifts a global key sitting in the conception file up to the global file', async () => {
     writeGlobal({});
     writeConception({ workspace_path: '/x', theme: 'dark' });
