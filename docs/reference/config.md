@@ -158,7 +158,7 @@ Edit it once in **Settings → Dashboard** (under **Personal · this machine**).
 
 ### Auto-commit
 
-The `autoSync` block turns condash into the single writer for a conception shared by parallel agent sessions: while a conception is open, a main-process engine runs [`condash sync run`](cli.md#sync) on a timer, committing every settled, non-gitignored change and pushing. It is the same sweep as the CLI verb, with the same safety — the non-blocking lock, the quiet-period mid-edit guard, the mid-merge/conflict refusal, and push-as-a-warning — so nothing here can commit a half-written file or rewrite the tree under a live session. Before pushing, the sweep fetches the remote and fast-forwards it when it is ahead-only — so a checkout shared with collaborators keeps its pushes fast-forwards — and on a genuine divergence it commits local work but refuses the push until a human reconciles with `git pull --rebase`.
+The `autoSync` block runs [`condash sync run`](cli.md#sync) on a timer while a conception is open, committing settled, non-gitignored changes and pushing under the same lock, quiet period and mid-operation refusal as the CLI. Before pushing it fetches and fast-forwards an ahead-only remote. The default `ff-only` refuses divergence; opt-in `safe-merge` prepares a two-parent merge in isolation for clean or generated-row-only divergence, preserving human index content and refusing to apply over dirty/staged/untracked work. Handwritten conflicts still require manual reconciliation. See [safe-merge safeguards](../guides/auto-commit.md#safe-merge-recovery).
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -166,9 +166,11 @@ The `autoSync` block turns condash into the single writer for a conception share
 | `intervalMinutes` | `10` | How often to sweep and commit. Clamped to 1–120. |
 | `quietPeriodSeconds` | `90` | A file edited more recently than this is left for the next sweep — the guard against committing mid-edit. Clamped to 0–3600; `0` commits even just-touched files. |
 | `push` | `true` | Push after committing (a rejected push is a warning; the next sweep retries). |
-| `integration` | `ff-only` | Fetch and fast-forward before pushing when the remote is ahead-only. `off` restores the legacy behavior (no fetch, no integration). |
+| `integration` | `ff-only` | `ff-only`: fetch/fast-forward, refuse divergence. `safe-merge`: also recover clean or safely regenerable drafted-index divergence without rewriting history (Git ≥2.29, clean checkout). `off`: no fetch/integration. Default and existing values are unchanged. |
 
 Edit it in **Settings → Auto-commit** (under **Personal · this machine**), which also carries a **Commit & push now** button (one sweep, regardless of the cadence) and a live status line (next-run ETA · last result · any error). It is a personal/per-machine setting written to `settings.json` — nothing about it is committed to a tree's `.condash/settings.json`.
+
+A blocked integration episode sends one best-effort desktop notification with the actual waiting-commit count after local commits (or explicitly unknown) and first detected time. Settings and the status tooltip retain that evidence across idle/syncing and disabling/re-enabling on the same conception. Verified reconciliation or changing conception clears the session-scoped episode; it is not persisted across app restarts. A headless CLI sweep does not send desktop notifications.
 
 The **status bar** surfaces the same engine at a glance: an auto-sync pill (synced / *N* to sync / syncing / failed / off) with its own **Sync now** button and a click-to-open list of the conception's most recent commits (each marked pushed or unpushed) — so you can see sync state and trigger a sweep without opening Settings. Alongside it, a **shipped-skills** pill shows whether the condash-shipped skills under `.agents/skills/` are in sync, with an **Install** action (runs [`condash skills install`](cli.md#skills)) when any are missing or outdated.
 
@@ -342,6 +344,8 @@ harness for reproducing load deliberately are dissected in
 [Internals → Terminal performance recording](../explanation/internals.md#terminal-performance-recording).
 
 ### Terminal memory { #terminal-memory }
+
+The shared terminal and scheduled-task scope wrapper leaves command arguments literal until the target program runs. It disables systemd environment expansion with `--expand-environment=no` when the local `systemd-run` supports that option; older versions without it already pass scope arguments verbatim. Shell variables, PID syntax (`$$`), and substitutions are therefore evaluated by the shell, not by the memory wrapper.
 
 On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed with a throwaway scope; a **success is cached**, but a **transient failure is re-checked** on the next spawn — a momentary glitch (systemd busy under load, user manager restarting) never silently disables containment for the rest of the session. When a tab is nonetheless spawned uncapped on a capable host, condash logs a one-time warning.
 

@@ -134,6 +134,48 @@ test('settings modal: conception + global fields round-trip to their own files',
   }
 });
 
+test('safe-merge is opt-in and round-trips only to personal settings', async ({}, testInfo) => {
+  const booted = await bootApp();
+  try {
+    const modal = await openSettings(booted);
+    const section = modal.locator('#settings-section-auto-sync');
+    await section.scrollIntoViewIfNeeded();
+    const integration = section.getByLabel('Upstream integration');
+    await expect(integration).toHaveValue('ff-only');
+    await integration.selectOption('safe-merge');
+    await expect(section).toContainText(
+      'Safe merge preserves both histories, prose and curated rows.',
+    );
+    await modal.locator('button.settings-save').click();
+    await expect
+      .poll(
+        async () => (await readJson(join(booted.userDataDir, 'condash', 'settings.json'))).autoSync,
+      )
+      .toEqual({ integration: 'safe-merge' });
+    expect(
+      (await readJson(join(booted.conceptionDir, '.condash', 'settings.json'))).autoSync,
+    ).toBeUndefined();
+    await section.screenshot({ path: testInfo.outputPath('safe-merge-setting.png') });
+    await booted.app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('auto-sync-status', {
+        phase: 'idle',
+        enabled: true,
+        intervalMinutes: 10,
+        lastRunAt: null,
+        nextRunAt: null,
+        lastResult: null,
+        lastError: null,
+        blockedEpisode: { since: 1_700_000_000_000, waitingCommits: 8 },
+      });
+    });
+    await expect(section).toContainText('8 waiting commits');
+    await expect(section).toContainText('first detected');
+    await section.screenshot({ path: testInfo.outputPath('safe-merge-blocked-setting.png') });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('settings modal: a UI-font category applies live and round-trips to settings.json', async () => {
   test.setTimeout(60_000);
   const booted = await bootApp({ extraConfig: {} });

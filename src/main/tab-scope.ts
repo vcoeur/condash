@@ -46,6 +46,7 @@ const DEFAULT_MEMORY_SWAP_MAX = '2G';
 // "unsupported" hosts short-circuit in `platformSupportsMemoryScope` before any
 // probe, so re-probing only ever costs anything on a Linux+cgroup-v2 host.
 let cachedAvailable = false;
+let supportsExpansionControl = false;
 // One-shot guard so a capable-host probe failure warns once, not per tab spawn.
 let warnedUncapped = false;
 
@@ -135,15 +136,19 @@ export function probeArgv(): string[] {
 /**
  * The live probe (synchronous): runs {@link probeArgv} and reports success. A
  * non-zero status (no systemd-run, no user manager, memory controller not
- * delegated) → containment is unavailable right now. Blocks the caller for up
- * to 5 s, so it is only used on the per-tab spawn path (already synchronous);
+ * delegated) → containment is unavailable right now. The help and scope checks
+ * each have a 5 s timeout; this is only used on the synchronous per-tab path;
  * the app-scope backstop uses {@link runScopeProbeAsync} to stay off the event
  * loop.
  *
  * @returns True when the throwaway scope was created successfully.
  */
 function runScopeProbe(): boolean {
+  const help = spawnSync('systemd-run', ['--help'], { encoding: 'utf8', timeout: 5000 });
+  if (help.status !== 0) return false;
+  const expansionControl = help.stdout.includes('--expand-environment=');
   const result = spawnSync('systemd-run', probeArgv(), { stdio: 'ignore', timeout: 5000 });
+  if (result.status === 0) supportsExpansionControl = expansionControl;
   return result.status === 0;
 }
 
@@ -157,7 +162,9 @@ function runScopeProbe(): boolean {
  */
 async function runScopeProbeAsync(): Promise<boolean> {
   try {
+    const help = await execFileAsync('systemd-run', ['--help'], { timeout: 5000 });
     await execFileAsync('systemd-run', probeArgv(), { timeout: 5000 });
+    supportsExpansionControl = help.stdout.includes('--expand-environment=');
     return true;
   } catch {
     return false;
@@ -172,6 +179,8 @@ async function runScopeProbeAsync(): Promise<boolean> {
  * @param program The program to run inside the scope.
  * @param argv Its arguments.
  * @param prefs Effective memory prefs; missing sizes fall back to the defaults.
+ * @param unitName The transient scope unit name.
+ * @param expansionControl Whether the local systemd-run supports disabling expansion.
  * @returns The full argv for `systemd-run` (program + args after the `--`).
  */
 export function scopeArgv(
@@ -179,6 +188,7 @@ export function scopeArgv(
   argv: string[],
   prefs: TerminalMemoryPrefs | undefined,
   unitName: string,
+  expansionControl = true,
 ): string[] {
   const high = prefs?.high ?? DEFAULT_MEMORY_HIGH;
   const max = prefs?.max ?? DEFAULT_MEMORY_MAX;
@@ -188,6 +198,9 @@ export function scopeArgv(
     '--scope',
     '--quiet',
     '--collect',
+    // Older systemd passes scope argv verbatim and lacks this option. Newer
+    // versions must leave dollar syntax for the target shell, not expand it here.
+    ...(expansionControl ? ['--expand-environment=no'] : []),
     // Name the unit rather than letting systemd mint a `run-r<hash>.scope`. The
     // name is what makes the tab's cgroup identifiable without racing to read
     // `/proc/<pid>/cgroup` — see `resolveScopeCgroup`. It also makes tab scopes
@@ -449,7 +462,7 @@ export function wrapWithMemoryScope(
   const unitName = scopeUnitName(run.kind, run.sessionId);
   return {
     program: 'systemd-run',
-    argv: scopeArgv(program, argv, prefs, unitName),
+    argv: scopeArgv(program, argv, prefs, unitName, supportsExpansionControl),
     scopeMaxBytes: parseSize(max),
     unitName,
   };

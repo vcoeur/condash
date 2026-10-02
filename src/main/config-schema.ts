@@ -523,7 +523,7 @@ const autoSyncSettings = z
     intervalMinutes: z.number().int().positive().optional(),
     quietPeriodSeconds: z.number().int().min(0).optional(),
     push: z.boolean().optional(),
-    integration: z.enum(['off', 'ff-only']).optional(),
+    integration: z.enum(['off', 'ff-only', 'safe-merge']).optional(),
   } satisfies Record<keyof AutoSyncSettings, z.ZodTypeAny>)
   .strict();
 

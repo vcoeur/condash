@@ -36,6 +36,7 @@ import {
   type ChangedPath,
 } from './git';
 import { acquireSyncLock, type LockHolder } from './lock';
+import { safeMerge } from './safe-merge';
 
 const TREES: [tree: SyncTree, strategy: IndexStrategy][] = [
   ['projects', projectsStrategy],
@@ -54,8 +55,8 @@ export interface SyncOptions {
   dryRun: boolean;
   /** Push when the branch ends up ahead of its upstream. */
   push: boolean;
-  /** ff-only: fetch and fast-forward before pushing when the remote is ahead-only; off: legacy behavior, no fetch/integration. */
-  integration: 'off' | 'ff-only';
+  /** ff-only (default), opt-in safe-merge recovery, or off (no fetch/integration). */
+  integration: 'off' | 'ff-only' | 'safe-merge';
 }
 
 export interface SyncRunOptions extends SyncOptions {
@@ -102,8 +103,7 @@ export interface SyncReport {
   /** Commits on upstream that HEAD doesn't have after the fetch; `null` when
    *  there is no upstream or the integration wasn't attempted. */
   behind: number | null;
-  /** True when the fetch found commits on both sides — the push is refused
-   *  until a human reconciles with `git pull --rebase`. */
+  /** True when histories remain diverged after any permitted recovery; push is refused. */
   diverged: boolean;
   pushed: boolean;
   /** Set when the push was rejected. Not fatal — the next run retries. */
@@ -127,10 +127,11 @@ export async function syncRun(
   options: SyncRunOptions,
 ): Promise<SyncReport> {
   return withLock(conceptionPath, options.dryRun, async (gitDir) => {
-    const changed = await readChangedPaths(conceptionPath);
+    let changed = await readChangedPaths(conceptionPath);
     await assertOperable(gitDir, changed);
 
     const integration = await integrateBeforePush(conceptionPath, options);
+    changed = await readChangedPaths(conceptionPath);
 
     const cutoffMs = Date.now() - options.quietPeriodSeconds * 1000;
 
@@ -268,7 +269,7 @@ export async function syncRun(
       })
       .sort();
 
-    const commits: SyncCommitRecord[] = [];
+    const commits: SyncCommitRecord[] = integration?.mergeCommit ? [integration.mergeCommit] : [];
     for (const group of commitGroups(eligible)) {
       const subject = (await closeSubject(conceptionPath, group)) ?? group.subject;
       commits.push(await record(conceptionPath, group.paths, subject, options.dryRun));
@@ -316,7 +317,7 @@ export async function syncCommit(
       const integration = await integrateBeforePush(conceptionPath, options);
 
       const prefix = `${itemRelPath}/`;
-      const paths = changed
+      const paths = (await readChangedPaths(conceptionPath))
         .map(({ path }) => path)
         .filter((path) => path.startsWith(prefix))
         .sort();
@@ -324,7 +325,10 @@ export async function syncCommit(
         throw new SyncRefusedError(`No changes under ${itemRelPath}`);
       }
 
-      const commits = [await record(conceptionPath, paths, message, options.dryRun)];
+      const commits = [
+        ...(integration?.mergeCommit ? [integration.mergeCommit] : []),
+        await record(conceptionPath, paths, message, options.dryRun),
+      ];
       return {
         ...(await pushState(conceptionPath, options, integration)),
         commits,
@@ -471,14 +475,15 @@ async function record(
 }
 
 /** The part of a {@link SyncReport} that describes remote integration. */
-type Integration = Pick<SyncReport, 'ahead' | 'behind' | 'diverged' | 'integrateError'>;
+type Integration = Pick<SyncReport, 'ahead' | 'behind' | 'diverged' | 'integrateError'> & {
+  mergeCommit?: SyncCommitRecord;
+};
 
 /**
  * Fetch the remote and fast-forward it when it is ahead-only, so the sweep's
- * own commits keep the push a fast-forward. A genuine divergence is never
- * resolved here: the local commits stay, the push is refused, and the human
- * runs `git pull --rebase` — the sweeper itself must never rebase, because
- * that would rewrite the tree under a live session.
+ * own commits keep the push a fast-forward. Only opt-in safe-merge may join
+ * diverged committed snapshots, without rebasing or touching dirty user work.
+ * Unsafe recovery retains the divergence and refuses the push.
  *
  * Returns `null` when the run won't push (dry-run, `--no-push`, or
  * `autoSync.integration: 'off'`), leaving `pushState` on the legacy
@@ -511,6 +516,7 @@ async function integrateBeforePush(
   let resolvedBehind = behind;
   let diverged = false;
   let integrateError: string | null = null;
+  let mergeCommit: SyncCommitRecord | undefined;
   if (behind > 0 && ahead === 0) {
     const ff = await ffOnlyMerge(conceptionPath);
     if (!ff.ok) {
@@ -522,9 +528,18 @@ async function integrateBeforePush(
     }
   } else if (behind > 0 && ahead > 0) {
     diverged = true;
+    if (options.integration === 'safe-merge') {
+      try {
+        mergeCommit = await safeMerge(conceptionPath);
+        resolvedBehind = 0;
+        diverged = false;
+      } catch (error) {
+        integrateError = `safe merge refused: ${firstLine(error)}`;
+      }
+    }
   }
 
-  return { ahead, behind: resolvedBehind, diverged, integrateError };
+  return { ahead, behind: resolvedBehind, diverged, integrateError, mergeCommit };
 }
 
 /**
@@ -582,7 +597,7 @@ async function pushState(
   // stay and the human runs `git pull --rebase`.
   if (integration.diverged || integration.integrateError) {
     return {
-      ahead: integration.ahead,
+      ahead: await upstreamAhead(conceptionPath),
       behind: integration.behind,
       diverged: integration.diverged,
       integrateError: integration.integrateError,

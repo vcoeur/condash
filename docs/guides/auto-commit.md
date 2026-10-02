@@ -51,7 +51,7 @@ A sweep that introduces an item's `Closed.` timeline entry commits that item und
 | `intervalMinutes` | `10` | Sweep cadence. Clamped to 1–120. |
 | `quietPeriodSeconds` | `90` | A file touched more recently than this is left for the next sweep. Clamped to 0–3600; `0` commits even just-touched files. |
 | `push` | `true` | Push after committing. Off leaves the branch ahead of upstream. |
-| `integration` | `ff-only` | Fetch and fast-forward before pushing when the remote is ahead-only; `off` restores legacy behavior (no fetch, no integration). |
+| `integration` | `ff-only` | `ff-only` fetches/fast-forwards and refuses divergence. Opt-in `safe-merge` also recovers clean or generated-row-only divergence; `off` skips fetch/integration. |
 
 The engine re-reads its config every 30 seconds, so a change in Settings takes effect within one tick — no restart. Enabling it does **not** commit immediately: the first enabled tick only establishes a baseline, so the first sweep lands one full interval later rather than the instant the app opens.
 
@@ -60,6 +60,8 @@ Full key detail: [Config files → Auto-commit](../reference/config.md#auto-comm
 ## Reading the status
 
 The Settings section carries a **Commit & push now** button and a live status line beside it: the phase (*Off* / *Waiting for first sweep* / *Idle* / *Committing…* / *Integration needed* / *Last sweep failed*), when the next sweep is due, the last result (`3 commits, pushed · 4 min ago`), and the last error if there was one. A manual sweep also defers the next automatic one by a full interval.
+
+The first blocked integration in an episode sends a desktop notification with waiting commits **recounted after local commits**, or “count unknown”, and the first detection time. The same evidence remains in Settings and the status tooltip even as the scheduling phase cycles through idle/syncing or auto-sync is disabled/re-enabled. Notifications are best-effort and never fail a sweep. Suppression is session-scoped; only verified reconciliation or a conception change clears the episode, not a skipped integration.
 
 The status bar carries the same engine, condensed:
 
@@ -70,11 +72,21 @@ The status bar carries the same engine, condensed:
 
 - **The lock is already held** (a CLI `condash sync run` is mid-sweep): the tick exits quietly and tries again next interval.
 - **The repo refuses** — mid-merge, a conflict, anything `syncRun` won't touch: the error is recorded, shown in both the Settings status line and the status-bar pill, and retried on the next interval. A failure is treated as a completed attempt so it can never hot-loop.
-- **The tree has diverged from the remote** (commits on both sides): the sweep still commits local work but refuses to push — the status shows *Integration needed*. Run `git pull --rebase` (or `git merge origin/main`) once your work is settled, and the next sweep pushes. Never `git reset --hard` — it discards the local commits.
+- **The tree has diverged from the remote** (commits on both sides): `ff-only` still commits local work but refuses the push. `safe-merge` can recover automatically on a clean sweep; unsafe conflicts remain *Integration needed*. Reconcile manually with `git pull --rebase` or `git merge` against your upstream only once work is settled, then sync again. Preserve prose/curated rows in conflicted generated indexes, resolve only drafted content, then run `condash projects index` or `condash knowledge index`. Never take a whole index side blindly or discard local commits.
+
+## Safe-merge recovery
+
+Select **Settings → Auto-commit → Upstream integration → Safe merge**, or set `autoSync.integration` to `"safe-merge"` in the per-machine settings. `ff-only` remains the default; upgrades do not opt you in. The CLI forwards the same setting.
+
+Recovery first prepares the merge in a disposable Git repository using immutable local/upstream tips. With no conflicts, both histories join normally. With conflicts, only regular generated project root/month or knowledge indexes qualify, and only strict, unfenced child bullets carrying a trailing `<!-- draft -->` marker with no additional HTML comments may be discarded and rebuilt. Any extra comment, including inside the row body, makes the whole row human/ambiguous for recovery; its annotations must survive or recovery refuses. Filename alone proves nothing: the remaining human content is three-way merged, so clean remote prose/curated changes survive and handwritten conflicts refuse. Affected trees are regenerated from the merged committed sources; regeneration that loses human lines refuses too. This conservative ownership check does not change ordinary index rendering.
+
+The resulting commit has both original tips as parents. Before application, condash rechecks HEAD, branch, upstream, operation state and clean working tree/index. Git then performs only a guarded fast-forward, with autostash and ignored-file overwrites disabled. Dirty/staged/untracked work waits; ignored obstructions refuse rather than disappear. No stash, reset, clean, rebase or force push is used. The sync lock protects cooperating sweepers, not arbitrary external writers: the final checks and Git's own refusal checks narrow the race but cannot lock out an unrelated editor between operations.
+
+Git **2.29 or newer** and the required merge guards are checked; unsupported Git refuses recovery without an unsafe fallback. Deleted/renamed/type-changed indexes, symlinks/submodules in either source tree, non-text merge attributes, item-local index conflicts, ambiguous regenerated renames and index entries hiding work (`assume-unchanged`/`skip-worktree`) also refuse. Dry-run, no-push, integration off and no upstream do not recover. A rejected ordinary push retains the commits and waits for the next sweep's fetch.
 
 ## Working with collaborators
 
-Each collaborator keeps their own checkout and pushes to the one shared remote. The sweeper fetches first, fast-forwards when the remote is ahead-only, and refuses to push — never to commit — when both sides have gained commits; the human resolves that with `git pull --rebase`. `integration: 'off'` restores the old behavior (no fetch, no integration).
+Each collaborator keeps their own checkout and pushes to the one shared remote. The sweeper fetches first and fast-forwards an ahead-only remote. On divergence, default `ff-only` waits for manual reconciliation; opt-in `safe-merge` recovers only under the safeguards above. Refused recovery never prevents settled local commits. `integration: 'off'` restores the old behavior (no fetch, no integration).
 
 ## Doing it by hand
 

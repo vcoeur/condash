@@ -35,6 +35,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
     const abs = absolutise(flagValue);
     if (await looksLikeConception(abs)) return { path: abs, source: 'flag' };
     tried.push(`--conception ${flagValue} (no recognised config file)`);
+    noConception(tried);
   }
 
   // `_PATH` is the canonical name (matches main/settings.ts); the
@@ -48,6 +49,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
     const abs = absolutise(envOverride);
     if (await looksLikeConception(abs)) return { path: abs, source: 'env' };
     tried.push(`$${envName}=${envOverride} (no recognised config file)`);
+    noConception(tried);
   }
 
   const skillDir = process.env.CLAUDE_PROJECT_DIR;

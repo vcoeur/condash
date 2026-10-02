@@ -329,6 +329,23 @@ function matchBullet(line: string): {
   return null;
 }
 
+/** Remove only strict, unfenced drafted child rows for a conservative three-way human-content merge. */
+export function indexHumanContent(raw: string): string {
+  const lines = raw.split(/\r?\n/);
+  const unfenced = new Set(Array.from(iterUnfencedLines(lines), ({ index }) => index));
+  return lines
+    .filter((line, index) => {
+      if (!unfenced.has(index)) return true;
+      // The renderer's tolerant parser strips extra comments; recovery must not
+      // mistake their normalization for proof that human annotations are disposable.
+      const body = line.replace(DRAFT_MARKER_RE, '');
+      if (body.includes('<!--') || body.includes('-->')) return true;
+      const bullet = matchBullet(line);
+      return !bullet?.draft || bullet.loose || !isImmediateChildLink(bullet.link.trim());
+    })
+    .join(detectEol(raw));
+}
+
 /**
  * Run the regenerator over one tree (projects or knowledge). Returns a
  * structured report. Atomic per-file writes; either every change lands or

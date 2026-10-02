@@ -284,6 +284,9 @@ describe('configSchema autoSync', () => {
   });
 
   it('accepts either integration mode and rejects an unknown one', () => {
+    expect(
+      globalSettingsSchema.safeParse({ autoSync: { integration: 'safe-merge' } }).success,
+    ).toBe(true);
     expect(globalSettingsSchema.safeParse({ autoSync: { integration: 'ff-only' } }).success).toBe(
       true,
     );
