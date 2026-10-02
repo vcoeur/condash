@@ -7,27 +7,15 @@
 // `main/menu.ts` all reference these shapes — so the main process and the
 // renderer must agree on one definition.
 
-/** The persisted working surface. The rail selects exactly one right-pane
- * surface at a time and the choice survives a restart; the full working union
- * is Code, Knowledge, Resources, and Skills. `null` is not
- * part of the type — the right pane is always showing something (the rail is
- * the complete navigation; there is no "hide the working surface" state). (The
- * Dashboard is not a working surface — it lives in the bottom band next to
- * Terminal.) */
+/** A selectable right-pane surface; Dashboard lives in the bottom band. */
 export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills';
 
-/** Composite-layout state. The unified window has a top band (Projects on
- * the left, always visible; the working surface on the right, exactly one of
- * the four rail-selected surfaces) and a bottom band (Terminal). Sizes are
- * persisted alongside visibility so re-showing the terminal restores its
- * previous dimensions. */
+/** Persisted independent Projects, working-slot and Terminal visibility. */
 export interface LayoutState {
-  /** Always `true` — the left band is fixed Projects. Kept so a legacy
-   * persisted layout keeps parsing; no writer ever sets it `false`. */
+  /** Whether the Projects band is visible. */
   projects: boolean;
-  /** Code / Knowledge / Resources / Skills — single
-   * right-slot surface, chosen directly by rail click and persisted. */
-  working: WorkingSurface;
+  /** Selected right-slot surface, or `none` while hidden. */
+  working: WorkingSurface | 'none';
   terminal: boolean;
   /** Where the Projects ↔ working-surface splitter sits, as a **fraction of the
    * band width** (0–1), when both panes are visible. A fraction rather than CSS

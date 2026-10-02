@@ -166,6 +166,7 @@ function App() {
     updateLayout,
     toggleTerminal,
     selectWorking,
+    toggleWorking,
     ensureTerminalOpen,
     setTerminalAutoCollapsed,
     topBandStyle,
@@ -644,11 +645,9 @@ function App() {
         <ActivityRail
           workingSurface={layout().working}
           disabled={!handlesEnabled()}
-          onShowProjects={() => {
-            const el = document.querySelector('.projects-pane');
-            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }}
-          onSelectWorking={selectWorking}
+          projectsOpen={layout().projects}
+          onToggleProjects={() => updateLayout({ projects: !layout().projects })}
+          onToggleWorking={toggleWorking}
           terminalOpen={layout().terminal}
           onToggleTerminal={toggleTerminal}
         />
@@ -679,8 +678,16 @@ function App() {
               />
             </Show>
             <Show when={!shouldShowWelcome()}>
-              <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
-                <section class="pane pane-projects">
+              <div
+                class="top-band"
+                classList={{ 'top-band-hidden': !layout().projects && layout().working === 'none' }}
+                ref={(el) => (topBandRef = el)}
+                style={topBandStyle()}
+              >
+                <section
+                  class="pane pane-projects"
+                  style={{ display: layout().projects ? undefined : 'none' }}
+                >
                   <Show
                     when={(projects() ?? []).length > 0}
                     fallback={<div class="empty">No projects found under projects/.</div>}
@@ -711,6 +718,9 @@ function App() {
 
                 <div
                   class="top-band-splitter"
+                  style={{
+                    display: layout().projects && layout().working !== 'none' ? undefined : 'none',
+                  }}
                   onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
                   title="Drag to resize"
                 />

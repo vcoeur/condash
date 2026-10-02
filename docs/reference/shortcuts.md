@@ -55,7 +55,7 @@ The Edit-menu roles act on whatever the OS considers focused. They are **not** t
 
 ### The activity rail
 
-The rail contains **Projects** (the left band, always visible), then **Code** (`Ctrl+Shift+C`), **Knowledge**, **Resources**, and **Skills** across the right working slot, plus the **Terminal** bottom-band toggle. Clicking a working item selects it directly — exactly one working pane is showing, and the choice is persisted. There is no close-first step and no hide state. **Automations**, **Logs**, and **Diagnostics** open full-window overlays from the top bar; **Back** or `Esc` returns to the unchanged working pane, with child-first dismissal and a discard decision for dirty automation fields.
+The rail separates **Projects**, four working panes (**Code**, **Knowledge**, **Resources**, **Skills**), and **Terminal** into three groups. Active clicks hide their pane; inactive working clicks select without changing Projects visibility. Visibility persists. `Ctrl+Shift+C` and native View working commands show/select rather than toggle. **Automations**, **Logs**, and **Diagnostics** open full-window overlays from the top bar; **Back** or `Esc` returns to the unchanged layout, with child-first dismissal and a discard decision for dirty automation fields.
 
 ## Dashboard global
 

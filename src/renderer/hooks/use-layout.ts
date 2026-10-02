@@ -79,10 +79,9 @@ export interface UseLayout {
    *  UI state is the source of truth for the session. */
   updateLayout: (patch: Partial<LayoutState>) => void;
   toggleTerminal: () => void;
-  /** Rail / menu selection of the right-pane surface. A direct select, never
-   *  a toggle: the rail is the complete navigation, so a click always shows
-   *  the surface it names and persists the choice. */
+  /** Programmatic/menu selection shows the surface without toggling it. */
   selectWorking: (next: WorkingSurface) => void;
+  toggleWorking: (next: WorkingSurface) => void;
   ensureTerminalOpen: () => void;
   /** Set the ephemeral modal auto-collapse mask: `true` hides the terminal for
    *  display only (the persisted preference is untouched), `false` reveals it.
@@ -140,8 +139,9 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   };
 
   const toggleTerminal = (): void => updateLayout({ terminal: !layout().terminal });
-  const selectWorking = (next: WorkingSurface): void =>
-    updateLayout({ working: next, projects: true });
+  const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
+  const toggleWorking = (next: WorkingSurface): void =>
+    updateLayout({ working: layout().working === next ? 'none' : next });
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
   };
@@ -150,7 +150,10 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   };
 
   const topBandStyle = (): Record<string, string> => ({
-    'grid-template-columns': splitColumns(layout().projectsSplit),
+    'grid-template-columns':
+      layout().projects && layout().working !== 'none'
+        ? splitColumns(layout().projectsSplit)
+        : '1fr',
   });
 
   const startSplitterDrag = (event: MouseEvent, band: HTMLDivElement | undefined): void => {
@@ -226,6 +229,7 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     updateLayout,
     toggleTerminal,
     selectWorking,
+    toggleWorking,
     ensureTerminalOpen,
     setTerminalAutoCollapsed,
     topBandStyle,

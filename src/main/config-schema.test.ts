@@ -483,15 +483,22 @@ describe('migrateRawSettings — layout re-map to the rail navigation', () => {
     }
   });
 
-  it('forces a persisted projects: false back to true (the band is fixed)', () => {
+  it('preserves hidden Projects', () => {
     const migrated = migrateRawSettings({
       layout: { projects: false, working: 'code', terminal: true },
     }) as Record<string, unknown>;
-    expect((migrated.layout as Record<string, unknown>).projects).toBe(true);
+    expect((migrated.layout as Record<string, unknown>).projects).toBe(false);
+  });
+
+  it('canonicalises an entirely hidden layout without restoring panes', () => {
+    const layout = { projects: false, working: 'none', terminal: false, projectsSplit: 0.32 };
+    expect(
+      JSON.parse(validateAndCanonicaliseGlobalSettings(JSON.stringify({ layout }))).layout,
+    ).toEqual(layout);
   });
 
   it('keeps every valid working surface', () => {
-    for (const working of ['code', 'knowledge', 'resources', 'skills']) {
+    for (const working of ['code', 'knowledge', 'resources', 'skills', 'none']) {
       const migrated = migrateRawSettings({
         layout: { projects: true, working, terminal: true },
       }) as Record<string, unknown>;
@@ -536,7 +543,7 @@ describe('migrateRawSettings — layout re-map to the rail navigation', () => {
       },
     });
     const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
-    expect(parsed.layout.projects).toBe(true);
+    expect(parsed.layout.projects).toBe(false);
     expect(parsed.layout.working).toBe('code');
     expect('leftView' in parsed.layout).toBe(false);
   });

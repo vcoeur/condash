@@ -215,7 +215,7 @@ Every one of the three normalises `dirRelPath` and then re-checks the joined res
 | Verb | What it does |
 |---|---|
 | `getTheme()` / `setTheme(theme)` | Persist `'system'` or a preset id — `'light'` \| `'mist'` \| `'dark'` \| `'nocturne'` \| `'console'` — in `settings.json`. The accepted set is `THEME_VALUES` in `src/shared/themes.ts`; adding a preset there widens this verb. |
-| `getLayout()` / `setLayout(layout)` | Read or write the global composite-layout snapshot (`projects` — always `true`, the left band is fixed; `working`: `'code' \| 'knowledge' \| 'resources' \| 'skills'`; `terminal: bool`; `projectsSplit: number`). Utility overlay state is not persisted. See [Config — LayoutState](config.md#layoutstate). |
+| `getLayout()` / `setLayout(layout)` | Read or write the global composite-layout snapshot (`projects: bool`; `working`: `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'none'`; `terminal: bool`; `projectsSplit: number`). Hidden visibility persists; utility overlay state does not. See [Config — LayoutState](config.md#layoutstate). |
 | `getWelcomeDismissed()` / `setWelcomeDismissed(value)` | Persistent first-launch welcome-screen flag (`welcome.dismissed` in `settings.json`). |
 | `getCardMinWidth()` / `setCardMinWidth(prefs)` | Read or write the per-pane card-grid min-width block (`projects`, `code`, `knowledge`, `resources`, `skills`, `logs`, `tasks`, `deliverables`). See [Config — CardMinWidth](config.md#cardminwidth). |
 | `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (`knowledge`, `resources`, `skills` for the conception scope, `skillsUser` for the Skills pane's user scope). Empty values mean every directory is collapsed — the on-purpose first-load state. |

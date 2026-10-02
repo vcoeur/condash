@@ -17,7 +17,7 @@ interface RailItemDef {
   icon: () => JSX.Element;
 }
 
-/** The rail selects the fixed Projects band, a working pane, or the bottom Terminal band. */
+/** Three independent rail groups: Projects, working panes, and Terminal. */
 const RAIL_ITEMS: RailItemDef[] = [
   { key: 'projects', label: 'Projects', shortcut: '', icon: ProjectsIcon },
   { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon },
@@ -33,28 +33,29 @@ const FIRST_WORKING_INDEX = RAIL_ITEMS.findIndex((item) => item.key !== 'project
 
 export interface ActivityRailProps {
   /** The surface currently filling the right pane. */
-  workingSurface: WorkingSurface;
+  workingSurface: WorkingSurface | 'none';
+  projectsOpen: boolean;
   terminalOpen: boolean;
   disabled: boolean;
-  onShowProjects: () => void;
-  onSelectWorking: (next: WorkingSurface) => void;
+  onToggleProjects: () => void;
+  onToggleWorking: (next: WorkingSurface) => void;
   onToggleTerminal: () => void;
 }
 
 export function ActivityRail(props: ActivityRailProps) {
   const isActive = (item: RailItemDef): boolean => {
-    if (item.key === 'projects') return true;
+    if (item.key === 'projects') return props.projectsOpen;
     if (item.key === 'terminal') return props.terminalOpen;
     return props.workingSurface === item.key;
   };
 
   const handleClick = (item: RailItemDef): void => {
     if (item.key === 'projects') {
-      props.onShowProjects();
+      props.onToggleProjects();
     } else if (item.key === 'terminal') {
       props.onToggleTerminal();
     } else {
-      props.onSelectWorking(item.key);
+      props.onToggleWorking(item.key);
     }
   };
 
@@ -67,7 +68,7 @@ export function ActivityRail(props: ActivityRailProps) {
     <aside class="rail" aria-label="Activity rail">
       <For each={RAIL_ITEMS}>
         {(item, index) => {
-          const divider = item.key !== 'projects' && index() === FIRST_WORKING_INDEX;
+          const divider = index() === FIRST_WORKING_INDEX || item.key === 'terminal';
           return (
             <>
               {divider && <div class="rail-divider" />}

@@ -718,6 +718,10 @@ button:hover {
 /* Vertical handle between Projects and the working surface. The same
  * pattern as .terminal-splitter (col-resize, accent-on-hover) so the two
  * resizers feel related. */
+.top-band.top-band-hidden {
+  display: none;
+}
+
 .top-band-splitter {
   cursor: col-resize;
   background: var(--border);

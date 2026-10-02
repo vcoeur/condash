@@ -61,7 +61,7 @@ Every piece earns its keep. The YAML frontmatter parses straight into the metada
 
 condash is an Electron app: a main process (Node.js — filesystem, IPC, watcher) and a renderer (Solid.js — dashboard UI). They talk over a single typed `CondashApi` IPC contract. Markdown reads on every refresh; mutations rewrite specific lines in your README files. A chokidar watcher fires on every file change so the UI is live without polling.
 
-The window is one shell: an **activity rail** down the left edge carrying Projects (the fixed left band), Code, Knowledge, Resources, and Skills as direct selections of the single persisted right pane, and a Terminal toggle. Terminal and Dashboard share the bottom band. Labelled top-bar buttons beside Settings open Automations, Logs, and Diagnostics in session-only full-window overlays. Search is a global modal, not a pane.
+The window is one shell: an **activity rail** down the left edge with three separated groups: Projects, four working panes (Code, Knowledge, Resources, Skills), and Terminal. Every active rail button hides its pane; working selection preserves independent Projects visibility. Hidden state persists, while menu/search operations show rather than toggle. Terminal and Dashboard share the bottom band. Labelled top-bar buttons beside Settings open Automations, Logs, and Diagnostics in session-only full-window overlays. Search is a global modal, not a pane.
 
 → Process layout, IPC contract, write queue: **[Internals](internals.md)**.
 

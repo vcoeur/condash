@@ -80,7 +80,7 @@ describe('read-path legacy migration', () => {
     );
     const { readSettings } = await loadSettingsModule();
     const settings = await readSettings();
-    expect(settings.layout?.projects).toBe(true);
+    expect(settings.layout?.projects).toBe(false);
     expect(settings.layout?.working).toBe('code');
   });
 

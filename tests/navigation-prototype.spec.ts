@@ -25,6 +25,85 @@ async function seedNavigationFixture(conceptionDir: string): Promise<void> {
 /** Every rail item by label, in rail order. */
 const RAIL_LABELS = ['Projects', 'Code', 'Knowledge', 'Resources', 'Skills', 'Terminal'];
 
+test('three rail groups toggle independently and preserve hidden layouts on reload', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootApp({ prepare: seedNavigationFixture });
+  try {
+    let { window, app } = booted;
+    await expect(window.locator('.rail-divider')).toHaveCount(2);
+    expect(
+      await window
+        .locator('.rail')
+        .evaluate((rail) =>
+          Array.from(rail.children).map((child) =>
+            child.classList.contains('rail-divider')
+              ? 'separator'
+              : child.getAttribute('title')?.split(' (')[0],
+          ),
+        ),
+    ).toEqual([
+      'Projects',
+      'separator',
+      'Code',
+      'Knowledge',
+      'Resources',
+      'Skills',
+      'separator',
+      'Terminal',
+    ]);
+    await railItem(window, 'Projects').click();
+    await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'false');
+    for (const label of ['Code', 'Knowledge', 'Resources', 'Skills']) {
+      await sendMenu(app, `show-${label.toLowerCase()}` as 'show-code');
+      await expect(railItem(window, label)).toHaveAttribute('aria-pressed', 'true');
+      await sendMenu(app, `show-${label.toLowerCase()}` as 'show-code');
+      await expect(railItem(window, label)).toHaveAttribute('aria-pressed', 'true');
+      await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'false');
+      const band = await window.locator('.top-band').boundingBox();
+      const workingPane = await window.locator('.pane-working').boundingBox();
+      expect(workingPane?.width).toBe(band?.width);
+      await railItem(window, label).click();
+      await expect(railItem(window, label)).toHaveAttribute('aria-pressed', 'false');
+      await expect(window.locator('.top-band')).toBeHidden();
+      await railItem(window, label).click();
+      await expect(railItem(window, label)).toHaveAttribute('aria-pressed', 'true');
+    }
+    await railItem(window, 'Skills').click();
+    await expect(window.locator('.top-band')).toBeHidden();
+    await expect(window.locator('.terminal-pane')).not.toHaveClass(/closed/);
+    ({ window, app } = await booted.restart());
+    await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'false');
+    await expect(window.locator('.top-band')).toBeHidden();
+    await railItem(window, 'Terminal').click();
+    await expect(window.locator('.terminal-pane')).toHaveClass(/closed/);
+    ({ window, app } = await booted.restart());
+    await expect(window.locator('.top-band')).toBeHidden();
+    await expect(window.locator('.terminal-pane')).toHaveClass(/closed/);
+    await railItem(window, 'Projects').click();
+    await expect(window.locator('.pane-projects')).toBeVisible();
+    await expect(window.locator('.top-band-splitter')).toBeHidden();
+    const projectsBand = await window.locator('.top-band').boundingBox();
+    const projectsPane = await window.locator('.pane-projects').boundingBox();
+    expect(projectsPane?.width).toBe(projectsBand?.width);
+    await railItem(window, 'Knowledge').click();
+    await expect(window.locator('.top-band-splitter')).toBeVisible();
+    await railItem(window, 'Resources').click();
+    await expect(railItem(window, 'Knowledge')).toHaveAttribute('aria-pressed', 'false');
+    await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'true');
+    await railItem(window, 'Terminal').click();
+    await sendMenu(app, 'search');
+    await window.locator('.search-modal-input').fill('Fixture resource');
+    await window.locator('.search-row').filter({ hasText: 'Fixture resource' }).first().click();
+    await expect(window.locator('.modal.note-modal')).toBeVisible();
+    await window.keyboard.press('Escape');
+    await expect(railItem(window, 'Resources')).toHaveAttribute('aria-pressed', 'true');
+    await window.mouse.move(1200, 20);
+    await window.screenshot({ path: 'test-results/rail-groups-and-toggles.png' });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 function railItem(window: import('@playwright/test').Page, label: string) {
   // `Code` carries a shortcut in its tooltip ("Code (Ctrl+Shift+C)"), so
   // match on the label prefix rather than the exact title.

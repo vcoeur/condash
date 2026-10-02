@@ -1,6 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createRoot } from 'solid-js';
 import type { LayoutState } from '@shared/types';
-import { clampSplit, maskTerminal, splitColumns } from './use-layout';
+import { clampSplit, maskTerminal, splitColumns, useLayout } from './use-layout';
+
+vi.mock('../bootstrap', () => ({ getBootstrap: () => new Promise(() => {}) }));
+
+describe('rail and programmatic layout changes', () => {
+  it('toggles every working pane without changing Projects and keeps selection idempotent', () => {
+    const setLayout = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('window', { condash: { setLayout } });
+    let dispose!: () => void;
+    const controller = createRoot((cleanup) => {
+      dispose = cleanup;
+      return useLayout({ flashToast: vi.fn() });
+    });
+    controller.updateLayout({ projects: false });
+    for (const working of ['code', 'knowledge', 'resources', 'skills'] as const) {
+      controller.selectWorking(working);
+      controller.selectWorking(working);
+      expect(controller.layout().working).toBe(working);
+      expect(controller.layout().projects).toBe(false);
+      expect(controller.topBandStyle()['grid-template-columns']).toBe('1fr');
+      controller.toggleWorking(working);
+      expect(controller.layout().working).toBe('none');
+      controller.toggleWorking(working);
+      expect(controller.layout().working).toBe(working);
+    }
+    controller.toggleWorking('skills');
+    controller.toggleTerminal();
+    expect(setLayout).toHaveBeenLastCalledWith({
+      ...base,
+      projects: false,
+      working: 'none',
+      terminal: false,
+    });
+    dispose();
+    vi.unstubAllGlobals();
+  });
+});
 
 const base: LayoutState = {
   projects: true,

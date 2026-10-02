@@ -11,7 +11,7 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.agents/skills/`, and `.condash/settings.json` tree and presents it through one app shell:
 
-- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — Projects (the fixed left band), four right-pane working surfaces (Code, Knowledge, Resources, Skills), and the Terminal toggle. A working-pane click selects directly.
+- An **activity rail** down the left edge (`src/renderer/activity-rail.tsx`) — three separated groups: Projects, four right-pane working surfaces (Code, Knowledge, Resources, Skills), and Terminal. Clicking an active button hides its pane; selecting a working pane preserves independent Projects visibility. Menu/search operations show rather than toggle. Hidden choices persist, including empty and terminal-only layouts.
 - A **fixed Projects band** — old `leftView` keys are removed on read; item-level Deliverables stay in project previews.
 - A **working surface** on the right edge — Code / Knowledge / Resources / Skills, mutually exclusive and persisted in global `layout`. Retired `working: automations|logs` maps to Code before parsing. Both raw settings inputs are shape-migrated before scope partition; an already-owned global layout wins conflicting leaves.
 - A **bottom band** shared by Terminal and Dashboard; xterm tabs remain mounted while hidden.

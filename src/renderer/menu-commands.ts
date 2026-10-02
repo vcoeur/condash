@@ -1,6 +1,6 @@
 import { onCleanup } from 'solid-js';
 import type { Accessor } from 'solid-js';
-import type { LayoutState } from '@shared/types';
+import type { LayoutState, WorkingSurface } from '@shared/types';
 import type { HelpDoc } from './help-modal';
 
 export interface MenuRouterDeps {
@@ -14,7 +14,7 @@ export interface MenuRouterDeps {
   setHelpDoc: (doc: HelpDoc) => void;
   toggleTerminal: () => void;
   /** Select the right-pane surface directly (persisted; never a toggle). */
-  selectWorking: (next: LayoutState['working']) => void;
+  selectWorking: (next: WorkingSurface) => void;
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
   openRecent: (path: string) => Promise<void>;
@@ -70,7 +70,7 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       // Strip the `show-` prefix: the rest is the WorkingSurface name. Every
       // command is a direct selection — the pane the menu names is the pane
       // that shows, never a toggle (the rail is the complete navigation).
-      deps.selectWorking(command.slice('show-'.length) as LayoutState['working']);
+      deps.selectWorking(command.slice('show-'.length) as WorkingSurface);
       return;
     }
     if (command === 'show-dashboard') {

@@ -55,9 +55,7 @@ import {
  *   specialist selections (`tasks` / `deliverables` / `perf` / `outputs`)
  *   carried no data beyond the pointer itself, so dropping the key is the
  *   whole migration; `projects` visibility never depended on it.
- * - `layout.projects: false` — forced back to `true`: the left band is always
- *   visible, and the prototype era persisted a hide. Nothing else in the file
- *   is touched.
+ * - `layout.projects: false` and `layout.working: none` remain valid hidden states.
  * - `layout.working`: retired `automations` / `logs` selections and the old
  *   `null` hide state fall back to Code. These destinations are session-only
  *   overlays now; no task, log, or recording preference is migrated.
@@ -99,10 +97,8 @@ export function migrateRawSettings(parsed: unknown): unknown {
     // the field itself has no reader left. Drop it rather than keep a key the
     // strict schema no longer lists.
     delete layout.leftView;
-    if (layout.projects === false) layout.projects = true;
-    // The right pane is always showing something; a persisted `null` (the
-    // prototype's hide-the-pane state) falls back to the Code default.
-    const WORKING_SURFACES = new Set(['code', 'knowledge', 'resources', 'skills']);
+    // Retired destinations and malformed values fall back to Code; `none` is valid.
+    const WORKING_SURFACES = new Set(['code', 'knowledge', 'resources', 'skills', 'none']);
     if (typeof layout.working !== 'string' || !WORKING_SURFACES.has(layout.working)) {
       layout.working = 'code';
     }

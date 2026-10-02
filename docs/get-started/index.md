@@ -278,7 +278,7 @@ Three ways to change an item's status: **drag its card** to another section, pre
 
 ### Reference and utilities
 
-The activity rail carries **Projects** (the always-visible left band), the four right-hand working panes — **Code**, **Knowledge**, **Resources**, **Skills** — and the **Terminal** bottom-band toggle. A working-pane click selects directly and persists the choice. The top bar beside Settings launches **Automations**, **Logs**, and **Diagnostics** as session-only full-window overlays. Item-level `## Deliverables` remain in project previews; there is no aggregate Deliverables route.
+The activity rail has three separated groups: **Projects**, the four right-hand working panes — **Code**, **Knowledge**, **Resources**, **Skills** — and **Terminal**. Clicking an active button hides its pane; selecting an inactive working button preserves Projects visibility. Visibility persists across restarts. Native menu and search selection show panes without toggling them. The top bar beside Settings launches **Automations**, **Logs**, and **Diagnostics** as session-only full-window overlays. Item-level `## Deliverables` remain in project previews; there is no aggregate Deliverables route.
 
 | Route | What it is | Guide |
 |---|---|---|
