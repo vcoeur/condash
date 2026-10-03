@@ -16,13 +16,14 @@ that one folder.
 
 ## What you'll see
 
-An **activity rail** runs down the left edge with the working panes and
-Terminal toggle. **Projects** fills the left of the window with your items
+An **activity rail** runs down the left edge in three groups: Projects,
+four working panes, and Terminal. **Projects**, when visible, fills the left of the window with your items
 as one scrolling stack of status sections (`now`, `review`, `later`,
 `backlog`, `done`, plus a trailing `?` for any other status; drag a
-card to another section to change its status). The four working rail items
-each select the one right-hand working pane — exactly one is ever
-showing, and your choice is remembered:
+card to another section to change its status). Clicking an active rail button
+hides its pane. Inactive working buttons select one right-hand working pane
+without changing independent Projects visibility; zero or one working pane
+can be visible, and visibility is remembered:
 
 - **Code** (`Ctrl+Shift+C`) — your repos, their branches, dirty
   counts, run / open-with buttons.
@@ -44,8 +45,9 @@ Top-bar utility overlays:
   with virtualised text + case-insensitive search. Turn capture on
   under Settings → Terminal → Logging.
 
-The **View** menu mirrors Code, Knowledge, Resources, and Skills under **Working pane**
-and carries **Show Terminal**. **Automations**, **Logs**, and **Diagnostics** are labelled
+The **View** menu shows/selects Code, Knowledge, Resources, and Skills under **Working pane**
+idempotently rather than hiding an already active pane, and carries the **Show Terminal** toggle.
+**Automations**, **Logs**, and **Diagnostics** are labelled
 buttons beside Settings in the top bar; they open full-window overlays without changing
 the working pane. Diagnostics shows live per-terminal memory, growth rate, and throttle
 state. `Esc` closes a child dialog before its parent; unsaved automation fields require

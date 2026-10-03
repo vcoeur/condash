@@ -45,12 +45,11 @@ function prettyRecentLabel(path: string): string {
 }
 
 /**
- * Build the application menu. The View submenu mirrors the rail: one
- * checked item per right-pane surface (exactly one is ever active — the
- * rail click that selects it persists the choice), a Show Terminal
- * toggle for the bottom band, and Terminal diagnostics under
- * Troubleshooting. Projects has no menu entry — the left band is always
- * visible. Pass the current layout so check marks line up with what's
+ * Build the application menu. View working commands show/select idempotently,
+ * unlike active rail clicks, which hide their pane. At most one working item
+ * is checked; none is checked when hidden. Show Terminal toggles the bottom
+ * band. Projects visibility is independent and has no menu entry; utilities
+ * launch only from the top bar. Pass the current layout so marks match what's
  * actually shown; rebuild the menu after any layout change so the marks
  * refresh. No Quit accelerator on purpose: Ctrl+Q is too easy to hit by
  * accident, and File → Quit routes through a renderer-side confirmation

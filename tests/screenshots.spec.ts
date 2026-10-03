@@ -752,16 +752,14 @@ async function railPressed(page: Page, label: string): Promise<boolean> {
 /**
  * Show one pane in the working-surface slot.
  *
- * Every command is a persistent, idempotent selection now: the rail item is
- * always active for Projects and exactly one surface is active at a time, so
- * the active guard keeps a re-selection from churning the view.
+ * Native working commands persist an idempotent show/selection, independent
+ * of Projects visibility. The guard skips settling an already visible pane.
  */
 async function showWorking(
   b: Booted,
   label: 'Code' | 'Knowledge' | 'Resources' | 'Skills',
 ): Promise<void> {
-  // Direct selection: re-selecting the visible pane is a no-op, so no
-  // per-label active guard is needed.
+  // Native selection does not hide an already visible pane.
   if (await railPressed(b.page, label)) return;
   const command = {
     Code: 'show-code',

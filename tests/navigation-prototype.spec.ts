@@ -144,14 +144,14 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     expect(viewLabels).not.toEqual(expect.arrayContaining(['Show Logs']));
     expect(viewLabels).not.toEqual(expect.arrayContaining(['Terminal diagnostics']));
 
-    // The default working surface is Code; Projects is always visible.
+    // The default layout shows Code and Projects.
     await expect(railItem(window, 'Projects')).toHaveAttribute('aria-pressed', 'true');
     await expect(railItem(window, 'Code')).toHaveAttribute('aria-pressed', 'true');
     await expect(window.locator('.repos-pane')).toBeVisible();
     await expect(window.locator('.projects-pane')).toBeVisible();
 
     // Direct one-click switch Code → Knowledge and back: no close-first
-    // step, exactly one working pane at a time.
+    // step, replacing the previously visible working pane.
     await railItem(window, 'Knowledge').click();
     await expect(window.getByText('Fixture knowledge')).toBeVisible();
     await expect(window.locator('.repos-pane')).toHaveCount(0);
@@ -161,8 +161,8 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     await expect(window.locator('.repos-pane')).toBeVisible();
     await expect(window.getByText('Fixture knowledge')).toHaveCount(0);
 
-    // The rail covers every surface: resources, skills, automations, logs —
-    // each a single click away, each replacing the pane before it.
+    // Resources and Skills use the rail; Automations and Logs use top-bar
+    // overlays without replacing the working pane.
     await railItem(window, 'Resources').click();
     await expect(window.getByText('Fixture resource')).toBeVisible();
     await railItem(window, 'Skills').click();
@@ -172,12 +172,12 @@ test('the rail is the complete navigation — one click swaps any right pane', a
     await window.locator('.surface-back').click();
     await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
-    // …and switching back to Code works from the far end of the rail too.
+    // Closing the utility overlay leaves the rail available to select Code.
     await window.locator('.surface-back').click();
     await railItem(window, 'Code').click();
     await expect(window.locator('.repos-pane')).toBeVisible();
 
-    // View → Working pane mirrors the rail with direct selections.
+    // View → Working pane shows/selects rather than toggling active panes.
     await window.getByRole('button', { name: 'Logs', exact: true }).click();
     await expect(window.locator('.logs-pane')).toBeVisible();
     await window.keyboard.press('Escape');

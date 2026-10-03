@@ -280,7 +280,7 @@ request-quit                                  help-cli
                        refresh
 ```
 
-Every entry maps one-to-one to a menu item — except `show-dashboard`: its View-menu accelerator was removed and the strip's Dashboard pseudo-tab calls `selectBottomBand` directly, so the command currently has no dispatcher (the handler in `menu-commands.ts` stays for menu parity). The four `show-*` working-pane commands are direct persisted selections, matching the rail. Automations, Logs, and Diagnostics are top-bar overlays with no native menu command. See [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
+Every entry maps one-to-one to a menu item — except `show-dashboard`: its View-menu accelerator was removed and the strip's Dashboard pseudo-tab calls `selectBottomBand` directly, so the command currently has no dispatcher (the handler in `menu-commands.ts` stays for menu parity). The four `show-*` working-pane commands are idempotent persisted show/selections that preserve Projects visibility, unlike active rail clicks, which hide their pane. Automations, Logs, and Diagnostics are top-bar overlays with no native menu command. See [Keyboard shortcuts — Application menu](shortcuts.md#application-menu) for the user-facing list.
 
 ## What is intentionally **not** here
 

@@ -379,8 +379,7 @@ const terminalSettings = z
  *  the same shape check the settings save path enforces. */
 export const layoutSchema = z
   .object({
-    // Always `true` — the left band is fixed Projects. migrateRawSettings
-    // forces a stale persisted `false` back to `true` before this runs.
+    // Projects visibility persists independently of the working pane.
     projects: z.boolean(),
     // Hand-listed — keep in sync with `WorkingSurface` in
     // shared/types/layout.ts. An unlisted surface would not just fail one

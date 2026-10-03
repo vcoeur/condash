@@ -33,8 +33,8 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
 | File | New project… | `Ctrl+N` / `Cmd+N` | Open the new-project modal. |
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
-| View ▸ Working pane | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Select Code as the working pane (same direct selection as the rail click). |
-| View ▸ Working pane | Show Knowledge / Resources / Skills | — | Select that pane as the working pane. Exactly one is ever checked, and the choice is persisted. |
+| View ▸ Working pane | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show/select Code; selecting it again leaves it visible, unlike an active rail click. |
+| View ▸ Working pane | Show Knowledge / Resources / Skills | — | Show/select that working pane without changing Projects visibility. At most one is checked; none is checked when the working pane is hidden. The choice is persisted. |
 | View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). |
