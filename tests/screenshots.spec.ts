@@ -173,7 +173,7 @@ const demoGlobalSettings = {
  *  or sliver capture (the committed `projects-done` pair was 1.7 kB). */
 const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'dashboard-overview', minBytes: 150_000 },
-  { slug: 'activity-rail', minBytes: 5_000 },
+  { slug: 'activity-rail', minBytes: 3_000 },
   { slug: 'projects-done', minBytes: 25_000 },
   { slug: 'code-pane', minBytes: 80_000 },
   { slug: 'code-pane-dirty', minBytes: 80_000 },
@@ -186,8 +186,8 @@ const EXPECTED_SHOTS: { slug: string; minBytes: number }[] = [
   { slug: 'resources-pane', minBytes: 150_000 },
   { slug: 'skills-pane', minBytes: 150_000 },
   { slug: 'tasks-pane', minBytes: 100_000 },
-  { slug: 'deliverables-pane', minBytes: 150_000 },
-  { slug: 'plan-document', minBytes: 150_000 },
+  { slug: 'logs-overlay', minBytes: 30_000 },
+  { slug: 'diagnostics-overlay', minBytes: 30_000 },
   { slug: 'settings-modal', minBytes: 150_000 },
 ];
 
@@ -304,6 +304,28 @@ async function boot(theme: Theme): Promise<Booted> {
   await writeFile(conceptionConfigPath, JSON.stringify(conceptionConfig, null, 2) + '\n', 'utf8');
   await seedWorkspace(workspacePath);
   await seedDemoShell();
+  const now = new Date();
+  const logDay = [
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ];
+  const logDir = join(conceptionDir, '.condash', 'logs', ...logDay);
+  await mkdir(logDir, { recursive: true });
+  await writeFile(
+    join(logDir, '091203-t-demo.txt'),
+    '# condash: ' +
+      JSON.stringify({
+        sid: 't-demo',
+        side: 'my',
+        cwd: conceptionDir,
+        cmd: 'helio',
+        argv: ['search'],
+        started: now.toISOString(),
+        kind: 'transcript',
+      }) +
+      '\n3 hits · first hit 0.14 s\n',
+  );
 
   await mkdir(join(userDataDir, 'condash'), { recursive: true });
   // Layout: projects + code visible at 50/50 (798px each + 4px splitter on
@@ -709,9 +731,9 @@ async function shootClip(
 
 /** Send a menu-command IPC to the renderer. The composite layout has no
  *  in-window tab strip — pane visibility is driven by the application menu
- *  ('toggle-projects', 'show-code', 'show-knowledge', 'hide-working',
- *  'open-settings', 'toggle-terminal', 'search'), so screenshot prep goes
- *  through the same channel a real menu click would. */
+ *  ('show-code', 'show-knowledge', 'open-settings', 'toggle-terminal',
+ *  'search'), so screenshot prep goes through the same channel a real menu
+ *  click would. */
 async function sendMenu(app: ElectronApplication, command: string): Promise<void> {
   await app.evaluate(({ BrowserWindow }, cmd) => {
     const w = BrowserWindow.getAllWindows()[0];
@@ -728,52 +750,24 @@ async function railPressed(page: Page, label: string): Promise<boolean> {
 }
 
 /**
- * Fill the left band with one of its views.
- *
- * `toggleLeftView` hides the band when the requested view is already the
- * active one (`use-layout.ts`), so the `aria-pressed` guard is what keeps this
- * a "show", not a toggle.
- */
-async function showLeftView(
-  page: Page,
-  label: 'Projects' | 'Tasks' | 'Deliverables',
-): Promise<void> {
-  if (!(await railPressed(page, label))) {
-    await page.locator(`.rail-item[title^="${label}"]`).first().click();
-  }
-  await settle(page);
-}
-
-/**
  * Show one pane in the working-surface slot.
  *
- * `show-code` / `show-knowledge` / `show-resources` / `show-skills` are
- * **tristate toggles**, not idempotent "show" commands: each sets the slot to
- * `null` when its own surface is already there (`menu-commands.ts`). The boot
- * layout persists `working: 'code'`, so an unguarded `show-code` HID the
- * working surface and produced a blank right half — which is exactly what the
- * committed `code-pane-{light,dark}.png` used to show. Guard on `aria-pressed`.
+ * Native working commands persist an idempotent show/selection, independent
+ * of Projects visibility. The guard skips settling an already visible pane.
  */
 async function showWorking(
   b: Booted,
   label: 'Code' | 'Knowledge' | 'Resources' | 'Skills',
 ): Promise<void> {
-  if (!(await railPressed(b.page, label))) {
-    const command = {
-      Code: 'show-code',
-      Knowledge: 'show-knowledge',
-      Resources: 'show-resources',
-      Skills: 'show-skills',
-    }[label];
-    await sendMenu(b.app, command);
-  }
-  await settle(b.page, 400);
-}
-
-/** Show or hide the whole left band, whatever view it currently holds. */
-async function setProjectsBand(b: Booted, visible: boolean): Promise<void> {
-  const shown = await b.page.locator('.projects-pane, .tasks-pane, .deliverables-stack').count();
-  if (shown > 0 !== visible) await sendMenu(b.app, 'toggle-projects');
+  // Native selection does not hide an already visible pane.
+  if (await railPressed(b.page, label)) return;
+  const command = {
+    Code: 'show-code',
+    Knowledge: 'show-knowledge',
+    Resources: 'show-resources',
+    Skills: 'show-skills',
+  }[label];
+  await sendMenu(b.app, command);
   await settle(b.page, 400);
 }
 
@@ -783,7 +777,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
   try {
     // 1. dashboard-overview — the composite landing view: Projects on the left,
     //    Code in the working slot.
-    await showLeftView(page, 'Projects');
     await showWorking(b, 'Code');
     await settle(page, 600);
     await parkPointer(page);
@@ -808,7 +801,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
       await requireContent(page, 'activity-rail', {
         root: '.rail',
         items: '.rail-item',
-        minItems: 9,
+        minItems: 6,
       });
       const rail = await page.locator('.rail').first().boundingBox();
       const lastItem = await page.locator('.rail-item').last().boundingBox();
@@ -871,7 +864,8 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    Captured with NO popover open: the page it serves
     //    (`repositories-and-open-with.md`) is about the card list, and the
     //    popover covers one of the five cards.
-    await setProjectsBand(b, false);
+    //    The left band is fixed Projects now, so this is a full-window shot
+    //    of the right pane only — the working surface keeps its 50/50 share.
     await settle(page, 600);
     await parkPointer(page);
     await requireContent(page, 'code-pane', {
@@ -899,8 +893,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     });
     await shoot(page, theme, 'code-pane-dirty');
     await page.keyboard.press('Escape');
-    await setProjectsBand(b, true);
-    await showLeftView(page, 'Projects');
 
     // 6. knowledge-pane — the tree's directory sections are pre-expanded via
     //    the seeded `treeExpansion`, so the shot shows the tree, not three
@@ -1029,7 +1021,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 12. item-document-with-pdf — open a document item that has a PDF
     //     deliverable. The demo fixture's `2026-04-10-plugin-api-proposal/
     //     deliverables/` ships a PDF; click that card to open the note modal.
-    await showLeftView(page, 'Projects');
     const docCard = page.locator('.row', { hasText: /plugin API proposal/i }).first();
     if (await docCard.count()) {
       await docCard.click();
@@ -1063,58 +1054,42 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await shoot(page, theme, 'status-unknown-badge');
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    // 14. tasks-pane — the left band's Tasks view. The fixture ships two
-    //     `tasks/<slug>/{task.json,prompt.md}` directories whose `agent` ids
-    //     resolve against the seeded agents list, so Run… is enabled.
-    await showLeftView(page, 'Tasks');
+    // 14. tasks-pane — the full-window Automations overlay.
+    //     The fixture ships six `tasks/<slug>/{task.json,prompt.md}`
+    //     directories whose `agent` ids resolve against the seeded agents
+    //     list, so Run… is enabled.
+    await page.getByRole('button', { name: 'Automations', exact: true }).click();
     await settle(page, 500);
     await parkPointer(page);
     await requireContent(page, 'tasks-pane', {
       root: '.tasks-pane',
       items: '.tasks-row',
-      minItems: 2,
-    });
-    await shoot(page, theme, 'tasks-pane');
-
-    // 15. deliverables-pane — the left band's Deliverables view, aggregating
-    //     every `## Deliverables` section. The fixture exercises the wiki /
-    //     url / pdf / md / image / file type tags.
-    await showLeftView(page, 'Deliverables');
-    await settle(page, 500);
-    await parkPointer(page);
-    await requireContent(page, 'deliverables-pane', {
-      root: '.deliverables-stack',
-      items: '.deliverable-button',
       minItems: 6,
     });
-    await shoot(page, theme, 'deliverables-pane');
+    await shoot(page, theme, 'tasks-pane');
+    await page.locator('.surface-back').click();
 
-    // 16. plan-document — the MDX viewer, opened from the plan deliverable of
-    //     `2026-04-02-fuzzy-search-v2`.
-    {
-      const planRow = page
-        .locator('.deliverable-button', { hasText: 'Trigram index plan' })
-        .first();
-      if (await planRow.count()) {
-        await planRow.click();
-        await page.locator('.mdx-modal').waitFor({ state: 'visible', timeout: 10_000 });
-        await settle(page, 800);
-        await parkPointer(page);
-        await requireContent(page, 'plan-document', {
-          root: '.mdx-modal',
-          items: '.plan-block',
-          minItems: 4,
-        });
-        await shoot(page, theme, 'plan-document');
-        await page.keyboard.press('Escape');
-        await settle(page);
-      } else {
-        console.warn(`[shoot] ${theme}/plan-document: plan deliverable not found`);
-      }
-    }
-    await showLeftView(page, 'Projects');
+    await page.getByRole('button', { name: 'Logs', exact: true }).click();
+    await requireContent(page, 'logs-overlay', {
+      root: '.logs-pane',
+      items: '.logs-session-card',
+      minItems: 1,
+    });
+    await parkPointer(page);
+    await shoot(page, theme, 'logs-overlay');
+    await page.locator('.surface-back').click();
 
-    // 17. settings-modal — opened, never saved.
+    await page.getByRole('button', { name: 'Diagnostics', exact: true }).click();
+    await requireContent(page, 'diagnostics-overlay', {
+      root: '.perf-view',
+      items: '.perf-vital',
+      minItems: 4,
+    });
+    await parkPointer(page);
+    await shoot(page, theme, 'diagnostics-overlay');
+    await page.locator('.surface-back').click();
+
+    // 15. settings-modal — opened, never saved.
     await sendMenu(b.app, 'open-settings');
     await page.locator('.settings-modal').waitFor({ state: 'visible', timeout: 10_000 });
     await settle(page, 800);

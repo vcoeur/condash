@@ -7,7 +7,7 @@
 // Domains:
 //   common      — cross-cutting primitives (Platform, ItemKind, HelpDocName, Theme)
 //   project     — project lifecycle (statuses, steps, deliverables, Project, create/transition)
-//   layout      — renderer view-state (WorkingSurface, LeftView, LayoutState)
+//   layout      — renderer view-state (WorkingSurface, LayoutState)
 //   dashboard   — live terminal-tab summarization (state, per-tab summaries, config view)
 //   settings    — persisted settings + per-pane prefs + open-with slots
 //   git         — git/worktree status + repo entries + repo events

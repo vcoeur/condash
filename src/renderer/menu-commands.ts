@@ -6,18 +6,18 @@ import type { HelpDoc } from './help-modal';
 export interface MenuRouterDeps {
   conceptionPath: Accessor<string | null>;
   layout: Accessor<LayoutState>;
-  setConceptionPath: (next: string | null) => void;
   setSearchModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setNewProjectOpen: (open: boolean) => void;
   setQuitConfirmOpen: (open: boolean) => void;
   setAboutOpen: (open: boolean) => void;
   setHelpDoc: (doc: HelpDoc) => void;
-  toggleProjects: () => void;
   toggleTerminal: () => void;
+  /** Select the right-pane surface directly (persisted; never a toggle). */
   selectWorking: (next: WorkingSurface) => void;
   /** Toggle the Dashboard body in the bottom band (next to Terminal). */
   toggleDashboardBand: () => void;
+  openRecent: (path: string) => Promise<void>;
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -61,36 +61,20 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       deps.toggleTerminal();
       return;
     }
-    if (command === 'toggle-projects') {
-      deps.toggleProjects();
-      return;
-    }
-    if (command === 'show-code') {
-      deps.selectWorking(deps.layout().working === 'code' ? null : 'code');
-      return;
-    }
-    if (command === 'show-knowledge') {
-      deps.selectWorking(deps.layout().working === 'knowledge' ? null : 'knowledge');
-      return;
-    }
-    if (command === 'show-resources') {
-      deps.selectWorking(deps.layout().working === 'resources' ? null : 'resources');
-      return;
-    }
-    if (command === 'show-skills') {
-      deps.selectWorking(deps.layout().working === 'skills' ? null : 'skills');
-      return;
-    }
-    if (command === 'show-logs') {
-      deps.selectWorking(deps.layout().working === 'logs' ? null : 'logs');
+    if (
+      command === 'show-code' ||
+      command === 'show-knowledge' ||
+      command === 'show-resources' ||
+      command === 'show-skills'
+    ) {
+      // Strip the `show-` prefix: the rest is the WorkingSurface name. Every
+      // command is a direct selection — the pane the menu names is the pane
+      // that shows, never a toggle (the rail is the complete navigation).
+      deps.selectWorking(command.slice('show-'.length) as WorkingSurface);
       return;
     }
     if (command === 'show-dashboard') {
       deps.toggleDashboardBand();
-      return;
-    }
-    if (command === 'hide-working') {
-      deps.selectWorking(null);
       return;
     }
     if (command === 'refresh') {
@@ -111,17 +95,7 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
   onCleanup(offMenu);
 
   const offMenuOpenRecent = window.condash.onMenuOpenRecent((path) => {
-    void window.condash
-      .openConception(path)
-      .then((newPath) => {
-        // Setting the conception path cascades through every store's
-        // `createEffect(conceptionPath)` (projects, knowledge, resources,
-        // skills, repos, config), so no explicit refresh bump is needed.
-        deps.setConceptionPath(newPath);
-      })
-      .catch((err) => {
-        deps.flashToast(`Open failed: ${(err as Error).message}`, 'error');
-      });
+    void deps.openRecent(path);
   });
   onCleanup(offMenuOpenRecent);
 

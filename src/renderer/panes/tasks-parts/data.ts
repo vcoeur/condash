@@ -31,6 +31,8 @@ export interface Draft {
   agent: string;
   prompt: string;
   editingSlug: string | null;
+  /** Earlier task slugs whose config entries still need cleanup after a rename. */
+  configSlugsToClear: string[];
   /** Free-text schedule cadence (`<n>` + `s`/`m`/`h`/`d`, e.g. `5m`/`2h`/`1d`);
    *  empty = not scheduled (capability 1). Parsed via `parseCadence`; the editor
    *  shows the computed interval beside the field. Persisted to
@@ -159,6 +161,7 @@ export function blankDraft(agents: readonly Agent[]): Draft {
     agent: seedable?.id ?? '',
     prompt: '',
     editingSlug: null,
+    configSlugsToClear: [],
     schedule: '',
     timeout: DEFAULT_TIMEOUT,
     excludeFromLogs: false,

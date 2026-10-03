@@ -1,84 +1,61 @@
-import { For, Show } from 'solid-js';
-import type { LeftView, WorkingSurface } from '@shared/types';
+import { For } from 'solid-js';
+import type { WorkingSurface } from '@shared/types';
 import {
   CodeIcon,
-  DeliverablesIcon,
   KnowledgeIcon,
-  LogsIcon,
-  PerfIcon,
   ProjectsIcon,
   ResourcesIcon,
   SkillsIcon,
-  TasksIcon,
+  TerminalIcon,
 } from './icons';
 import type { JSX } from 'solid-js';
 
 interface RailItemDef {
-  key: LeftView | WorkingSurface;
+  key: 'projects' | 'terminal' | WorkingSurface;
   label: string;
   shortcut: string;
   icon: () => JSX.Element;
-  kind: 'left' | 'working';
 }
 
+/** Three independent rail groups: Projects, working panes, and Terminal. */
 const RAIL_ITEMS: RailItemDef[] = [
-  { key: 'projects', label: 'Projects', shortcut: '', icon: ProjectsIcon, kind: 'left' },
-  { key: 'tasks', label: 'Tasks', shortcut: '', icon: TasksIcon, kind: 'left' },
-  {
-    key: 'deliverables',
-    label: 'Deliverables',
-    shortcut: '',
-    icon: DeliverablesIcon,
-    kind: 'left',
-  },
-  { key: 'perf', label: 'Performance', shortcut: '', icon: PerfIcon, kind: 'left' },
-  { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon, kind: 'working' },
-  {
-    key: 'knowledge',
-    label: 'Knowledge',
-    shortcut: 'Ctrl+Shift+K',
-    icon: KnowledgeIcon,
-    kind: 'working',
-  },
-  {
-    key: 'resources',
-    label: 'Resources',
-    shortcut: 'Ctrl+R',
-    icon: ResourcesIcon,
-    kind: 'working',
-  },
-  { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L', icon: SkillsIcon, kind: 'working' },
-  { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L', icon: LogsIcon, kind: 'working' },
+  { key: 'projects', label: 'Projects', shortcut: '', icon: ProjectsIcon },
+  { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C', icon: CodeIcon },
+  { key: 'knowledge', label: 'Knowledge', shortcut: '', icon: KnowledgeIcon },
+  { key: 'resources', label: 'Resources', shortcut: '', icon: ResourcesIcon },
+  { key: 'skills', label: 'Skills', shortcut: '', icon: SkillsIcon },
+  { key: 'terminal', label: 'Terminal', shortcut: '', icon: TerminalIcon },
 ];
 
-/** Index of the first `working` item — where the rail's group separator goes.
+/** Index of the first right-pane item — where the rail's group separator goes.
  *  Derived from RAIL_ITEMS so reordering or inserting items keeps it correct. */
-const FIRST_WORKING_INDEX = RAIL_ITEMS.findIndex((item) => item.kind === 'working');
+const FIRST_WORKING_INDEX = RAIL_ITEMS.findIndex((item) => item.key !== 'projects');
 
 export interface ActivityRailProps {
-  leftView: LeftView;
-  workingSurface: WorkingSurface;
-  projectsVisible: boolean;
+  /** The surface currently filling the right pane. */
+  workingSurface: WorkingSurface | 'none';
+  projectsOpen: boolean;
+  terminalOpen: boolean;
   disabled: boolean;
-  onToggleLeftView: (view: LeftView) => void;
-  onSelectWorking: (next: WorkingSurface) => void;
+  onToggleProjects: () => void;
+  onToggleWorking: (next: WorkingSurface) => void;
+  onToggleTerminal: () => void;
 }
 
 export function ActivityRail(props: ActivityRailProps) {
   const isActive = (item: RailItemDef): boolean => {
-    if (item.kind === 'left') {
-      return props.projectsVisible && props.leftView === item.key;
-    }
+    if (item.key === 'projects') return props.projectsOpen;
+    if (item.key === 'terminal') return props.terminalOpen;
     return props.workingSurface === item.key;
   };
 
   const handleClick = (item: RailItemDef): void => {
-    if (item.kind === 'left') {
-      props.onToggleLeftView(item.key as LeftView);
+    if (item.key === 'projects') {
+      props.onToggleProjects();
+    } else if (item.key === 'terminal') {
+      props.onToggleTerminal();
     } else {
-      props.onSelectWorking(
-        props.workingSurface === item.key ? null : (item.key as WorkingSurface),
-      );
+      props.onToggleWorking(item.key);
     }
   };
 
@@ -91,15 +68,10 @@ export function ActivityRail(props: ActivityRailProps) {
     <aside class="rail" aria-label="Activity rail">
       <For each={RAIL_ITEMS}>
         {(item, index) => {
-          // Separator before the FIRST working item, derived rather than a
-          // literal index: the old `index() === 3` silently stopped matching the
-          // moment a left item was inserted, dropping the divider for everyone.
-          const divider = item.kind === 'working' && index() === FIRST_WORKING_INDEX;
+          const divider = index() === FIRST_WORKING_INDEX || item.key === 'terminal';
           return (
             <>
-              <Show when={divider}>
-                <div class="rail-divider" />
-              </Show>
+              {divider && <div class="rail-divider" />}
               <button
                 type="button"
                 class="rail-item"

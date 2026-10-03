@@ -15,7 +15,6 @@ The Dashboard summarises every open terminal tab into a card: a few-word title, 
 
 The Dashboard lives in the **bottom band**, next to Terminal — it is not a right-slot working surface, so it never displaces Code or Knowledge.
 
-- **View → Show Dashboard**, or `Ctrl+Shift+D` / `Cmd+Shift+D`.
 - The left terminal tab strip's **first entry** is a fixed **Dashboard** pseudo-tab. It cannot be renamed, closed, or dragged. Selecting it swaps the bottom band to the Dashboard; selecting any real terminal tab switches straight back; clicking it while it is already active closes the pane.
 
 It is always present, even with summarisation off — the body then explains how to enable it.

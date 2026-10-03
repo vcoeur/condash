@@ -51,6 +51,14 @@ import {
  *   unknowable at parse time, and guessing one mis-scales the pane badly on any
  *   other display. Backfilling the default is what keeps the whole settings
  *   file parseable — `projectsSplit` is required whenever `layout` exists.
+ * - `layout.leftView` — dropped (the left band is fixed Projects now). Legacy
+ *   specialist selections (`tasks` / `deliverables` / `perf` / `outputs`)
+ *   carried no data beyond the pointer itself, so dropping the key is the
+ *   whole migration; `projects` visibility never depended on it.
+ * - `layout.projects: false` and `layout.working: none` remain valid hidden states.
+ * - `layout.working`: retired `automations` / `logs` selections and the old
+ *   `null` hide state fall back to Code. These destinations are session-only
+ *   overlays now; no task, log, or recording preference is migrated.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
@@ -82,10 +90,18 @@ export function migrateRawSettings(parsed: unknown): unknown {
     }
     delete root.projectCardTitleFont;
   }
-  // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
   if (root.layout && typeof root.layout === 'object') {
     const layout = root.layout as Record<string, unknown>;
-    if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
+    // The left band is fixed Projects: the prototype retired every specialist
+    // left-band selection and the rail re-map dropped the hide affordance, so
+    // the field itself has no reader left. Drop it rather than keep a key the
+    // strict schema no longer lists.
+    delete layout.leftView;
+    // Retired destinations and malformed values fall back to Code; `none` is valid.
+    const WORKING_SURFACES = new Set(['code', 'knowledge', 'resources', 'skills', 'none']);
+    if (typeof layout.working !== 'string' || !WORKING_SURFACES.has(layout.working)) {
+      layout.working = 'code';
+    }
     // The splitter position went from CSS pixels to a fraction of the band, so
     // it survives a window resize. The pixel value is deliberately NOT
     // converted: the band width it was measured against is unknowable here, and

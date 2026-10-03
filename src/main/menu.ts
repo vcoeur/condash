@@ -4,6 +4,7 @@ import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
 import type { LayoutState } from '../shared/types';
+import type { MenuCommand } from '../shared/api';
 
 type Recents = { paths: string[]; current: string | null };
 
@@ -44,14 +45,15 @@ function prettyRecentLabel(path: string): string {
 }
 
 /**
- * Build the application menu. The View submenu mirrors the unified
- * layout's pane-visibility state — Show/Hide Projects + Show/Hide
- * Terminal as toggles, plus a three-state group (Code | Knowledge |
- * neither) for the right-slot working surface. Pass the current layout
- * so check marks line up with what's actually shown; rebuild the menu
- * after any layout change so the marks refresh. No Quit accelerator on
- * purpose: Ctrl+Q is too easy to hit by accident, and File → Quit
- * routes through a renderer-side confirmation modal anyway.
+ * Build the application menu. View working commands show/select idempotently,
+ * unlike active rail clicks, which hide their pane. At most one working item
+ * is checked; none is checked when hidden. Show Terminal toggles the bottom
+ * band. Projects visibility is independent and has no menu entry; utilities
+ * launch only from the top bar. Pass the current layout so marks match what's
+ * actually shown; rebuild the menu after any layout change so the marks
+ * refresh. No Quit accelerator on purpose: Ctrl+Q is too easy to hit by
+ * accident, and File → Quit routes through a renderer-side confirmation
+ * modal anyway.
  */
 export function buildMenu(
   layout: LayoutState = DEFAULT_LAYOUT,
@@ -59,7 +61,7 @@ export function buildMenu(
 ): void {
   lastLayout = layout;
   lastRecents = recents;
-  const send = (command: string): void => {
+  const send = (command: MenuCommand): void => {
     sendToMain(EVENT_CHANNELS.menuCommand, command);
   };
 
@@ -126,64 +128,39 @@ export function buildMenu(
 
   const viewSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'Show Projects',
-      type: 'checkbox',
-      checked: layout.projects,
-      click: () => send('toggle-projects'),
-    },
-    {
-      label: 'Show Code',
-      type: 'checkbox',
-      checked: layout.working === 'code',
-      accelerator: 'CommandOrControl+Shift+C',
-      click: () => send('show-code'),
-    },
-    {
-      label: 'Show Knowledge',
-      type: 'checkbox',
-      checked: layout.working === 'knowledge',
-      accelerator: 'CommandOrControl+Shift+K',
-      click: () => send('show-knowledge'),
-    },
-    {
-      label: 'Show Resources',
-      type: 'checkbox',
-      checked: layout.working === 'resources',
-      accelerator: 'CommandOrControl+R',
-      click: () => send('show-resources'),
-    },
-    {
-      label: 'Show Skills',
-      type: 'checkbox',
-      checked: layout.working === 'skills',
-      accelerator: 'CommandOrControl+L',
-      click: () => send('show-skills'),
-    },
-    {
-      label: 'Show Logs',
-      type: 'checkbox',
-      checked: layout.working === 'logs',
-      accelerator: 'CommandOrControl+Shift+L',
-      click: () => send('show-logs'),
-    },
-    {
-      // The Dashboard lives in the bottom band next to Terminal, not the
-      // right-slot working surface, so this toggles that band rather than
-      // syncing a working-surface checkbox.
-      label: 'Show Dashboard',
-      accelerator: 'CommandOrControl+Shift+D',
-      click: () => send('show-dashboard'),
-    },
-    {
-      label: 'Hide working surface',
-      enabled: layout.working !== null,
-      click: () => send('hide-working'),
+      label: 'Working pane',
+      submenu: [
+        {
+          label: 'Show Code',
+          type: 'checkbox',
+          checked: layout.working === 'code',
+          accelerator: 'CommandOrControl+Shift+C',
+          click: () => send('show-code'),
+        },
+        {
+          label: 'Show Knowledge',
+          type: 'checkbox',
+          checked: layout.working === 'knowledge',
+          click: () => send('show-knowledge'),
+        },
+        {
+          label: 'Show Resources',
+          type: 'checkbox',
+          checked: layout.working === 'resources',
+          click: () => send('show-resources'),
+        },
+        {
+          label: 'Show Skills',
+          type: 'checkbox',
+          checked: layout.working === 'skills',
+          click: () => send('show-skills'),
+        },
+      ],
     },
     {
       label: 'Show Terminal',
       type: 'checkbox',
       checked: layout.terminal,
-      accelerator: 'CommandOrControl+`',
       click: () => send('toggle-terminal'),
     },
     { type: 'separator' },

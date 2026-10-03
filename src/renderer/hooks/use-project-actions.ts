@@ -13,6 +13,7 @@ export interface UseProjectActionsDeps {
   router: ModalRouter;
   projects: () => readonly Project[];
   knowledge: () => KnowledgeNode | null | undefined;
+  loadKnowledgeForContext: () => Promise<void>;
   mutate: (mutator: (items: Project[] | undefined) => Project[]) => void;
   setModal: Setter<ModalState>;
   setPreviewPath: Setter<string | null>;
@@ -45,7 +46,7 @@ export interface UseProjectActions {
   handleToggleStep: (project: Project, step: Step) => Promise<void>;
   handleEditStepText: (project: Project, step: Step, newText: string) => Promise<void>;
   handleAddStep: (project: Project, text: string) => Promise<void>;
-  handleWikilink: (slug: string) => void;
+  handleWikilink: (slug: string) => Promise<void>;
   /** Per-card "+ note" — interleaves a prompt with the IPC create + an
    *  immediate open of the new note in the modal editor. */
   handleCreateProjectNote: (project: Project) => Promise<void>;
@@ -257,8 +258,12 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     await toggleStar(project.slug, (message) => deps.flashToast(message, 'error'));
   };
 
-  const handleWikilink = (slug: string): void => {
-    const matches = slugIndex().get(slug);
+  const handleWikilink = async (slug: string): Promise<void> => {
+    let matches = slugIndex().get(slug);
+    if (!matches || matches.length === 0) {
+      await deps.loadKnowledgeForContext();
+      matches = slugIndex().get(slug);
+    }
     if (!matches || matches.length === 0) {
       deps.flashToast(`No item matches [[${slug}]]`, 'error');
       return;

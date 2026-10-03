@@ -65,14 +65,14 @@ describe('CONDASH_CONCEPTION_PATH override', () => {
 });
 
 describe('read-path legacy migration', () => {
-  it('migrates a persisted leftView "outputs" to "deliverables"', async () => {
+  it('re-maps a prototype-era layout to the rail navigation defaults', async () => {
     await fs.writeFile(
       settingsFile,
       JSON.stringify({
         layout: {
-          projects: true,
-          leftView: 'outputs',
-          working: 'code',
+          projects: false,
+          leftView: 'projects',
+          working: null,
           terminal: true,
           projectsSplit: 0.32,
         },
@@ -80,8 +80,28 @@ describe('read-path legacy migration', () => {
     );
     const { readSettings } = await loadSettingsModule();
     const settings = await readSettings();
-    expect(settings.layout?.leftView).toBe('deliverables');
+    expect(settings.layout?.projects).toBe(false);
+    expect(settings.layout?.working).toBe('code');
   });
+
+  it.each(['knowledge', 'resources', 'skills'])(
+    'keeps working: %s persisted (the rail re-map widened the union)',
+    async (leftView) => {
+      await fs.writeFile(
+        settingsFile,
+        JSON.stringify({
+          layout: {
+            projects: true,
+            working: leftView,
+            terminal: true,
+            projectsSplit: 0.32,
+          },
+        }),
+      );
+      const { readSettings } = await loadSettingsModule();
+      expect((await readSettings()).layout?.working).toBe(leftView);
+    },
+  );
 });
 
 describe('degenerate settings.json roots', () => {

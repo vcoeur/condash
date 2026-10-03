@@ -21,7 +21,7 @@ import type {
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { THEME_VALUES } from '../shared/themes';
-import { LEFT_VIEWS, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
+import { MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '../shared/types/layout';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 import {
@@ -379,24 +379,13 @@ const terminalSettings = z
  *  the same shape check the settings save path enforces. */
 export const layoutSchema = z
   .object({
+    // Projects visibility persists independently of the working pane.
     projects: z.boolean(),
-    // Optional: layouts persisted before `leftView` existed omit it; the read
-    // path back-fills from DEFAULT_LAYOUT. The legacy `'outputs'` value (v3.20.0)
-    // is migrated to `'deliverables'` in migrateRawSettings.
-    // Built from LEFT_VIEWS (shared/types/layout.ts) rather than hand-listed, so
-    // a new LeftView cannot compile while leaving this validator stale — the
-    // failure mode was silent and app-wide: `setLayout` throws on the unknown
-    // value, and since updateLayout spreads the persisted layout into every
-    // subsequent write, ONE unlisted view breaks every later layout save too.
-    leftView: z.enum(LEFT_VIEWS).optional(),
-    working: z.union([
-      z.literal('code'),
-      z.literal('knowledge'),
-      z.literal('resources'),
-      z.literal('skills'),
-      z.literal('logs'),
-      z.null(),
-    ]),
+    // Hand-listed — keep in sync with `WorkingSurface` in
+    // shared/types/layout.ts. An unlisted surface would not just fail one
+    // save: updateLayout spreads the persisted layout into every later write,
+    // so ONE stale value breaks every subsequent layout save too.
+    working: z.enum(['code', 'knowledge', 'resources', 'skills', 'none']),
     terminal: z.boolean(),
     /** Splitter position as a fraction of the band width. The bounds are loose
      *  on purpose — the renderer's px clamp is the real constraint, and a

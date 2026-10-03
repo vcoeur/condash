@@ -21,6 +21,7 @@ import type { Section } from '../settings-modal-parts/data';
 export type ActiveModal =
   | { kind: 'search' }
   | { kind: 'settings' }
+  | { kind: 'automations' | 'logs' | 'diagnostics' }
   | { kind: 'newProject' }
   | { kind: 'about' }
   | { kind: 'quitConfirm' }
@@ -43,7 +44,16 @@ export interface UseModals {
   setMdxPath: Setter<string | null>;
   /** The single active-overlay signal backing the boolean accessors below. */
   activeModal: () => ActiveModal;
-  setActiveModal: Setter<ActiveModal>;
+  setActiveModal: (next: ActiveModal, opener?: HTMLElement | null) => void;
+  focusReturnTarget: () => HTMLElement | null;
+  focusReturnPending: () => boolean;
+  requestFocusReturn: () => void;
+  clearFocusReturn: () => void;
+  /** Register the mounted overlay's unsaved-edit guard; null releases ownership. */
+  registerLeaveGuard: (guard: (() => Promise<boolean>) | null) => void;
+  /** Own departure, main IPC and renderer commit as one conception transition. */
+  withConceptionChange: (change: () => Promise<void>) => Promise<boolean>;
+  transitionPending: () => boolean;
   /** True while a modal that should take over the terminal's vertical space is
    *  open — the note/doc viewers (note, project preview, pdf, html, image, mdx)
    *  and the full-screen singleton overlays (search, settings, new-project,
@@ -97,7 +107,48 @@ export function useModals(): UseModals {
   const [htmlPath, setHtmlPath] = createSignal<string | null>(null);
   const [imagePath, setImagePath] = createSignal<string | null>(null);
   const [mdxPath, setMdxPath] = createSignal<string | null>(null);
-  const [activeModal, setActiveModal] = createSignal<ActiveModal>(null);
+  const [activeModal, applyActiveModal] = createSignal<ActiveModal>(null);
+  const [focusReturnTarget, setFocusReturnTarget] = createSignal<HTMLElement | null>(null);
+  const [focusReturnPending, setFocusReturnPending] = createSignal(false);
+  let leaveGuard: (() => Promise<boolean>) | null = null;
+  const [transitionPending, setTransitionPending] = createSignal(false);
+  const registerLeaveGuard = (guard: (() => Promise<boolean>) | null): void => {
+    leaveGuard = guard;
+  };
+  const withConceptionChange = async (change: () => Promise<void>): Promise<boolean> => {
+    if (transitionPending()) return false;
+    setTransitionPending(true);
+    try {
+      if (leaveGuard && !(await leaveGuard())) return false;
+      applyActiveModal(null);
+      await change();
+      return true;
+    } finally {
+      setTransitionPending(false);
+    }
+  };
+  const setActiveModal = (next: ActiveModal, opener?: HTMLElement | null): void => {
+    if (transitionPending()) return;
+    const restoreTarget =
+      opener ??
+      (typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null));
+    if (!leaveGuard) {
+      if (next && !activeModal()) setFocusReturnTarget(restoreTarget);
+      applyActiveModal(next);
+      return;
+    }
+    setTransitionPending(true);
+    void leaveGuard()
+      .then((allowed) => {
+        if (allowed) {
+          if (next && !activeModal()) setFocusReturnTarget(restoreTarget);
+          applyActiveModal(next);
+        }
+      })
+      .finally(() => {
+        setTransitionPending(false);
+      });
+  };
   const [noteDirty, setNoteDirty] = createSignal(false);
   const [initConfirmState, setInitConfirmState] = createSignal<{
     path: string;
@@ -165,6 +216,13 @@ export function useModals(): UseModals {
     setMdxPath,
     activeModal,
     setActiveModal,
+    focusReturnTarget,
+    focusReturnPending,
+    requestFocusReturn: () => setFocusReturnPending(true),
+    clearFocusReturn: () => setFocusReturnPending(false),
+    registerLeaveGuard,
+    withConceptionChange,
+    transitionPending,
     heightModalOpen,
     helpDoc,
     setHelpDoc,

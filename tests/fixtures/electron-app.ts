@@ -2,6 +2,7 @@ import { _electron as electron, type ElectronApplication, type Page } from '@pla
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type { MenuCommand } from '../../src/shared/api';
 
 const repoRoot = resolve(__dirname, '..', '..');
 
@@ -10,7 +11,16 @@ export interface BootedApp {
   window: Page;
   conceptionDir: string;
   userDataDir: string;
+  /** Close and relaunch against the same fixture directories. */
+  restart(): Promise<{ app: ElectronApplication; window: Page }>;
   cleanup(): Promise<void>;
+}
+
+/** Deliver a typed native-menu command to a fixture window. */
+export async function sendMenu(app: ElectronApplication, command: MenuCommand): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, value) => {
+    BrowserWindow.getAllWindows()[0]?.webContents.send('menu-command', value);
+  }, command);
 }
 
 /**
@@ -113,40 +123,49 @@ export async function bootApp(
     DEEPSEEK_BASE_URL: '',
     ...(options.env ?? {}),
   };
-  const app = await electron.launch({
-    args: ['.', '--no-sandbox'],
-    cwd: repoRoot,
-    env,
-  });
-  const window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
+  const launch = async (): Promise<{ app: ElectronApplication; window: Page }> => {
+    const app = await electron.launch({
+      args: ['.', '--no-sandbox'],
+      cwd: repoRoot,
+      env,
+    });
+    const window = await app.firstWindow();
+    await window.waitForLoadState('domcontentloaded');
 
-  // The v3.18.0 settings revamp added enter/transition animations. Playwright's
-  // actionability check waits for an element to be "stable" (not mid-animation)
-  // before clicking; under xvfb those transitions make buttons intermittently
-  // never settle, so clicks time out. Tests assert on settled state, not motion
-  // — collapse every animation/transition to zero duration app-wide so the DOM
-  // is immediately stable. Final rendered pixels are unaffected (only the
-  // tweening between states), so screenshot specs stay valid.
-  await window
-    .addStyleTag({
-      content: `*, *::before, *::after {
+    // The v3.18.0 settings revamp added enter/transition animations. Playwright's
+    // actionability check waits for an element to be "stable" (not mid-animation)
+    // before clicking; under xvfb those transitions make buttons intermittently
+    // never settle, so clicks time out. Tests assert on settled state, not motion
+    // — collapse every animation/transition to zero duration app-wide so the DOM
+    // is immediately stable. Final rendered pixels are unaffected (only the
+    // tweening between states), so screenshot specs stay valid.
+    await window
+      .addStyleTag({
+        content: `*, *::before, *::after {
         animation-duration: 0s !important;
         animation-delay: 0s !important;
         transition-duration: 0s !important;
         transition-delay: 0s !important;
         scroll-behavior: auto !important;
       }`,
-    })
-    .catch(() => undefined);
+      })
+      .catch(() => undefined);
+    return { app, window };
+  };
+  let running = await launch();
 
   return {
-    app,
-    window,
+    app: running.app,
+    window: running.window,
     conceptionDir,
     userDataDir,
+    restart: async () => {
+      await running.app.close();
+      running = await launch();
+      return running;
+    },
     cleanup: async () => {
-      await app.close().catch(() => undefined);
+      await running.app.close().catch(() => undefined);
       await rm(conceptionDir, { recursive: true, force: true });
       await rm(userDataDir, { recursive: true, force: true });
     },

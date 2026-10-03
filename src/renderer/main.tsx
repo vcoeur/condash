@@ -1,27 +1,15 @@
 import { render } from 'solid-js/web';
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-} from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, on, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
 import { nextTheme, themeLabel } from '@shared/themes';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
 import { ProjectsView } from './panes/projects';
-import { DeliverablesView } from './panes/deliverables';
-import { PerfView } from './panes/perf-view';
-import { TasksView } from './panes/tasks';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
-import { LogsView } from './panes/logs';
 import { usableActionTemplates, type Section } from './settings-modal-parts/data';
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
@@ -91,7 +79,17 @@ function App() {
   const { theme, isDark, handleThemeChange, previewTheme, cycleTheme } = useTheme({ flashToast });
   const { cardMinWidth, handleCardMinWidthChange } = useCardMinWidth();
   const { uiFonts, handleUiFontsChange } = useUiFonts();
+
   const {
+    activeModal,
+    setActiveModal,
+    focusReturnTarget,
+    focusReturnPending,
+    requestFocusReturn,
+    clearFocusReturn,
+    registerLeaveGuard,
+    withConceptionChange,
+    transitionPending,
     modal,
     setModal,
     previewPath,
@@ -132,17 +130,45 @@ function App() {
     nextLogsOpenNonce,
   } = useModals();
 
+  // A search-open request belongs to its original conception, not a later Logs mount.
+  createEffect(
+    on(
+      conceptionPath,
+      () => {
+        setLogsOpenRequest(null);
+        if (['automations', 'logs', 'diagnostics', 'search'].includes(activeModal()?.kind ?? ''))
+          setActiveModal(null);
+      },
+      { defer: true },
+    ),
+  );
+
+  createEffect(() => {
+    if (!focusReturnPending()) return;
+    if (activeModal() !== null) {
+      clearFocusReturn();
+      return;
+    }
+    if (transitionPending()) return;
+    const target = focusReturnTarget();
+    if (!target?.isConnected) {
+      clearFocusReturn();
+      return;
+    }
+    if (target.matches(':disabled')) return;
+    target.focus();
+    clearFocusReturn();
+  });
+
   // --- Layout (toggle helpers + splitter drag) --------------------------
   const {
     layout,
     updateLayout,
-    toggleProjects,
     toggleTerminal,
-    toggleLeftView,
     selectWorking,
+    toggleWorking,
     ensureTerminalOpen,
     setTerminalAutoCollapsed,
-    topBandVisible,
     topBandStyle,
     startSplitterDrag,
   } = useLayout({ flashToast });
@@ -195,11 +221,7 @@ function App() {
   // the perf rationale). Showing the pane re-arms the sync. Triggers coalesce
   // behind a short trailing debounce so pane toggling / list churn lands as
   // one batch instead of an overlapping series.
-  createPrIndexSync(
-    projects,
-    () => layout().projects && layout().leftView === 'projects',
-    PR_INDEX_DEBOUNCE_MS,
-  );
+  createPrIndexSync(projects, () => true, PR_INDEX_DEBOUNCE_MS);
 
   // Load the Projects-pane starred set for the active conception. Keyed on the
   // conception path, not the project list: the set lives in that conception's
@@ -318,8 +340,6 @@ function App() {
   const bridge = createTerminalBridge({
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
-    // Same shape as TerminalPane's onShowTerminalBand: the band must flip to
-    // the terminal body for a focused linked tab, not just open the pane.
     showTerminalBand: () => {
       setBottomView('terminal');
       ensureTerminalOpen();
@@ -393,6 +413,7 @@ function App() {
     router,
     projects,
     knowledge,
+    loadKnowledgeForContext: knowledgeStore.loadForContext,
     mutate,
     setModal,
     setPreviewPath,
@@ -486,7 +507,8 @@ function App() {
   });
 
   // --- Conception lifecycle (pick / refresh / init / quit) --------------
-  const { handleRefresh, handlePick, runInit, handleConfirmQuit } = useConception({
+  const { handleRefresh, handlePick, openRecent, runInit, handleConfirmQuit } = useConception({
+    withConceptionChange,
     conceptionPath,
     setConceptionPath,
     knowledgeStore,
@@ -514,16 +536,15 @@ function App() {
     setShortcutsOpen,
   });
   createMenuRouter({
+    openRecent,
     conceptionPath,
     layout,
-    setConceptionPath,
     setSearchModalOpen,
     setSettingsOpen,
     setNewProjectOpen,
     setQuitConfirmOpen,
     setAboutOpen,
     setHelpDoc,
-    toggleProjects,
     toggleTerminal,
     selectWorking,
     toggleDashboardBand: () => selectBottomBand('dashboard'),
@@ -587,6 +608,31 @@ function App() {
           <button
             type="button"
             class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'automations' }, event.currentTarget)}
+          >
+            Automations
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'logs' }, event.currentTarget)}
+          >
+            Logs
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
+            onClick={(event) => setActiveModal({ kind: 'diagnostics' }, event.currentTarget)}
+          >
+            Diagnostics
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            disabled={transitionPending()}
             onClick={() => setSettingsOpen(true)}
             title="Settings"
           >
@@ -597,12 +643,13 @@ function App() {
 
       <div class="workspace">
         <ActivityRail
-          leftView={layout().leftView}
           workingSurface={layout().working}
-          projectsVisible={layout().projects}
           disabled={!handlesEnabled()}
-          onToggleLeftView={toggleLeftView}
-          onSelectWorking={selectWorking}
+          projectsOpen={layout().projects}
+          onToggleProjects={() => updateLayout({ projects: !layout().projects })}
+          onToggleWorking={toggleWorking}
+          terminalOpen={layout().terminal}
+          onToggleTerminal={toggleTerminal}
         />
 
         <div class="workspace-center">
@@ -630,99 +677,53 @@ function App() {
                 onDismiss={handleWelcomeDismiss}
               />
             </Show>
-            <Show when={!shouldShowWelcome() && !topBandVisible() && !layout().terminal}>
-              <div class="all-panes-hidden-helper">
-                <h2>All panes are hidden</h2>
-                <p>Bring one back to start working:</p>
-                <div class="all-panes-hidden-actions">
-                  <button onClick={() => toggleLeftView('projects')}>Show Projects</button>
-                  <button onClick={() => toggleLeftView('tasks')}>Show Tasks</button>
-                  <button onClick={() => toggleLeftView('deliverables')}>Show Deliverables</button>
-                  <button onClick={() => selectWorking('code')}>Show Code</button>
-                  <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
-                  <button onClick={() => selectWorking('resources')}>Show Resources</button>
-                  <button onClick={() => selectWorking('skills')}>Show Skills</button>
-                  <button onClick={toggleTerminal}>Show Terminal</button>
-                </div>
-              </div>
-            </Show>
-            <Show when={topBandVisible()}>
-              <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
-                <Show when={layout().projects}>
-                  <section
-                    class="pane pane-projects"
-                    classList={{
-                      'pane-deliverables': layout().leftView === 'deliverables',
-                      'pane-tasks': layout().leftView === 'tasks',
-                    }}
+            <Show when={!shouldShowWelcome()}>
+              <div
+                class="top-band"
+                classList={{ 'top-band-hidden': !layout().projects && layout().working === 'none' }}
+                ref={(el) => (topBandRef = el)}
+                style={topBandStyle()}
+              >
+                <section
+                  class="pane pane-projects"
+                  style={{ display: layout().projects ? undefined : 'none' }}
+                >
+                  <Show
+                    when={(projects() ?? []).length > 0}
+                    fallback={<div class="empty">No projects found under projects/.</div>}
                   >
-                    {/* Left band shows one pane at a time, selected by the left
-                        activity-rail items (Projects / Tasks / Deliverables). */}
-                    <Switch>
-                      <Match when={layout().leftView === 'deliverables'}>
-                        <DeliverablesView
-                          projects={projects() ?? []}
-                          onOpenDeliverable={openDeliverable}
-                          onReveal={(p) => void window.condash.showInFolder(p)}
-                        />
-                      </Match>
-                      <Match when={layout().leftView === 'tasks'}>
-                        <TasksView
-                          tasks={tasks}
-                          reload={() => void reloadTasks()}
-                          hasConception={() => conceptionPath() !== null}
-                          conceptionPath={conceptionPath}
-                          agents={agents}
-                          projects={() => projects() ?? []}
-                          apps={appOptions}
-                          flashToast={flashToast}
-                          onRun={(agentId, text, taskName, opts) =>
-                            void bridge.runTask(agentId, text, taskName, opts)
-                          }
-                        />
-                      </Match>
-                      <Match when={layout().leftView === 'perf'}>
-                        <PerfView sessions={allSessions} />
-                      </Match>
-                      <Match when={layout().leftView === 'projects'}>
-                        <Show
-                          when={(projects() ?? []).length > 0}
-                          fallback={<div class="empty">No projects found under projects/.</div>}
-                        >
-                          <ProjectsView
-                            buckets={projectsTabGroups()}
-                            onOpen={handleOpenProject}
-                            onToggleStep={handleToggleStep}
-                            onDropProject={handleDropOnColumn}
-                            onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                            onToggleStar={(p) => void handleToggleStar(p)}
-                            onFocusTab={(sid) => void bridge.handleFocusLinkedTab(sid)}
-                            projectActions={projectActionItems()}
-                            onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
-                            onNewProject={() => setNewProjectOpen(true)}
-                            newProjectActions={newProjectActionItems()}
-                            onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
-                            onRefresh={() => {
-                              void reloadProjects();
-                              // Also re-read the starred set so a hand-edited
-                              // `.condash/settings.json` shows up without a
-                              // conception switch or restart.
-                              void reloadStarred();
-                            }}
-                          />
-                        </Show>
-                      </Match>
-                    </Switch>
-                  </section>
-                </Show>
+                    <ProjectsView
+                      buckets={projectsTabGroups()}
+                      onOpen={handleOpenProject}
+                      onToggleStep={handleToggleStep}
+                      onDropProject={handleDropOnColumn}
+                      onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                      onToggleStar={(p) => void handleToggleStar(p)}
+                      onFocusTab={(sid) => void bridge.handleFocusLinkedTab(sid)}
+                      projectActions={projectActionItems()}
+                      onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
+                      onNewProject={() => setNewProjectOpen(true)}
+                      newProjectActions={newProjectActionItems()}
+                      onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
+                      onRefresh={() => {
+                        void reloadProjects();
+                        // Also re-read the starred set so a hand-edited
+                        // `.condash/settings.json` shows up without a
+                        // conception switch or restart.
+                        void reloadStarred();
+                      }}
+                    />
+                  </Show>
+                </section>
 
-                <Show when={layout().projects && layout().working !== null}>
-                  <div
-                    class="top-band-splitter"
-                    onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
-                    title="Drag to resize"
-                  />
-                </Show>
+                <div
+                  class="top-band-splitter"
+                  style={{
+                    display: layout().projects && layout().working !== 'none' ? undefined : 'none',
+                  }}
+                  onMouseDown={(e) => startSplitterDrag(e, topBandRef)}
+                  title="Drag to resize"
+                />
 
                 <Show when={layout().working === 'knowledge'}>
                   <section class="pane pane-working">
@@ -769,12 +770,6 @@ function App() {
                       }
                       onError={treeError}
                     />
-                  </section>
-                </Show>
-
-                <Show when={layout().working === 'logs'}>
-                  <section class="pane pane-working">
-                    <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
                   </section>
                 </Show>
 
@@ -870,8 +865,8 @@ function App() {
           the body open/closed. When closed, only the strip remains
           visible (height collapses to the strip height); when open,
           the body grows to its persisted height above the strip. The
-           left / right activity rails above end where this pane begins,
-          so the bottom band is genuinely full width. */}
+          rail and top band above end where this pane begins, so the
+          bottom band is genuinely full width. */}
       <TerminalPane
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
@@ -891,6 +886,17 @@ function App() {
       />
 
       <ModalHost
+        activeModal={activeModal}
+        setActiveModal={setActiveModal}
+        requestFocusReturn={requestFocusReturn}
+        registerLeaveGuard={registerLeaveGuard}
+        tasks={tasks}
+        reloadTasks={() => void reloadTasks()}
+        agents={agents}
+        apps={appOptions}
+        allSessions={allSessions}
+        logsOpenRequest={logsOpenRequest}
+        logsRefreshTick={logsRefreshTick}
         previewProject={previewProject}
         projects={() => projects() ?? []}
         handleOpenProject={handleOpenProject}
@@ -935,7 +941,7 @@ function App() {
         setSearchModalOpen={setSearchModalOpen}
         setLogsOpenRequest={setLogsOpenRequest}
         nextLogsOpenNonce={nextLogsOpenNonce}
-        selectWorking={selectWorking}
+        showSessionLogs={() => setActiveModal({ kind: 'logs' })}
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}
         settingsSection={settingsSection}

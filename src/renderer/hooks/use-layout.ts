@@ -1,14 +1,13 @@
 import { createMemo, createSignal } from 'solid-js';
-import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
+import type { LayoutState, WorkingSurface } from '@shared/types';
 import { DEFAULT_PROJECTS_SPLIT, MAX_PROJECTS_SPLIT, MIN_PROJECTS_SPLIT } from '@shared/types';
 import { getBootstrap } from '../bootstrap';
 
-/** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used both
- *  for the pre-load signal value and to back-fill fields a persisted layout
- *  predates (e.g. `leftView`). */
+/** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used as
+ *  the pre-load signal value and to back-fill fields a persisted layout
+ *  predates. */
 const DEFAULT_LAYOUT: LayoutState = {
   projects: true,
-  leftView: 'projects',
   working: 'code',
   terminal: true,
   projectsSplit: DEFAULT_PROJECTS_SPLIT,
@@ -79,22 +78,16 @@ export interface UseLayout {
    *  forget: any settings.json write failure surfaces as a toast but the
    *  UI state is the source of truth for the session. */
   updateLayout: (patch: Partial<LayoutState>) => void;
-  toggleProjects: () => void;
   toggleTerminal: () => void;
-  /** Left activity-rail item action: clicking the active view (band visible +
-   *  that view) hides the band; clicking the other shows the band on it.
-   *  Mirrors the right strip's mutually-exclusive working-surface toggle. */
-  toggleLeftView: (view: LeftView) => void;
+  /** Programmatic/menu selection shows the surface without toggling it. */
   selectWorking: (next: WorkingSurface) => void;
+  toggleWorking: (next: WorkingSurface) => void;
   ensureTerminalOpen: () => void;
   /** Set the ephemeral modal auto-collapse mask: `true` hides the terminal for
    *  display only (the persisted preference is untouched), `false` reveals it.
    *  Cleared by any user terminal toggle. Driven by the height-modal effect in
    *  App so a doc/overlay reclaims the terminal's band while it is open. */
   setTerminalAutoCollapsed: (collapsed: boolean) => void;
-  /** Any of the three top-band panes is on — when all three are off only
-   *  the Terminal renders and the top band collapses entirely. */
-  topBandVisible: () => boolean;
   /** Grid columns inside the top band. Three states:
    *   - both Projects and working visible: split with the user-resizable
    *     Projects width on the left.
@@ -145,16 +138,10 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     });
   };
 
-  const toggleProjects = (): void => updateLayout({ projects: !layout().projects });
   const toggleTerminal = (): void => updateLayout({ terminal: !layout().terminal });
-  const toggleLeftView = (view: LeftView): void => {
-    if (layout().projects && layout().leftView === view) {
-      updateLayout({ projects: false });
-    } else {
-      updateLayout({ projects: true, leftView: view });
-    }
-  };
   const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
+  const toggleWorking = (next: WorkingSurface): void =>
+    updateLayout({ working: layout().working === next ? 'none' : next });
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
   };
@@ -162,15 +149,12 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     setAutoCollapsed(collapsed);
   };
 
-  const topBandVisible = (): boolean => layout().projects || layout().working !== null;
-
-  const topBandStyle = (): Record<string, string> => {
-    const l = layout();
-    if (l.projects && l.working !== null) {
-      return { 'grid-template-columns': splitColumns(l.projectsSplit) };
-    }
-    return { 'grid-template-columns': '1fr' };
-  };
+  const topBandStyle = (): Record<string, string> => ({
+    'grid-template-columns':
+      layout().projects && layout().working !== 'none'
+        ? splitColumns(layout().projectsSplit)
+        : '1fr',
+  });
 
   const startSplitterDrag = (event: MouseEvent, band: HTMLDivElement | undefined): void => {
     if (!band) return;
@@ -243,13 +227,11 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   return {
     layout,
     updateLayout,
-    toggleProjects,
     toggleTerminal,
-    toggleLeftView,
     selectWorking,
+    toggleWorking,
     ensureTerminalOpen,
     setTerminalAutoCollapsed,
-    topBandVisible,
     topBandStyle,
     startSplitterDrag,
   };

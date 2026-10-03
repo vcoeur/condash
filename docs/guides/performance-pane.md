@@ -1,15 +1,20 @@
 ---
-title: The Performance pane · condash guide
+title: Terminal diagnostics · condash guide
 description: Watch per-tab memory level, growth rate, and throttle state live — and record main-process counters when you need to prove where a stall came from.
 ---
 
-# The Performance pane
+# Terminal diagnostics
 
 > **Audience.** Daily user — anyone whose terminal tabs feel slow, or whose tabs keep dying.
 
 **When to read this.** The UI stutters, a tab disappeared without you closing it, or you want to know *which* tab is eating the machine before it takes the app down with it.
 
-The Performance pane is the fourth **left-band view**, alongside Projects, Tasks, and Deliverables. Click the **Performance** item in the activity rail to fill the left band with it (clicking the active item hides the band). Like the other left views it has no keyboard accelerator — the rail is the way in. Which view was last shown is remembered across launches (the `leftView` layout field).
+> **Current route.** Click **Diagnostics** beside Settings in the top bar. Terminal diagnostics opens as a full-window overlay, with no rail item or native View command. The interactive Terminal and Dashboard remain in the bottom band. Storage and the sampler are unchanged.
+
+**Back** or `Esc` closes the overlay and restores launcher focus. Vitals poll only while it is open; closing does not stop recording, dispose terminal tabs, or change persisted terminal visibility/height. **Record** changes the same immediate recorder preference exposed in Settings.
+
+![Diagnostics overlay with live vitals](../assets/screenshots/diagnostics-overlay-light.png#only-light)
+![Diagnostics overlay with live vitals](../assets/screenshots/diagnostics-overlay-dark.png#only-dark)
 
 ## What it answers
 
@@ -34,7 +39,7 @@ One row per live tab:
 
 | Column | What it shows |
 |---|---|
-| **Tab** | The repo or cwd the tab is in, with its session id underneath — two tabs opened in one directory would otherwise render as a duplicated row. |
+| **Tab** | The repo or cwd the tab is in, with its session id alongside — two tabs opened in one directory would otherwise render as a duplicated row. |
 | **Memory** | Current usage, and the tab's cap after a `/` when one is set (`5.8 G / 8 G`). |
 | **Growth** | Signed rate in MB/s. A rate under 1 MB/s renders as `—` rather than a noisy ±1, so a resting tab doesn't shout. |
 | **State** | `ok`, a time-to-cap warning, or `throttled`. |

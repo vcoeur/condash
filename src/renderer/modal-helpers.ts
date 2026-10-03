@@ -15,9 +15,12 @@ import { onCleanup, onMount } from 'solid-js';
  * inline handlers. Modals with the simple "Esc → close" contract use
  * this hook.
  */
-export function useModalEscHandler(onClose: () => void): void {
+export function useModalEscHandler(
+  onClose: () => void,
+  ownsEscape: () => boolean = () => true,
+): void {
   const handleKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && ownsEscape()) {
       e.preventDefault();
       e.stopPropagation();
       onClose();

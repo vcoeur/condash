@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { Agent, Project, RunningTaskRun } from '@shared/types';
 import {
@@ -16,6 +16,7 @@ import type { AppOption, Draft, FillState, RunOptions } from './tasks-parts/data
 import { TaskEditor } from './tasks-parts/task-editor';
 import { TaskFill } from './tasks-parts/task-fill';
 import { TaskRunning } from './tasks-parts/task-running';
+import { ConfirmModal } from '../confirm-modal';
 import './tasks-pane.css';
 
 /**
@@ -49,9 +50,61 @@ export function TasksView(props: {
    *  `.condash/manual/<slug>/`), and the effective runMode (`--prompt`
    *  interactive vs `--run` one-shot). */
   onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
+  /** Report nested-dialog ownership to the full-window shell. */
+  onChildOpen?: (open: boolean) => void;
+  /** Guard overlay replacement and conception switching before disposal. */
+  registerLeaveGuard?: (guard: (() => Promise<boolean>) | null) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
+  const [discardPending, setDiscardPending] = createSignal(false);
+  const [mutationPending, setMutationPending] = createSignal(false);
+  let mutation: Promise<void> | null = null;
+  let settleDiscard: ((allowed: boolean) => void) | null = null;
+  let draftBaseline = '';
+  let fillBaseline = '';
+  let disposed = false;
+  let readEpoch = 0;
+  const dirty = (): boolean =>
+    (draft() !== null && JSON.stringify(draft()) !== draftBaseline) ||
+    (fill() !== null && JSON.stringify(fill()) !== fillBaseline);
+  const requestLeave = async (): Promise<boolean> => {
+    if (mutation) await mutation;
+    if (disposed) return false;
+    if (draft()?.configSlugsToClear.length) {
+      props.flashToast(
+        'Save the renamed automation again to finish updating its schedule.',
+        'error',
+      );
+      return false;
+    }
+    if (discardPending()) return Promise.resolve(false);
+    if (!dirty()) return Promise.resolve(true);
+    setDiscardPending(true);
+    return new Promise((resolve) => {
+      settleDiscard = resolve;
+    });
+  };
+  const finishDiscard = (allowed: boolean): void => {
+    const resolve = settleDiscard;
+    settleDiscard = null;
+    setDiscardPending(false);
+    resolve?.(allowed);
+  };
+  const dismissChild = async (): Promise<void> => {
+    if (await requestLeave()) {
+      setDraft(null);
+      setFill(null);
+    }
+  };
+  createEffect(() => props.onChildOpen?.(draft() !== null || fill() !== null || discardPending()));
+  props.registerLeaveGuard?.(requestLeave);
+  onCleanup(() => {
+    disposed = true;
+    readEpoch += 1;
+    settleDiscard?.(false);
+    props.registerLeaveGuard?.(null);
+  });
 
   // Live headless scheduled runs. The scheduler pushes the roster on every run
   // start / exit (B5), so this is push-driven; the slow interval is only a
@@ -65,10 +118,11 @@ export function TasksView(props: {
   // seed window could be reverted for up to a full poll interval.
   let runsEpoch = 0;
   const refreshRunning = async (): Promise<void> => {
+    if (disposed) return;
     const epoch = runsEpoch;
     try {
       const runs = await window.condash.listRunningTaskRuns();
-      if (epoch === runsEpoch) setRunning(runs);
+      if (!disposed && epoch === runsEpoch) setRunning(runs);
     } catch {
       /* scheduler not ready / no conception — leave the list as-is */
     }
@@ -92,40 +146,55 @@ export function TasksView(props: {
   };
 
   const patch = (p: Partial<Draft>): void => {
+    if (mutation || disposed) return;
     setDraft((d) => (d ? { ...d, ...p } : d));
   };
 
   const startCreate = (): void => {
+    if (mutation || disposed) return;
+    readEpoch += 1;
     setFill(null);
-    setDraft(blankDraft(props.agents()));
+    const initial = blankDraft(props.agents());
+    draftBaseline = JSON.stringify(initial);
+    setDraft(initial);
   };
 
   const startEdit = async (slug: string): Promise<void> => {
+    if (mutation || disposed) return;
+    const epoch = ++readEpoch;
     setFill(null);
     const def = await window.condash.readTask(slug);
+    if (disposed || epoch !== readEpoch) return;
     if (!def) {
       props.flashToast(`Task ${slug} not found`, 'error');
       return;
     }
     const cfg = (await window.condash.getTaskConfig())[slug] ?? {};
-    setDraft({
+    if (disposed || epoch !== readEpoch) return;
+    const initial: Draft = {
       slug,
       slugDirty: true,
       name: def.name,
       agent: def.agent,
       prompt: def.prompt,
       editingSlug: slug,
+      configSlugsToClear: [],
       schedule: cfg.schedule ?? '',
       timeout: cfg.timeout ?? DEFAULT_TIMEOUT,
       excludeFromLogs: cfg.excludeFromLogs === true,
       runMode: cfg.runMode === 'oneshot' ? 'oneshot' : 'interactive',
       gateOnUpdatedTabs: cfg.gateOnUpdatedTabs === true,
-    });
+    };
+    draftBaseline = JSON.stringify(initial);
+    setDraft(initial);
   };
 
   const startFill = async (slug: string): Promise<void> => {
+    if (mutation || disposed) return;
+    const epoch = ++readEpoch;
     setDraft(null);
     const def = await window.condash.readTask(slug);
+    if (disposed || epoch !== readEpoch) return;
     if (!def) {
       props.flashToast(`Task ${slug} not found`, 'error');
       return;
@@ -144,6 +213,7 @@ export function TasksView(props: {
       window.condash.termTabsContext(),
       window.condash.getTaskConfig(),
     ]);
+    if (disposed || epoch !== readEpoch) return;
     // A manual run has no per-task "since last run" watermark (that lives in the
     // scheduler), so `{UPDATED_TABS}` seeds to the full open set — the user
     // asked to run now, so treat every tab as worth acting on.
@@ -151,7 +221,7 @@ export function TasksView(props: {
     const provided: Record<string, string> = { TABS: tabsJson, UPDATED_TABS: tabsJson };
     const excludeFromLogs = cfgMap[slug]?.excludeFromLogs === true;
     const runMode = cfgMap[slug]?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
-    setFill({
+    const initial: FillState = {
       slug,
       def,
       agent: def.agent,
@@ -161,10 +231,23 @@ export function TasksView(props: {
       provided,
       excludeFromLogs,
       runMode,
+    };
+    fillBaseline = JSON.stringify(initial);
+    setFill(initial);
+  };
+
+  const runMutation = (operation: () => Promise<void>): Promise<void> => {
+    setMutationPending(true);
+    readEpoch += 1;
+    mutation = operation().finally(() => {
+      mutation = null;
+      if (!disposed) setMutationPending(false);
     });
+    return mutation;
   };
 
   const save = async (): Promise<void> => {
+    if (mutation || disposed) return;
     const d = draft();
     if (!d) return;
     if (!d.name.trim()) {
@@ -184,56 +267,74 @@ export function TasksView(props: {
       agent: d.agent,
       prompt: d.prompt,
     };
-    try {
-      const slug = await window.condash.writeTask(d.slug, def, d.editingSlug ?? undefined);
-      // Persist schedule / excludeFromLogs to settings.json's taskConfig under
-      // the *resolved* slug (a rename moves the config with the task). When the
-      // slug changed, clear the old entry.
-      if (d.editingSlug && d.editingSlug !== slug) {
-        await window.condash.setTaskConfig(d.editingSlug, {});
+    await runMutation(async () => {
+      try {
+        const slug = await window.condash.writeTask(d.slug, def, d.editingSlug ?? undefined);
+        const configSlugsToClear = [
+          ...new Set([
+            ...d.configSlugsToClear,
+            ...(d.editingSlug && d.editingSlug !== slug ? [d.editingSlug] : []),
+          ]),
+        ].filter((oldSlug) => oldSlug !== slug);
+        if (!disposed) {
+          setDraft((current) =>
+            current
+              ? { ...current, slug, slugDirty: true, editingSlug: slug, configSlugsToClear }
+              : current,
+          );
+        }
+        // Departure waits for this entire definition/config operation. Persist
+        // the destination config before removing prior renamed-slug entries.
+        const scheduled = d.schedule.trim();
+        await window.condash.setTaskConfig(slug, {
+          schedule: scheduled || undefined,
+          // Timeout only matters for scheduled headless runs — don't persist it
+          // for an unscheduled task.
+          timeout: scheduled ? d.timeout.trim() || undefined : undefined,
+          excludeFromLogs: d.excludeFromLogs || undefined,
+          // Only the non-default mode is persisted (interactive is the default).
+          runMode: d.runMode === 'oneshot' ? 'oneshot' : undefined,
+          // The gate only matters for a scheduled task; don't persist it otherwise.
+          gateOnUpdatedTabs: scheduled ? d.gateOnUpdatedTabs || undefined : undefined,
+        });
+        for (const oldSlug of configSlugsToClear) await window.condash.setTaskConfig(oldSlug, {});
+        if (disposed) return;
+        props.flashToast(`Saved ${slug}`, 'success');
+        setDraft(null);
+        props.reload();
+      } catch (err) {
+        if (!disposed) props.flashToast(`Save failed: ${(err as Error).message}`, 'error');
       }
-      const scheduled = d.schedule.trim();
-      await window.condash.setTaskConfig(slug, {
-        schedule: scheduled || undefined,
-        // Timeout only matters for scheduled headless runs — don't persist it
-        // for an unscheduled task.
-        timeout: scheduled ? d.timeout.trim() || undefined : undefined,
-        excludeFromLogs: d.excludeFromLogs || undefined,
-        // Only the non-default mode is persisted (interactive is the default).
-        runMode: d.runMode === 'oneshot' ? 'oneshot' : undefined,
-        // The gate only matters for a scheduled task; don't persist it otherwise.
-        gateOnUpdatedTabs: scheduled ? d.gateOnUpdatedTabs || undefined : undefined,
-      });
-      props.flashToast(`Saved ${slug}`, 'success');
-      setDraft(null);
-      props.reload();
-    } catch (err) {
-      props.flashToast(`Save failed: ${(err as Error).message}`, 'error');
-    }
+    });
   };
 
   // Delete the task currently open in the editor. Confirmation is handled by the
   // editor's own ConfirmModal before this runs.
   const deleteEditing = async (): Promise<void> => {
+    if (mutation || disposed) return;
     const d = draft();
     if (!d?.editingSlug) return;
-    try {
-      await window.condash.deleteTask(d.editingSlug);
-      // Drop any schedule / excludeFromLogs config for the deleted task.
-      await window.condash.setTaskConfig(d.editingSlug, {});
-      props.flashToast(`Deleted ${d.name || d.editingSlug}`, 'success');
-      if (fill()?.slug === d.editingSlug) setFill(null);
-      setDraft(null);
-      props.reload();
-    } catch (err) {
-      props.flashToast(`Delete failed: ${(err as Error).message}`, 'error');
-    }
+    const editingSlug = d.editingSlug;
+    await runMutation(async () => {
+      try {
+        await window.condash.deleteTask(editingSlug);
+        // Drop any schedule / excludeFromLogs config for the deleted task.
+        await window.condash.setTaskConfig(editingSlug, {});
+        if (disposed) return;
+        props.flashToast(`Deleted ${d.name || d.editingSlug}`, 'success');
+        if (fill()?.slug === d.editingSlug) setFill(null);
+        setDraft(null);
+        props.reload();
+      } catch (err) {
+        if (!disposed) props.flashToast(`Delete failed: ${(err as Error).message}`, 'error');
+      }
+    });
   };
 
   return (
     <div class="tasks-pane">
       <header class="tasks-pane-header">
-        <h2>Tasks</h2>
+        <h2>Automations</h2>
         <div class="tasks-pane-actions">
           <button
             type="button"
@@ -242,21 +343,24 @@ export function TasksView(props: {
             onClick={() => void startCreate()}
             disabled={!props.hasConception()}
           >
-            + New task
+            + New automation
           </button>
         </div>
       </header>
 
       <Show
         when={props.hasConception()}
-        fallback={<p class="tasks-pane-empty pane-empty">Open a conception to manage its tasks.</p>}
+        fallback={
+          <p class="tasks-pane-empty pane-empty">Open a conception to manage automations.</p>
+        }
       >
         <Show
           when={props.tasks().length > 0}
           fallback={
             <p class="tasks-pane-empty pane-empty">
-              No tasks yet. A task is a referenced agent plus a markdown prompt with fillable{' '}
-              <code>{'{markers}'}</code>. Click <strong>+ New task</strong> to define one.
+              No automations yet. An automation is a referenced agent plus a markdown prompt with
+              fillable <code>{'{markers}'}</code>. Click <strong>+ New automation</strong> to define
+              one.
             </p>
           }
         >
@@ -323,6 +427,7 @@ export function TasksView(props: {
             projects={props.projects}
             conceptionPath={props.conceptionPath}
             onRun={props.onRun}
+            onDismiss={() => void dismissChild()}
           />
         )}
       </Show>
@@ -330,14 +435,30 @@ export function TasksView(props: {
       <Show when={draft()}>
         {(d) => (
           <TaskEditor
+            busy={mutationPending}
+            repairPending={() => d().configSlugsToClear.length > 0}
             draft={d}
             patch={patch}
             agents={props.agents}
             onSave={save}
-            onCancel={() => setDraft(null)}
+            onCancel={() => {
+              if (!mutation && !d().configSlugsToClear.length) setDraft(null);
+            }}
+            onDismiss={() => void dismissChild()}
             onDelete={deleteEditing}
           />
         )}
+      </Show>
+      <Show when={discardPending()}>
+        <ConfirmModal
+          title="Discard automation edits?"
+          body="Unsaved editor or run fields will be lost."
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          destructive
+          onCancel={() => finishDiscard(false)}
+          onConfirm={() => finishDiscard(true)}
+        />
       </Show>
     </div>
   );

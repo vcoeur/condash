@@ -86,8 +86,7 @@ export interface TerminalPaneHandle {
 export interface TerminalPaneProps {
   open: boolean;
   onClose: () => void;
-  /** Which body the bottom band shows when open: the terminals or the
-   *  Dashboard. The Dashboard pseudo-tab toggles to 'dashboard'; activating any
+  /** Which body the bottom band shows when open: terminals or Dashboard. Activating any
    *  real terminal tab returns to 'terminal'. */
   bottomView: 'terminal' | 'dashboard';
   /** Toggle a bottom-band view from the strip. The parent decides the

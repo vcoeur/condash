@@ -115,6 +115,11 @@ async function main() {
           if (err?.code === 98 || err?.code === 99) return;
           throw err;
         });
+        // Tiny crops (the shortened rail) can quantize below the verification
+        // floor. Keep their ordinary full-colour rendition, not a weaker gate.
+        if ((await stat(dest)).size < 2048) {
+          await run('convert', [src, '-resize', '50%', '-strip', dest]);
+        }
       }
     }
   }

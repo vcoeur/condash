@@ -9,7 +9,12 @@ description: Browse saved terminal-session transcripts by day, read them in the 
 
 **When to read this.** A terminal tab did something interesting yesterday and it is long gone from the scrollback — or a scheduled task ran overnight and you want to see what it said.
 
-The Logs pane is a **right-slot working surface**, sharing that slot with Code, Knowledge, Resources, and Skills. Open it from the activity rail, from **View → Show Logs**, or with `Ctrl+Shift+L` / `Cmd+Shift+L`. Showing it swaps whichever surface was there out.
+> **Current route.** Click **Logs** beside Settings in the top bar. It opens a full-window overlay, not a rail pane or native View command. Logs remain outside the default search index.
+
+The overlay leaves your persisted working-pane selection intact. **Back** or `Esc` returns to that pane; a viewer or delete confirmation closes first on `Esc`. Lists and viewers close on a conception switch. Search activation is one-shot: closing and reopening Logs does not reopen the previous hit.
+
+![Logs overlay with a populated session card](../assets/screenshots/logs-overlay-light.png#only-light)
+![Logs overlay with a populated session card](../assets/screenshots/logs-overlay-dark.png#only-dark)
 
 It browses `<conception>/.condash/logs/`, where one plain-text `.txt` is written per terminal session — see [Embedded terminal → Session logging](terminal.md#session-logging) for the file format and how capture is turned on. **Capture is opt-in and off by default**, so a fresh install shows an empty pane until you enable *Record terminal sessions to disk* under Settings → Terminal.
 

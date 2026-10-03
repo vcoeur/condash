@@ -24,7 +24,7 @@ async function seedDeliverables(conceptionDir: string): Promise<void> {
       '---',
       'date: 2026-05-20',
       'kind: project',
-      'status: done',
+      'status: now',
       'apps: []',
       '---',
       '',
@@ -68,29 +68,21 @@ async function seedDeliverables(conceptionDir: string): Promise<void> {
   await writeFile(join(outputs, 'report.pdf'), '%PDF-1.4\n% demo\n', 'utf8');
 }
 
-test('deliverables pane aggregates deliverables and previews HTML', async () => {
+test('project preview retains item deliverables and previews HTML', async () => {
   const booted = await bootApp({ prepare: seedDeliverables });
   const { app, window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Open the Deliverables pane from its own rail item (a peer of
-    // Projects — not a tab inside the Projects pane).
-    await window.locator('.rail-item[title*="Deliverables"]').click();
-
-    // One group (only the project that has deliverables), five rows.
-    const groups = window.locator('.deliverables-group');
-    await expect(groups).toHaveCount(1);
-    await expect(window.locator('.deliverables-group-title')).toHaveText('Demo outputs');
-    const rows = window.locator('.deliverables-rows .deliverable-row');
+    await window.locator('.row .title-text', { hasText: 'Demo outputs' }).click();
+    await expect(window.locator('.modal.project-preview')).toBeVisible();
+    await window.locator('.widget:has(.deliverables-list) .activity-expand').click();
+    const rows = window.locator('.modal.project-preview .deliverable-row');
     await expect(rows).toHaveCount(5);
-    // A wikilink deliverable renders with the `wiki` kind tag.
-    await expect(window.locator('.deliverables-kind[data-kind="wiki"]')).toHaveCount(1);
-    await expect(window.locator('.deliverables-kind[data-kind="url"]')).toHaveCount(1);
 
     await mkdir(outDir, { recursive: true });
-    await window.screenshot({ path: join(outDir, 'deliverables-pane.png') });
+    await window.screenshot({ path: join(outDir, 'project-deliverables.png') });
 
     // Open the local HTML deliverable → in-app preview over condash-file://.
     await window.locator('.deliverable-button', { hasText: 'Module 1' }).click();

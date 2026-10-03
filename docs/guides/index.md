@@ -17,17 +17,17 @@ Each guide answers one specific question.
 
 **The panes**
 
-The left activity rail switches four **left-band** views and five **right-slot** working surfaces.
+The activity rail has three separated groups: **Projects**, the four working panes (**Code**, **Knowledge**, **Resources**, **Skills**), and **Terminal**. Clicking an active button hides its pane; clicking an inactive working button selects it without changing Projects visibility. Hidden state persists across restarts, including empty and terminal-only layouts. The View menu shows working panes without toggling them and retains the Terminal toggle. **Automations**, **Logs**, and **Diagnostics** remain labelled top-bar full-window overlays, not rail or native View routes.
 
 - **[The Projects pane](projects-pane.md)** — the status stack, changing status, creating items, closing and reopening.
 - **[The Code pane](code-pane.md)** — what the repo cards, branch rows, and worktrees mean.
-- **[The Tasks pane](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
-- **[The Deliverables pane](deliverables-pane.md)** — every project's `## Deliverables`, aggregated and grouped by project.
-- **[The Performance pane](performance-pane.md)** — per-tab memory, growth rate, and throttle state, plus main-process event-loop delay.
+- **[Automations (tasks)](tasks-pane.md)** — save reusable, parameterized agent prompts, fill their `{markers}` in a form, and run them with one click.
 - **[The knowledge tree](knowledge-tree.md)** — durable reference material as cards, with freshness stamps.
 - **[The Resources pane](resources-pane.md)** — every file under `resources/` as a card with view / open / copy / paste-to-term actions.
 - **[The Skills pane](skills-pane.md)** — browse the markdown skills condash ships under `.agents/skills/`, with shipped/diverged chips.
 - **[The Logs pane](logs-pane.md)** — saved session transcripts by day, a virtualised viewer with search, and the task-run store.
+- **[Retired Deliverables pane](deliverables-pane.md)** — historical description of the removed aggregate; item-level deliverables remain available from project previews.
+- **[Terminal diagnostics](performance-pane.md)** — per-tab memory, growth rate, and throttle state, plus main-process event-loop delay.
 
 **Daily**
 

@@ -9,7 +9,7 @@ description: Your items grouped by status — the section stack, the three ways 
 
 **When to read this.** You want the day-to-day operations of the primary pane — how items are grouped, how to change a status, how the create modal works — gathered in one place.
 
-The Projects pane is the left-hand view that renders every item in your conception (`projects/**/*/README.md`), one card per item, grouped by status. It is the first item on the activity rail, before [Tasks](tasks-pane.md), [Deliverables](deliverables-pane.md), and [Performance](performance-pane.md).
+The Projects pane is the left-hand band that renders every item in your conception (`projects/**/*/README.md`), one card per item, grouped by status. The rail's Projects item toggles only this band. The right working slot independently switches among Code, Knowledge, Resources, and Skills, with an active click hiding it; Terminal independently toggles the bottom band. Visibility persists across restarts. Automations, Logs, and Diagnostics open full-window overlays from the top bar beside Settings. The former aggregate Deliverables pane is retired; item-level deliverables remain in project previews.
 
 ![The condash window: the Projects pane grouping items under NOW / REVIEW / LATER / BACKLOG / DONE, with the Code pane alongside](../assets/screenshots/dashboard-overview-light.png#only-light)
 ![The condash window: the Projects pane grouping items under NOW / REVIEW / LATER / BACKLOG / DONE, with the Code pane alongside](../assets/screenshots/dashboard-overview-dark.png#only-dark)

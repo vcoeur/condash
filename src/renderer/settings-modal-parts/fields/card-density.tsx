@@ -11,7 +11,7 @@ const CARD_DENSITY_FIELDS = [
   { key: 'resources', label: 'Resource cards (Resources pane)', short: 'Resource' },
   { key: 'skills', label: 'Skill cards (Skills pane)', short: 'Skill' },
   { key: 'logs', label: 'Log cards (Logs pane)', short: 'Log' },
-  { key: 'tasks', label: 'Task cards (Tasks pane)', short: 'Task' },
+  { key: 'tasks', label: 'Automation cards', short: 'Automation' },
   { key: 'deliverables', label: 'Deliverable cards (Deliverables pane)', short: 'Deliverable' },
 ] as const;
 

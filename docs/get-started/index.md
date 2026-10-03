@@ -276,25 +276,23 @@ Three ways to change an item's status: **drag its card** to another section, pre
 
 **Terminal** (bottom) is a real shell session — your `$SHELL` — in the same window. Toggle it with `` Ctrl+` `` or **View → Show Terminal**; the **New shell ▼** dropdown in its header opens more tabs and any agent CLI you've configured. See **[Use the embedded terminal](../guides/terminal.md)**.
 
-### Everything else
+### Reference and utilities
 
-The **activity rail** down the left edge switches between four left-hand views and five right-hand working surfaces. The right-hand five are mutually exclusive — picking one swaps out whichever was showing.
+The activity rail has three separated groups: **Projects**, the four right-hand working panes — **Code**, **Knowledge**, **Resources**, **Skills** — and **Terminal**. Clicking an active button hides its pane; selecting an inactive working button preserves Projects visibility. Visibility persists across restarts. Native menu and search selection show panes without toggling them. The top bar beside Settings launches **Automations**, **Logs**, and **Diagnostics** as session-only full-window overlays. Item-level `## Deliverables` remain in project previews; there is no aggregate Deliverables route.
 
-| Rail item | Shortcut | What it is | Guide |
-|---|---|---|---|
-| Projects | — | Your items, grouped by status | [The Projects pane](../guides/projects-pane.md) |
-| Tasks | — | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
-| Deliverables | — | Every item's `## Deliverables`, aggregated across the tree | [Deliverables pane](../guides/deliverables-pane.md) |
-| Performance | — | Live per-terminal memory, growth rate, and throttle state | [Performance pane](../guides/performance-pane.md) |
-| Code | `Ctrl+Shift+C` | Repos, branches, dirty counts, launchers | [The Code pane](../guides/code-pane.md) |
-| Knowledge | `Ctrl+Shift+K` | `knowledge/` as a browsable card tree | [The knowledge tree](../guides/knowledge-tree.md) |
-| Resources | `Ctrl+R` | Every file under `resources/`, any extension | [Resources pane](../guides/resources-pane.md) |
-| Skills | `Ctrl+L` | The Markdown skills under `.agents/skills/`, **read-only** | [Skills pane](../guides/skills-pane.md) |
-| Logs | `Ctrl+Shift+L` | Saved terminal-session transcripts | [Logs pane](../guides/logs-pane.md) |
+| Route | What it is | Guide |
+|---|---|---|
+| Rail → Projects | Your items, grouped by status | [The Projects pane](../guides/projects-pane.md) |
+| Rail → Code | Repos, branches, dirty counts, launchers | [The Code pane](../guides/code-pane.md) |
+| Rail → Knowledge / Resources / Skills | Browse `knowledge/`, `resources/`, or `.agents/skills/` | [Knowledge](../guides/knowledge-tree.md), [Resources](../guides/resources-pane.md), [Skills](../guides/skills-pane.md) |
+| Top bar → Automations | Reusable agent prompts, saved once and run in two clicks | [Tasks pane](../guides/tasks-pane.md) |
+| Top bar → Logs | Saved session logs | [Logs pane](../guides/logs-pane.md) |
+| Top bar → Diagnostics | Live Terminal diagnostics | [Diagnostics](../guides/performance-pane.md) |
 
-Not on the rail:
+Bottom-band and global tools:
 
-- **Dashboard** (`Ctrl+Shift+D`) — not the app itself: a bottom band that shares its space with the terminal and summarises what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
+- **Terminal** — the bottom band, toggled with the rail's Terminal item, `` Ctrl+` ``, or **View → Show Terminal**.
+- **Dashboard** — not the app itself: the bottom band's first pseudo-tab, sharing its space with the terminal and summarising what each terminal tab is doing. Off by default. [Guide](../guides/dashboard.md).
 - **Search** (`Ctrl+Shift+F` or `Ctrl+K`) — one modal across projects, knowledge, resources, skills, and (on request) logs. [Guide](../guides/search.md).
 - **Status-bar indicators** — the auto-commit state with a **Sync now** button, and the shipped-skills state with an **Install** button that runs `condash skills install` for you. See [Auto-commit](../guides/auto-commit.md) and [Extend the management skills](../guides/skill-extensions.md).
 

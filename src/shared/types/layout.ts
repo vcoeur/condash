@@ -7,36 +7,15 @@
 // `main/menu.ts` all reference these shapes — so the main process and the
 // renderer must agree on one definition.
 
-/** Right-slot working surface — picks which of Code / Knowledge / Resources /
- * Skills / Logs is shown in the top-band right pane, or `null` to leave it
- * hidden. All are mutually exclusive: showing one swaps the others out. (The
- * Dashboard is not a working surface — it lives in the bottom band next to
- * Terminal.) */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
+/** A selectable right-pane surface; Dashboard lives in the bottom band. */
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills';
 
-/** Every left-band view, in rail order. The single source of truth: `LeftView`
- * is derived from it and `config-schema.ts` builds its runtime validator with
- * `z.enum(LEFT_VIEWS)`, so a new view cannot be added to the type while the
- * persistence validator silently rejects it. */
-export const LEFT_VIEWS = ['projects', 'tasks', 'deliverables', 'perf'] as const;
-
-/** Left-band view — which pane fills the left band when it is visible.
- * Selected by the left activity-rail items. */
-export type LeftView = (typeof LEFT_VIEWS)[number];
-
-/** Composite-layout state. The unified window has a top band (Projects on
- * the left, working surface on the right) and a bottom band (Terminal).
- * Each band can be hidden independently; the working surface is also
- * tristate. Sizes are persisted alongside visibility so re-showing a pane
- * restores its previous dimensions. */
+/** Persisted independent Projects, working-slot and Terminal visibility. */
 export interface LayoutState {
+  /** Whether the Projects band is visible. */
   projects: boolean;
-  /** Which view fills the left band when it is visible. Projects is the
-   * default; Outputs aggregates every project's `## Deliverables`. Switched
-   * by the left-band tab strip; the band's visibility is still `projects`. */
-  leftView: LeftView;
-  /** Code / Knowledge / hidden — single right-slot tristate. */
-  working: WorkingSurface;
+  /** Selected right-slot surface, or `none` while hidden. */
+  working: WorkingSurface | 'none';
   terminal: boolean;
   /** Where the Projects ↔ working-surface splitter sits, as a **fraction of the
    * band width** (0–1), when both panes are visible. A fraction rather than CSS

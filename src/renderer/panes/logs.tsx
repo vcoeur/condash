@@ -5,6 +5,7 @@ import {
   createSignal,
   For,
   on,
+  onCleanup,
   Show,
   type Accessor,
   type JSX,
@@ -55,11 +56,20 @@ type LogsViewMode = 'sessions' | 'taskruns';
  * (invariant 12); this file keeps LogsView and the orchestration.
  */
 export function LogsView(props: {
+  conceptionPath: Accessor<string | null>;
   openRequest?: Accessor<LogsOpenRequest | null>;
+  /** Consume search activation so reopening the overlay cannot replay it. */
+  onRequestConsumed?: () => void;
+  /** Nested viewer/confirmation owns Escape before the overlay. */
+  onChildOpen?: (open: boolean) => void;
   /** Bumped by View → Refresh. Refetches days + sessions when it changes
    *  (deferred, so the initial createResource fetch isn't doubled). */
   refreshSignal?: Accessor<number>;
 }): JSX.Element {
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+  });
   const [days, { refetch: refetchDays }] = createResource(() => window.condash.logsListDays());
 
   // Per-day session metadata, populated lazily. The recent band loads on mount;
@@ -71,9 +81,10 @@ export function LogsView(props: {
   const requestedDays = new Set<string>();
 
   const loadDay = async (day: string): Promise<void> => {
-    if (requestedDays.has(day)) return;
+    if (disposed || requestedDays.has(day)) return;
     requestedDays.add(day);
-    setSessionsByDay(day, await window.condash.logsListSessions(day));
+    const sessions = await window.condash.logsListSessions(day);
+    if (!disposed) setSessionsByDay(day, sessions);
   };
   const loadDays = (dayList: string[]): void => {
     for (const day of dayList) void loadDay(day);
@@ -81,6 +92,7 @@ export function LogsView(props: {
 
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
+  createEffect(() => props.onChildOpen?.(activePath() !== null || pendingDelete() !== null));
 
   // "Task runs" view — the segregated `.condash/{scheduled,manual}/` store.
   const [view, setView] = createSignal<LogsViewMode>('sessions');
@@ -92,10 +104,12 @@ export function LogsView(props: {
   createEffect(() => {
     const req = props.openRequest?.();
     if (!req) return;
-    setActivePath(req.path);
+    props.onRequestConsumed?.();
+    if (req.conceptionPath === props.conceptionPath()) setActivePath(req.path);
   });
 
   const refreshAll = (): void => {
+    if (disposed) return;
     // Re-fetch exactly the days already loaded (recent band + any expanded
     // months); clearing the guard first forces loadDay to re-run and overwrite
     // in place. Kicked off before refetchDays so the recent-band effect below
@@ -119,6 +133,7 @@ export function LogsView(props: {
 
   const confirmDeleteSession = (sess: TermLogSessionMeta): void => {
     void window.condash.logsDeleteSession(sess.path).then(() => {
+      if (disposed) return;
       setPendingDelete(null);
       if (activePath() === sess.path) setActivePath(null);
       refreshAll();
@@ -199,6 +214,18 @@ export function LogsView(props: {
         </div>
       </div>
 
+      <Show when={activePath()}>
+        {(path) => (
+          <LogsViewerModal
+            path={path()}
+            onClose={() => setActivePath(null)}
+            onDelete={(sess) => {
+              setPendingDelete(sess);
+            }}
+          />
+        )}
+      </Show>
+
       <Show when={pendingDelete()}>
         {(sess) => (
           <ConfirmModal
@@ -208,19 +235,6 @@ export function LogsView(props: {
             destructive
             onCancel={() => setPendingDelete(null)}
             onConfirm={() => confirmDeleteSession(sess())}
-          />
-        )}
-      </Show>
-
-      <Show when={activePath()}>
-        {(path) => (
-          <LogsViewerModal
-            path={path()}
-            onClose={() => setActivePath(null)}
-            onDelete={(sess) => {
-              setActivePath(null);
-              setPendingDelete(sess);
-            }}
           />
         )}
       </Show>
