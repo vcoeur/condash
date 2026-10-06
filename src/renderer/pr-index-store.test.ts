@@ -440,4 +440,35 @@ describe('reloadPrIndex — bounded pool + progressive merges', () => {
     expect(prsForProject({ apps: ['stay-app'], branch: 'b' }).map((p) => p.number)).toEqual([5]);
     expect(prsForProject({ apps: ['parked-app'], branch: 'b' }).map((p) => p.number)).toEqual([8]);
   });
+
+  it('records a failed lookup as [] and the exact swap clears that token\u2019s old badges', async () => {
+    const pending = new Map<
+      string,
+      {
+        resolve: (value: OpenPullRequest[]) => void;
+        reject: (reason: unknown) => void;
+      }
+    >();
+    const listOpenPullRequests = vi.fn(
+      (app: string) =>
+        new Promise<OpenPullRequest[]>((resolve, reject) => pending.set(app, { resolve, reject })),
+    );
+    vi.stubGlobal('window', { condash: { listOpenPullRequests } });
+
+    const first = reloadPrIndex([project(['flaky-app'], 'b')]);
+    await flush();
+    pending.get('flaky-app')!.resolve([pr(1, 'b')]);
+    await first;
+    expect(prsForProject({ apps: ['flaky-app'], branch: 'b' }).map((p) => p.number)).toEqual([1]);
+
+    // The next batch's lookup for the same token rejects: the failure is
+    // recorded as [], never throws, strands no pending state — and the
+    // batch's exact swap installs that [], clearing the token's last-known
+    // badges (failures do not keep last-known entries).
+    const second = reloadPrIndex([project(['flaky-app'], 'b')]);
+    await flush();
+    pending.get('flaky-app')!.reject(new Error('gh failed'));
+    await second;
+    expect(prsForProject({ apps: ['flaky-app'], branch: 'b' })).toEqual([]);
+  });
 });
