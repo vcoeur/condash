@@ -216,13 +216,6 @@ function App() {
   const projectsStore = createProjectsStore({ conceptionPath });
   const { projects, loaded: projectsLoaded, mutate, reload: reloadProjects } = projectsStore;
 
-  // Keep the Projects-pane PR badges in sync with the project list — but only
-  // while the pane is visible (badges render nowhere else; see the store for
-  // the perf rationale). Showing the pane re-arms the sync. Triggers coalesce
-  // behind a short trailing debounce so pane toggling / list churn lands as
-  // one batch instead of an overlapping series.
-  createPrIndexSync(projects, () => true, PR_INDEX_DEBOUNCE_MS);
-
   // Load the Projects-pane starred set for the active conception. Keyed on the
   // conception path, not the project list: the set lives in that conception's
   // `.condash/settings.json`, so it changes on a conception switch and on a
@@ -510,6 +503,21 @@ function App() {
     knowledgeIsEmpty,
     setHelpDoc,
   });
+
+  // Keep the Projects-pane PR badges in sync with the project list — but only
+  // while the pane is actually rendered (badges render nowhere else; see the
+  // store for the perf rationale). Actual rendered visibility: a conception is
+  // open, the Projects pane is toggled on, and the welcome screen is not
+  // replacing the band. Hiding the pane stops the fan-out; showing it re-arms
+  // the sync. Triggers coalesce behind a short trailing debounce so pane
+  // toggling / list churn lands as one batch instead of an overlapping series.
+  // Sits below `useWelcome` so the accessor's `shouldShowWelcome` term is
+  // declared before use.
+  createPrIndexSync(
+    projects,
+    () => !!conceptionPath() && layout().projects && !shouldShowWelcome(),
+    PR_INDEX_DEBOUNCE_MS,
+  );
 
   // --- Conception lifecycle (pick / refresh / init / quit) --------------
   const { handleRefresh, handlePick, openRecent, runInit, handleConfirmQuit } = useConception({

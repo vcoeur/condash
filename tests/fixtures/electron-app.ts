@@ -46,6 +46,11 @@ export async function bootApp(
      *  `CONDASH_USER_*` overrides that point the global Skills scope at a
      *  fixture instead of the real `~/.config/agents` etc. */
     env?: Record<string, string>;
+    /** Runs after `electron.launch` resolves and before `firstWindow()` —
+     *  the seam a spec uses to install an IPC gate (tests/fixtures/ipc-hold)
+     *  before the renderer boots, so a boot-time invocation is countable.
+     *  A gate installed only after the window exists would miss one. */
+    beforeFirstWindow?: (app: ElectronApplication) => Promise<void>;
   } = {},
 ): Promise<BootedApp> {
   const conceptionDir = await mkdtemp(join(tmpdir(), 'condash-test-conception-'));
@@ -129,6 +134,7 @@ export async function bootApp(
       cwd: repoRoot,
       env,
     });
+    if (options.beforeFirstWindow) await options.beforeFirstWindow(app);
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
