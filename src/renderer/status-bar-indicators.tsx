@@ -17,6 +17,7 @@ import { Portal } from 'solid-js/web';
 import type { AutoSyncStatus, SkillsSyncStatus, SyncStatusSnapshot } from '@shared/types';
 import { POLL_MS } from '@shared/status-poll';
 import { createPositionedPopover } from './popover';
+import { createSnapshotOwner } from './status-bar-ownership';
 import { Button } from './actions';
 /** Command the Install button runs — matches the Skills-pane hint. */
 const SKILLS_INSTALL_CMD = 'condash skills install';
@@ -49,20 +50,28 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   const [busy, setBusy] = createSignal(false);
   const [installing, setInstalling] = createSignal(false);
 
-  const refreshSync = async (): Promise<void> => {
-    try {
-      setSync(await window.condash.syncStatusSnapshot());
-    } catch {
-      /* keep the last snapshot — a transient read must not blank the bar */
-    }
-  };
-  const refreshSkills = async (): Promise<void> => {
-    try {
-      setSkills(await window.condash.skillsSyncStatus());
-    } catch {
-      /* keep the last snapshot */
-    }
-  };
+  // ── Snapshot ownership ──────────────────────────────────────────────
+  // The sync and Skills snapshots each get an independent single-flight /
+  // trailing owner: at most one read in flight, a trigger during a flight
+  // coalesces into exactly one trailing read, and every read captures the
+  // conception context so a switch invalidates the old context's replies
+  // even when they resolve last. Failures keep the last snapshot — a
+  // transient read must not blank the bar.
+  const syncOwner = createSnapshotOwner<SyncStatusSnapshot>({
+    fetch: () => window.condash.syncStatusSnapshot(),
+    apply: (snapshot) => setSync(snapshot),
+  });
+  const skillsOwner = createSnapshotOwner<SkillsSyncStatus>({
+    fetch: () => window.condash.skillsSyncStatus(),
+    apply: (snapshot) => setSkills(snapshot),
+  });
+  onCleanup(() => {
+    syncOwner.dispose();
+    skillsOwner.dispose();
+  });
+
+  const refreshSync = (): Promise<void> => syncOwner.refresh();
+  const refreshSkills = (): Promise<void> => skillsOwner.refresh();
 
   // Seed + subscribe to the engine push. A completed sweep changes the pending
   // count and the commit list, so refresh the snapshot when the push lands.
@@ -91,6 +100,8 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
   let installGeneration = 0;
 
   // Re-read both snapshots on mount and whenever the conception switches.
+  // `recontext` bumps each owner's context generation, so replies held over
+  // the switch can no longer apply, whatever order they resolve in.
   createEffect(() => {
     props.conceptionPath();
     // An install belongs to the conception it was fired for. Carrying its
@@ -101,8 +112,8 @@ export function StatusBarIndicators(props: StatusBarIndicatorsProps) {
     installGeneration += 1;
     clearInstallTimers();
     setInstalling(false);
-    void refreshSync();
-    void refreshSkills();
+    void syncOwner.recontext();
+    void skillsOwner.recontext();
   });
 
   onMount(() => {

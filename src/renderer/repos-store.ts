@@ -58,6 +58,14 @@ function scheduleWhenIdle(fn: () => void): () => void {
  * `schedulePrimaryReload`, which debounces 250 ms and calls
  * `reloadPrimaryByPath` for the affected primary.
  *
+ * Reads carry local ownership: every full/family read takes a ticket and
+ * captures the repo-event revision, a response commits only while it is
+ * the latest-started read of its kind and no newer competing kind has
+ * committed, and a response predating a newer repo event is discarded in
+ * favour of one coalesced recovery read. See the ownership block inside
+ * `createReposStore` and `docs/explanation/internals.md` § "Read
+ * ownership".
+ *
  * Why a store and not `createResource`: scalar events can fire many
  * times per second from the watcher; the store + `reconcile` keyed on
  * `path` keeps row identity stable so any open dropdowns / popovers
@@ -66,6 +74,71 @@ function scheduleWhenIdle(fn: () => void): () => void {
 export function createReposStore(deps: ReposStoreDeps): ReposStore {
   const [repos, setRepos] = createStore<RepoEntry[]>([]);
   const [reposLoaded, setReposLoaded] = createSignal(false);
+
+  // ── Read ownership ──────────────────────────────────────────────────
+  // One monotonically increasing ticket per started read (full or family),
+  // the repo-event revision each read captured, and the commit bookkeeping
+  // the two response kinds check against each other:
+  //
+  //   latestFullSeq / latestFamilySeq   the newest read STARTED per kind
+  //                                     — only a latest-started read may
+  //                                     commit
+  //   committedFullSeq / committedFamilySeq
+  //                                     the newest read COMMITTED — a full
+  //                                     result is ineligible once a
+  //                                     later-started family committed,
+  //                                     and a family result is ineligible
+  //                                     once a later full committed; a
+  //                                     committing full also makes every
+  //                                     older-started in-flight response
+  //                                     ineligible via these checks
+  //   eventRev                          bumped on every repo-event batch;
+  //                                     a response predating a newer
+  //                                     event is discarded and triggers
+  //                                     one coalesced recovery read
+  //                                     (full for a full-list
+  //                                     invalidation, family for a
+  //                                     family-only one)
+  //
+  // No shared coordinator: the ticket bookkeeping is local to this store,
+  // and `applyRepoEvents`' patch path stays authoritative over any held
+  // read because those events bump `eventRev`.
+  let disposed = false;
+  let readSeq = 0;
+  let eventRev = 0;
+  let latestFullSeq = 0;
+  let committedFullSeq = 0;
+  let familyInFlight = 0;
+  let fullRecoveryQueued = false;
+  const latestFamilySeq = new Map<string, number>();
+  const committedFamilySeq = new Map<string, number>();
+  onCleanup(() => {
+    // Disposal suppresses stale applies below; the debounced primary
+    // timers, the repo-event subscription and the deferred initial load
+    // each carry their own onCleanup release.
+    disposed = true;
+  });
+
+  /** Latest family commit across all primaries (0 when none committed). */
+  const latestCommittedFamilySeq = (): number => {
+    let max = 0;
+    for (const seq of committedFamilySeq.values()) if (seq > max) max = seq;
+    return max;
+  };
+
+  /** One coalesced recovery full read per invalidation period: queued when
+   *  a full result was discarded in favour of newer family/event state,
+   *  and started once no family read is in flight, so it observes after
+   *  the family work settled. */
+  const queueFullRecovery = (): void => {
+    fullRecoveryQueued = true;
+    drainFullRecovery();
+  };
+  const drainFullRecovery = (): void => {
+    if (disposed || !fullRecoveryQueued || familyInFlight > 0) return;
+    fullRecoveryQueued = false;
+    void reloadRepos();
+  };
 
   const reloadRepos = async (): Promise<void> => {
     const span = rendererPerf.startSpan();
@@ -76,12 +149,33 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
         setReposLoaded(false);
         return;
       }
+      const seq = ++readSeq;
+      latestFullSeq = seq;
+      const rev = eventRev;
       const list = await window.condash.listRepos();
+      if (disposed) return;
       // Discard a stale result if the conception changed while the fetch was
       // in flight — applying it would paint the previous conception's repos.
       if (deps.conceptionPath() !== path) return;
+      if (rev !== eventRev) {
+        // A repo event landed during the read; its patches already applied
+        // to the store and this whole list predates them. One coalesced
+        // recovery read re-reads the world after the event state.
+        queueFullRecovery();
+        return;
+      }
+      if (seq !== latestFullSeq) return; // a newer full read owns the outcome
+      if (latestCommittedFamilySeq() > seq) {
+        // A later-started family read already committed its authoritative
+        // membership; splicing this older whole list around it would
+        // resurrect removed rows. Discard the whole result — no partial
+        // splice — and retry one full read after the family work.
+        queueFullRecovery();
+        return;
+      }
       setRepos(reconcile(list, { key: 'path' }));
       setReposLoaded(true);
+      committedFullSeq = seq;
     } finally {
       rendererPerf.endSpan('reposReload', span);
     }
@@ -102,10 +196,28 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
         void reloadRepos();
         return;
       }
-      const updated = await window.condash.listReposForPrimary(primary.name);
+      const seq = ++readSeq;
+      latestFamilySeq.set(repoPath, seq);
+      const rev = eventRev;
+      familyInFlight += 1;
+      let updated: RepoEntry[];
+      try {
+        updated = await window.condash.listReposForPrimary(primary.name);
+      } finally {
+        familyInFlight -= 1;
+      }
+      if (disposed) return;
       // Same staleness guard as reloadRepos — the conception may have
       // switched while the per-primary fetch was in flight.
       if (deps.conceptionPath() !== conception) return;
+      if (rev !== eventRev) {
+        // A newer repo event owns this family — one coalesced (debounced)
+        // recovery read for the family only.
+        schedulePrimaryReload(repoPath);
+        return;
+      }
+      if (seq !== latestFamilySeq.get(repoPath)) return; // newer family read owns it
+      if (committedFullSeq > seq) return; // a newer full committed — its list is newer
       if (updated.length === 0) {
         // Primary disappeared from condash.json between the watcher
         // event and this fetch — reload everything to reconcile.
@@ -116,7 +228,11 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
       // index. Reconcile keyed on `path` does the diff/merge, preserving row
       // identity for unaffected rows and any popovers anchored on them.
       setRepos(reconcile(spliceFamilyAt(repos, primary, updated), { key: 'path' }));
+      committedFamilySeq.set(repoPath, seq);
     } finally {
+      // This family read settled — a queued full recovery may proceed now
+      // that no family read is in flight.
+      drainFullRecovery();
       rendererPerf.endSpan('reposReloadPrimary', span);
     }
   };
@@ -177,6 +293,10 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
     // tree — so the main process is responsible for tearing down watchers
     // on conception change (which it already does).
     if (!deps.conceptionPath()) return;
+    // Every repo event — scalar or structural — advances the revision any
+    // in-flight read captured, so a read that predates the event cannot
+    // commit over the event's own store updates.
+    eventRev += 1;
     const span = rendererPerf.startSpan();
     try {
       applyRepoEvents(events, {

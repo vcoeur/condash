@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from 'solid-js';
+import { createEffect, createSignal, onCleanup } from 'solid-js';
 import type { Accessor } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { rendererPerf } from './perf-renderer';
@@ -36,7 +36,12 @@ export interface TreeStore<T> {
    *  Gated on the activation latch: a pane that was never opened holds no
    *  data, so reloading it is pure churn — its first open fetches through
    *  the conception-path effect instead. Once the pane has activated the
-   *  latch stays true and every reload runs as before. */
+   *  latch stays true and every reload runs as before.
+   *
+   *  A reload may paint only while its flight owns the store: requests are
+   *  keyed by active conception + effective context, a context switch
+   *  invalidates the prior flight permanently, and invalidations landing
+   *  during a flight coalesce into exactly one trailing read. */
   reload: () => Promise<void>;
   /** Load a gated tree for a contextual action without selecting its pane. */
   loadForContext: () => Promise<void>;
@@ -63,6 +68,14 @@ export interface TreeStoreDeps<T> {
    *  fetch eagerly. Used to keep the hidden Knowledge / Resources / Skills
    *  panes off the startup IPC burst until first opened. */
   active?: Accessor<boolean>;
+  /** Optional extra context that partitions request ownership on top of the
+   *  conception path — the Skills pane passes its effective scope
+   *  ('conception' | 'user'). A change makes every in-flight response from
+   *  the prior key permanently ineligible, even though the conception path
+   *  is unchanged, and even if the context later returns to the original
+   *  key. Omit for panes whose requests are keyed by the conception path
+   *  alone. */
+  contextKey?: Accessor<string>;
 }
 
 export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeStore<T> {
@@ -78,13 +91,44 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   // Until it flips, the conception-path effect below holds off the first
   // fetch, so a never-opened tree pane costs no startup IPC.
   const [activated, setActivated] = createSignal(deps.active === undefined);
-  let inFlight: Promise<void> | null = null;
-  let inFlightPath: string | null = null;
   if (deps.active) {
     createEffect(() => {
       if (deps.active!()) setActivated(true);
     });
   }
+
+  // ── Read ownership ──────────────────────────────────────────────────
+  // A read may apply only while its flight owns the store. Ownership is
+  // lost permanently on any context switch (conception or Skills scope) —
+  // checked by identity, not by comparing the current key, so leaving and
+  // returning to the same key never revives a departed flight. A same-key
+  // reload while a flight is in flight shares it and marks it dirty; the
+  // settlement then coalesces every invalidation the flight covered into
+  // exactly one trailing read. Changes during the trailing read open one
+  // further dirty period — reads stay bounded, one per dirty period.
+  interface Flight {
+    key: string;
+    dirty: boolean;
+    promise: Promise<void>;
+  }
+  let owner: Flight | null = null;
+  let disposed = false;
+  onCleanup(() => {
+    // Disposal suppresses both stale applies and trailing-read scheduling.
+    // Solid runs onCleanup once per root disposal; a repeated dispose is a
+    // no-op there, so the release happens exactly once.
+    disposed = true;
+    owner = null;
+  });
+
+  /** Requests are keyed by the active conception plus the effective context
+   *  (Skills scope); null when there is no conception to read for. */
+  const requestKey = (): string | null => {
+    const path = deps.conceptionPath();
+    if (!path) return null;
+    const context = deps.contextKey?.() ?? '';
+    return context ? `${path}\n${context}` : path;
+  };
 
   const applySnapshot = (next: T | null): void => {
     const span = rendererPerf.startSpan();
@@ -107,6 +151,40 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
     }
   };
 
+  const startFlight = (key: string): Flight => {
+    const flight: Flight = { key, dirty: false, promise: Promise.resolve() };
+    owner = flight;
+    let requested: Promise<T | null>;
+    try {
+      requested = deps.fetcher();
+    } catch (err) {
+      owner = null;
+      requested = Promise.reject(err);
+    }
+    flight.promise = requested.then(
+      (next) => {
+        // Ownership, not key equality: only the flight that still owns the
+        // store may apply, and ownership never survives a context switch.
+        if (disposed || owner !== flight) return;
+        owner = null;
+        applySnapshot(next);
+        setLoaded(true);
+        // One trailing read per in-flight dirty period.
+        if (flight.dirty && !disposed) {
+          void startFlight(key).promise.catch(() => undefined);
+        }
+      },
+      (err) => {
+        // Failure retains the last-good tree and releases ownership so the
+        // next explicit invalidation reads again. The dirty period is
+        // dropped, not retried — no unbounded retry.
+        if (owner === flight) owner = null;
+        throw err;
+      },
+    );
+    return flight;
+  };
+
   const reload = (): Promise<void> => {
     // Watcher-driven and View→Refresh reloads alike: before the pane has
     // ever activated there is no data to refresh, and the resources tree in
@@ -115,31 +193,25 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
     // the 2026-08-30 storm (B2a). The latch stays true after first open, so
     // explicit reloads from a live pane are unaffected.
     if (!activated()) return Promise.resolve();
-    const path = deps.conceptionPath();
-    if (!path) {
+    const key = requestKey();
+    if (!key) {
+      // Departure: clear the tree and invalidate any in-flight flight
+      // permanently — returning to this key later starts a fresh read.
+      owner = null;
       applySnapshot(null);
       setLoaded(false);
       return Promise.resolve();
     }
-    if (inFlight && inFlightPath === path) return inFlight;
-    const flight = deps
-      .fetcher()
-      .then((next) => {
-        // Discard a stale result if the conception changed while the fetch was
-        // in flight — applying it would paint the previous conception's tree.
-        if (deps.conceptionPath() !== path) return;
-        applySnapshot(next);
-        setLoaded(true);
-      })
-      .finally(() => {
-        if (inFlight === flight) {
-          inFlight = null;
-          inFlightPath = null;
-        }
-      });
-    inFlight = flight;
-    inFlightPath = path;
-    return flight;
+    if (owner) {
+      if (owner.key === key) {
+        // Same-key invalidation during flight: share the flight and
+        // coalesce the events it covers into one trailing read.
+        owner.dirty = true;
+        return owner.promise;
+      }
+      owner = null; // Context switch — the old response is ineligible.
+    }
+    return startFlight(key).promise;
   };
 
   const loadForContext = (): Promise<void> => {
@@ -152,6 +224,8 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   // for first open, so the first switch to a tree pane pays one IPC and
   // every subsequent switch is paint-only (the store stays populated for
   // the active conception). Without a gate this is eager, as before.
+  // Reads `contextKey` transitively through `reload()`, so a Skills scope
+  // flip re-runs this effect and supersedes the prior scope's flight.
   createEffect(() => {
     const path = deps.conceptionPath();
     if (!path) {
