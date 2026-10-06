@@ -1,4 +1,5 @@
 import type { Project, TreeEvent } from '@shared/types';
+import type { ProjectsOwnership } from './projects-store';
 import { rendererPerf } from './perf-renderer';
 
 /**
@@ -8,8 +9,14 @@ import { rendererPerf } from './perf-renderer';
  * matching reloader so an edit in one pane doesn't refetch the others.
  */
 export interface TreeEventsDeps {
+  /** Ownership for per-project patches, shared with the projects store.
+   *  `registerBatch` runs synchronously before this dispatcher's first
+   *  `await`, so every operation in the received batch — including unlink
+   *  tombstones and membership invalidations — owns its path before any
+   *  held lookup can apply. */
+  projectOwnership: ProjectsOwnership;
   /** Path-shaped patch to the projects list. Used for `'project'`
-   *  events — one card moves; the rest don't blink. */
+   *  unlink events — one card moves; the rest don't blink. */
   mutateProjects: (next: (items: Project[]) => Project[]) => void;
   /** Full reload of the projects list. Called only as part of the
    *  `'unknown'` fan-out (last-resort backstop). */
@@ -31,9 +38,9 @@ export interface TreeEventsDeps {
 
 /**
  * Apply a batch of chokidar-driven tree events. Per-project events
- * patch in place via `mutateProjects`; pane-level events fire the
- * matching `reload*` exactly once even when multiple events of the
- * same kind appear in the batch. The watcher coalesces bursts into a
+ * patch in place via the shared projects ownership; pane-level events
+ * fire the matching `reload*` exactly once even when multiple events of
+ * the same kind appear in the batch. The watcher coalesces bursts into a
  * single batch (250 ms debounce); we coalesce within the batch.
  */
 export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Promise<void> {
@@ -46,6 +53,12 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
 }
 
 async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Promise<void> {
+  // Registration pass — strictly before the first await, so a held
+  // `getProject` reply for an early event can never apply over a later
+  // operation in the same batch (a deletion must never be resurrected by
+  // a lookup that started before the deletion was seen).
+  const tickets = deps.projectOwnership.registerBatch(events);
+
   let knowledgeDirty = false;
   let resourcesDirty = false;
   let skillsDirty = false;
@@ -91,21 +104,25 @@ async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Pr
       continue;
     }
     // Per-project patch (`event.kind === 'project'`).
+    if (event.op === 'unlink') {
+      deps.mutateProjects((items) => items.filter((p) => p.path !== event.path));
+      continue;
+    }
+    // Only the batch's final operation per path gets a ticket; a superseded
+    // event is skipped without issuing a lookup at all.
+    const ticket = tickets.get(event);
+    if (!ticket) continue;
     try {
-      if (event.op === 'unlink') {
-        deps.mutateProjects((items) => items.filter((p) => p.path !== event.path));
-        continue;
-      }
       const project = await window.condash.getProject(event.path);
       if (!project) {
-        deps.mutateProjects((items) => items.filter((p) => p.path !== event.path));
+        deps.projectOwnership.settle(ticket, (items) => items.filter((p) => p.path !== event.path));
         continue;
       }
       // `getProject` returns the full project (with `timeline[]`); the resident
       // list keeps timelines out (G1 — matches the `listProjects` projection),
       // so patch with a timeline-stripped copy. The card reads `lastActivity`.
       const row = project.timeline.length === 0 ? project : { ...project, timeline: [] };
-      deps.mutateProjects((items) => {
+      deps.projectOwnership.settle(ticket, (items) => {
         const idx = items.findIndex((p) => p.path === row.path);
         if (idx === -1) return [...items, row];
         const next = items.slice();
@@ -113,6 +130,7 @@ async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Pr
         return next;
       });
     } catch {
+      deps.projectOwnership.fail(ticket);
       unknownSeen = true;
     }
   }

@@ -266,12 +266,16 @@ function App() {
 
   // Single skills tree store — the active scope (conception or user) drives
   // which on-disk root the fetcher walks. Post-reframe the pane has no tab
-  // dimension; agedum sources are the only surface.
+  // dimension; agedum sources are the only surface. `contextKey` puts the
+  // effective scope into the store's request-ownership key, so a scope flip
+  // invalidates the prior scope's in-flight response even though the
+  // conception path is unchanged.
   const skillsStore = createTreeStore<SkillNode>({
     conceptionPath,
     fetcher: () => window.condash.readSkillsTree(skillsActiveScope()),
     key: 'relPath',
     active: () => layout().working === 'skills',
+    contextKey: skillsActiveScope,
   });
 
   const reposStore = createReposStore({ conceptionPath, flashToast });
@@ -399,6 +403,7 @@ function App() {
 
   // --- Tree-events handler (wires watcher pushes to store reloads) ------
   useTreeEvents({
+    projectOwnership: projectsStore.ownership,
     mutateProjects: mutate,
     reloadProjects,
     knowledgeStore,
