@@ -149,6 +149,7 @@ nav:
     - Advanced:
       - Values: explanation/values.md
       - Internals: explanation/internals.md
+      - Terminal acceptance harness: explanation/terminal-acceptance.md
       - Contributing: explanation/contributing.md
 
   - Legal: legal.md
