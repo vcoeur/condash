@@ -235,6 +235,23 @@ export async function mainTailCensus(
   );
 }
 
+/** Wait until the given session has a live DOM Terminal (it is the active
+ *  tab and its mount finished) — the precondition for a first-frame probe,
+ *  whose ACK must land in a LIVE viewport, not mid-hydrate where the tab's
+ *  flood can scroll it out before the poll's first read. */
+export async function waitForDomTerm(window: Page, sid: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const present = await window.evaluate(
+      (id: string) => (window as unknown as ProbeWindow).__condashXterms?.has(id) ?? false,
+      sid,
+    );
+    if (present) return;
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for DOM Terminal for ${sid}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 /**
  * One first-useful-frame sample (buffer level): the whole measurement happens
  * in-page — read the clock, fire `termWrite`, poll the registry viewport on a

@@ -9,6 +9,10 @@
 // echo never produces), and an explicit freeze so a spec can stop the echoes
 // and know nothing further will disturb the buffer.
 //
+// The token grammar is exactly P<digits>: `P3I000` echoes `ACK P3` — the
+// digits run stops at the first non-digit — so probe tokens must be pure
+// digits after the P.
+//
 // Modes:
 //   default        echo — every token is answered with `ACK <token>`.
 //   --absorb       swallow input silently; used as the negative control that

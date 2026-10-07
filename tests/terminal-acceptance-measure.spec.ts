@@ -16,6 +16,7 @@ import {
   registryCensus,
   transportCensus,
   transportStats,
+  waitForDomTerm,
   waitForTransportBytes,
   waitForTransportText,
   type FloorMeasurement,
@@ -263,7 +264,7 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       const sample = await measureKeyboardEcho(
         window,
         echo.sid,
-        `PK${String(i).padStart(3, '0')}`,
+        `P8${String(i).padStart(3, '0')}`,
         (text) => window.keyboard.type(text, { delay: 5 }),
       );
       expect(sample.timedOut, `keyboard sample ${i} timed out`).toBe(false);
@@ -298,6 +299,7 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       window,
       SUSTAIN,
       ` --mode sustain --rate ${16 * 1024} --budget ${2048 * 1024} --seed 90210 --echo`,
+      'SUSTAIN-READY',
     );
     const idle = await spawnAndWaitReady(window, ECHO_TUI, '');
     const otherIdleUnderBusy: number[] = [];
@@ -306,17 +308,25 @@ test('terminal acceptance measurement run (all probe families)', async () => {
     let busyBytesBefore = (await transportStats(window, busy.sid)).bytes;
     for (let i = 0; i < N_SAMPLES; i++) {
       // Count-scheduled arm order: every 2nd sample, strictly alternating.
+      // Only the ACTIVE tab holds a DOM Terminal (hidden tabs parse in the
+      // worker), so each arm activates its target tab first; the first-frame
+      // clock starts at the termWrite, after the switch, so the switch cost
+      // is harness scheduling, not part of the sample.
+      await window.click(`[data-sid="${idle.sid}"]`);
+      await waitForDomTerm(window, idle.sid);
       const idleSample = await measureEchoFirstFrame(
         window,
         idle.sid,
-        `P3I${String(i).padStart(3, '0')}`,
+        `P30${String(i).padStart(3, '0')}`,
       );
       expect(idleSample.timedOut, `other-idle sample ${i} timed out`).toBe(false);
       otherIdleUnderBusy.push(idleSample.firstMs);
+      await window.click(`[data-sid="${busy.sid}"]`);
+      await waitForDomTerm(window, busy.sid);
       const busySample = await measureEchoFirstFrame(
         window,
         busy.sid,
-        `P3B${String(i).padStart(3, '0')}`,
+        `P31${String(i).padStart(3, '0')}`,
       );
       expect(busySample.timedOut, `busy-self sample ${i} timed out`).toBe(false);
       busySelf.push(busySample.firstMs);
@@ -331,6 +341,7 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       window,
       SUSTAIN,
       ` --mode sustain --rate ${16 * 1024} --budget ${receiptTotal} --seed 314159 --echo`,
+      'SUSTAIN-READY',
     );
     const receipts: { intervalMs: number; cumulativeBytes: number }[] = [];
     let prevAt = Date.now();
@@ -351,6 +362,18 @@ test('terminal acceptance measurement run (all probe families)', async () => {
     expect(receiptCounters.watchdogs, 'watchdogs === 0 under the sustained receipt load').toBe(0);
 
     // ---- phase 6: burst identity + two-layer received-token census ----
+    // The byte-identical burst (same seed → same stream) runs TWICE, because
+    // only the ACTIVE tab holds a DOM Terminal and the two arms need different
+    // active tabs: 6a keeps the BURST tab live-mounted so the registry census
+    // reads a live-parsed buffer (the acceptance signal); 6b keeps the IDLE
+    // tab active so the burst-window idle-ACK arm can measure first-frame
+    // latency while the flood runs through main/flow/pty and the worker.
+    const burstTokenNeedles = Array.from(
+      { length: 64 },
+      (_, i) => `TKN-${String(i).padStart(3, '0')}`,
+    );
+
+    // 6a — census burst, burst tab live-mounted throughout.
     const burst = await spawnAndWaitReady(
       window,
       SUSTAIN,
@@ -380,28 +403,8 @@ test('terminal acceptance measurement run (all probe families)', async () => {
         { timeout: 5_000 },
       )
       .toBeGreaterThanOrEqual(1024);
-    const burstTokenNeedles = Array.from(
-      { length: 64 },
-      (_, i) => `TKN-${String(i).padStart(3, '0')}`,
-    );
-    const burstIdleAck: number[] = [];
     await window.evaluate((id) => window.condash.termWrite(id, 'GO'), burst.sid);
     const burstStartedAt = Date.now();
-    let burstIdleIndex = 0;
-    for (let j = 1; j <= N_BURST_IDLE && burstIdleIndex < N_BURST_IDLE; j++) {
-      // Count-scheduled against the product surface: the next idle token fires
-      // when the burst tab's delivered bytes cross the next 1/31 mark.
-      const mark = Math.floor((3_932_160 * j) / (N_BURST_IDLE + 1));
-      await waitForTransportBytes(window, burst.sid, mark, 60_000);
-      const sample = await measureEchoFirstFrame(
-        window,
-        idle.sid,
-        `P5I${String(burstIdleIndex).padStart(3, '0')}`,
-      );
-      expect(sample.timedOut, `burst-window idle ACK ${burstIdleIndex} timed out`).toBe(false);
-      burstIdleAck.push(sample.firstMs);
-      burstIdleIndex++;
-    }
     const burstDone = await waitForTransportText(window, burst.sid, 'DONE', 120_000);
     expect(burstDone.timedOut, 'burst never reached its DONE sentinel').toBe(false);
     const burstElapsedMs = Date.now() - burstStartedAt;
@@ -409,7 +412,8 @@ test('terminal acceptance measurement run (all probe families)', async () => {
 
     // Census layer 1: delivered stream (exhaustive by construction).
     const burstTransport = await transportCensus(window, burst.sid, burstTokenNeedles);
-    // Census layer 2: renderer registry (the acceptance signal).
+    // Census layer 2: renderer registry (the acceptance signal) — the burst
+    // tab stayed live-mounted, so this is the live parse, not a hydrate.
     const burstRegistry = await registryCensus(window, burst.sid, burstTokenNeedles);
     // Census layer 3 (supplementary, the plan's main-side tail): the single
     // end-of-run termAttach read — safe now that output has stopped.
@@ -436,6 +440,41 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       unexplained,
       `burst census: ${unexplained.length}/64 tokens not received — ledger: ${JSON.stringify(unexplained)}`,
     ).toEqual([]);
+
+    // 6b — burst-window idle ACK arm: idle tab active, the byte-identical
+    // burst flooding through main/flow/pty and the worker.
+    const burstIdle = await spawnAndWaitReady(
+      window,
+      SUSTAIN,
+      ' --mode burst --seed 271828 --hold',
+      'SUSTAIN-READY',
+    );
+    await window.click(`[data-sid="${idle.sid}"]`);
+    await waitForDomTerm(window, idle.sid);
+    const burstIdleAck: number[] = [];
+    await window.evaluate((id) => window.condash.termWrite(id, 'GO'), burstIdle.sid);
+    const burstIdleStartedAt = Date.now();
+    let burstIdleIndex = 0;
+    for (let j = 1; j <= N_BURST_IDLE && burstIdleIndex < N_BURST_IDLE; j++) {
+      // Count-scheduled against the product surface: the next idle token fires
+      // when the burst tab's delivered bytes cross the next 1/31 mark.
+      const mark = Math.floor((3_932_160 * j) / (N_BURST_IDLE + 1));
+      await waitForTransportBytes(window, burstIdle.sid, mark, 60_000);
+      const sample = await measureEchoFirstFrame(
+        window,
+        idle.sid,
+        `P32${String(burstIdleIndex).padStart(3, '0')}`,
+      );
+      expect(sample.timedOut, `burst-window idle ACK ${burstIdleIndex} timed out`).toBe(false);
+      burstIdleAck.push(sample.firstMs);
+      burstIdleIndex++;
+    }
+    const burstIdleDone = await waitForTransportText(window, burstIdle.sid, 'DONE', 120_000);
+    expect(burstIdleDone.timedOut, 'idle-ack burst never reached DONE').toBe(false);
+    console.log(
+      `burst-window idle-ack burst completed in ${Date.now() - burstIdleStartedAt} ms (delivery check only)`,
+    );
+    await window.evaluate((sid) => window.condash.termClose(sid), burstIdle.sid);
 
     // ---- phase 7: non-terminal views on the synthetic conception ----
     // The Projects pane must be the visible surface: the freshness condition
@@ -481,7 +520,7 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       const outcome = await measureHiddenReturn(
         window,
         echo.sid,
-        `P6R${String(i).padStart(3, '0')}`,
+        `P6${String(i).padStart(3, '0')}`,
         async () => {
           await window
             .locator('.rail')
@@ -658,7 +697,15 @@ test('terminal acceptance measurement run (all probe families)', async () => {
       `acceptance thresholds failed — see tests/acceptance-out/${LABEL}.json and the summary above`,
     ).toBe(true);
 
-    for (const id of [echo.sid, other.id, busy.sid, idle.sid, receiptsSustainer.sid, burst.sid]) {
+    for (const id of [
+      echo.sid,
+      other.id,
+      busy.sid,
+      idle.sid,
+      receiptsSustainer.sid,
+      burst.sid,
+      burstIdle.sid,
+    ]) {
       await window.evaluate((sid) => window.condash.termClose(sid), id);
     }
   } finally {

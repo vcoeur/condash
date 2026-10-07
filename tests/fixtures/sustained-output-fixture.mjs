@@ -237,6 +237,12 @@ out.write(
     `tokens=${args.tokens} meanLine=${meanLine.toFixed(1)} seed=${args.seed}\n`,
 );
 
+// ---- emit on a paced schedule; the byte total is the identity ----
+out.write(
+  `SUSTAIN-READY mode=${args.mode} total=${totalBytes} lines=${totalLines} ` +
+    `tokens=${args.tokens} meanLine=${meanLine.toFixed(1)} seed=${args.seed}\n`,
+);
+
 // The schedule starts (t=0) when GO arrives — or immediately without --hold —
 // so the achieved rate is measured over generation time only.
 const startedAtPromise = go ? Promise.resolve(Date.now()) : goPromise.then(() => Date.now());
@@ -245,16 +251,33 @@ const cumulativeBytes = [0];
 for (const text of lines) cumulativeBytes.push(cumulativeBytes[cumulativeBytes.length - 1] + text.length + 1);
 let index = 0;
 
-function emitNext(startedAt) {
+// Backpressure discipline: `out.write` into a paused pty queues in this
+// process's stream buffer, and a deep queue would (a) strand a probe ACK
+// behind hundreds of kilobytes of flood and (b) collapse its viewport
+// visibility window when the queue drains in one burst. So when the stream
+// buffers, the schedule stops and REBASES onto the drain instant — the
+// remaining lines keep the requested rate from the moment the pipe accepts
+// again. The byte total is untouched; only the wall clock stretches, and the
+// DONE line reports the achieved elapsed time.
+let startedAt = 0;
+
+function emitNext() {
   while (index < lines.length) {
     const dueMs = startedAt + (cumulativeBytes[index + 1] * 1000) / args.rate;
     const now = Date.now();
     if (dueMs > now) {
-      setTimeout(() => emitNext(startedAt), dueMs - now);
+      setTimeout(emitNext, dueMs - now);
       return;
     }
-    out.write(`${lines[index]}\n`);
+    const line = lines[index];
     index++;
+    if (!out.write(`${line}\n`)) {
+      out.once('drain', () => {
+        startedAt = Date.now() - (cumulativeBytes[index] * 1000) / args.rate;
+        emitNext();
+      });
+      return;
+    }
   }
   const elapsedMs = Date.now() - startedAt;
   out.write(`DONE ${scheduled} ${elapsedMs}\n`);
@@ -263,4 +286,7 @@ function emitNext(startedAt) {
   setInterval(() => {}, 1 << 30);
 }
 
-startedAtPromise.then((start) => emitNext(start));
+startedAtPromise.then((start) => {
+  startedAt = start;
+  emitNext();
+});
