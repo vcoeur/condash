@@ -203,6 +203,9 @@ jobs:
           fi
           echo "AppImage AppRun patch verified."
 
+      - name: Finalize and verify update manifests
+        run: node scripts/finalize-update-manifests.mjs release
+
       # Capture only the installer bundles + channel files. `if-no-files-found:
       # error` so an empty release dir fails the matrix job loudly instead of
       # silently producing an empty publish.
