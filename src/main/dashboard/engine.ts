@@ -20,12 +20,11 @@ import {
   saveDashboardState,
 } from './state';
 import {
-  clearSummarizerError,
   clearWriterCache,
-  getSummarizerError,
   makeEvent,
   summarizeTab,
   type TabSummaryResult,
+  type SummaryOwner,
   writeCard,
 } from './summarizer';
 import { deriveProvenance } from './provenance';
@@ -60,9 +59,49 @@ let nextDueAt = new Map<string, number>();
 let jitterBySid = new Map<string, number>();
 /** Epoch ms of the last tick that actually summarized a tab — engine status only. */
 let lastRunAt = 0;
-/** SIDs currently being summarized. A non-empty set means a cycle is in flight,
- *  so a new scheduled tick waits. A refresh for a different sid can still run. */
-let inFlightSids = new Set<string>();
+interface SummaryJob {
+  sid: string;
+  generation: number;
+  path: string;
+  manual: boolean;
+  invalid: boolean;
+  sequence: number;
+  attempted: boolean;
+  error?: string;
+  batch?: ScheduledBatch;
+  done: Promise<void>;
+  resolve(): void;
+}
+
+interface ScheduledBatch {
+  generation: number;
+  members: Set<SummaryJob>;
+  outcomes: SummaryJob[];
+  done: Promise<void>;
+  resolve(): void;
+  finishing?: boolean;
+}
+
+interface JobError {
+  sid: string;
+  generation: number;
+  sequence: number;
+  error: string;
+  scheduled: boolean;
+}
+
+const SUMMARY_JOB_LIMIT = 3;
+const jobs = new Map<string, SummaryJob>();
+const activeJobs = new Set<SummaryJob>();
+let scheduledQueue: SummaryJob[] = [];
+let manualQueue: SummaryJob[] = [];
+let scheduledBatch: ScheduledBatch | null = null;
+let manualStreak = 0;
+let admissionSequence = 0;
+let dispatching = false;
+let saveChain = Promise.resolve();
+let latestConfig: DashboardConfig | null = null;
+let errors: JobError[] = [];
 /** Consecutive failed summarization cycles (any cycle that ends with lastError). */
 let consecutiveFailures = 0;
 /** Epoch ms of the last cycle that failed. */
@@ -143,6 +182,7 @@ export async function setDashboardConception(conceptionPath: string | null): Pro
   // Invalidate every in-flight tick / refreshTab captured against the prior
   // generation so none of them mutate `state` or push for the torn-down tree (E3).
   generation += 1;
+  const myGeneration = generation;
   if (current) {
     clearInterval(current.interval);
     current = null;
@@ -151,20 +191,28 @@ export async function setDashboardConception(conceptionPath: string | null): Pro
   nextDueAt = new Map();
   jitterBySid = new Map();
   lastRunAt = 0;
-  inFlightSids = new Set();
+  for (const job of [...scheduledQueue, ...manualQueue]) {
+    job.invalid = true;
+    settleJob(job);
+  }
+  scheduledQueue = [];
+  manualQueue = [];
+  scheduledBatch = null;
+  manualStreak = 0;
+  latestConfig = null;
+  errors = [];
   consecutiveFailures = 0;
   lastFailureAt = 0;
   clearWriterCache();
   state = emptyDashboardState(0);
   if (!conceptionPath) return;
   const persisted = await loadDashboardState(conceptionPath);
+  if (generation !== myGeneration) return;
   if (persisted) state = persisted;
   const interval = setInterval(() => void tick(conceptionPath), TICK_MS);
   current = { path: conceptionPath, interval };
   pushState();
-  // Run one tick immediately so the roster and live engine status appear at once
-  // instead of after a full TICK_MS of a blank-looking pane. inFlight guards any
-  // overlap with the scheduled interval.
+  // Observe immediately; the shared dispatcher owns overlapping admissions.
   void tick(conceptionPath);
 }
 
@@ -349,17 +397,22 @@ async function buildSummary(
   tabMeta: TabInfo,
   prior: TabSummary | undefined,
   now: number,
+  recentText: string,
+  owner: SummaryOwner,
 ): Promise<TabSummary | null> {
-  const recentText = tabRecentText(tabMeta.sid);
-  if (!recentText.trim()) return null;
-  const result = await summarizeTab(config, {
-    sid: tabMeta.sid,
-    cmd: tabMeta.cmd,
-    cwd: tabMeta.cwd,
-    recentText,
-    prior,
-  });
-  if (!result) return null;
+  if (!owner.isCurrent() || !recentText.trim()) return null;
+  const result = await summarizeTab(
+    config,
+    {
+      sid: tabMeta.sid,
+      cmd: tabMeta.cmd,
+      cwd: tabMeta.cwd,
+      recentText,
+      prior,
+    },
+    owner,
+  );
+  if (!owner.isCurrent() || !result) return null;
   // Correct a mid-turn agent the card model misread as resting (see
   // forceWorkingOnUserTail). Done before the writer call so the subtitle is
   // composed from the corrected state.
@@ -367,6 +420,7 @@ async function buildSummary(
   // Provenance is local (no LLM): config + tree reads, fed to the writer for the
   // title + subtitle and attached to the card for the UI pills.
   const provenance = await deriveProvenance(conceptionPath, tabMeta);
+  if (!owner.isCurrent()) return null;
   const written = await writeCard(
     config,
     {
@@ -377,7 +431,9 @@ async function buildSummary(
       state: result.state,
     },
     provenance,
+    owner,
   );
+  if (!owner.isCurrent()) return null;
   // The writer owns the published title but falls back to the cheap pre-pass's
   // draft when its (pricier, occasionally empty) reply has none, so the card's
   // most prominent field never blanks.
@@ -410,13 +466,291 @@ async function buildSummary(
   };
 }
 
+function jobKey(ownerGeneration: number, sid: string): string {
+  return `${ownerGeneration}:${sid}`;
+}
+
+function isJobCurrent(job: SummaryJob): boolean {
+  if (job.invalid || job.generation !== generation || current?.path !== job.path) return false;
+  if (jobs.get(jobKey(job.generation, job.sid)) !== job) return false;
+  if (!dashboardRoster().some((tab) => tab.sid === job.sid)) {
+    job.invalid = true;
+    invalidateBatchMember(job);
+    return false;
+  }
+  return true;
+}
+
+async function finishBatch(batch: ScheduledBatch): Promise<void> {
+  if (batch.members.size || batch.finishing) return;
+  batch.finishing = true;
+  if (batch.generation === generation && scheduledBatch === batch) {
+    const outcomes = batch.outcomes.filter(
+      (job) => !job.invalid && dashboardRoster().some((tab) => tab.sid === job.sid),
+    );
+    if (outcomes.length) {
+      if (outcomes.some((job) => job.error)) recordFailure(Date.now());
+      else {
+        recordSuccess();
+        const watermark = Math.max(...outcomes.map((job) => job.sequence));
+        errors = errors.filter((job) => !job.scheduled || job.sequence > watermark);
+      }
+    }
+    publishLiveStatus();
+    if (outcomes.length && current) await persistCurrent(batch.generation, current.path);
+    if (scheduledBatch === batch) scheduledBatch = null;
+  }
+  batch.resolve();
+}
+
+function invalidateBatchMember(job: SummaryJob): void {
+  if (!job.batch) return;
+  job.batch.members.delete(job);
+  void finishBatch(job.batch);
+}
+
+async function settleJob(job: SummaryJob): Promise<void> {
+  const key = jobKey(job.generation, job.sid);
+  if (job.batch) {
+    if (
+      job.batch.members.has(job) &&
+      job.attempted &&
+      !job.invalid &&
+      job.generation === generation
+    ) {
+      job.batch.outcomes.push(job);
+    }
+    job.batch.members.delete(job);
+    await finishBatch(job.batch);
+  }
+  if (jobs.get(key) === job) jobs.delete(key);
+  if (!activeJobs.has(job)) job.resolve();
+}
+
+function enqueueJob(sid: string, manual: boolean): SummaryJob {
+  const key = jobKey(generation, sid);
+  const existing = jobs.get(key);
+  if (existing) {
+    if (manual && !existing.manual && !activeJobs.has(existing)) {
+      existing.manual = true;
+      scheduledQueue = scheduledQueue.filter((job) => job !== existing);
+      manualQueue.push(existing);
+    }
+    return existing;
+  }
+  let resolve!: () => void;
+  const done = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  const job: SummaryJob = {
+    sid,
+    generation,
+    path: current!.path,
+    manual,
+    invalid: false,
+    sequence: 0,
+    attempted: false,
+    done,
+    resolve,
+  };
+  jobs.set(key, job);
+  (manual ? manualQueue : scheduledQueue).push(job);
+  return job;
+}
+
+function publishLiveStatus(): void {
+  if (!current || !latestConfig) return;
+  const roster = dashboardRoster();
+  const liveSids = new Set(roster.map((tab) => tab.sid));
+  const summarizingSids = [...activeJobs]
+    .filter((job) => job.generation === generation && !job.invalid && liveSids.has(job.sid))
+    .map((job) => job.sid);
+  errors = errors.filter((job) => job.generation === generation && liveSids.has(job.sid));
+  const lastError = errors.reduce<JobError | undefined>(
+    (latest, job) => (!latest || job.sequence > latest.sequence ? job : latest),
+    undefined,
+  )?.error;
+  const changed =
+    rosterChanged(state.roster, roster) ||
+    state.tabs.some((tab) => !liveSids.has(tab.sid)) ||
+    state.lastError !== lastError ||
+    (state.summarizingSids ?? []).join('\0') !== summarizingSids.join('\0');
+  state = {
+    ...state,
+    roster,
+    tabs: state.tabs.filter((tab) => liveSids.has(tab.sid)),
+    summarizingSids,
+    lastError,
+  };
+  const now = Date.now();
+  let phase: DashboardEnginePhase = roster.length ? 'waiting' : 'idle';
+  if (!latestConfig.apiKey) phase = 'no-api-key';
+  if (isInBackoff(now)) phase = 'backoff';
+  if (summarizingSids.length) phase = 'summarizing';
+  publishEngine({
+    phase,
+    lastRunAt,
+    nextRunAt:
+      phase === 'no-api-key'
+        ? 0
+        : isInBackoff(now)
+          ? lastFailureAt + getBackoffDelayMs()
+          : earliestDue(now, liveSids, latestConfig.intervalSec * 1000),
+  });
+  if (changed) pushState();
+}
+
+function persistCurrent(ownerGeneration: number, path: string): Promise<void> {
+  const save = saveChain.then(async () => {
+    if (generation !== ownerGeneration || current?.path !== path) return;
+    try {
+      const snapshot = structuredClone(state);
+      await saveDashboardState(path, snapshot);
+    } catch (err) {
+      process.stderr.write(`condash dashboard: state persist failed: ${(err as Error).message}\n`);
+    }
+  });
+  saveChain = save;
+  return save;
+}
+
+async function runJob(
+  job: SummaryJob,
+  config: DashboardConfig,
+  tabMeta: TabInfo,
+  recentText: string,
+  now: number,
+): Promise<void> {
+  const owner: SummaryOwner = {
+    isCurrent: () => isJobCurrent(job),
+    reportError: (error) => {
+      if (isJobCurrent(job)) job.error = error;
+    },
+  };
+  try {
+    let summary: TabSummary | null = null;
+    try {
+      summary = await buildSummary(
+        config,
+        job.path,
+        tabMeta,
+        state.tabs.find((tab) => tab.sid === job.sid),
+        now,
+        recentText,
+        owner,
+      );
+    } catch (err) {
+      owner.reportError((err as Error).message);
+    }
+    if (!isJobCurrent(job)) return;
+    if (job.error) {
+      const scheduled = !!job.batch;
+      errors = errors.filter((error) => error.sid !== job.sid || error.scheduled !== scheduled);
+      errors.push({
+        sid: job.sid,
+        generation: job.generation,
+        sequence: job.sequence,
+        error: job.error,
+        scheduled,
+      });
+    } else if (!job.batch) {
+      errors = errors.filter(
+        (error) => error.scheduled || error.sid !== job.sid || error.sequence > job.sequence,
+      );
+    }
+    if (summary) {
+      state = pruneDashboardState(
+        {
+          ...state,
+          updatedAt: Date.now(),
+          tabs: [...state.tabs.filter((tab) => tab.sid !== job.sid), summary],
+        },
+        config.historyLimit,
+      );
+    }
+    publishLiveStatus();
+    pushState();
+    await persistCurrent(job.generation, job.path);
+  } finally {
+    // A departed generation keeps its logical slot until its sent phase/save settles.
+    if (job.generation !== generation || !isJobCurrent(job)) job.invalid = true;
+    await settleJob(job);
+    activeJobs.delete(job);
+    if (job.generation === generation) publishLiveStatus();
+    job.resolve();
+    void dispatchJobs();
+  }
+}
+
+async function dispatchJobs(): Promise<void> {
+  if (dispatching) return;
+  dispatching = true;
+  try {
+    while (activeJobs.size < SUMMARY_JOB_LIMIT && (manualQueue.length || scheduledQueue.length)) {
+      const armed = current;
+      const ownerGeneration = generation;
+      if (!armed) break;
+      let config: DashboardConfig;
+      try {
+        config = await readDashboardConfig(armed.path);
+      } catch {
+        for (const job of [...manualQueue, ...scheduledQueue]) {
+          if (job.generation === ownerGeneration) {
+            job.invalid = true;
+            settleJob(job);
+          }
+        }
+        manualQueue = manualQueue.filter((job) => !job.invalid);
+        scheduledQueue = scheduledQueue.filter((job) => !job.invalid);
+        continue;
+      }
+      if (generation !== ownerGeneration || current !== armed) continue;
+      latestConfig = config;
+      const scheduledWaiting = scheduledQueue.length > 0;
+      if (!scheduledWaiting) manualStreak = 0;
+      const chooseManual =
+        manualQueue.length > 0 &&
+        (!scheduledWaiting || manualStreak < 2 || isInBackoff(Date.now()));
+      if (!chooseManual && isInBackoff(Date.now()) && config.enabled && config.apiKey) break;
+      const job = (chooseManual ? manualQueue : scheduledQueue).shift()!;
+      if (!isJobCurrent(job) || !config.enabled || !config.apiKey) {
+        job.invalid = true;
+        settleJob(job);
+        continue;
+      }
+      const tabMeta = dashboardRoster().find((tab) => tab.sid === job.sid)!;
+      const recentText = tabRecentText(job.sid);
+      if (!recentText.trim()) {
+        job.invalid = true;
+        settleJob(job);
+        continue;
+      }
+      const now = Date.now();
+      job.attempted = true;
+      job.sequence = ++admissionSequence;
+      activeJobs.add(job);
+      if (chooseManual && scheduledWaiting) manualStreak += 1;
+      else manualStreak = 0;
+      lastRunAt = now;
+      nextDueAt.set(job.sid, now + config.intervalSec * 1000 + jitterFor(job.sid));
+      prevBytes.set(job.sid, tabsBytes().get(job.sid) ?? 0);
+      publishLiveStatus();
+      void runJob(job, config, tabMeta, recentText, now);
+    }
+  } finally {
+    dispatching = false;
+    publishLiveStatus();
+  }
+}
+
 /** One dashboard tick: refresh the open-tab roster, decay stale cards, then
  *  (when enabled and keyed) summarize exactly the tabs whose own per-tab clock
  *  is due and whose activity gate passes. A no-op when not armed for
- *  `conceptionPath`, already in flight, disabled, or the config read throws.
+ *  `conceptionPath` or the config read throws. Observation continues during jobs
+ *  and backoff; only one scheduled batch is outstanding at a time.
  *  Exported for unit testing. */
 export async function tick(conceptionPath: string): Promise<void> {
-  if (current?.path !== conceptionPath || inFlightSids.size > 0) return;
+  if (current?.path !== conceptionPath) return;
   // Snapshot the generation at entry: setDashboardConception bumps it on every
   // re-point / teardown, so this cycle can tell — after any await below — that it
   // now belongs to a switched-away tree and bail before touching `state` (E3).
@@ -435,7 +769,7 @@ export async function tick(conceptionPath: string): Promise<void> {
   // A conception switch during the config read must abort this cycle before it
   // mutates the (now reset) module state for the wrong tree.
   if (generation !== myGeneration) return;
-  if (!config.enabled) return;
+  latestConfig = config;
 
   // Refresh the open-tab roster every tick — cheap, no LLM — so a newly opened
   // tab becomes visible within one tick even before its first summary (and even
@@ -445,6 +779,16 @@ export async function tick(conceptionPath: string): Promise<void> {
   // not agent tabs and must not inflate the count or appear as idle cards (#366).
   const roster = dashboardRoster();
   const liveSids = new Set(roster.map((tab) => tab.sid));
+  for (const job of jobs.values()) {
+    if (job.generation === generation && !liveSids.has(job.sid)) {
+      job.invalid = true;
+      invalidateBatchMember(job);
+      if (!activeJobs.has(job)) settleJob(job);
+    }
+  }
+  scheduledQueue = scheduledQueue.filter((job) => !job.invalid);
+  manualQueue = manualQueue.filter((job) => !job.invalid);
+  errors = errors.filter((job) => liveSids.has(job.sid));
   // Retire scheduler bookkeeping for closed tabs (clock / baseline / jitter).
   pruneSchedulerMaps(liveSids);
   // Drop summaries for closed tabs every tick — no LLM, no API key, independent
@@ -458,12 +802,9 @@ export async function tick(conceptionPath: string): Promise<void> {
     pushState();
   }
 
-  // Resting phase between cycles: `idle` with no open tabs, else `waiting`
-  // (with the gate on, that reads as "waiting for activity").
-  const restingPhase: DashboardEnginePhase = roster.length === 0 ? 'idle' : 'waiting';
-
-  if (!config.apiKey) {
-    publishEngine({ phase: 'no-api-key', nextRunAt: 0, lastRunAt });
+  if (!config.enabled || !config.apiKey) {
+    publishLiveStatus();
+    void dispatchJobs();
     return;
   }
 
@@ -484,11 +825,8 @@ export async function tick(conceptionPath: string): Promise<void> {
   // Tabs whose own clock is due this tick (no entry ⇒ due immediately).
   const dueSids = roster.map((tab) => tab.sid).filter((sid) => (nextDueAt.get(sid) ?? 0) <= now);
   if (dueSids.length === 0) {
-    publishEngine({
-      phase: restingPhase,
-      nextRunAt: earliestDue(now, liveSids, intervalMs),
-      lastRunAt,
-    });
+    publishLiveStatus();
+    void dispatchJobs();
     return;
   }
 
@@ -505,154 +843,49 @@ export async function tick(conceptionPath: string): Promise<void> {
     }
     return true;
   };
-  const toSummarize = dueSids.filter(gatePass);
+  const toSummarize = dueSids.filter((sid) => gatePass(sid) && !jobs.has(jobKey(generation, sid)));
 
   // Re-window a due-but-gated tab (no LLM): it waits one more interval, its byte
   // baseline left intact so activity since its last attempt still trips the gate.
   for (const sid of dueSids) {
-    if (!toSummarize.includes(sid)) nextDueAt.set(sid, now + intervalMs + jitterFor(sid));
+    if (!jobs.has(jobKey(generation, sid)) && !gatePass(sid)) {
+      nextDueAt.set(sid, now + intervalMs + jitterFor(sid));
+    }
   }
 
-  if (toSummarize.length === 0) {
-    // Every due tab is gate-held — nothing to summarize this tick.
-    publishEngine({
-      phase: restingPhase,
-      nextRunAt: earliestDue(now, liveSids, intervalMs),
-      lastRunAt,
+  let batch: ScheduledBatch | null = null;
+  if (!scheduledBatch && toSummarize.length && !isInBackoff(now)) {
+    let resolve!: () => void;
+    const done = new Promise<void>((settle) => {
+      resolve = settle;
     });
-    return;
-  }
-
-  // Backoff after repeated failures: cheap roster/decay work still runs, but
-  // we pause LLM calls to protect quota and wallet.
-  if (isInBackoff(now)) {
-    publishEngine({
-      phase: 'backoff',
-      nextRunAt: lastFailureAt + getBackoffDelayMs(),
-      lastRunAt,
-    });
-    return;
-  }
-
-  inFlightSids = new Set(toSummarize);
-  lastRunAt = now;
-  // Advance the clock + byte baseline for each tab we will summarize. The
-  // baseline moves only on an actual attempt, so a not-yet-due tab's growth is
-  // still detected when its own clock comes due.
-  for (const sid of toSummarize) {
-    nextDueAt.set(sid, now + intervalMs + jitterFor(sid));
-    prevBytes.set(sid, bytes.get(sid) ?? 0);
-  }
-  clearSummarizerError();
-  // Enter the summarizing window: publish the phase AND the set of tabs being
-  // recomputed this tick, so the renderer can badge exactly those cards
-  // "Summarizing" while their LLM call is in flight. A direct push (not
-  // publishEngine) because the per-tab overlay rides alongside the phase change.
-  state = {
-    ...state,
-    engine: {
-      phase: 'summarizing',
-      nextRunAt: earliestDue(now, liveSids, intervalMs),
-      lastRunAt: now,
-    },
-    summarizingSids: toSummarize,
-  };
-  pushState();
-  try {
-    const meta = new Map(roster.map((tab) => [tab.sid, tab]));
-    // Carry forward summaries for still-live tabs; drop the closed ones.
-    const nextTabs: TabSummary[] = state.tabs.filter((tab) => liveSids.has(tab.sid));
-    const indexOf = (sid: string): number => nextTabs.findIndex((tab) => tab.sid === sid);
-
-    // Summarize the due tabs concurrently — each is an independent, tool-free
-    // pair of HTTP completions (cheap pre-pass + writer), so a board of N tabs
-    // costs ~one tab's latency instead of N in series. Folded in `toSummarize`
-    // order so placement stays deterministic.
-    const built = await Promise.all(
-      toSummarize.map((sid) => {
-        const tabMeta = meta.get(sid);
-        if (!tabMeta) return Promise.resolve(null);
-        return buildSummary(config, conceptionPath, tabMeta, priorBySid.get(sid), now);
-      }),
-    );
-    // The LLM round-trips above can span a conception switch. If one landed, this
-    // cycle now belongs to the old tree — bail before it overwrites the new tree's
-    // reset state or pushes old-tree cards to the new dashboard (E3). The `finally`
-    // below leaves the new cycle's `inFlight` alone (generation-guarded).
-    if (generation !== myGeneration) return;
-    for (const summary of built) {
-      if (!summary) continue;
-      const at = indexOf(summary.sid);
-      if (at >= 0) nextTabs[at] = summary;
-      else nextTabs.push(summary);
+    batch = { generation, members: new Set(), outcomes: [], done, resolve };
+    scheduledBatch = batch;
+    for (const sid of toSummarize) {
+      const job = enqueueJob(sid, false);
+      job.batch = batch;
+      batch.members.add(job);
     }
-
-    const lastError = getSummarizerError();
-    if (lastError) {
-      recordFailure(now);
-    } else {
-      recordSuccess();
-    }
-
-    state = pruneDashboardState(
-      {
-        updatedAt: now,
-        tabs: nextTabs,
-        roster,
-        history: state.history,
-        // Tick done — back to resting, counting down to the next due tab.
-        engine: {
-          phase: restingPhase,
-          nextRunAt: earliestDue(now, liveSids, intervalMs),
-          lastRunAt: now,
-        },
-        // Window closed — drop the transient per-tab summarizing overlay.
-        summarizingSids: [],
-        lastError: lastError ?? undefined,
-      },
-      config.historyLimit,
-    );
-    // Push the freshly computed state to the renderer FIRST, then persist.
-    // Persistence is a best-effort next-launch seed; a save failure must never
-    // suppress the live UI update. The previous order (save, then push) meant a
-    // throwing save skipped the push entirely — so every summary and the
-    // resting-phase reset was computed but never reached the pane.
-    pushState();
-    try {
-      await saveDashboardState(conceptionPath, state);
-    } catch (err) {
-      process.stderr.write(`condash dashboard: state persist failed: ${(err as Error).message}\n`);
-    }
-  } catch (err) {
-    process.stderr.write(`condash dashboard: tick failed: ${(err as Error).message}\n`);
-    // A throw before the resting-state push leaves the summarizing overlay set;
-    // clear it so cards don't stay stuck reading "Summarizing". Only for our own
-    // generation — a switch during the cycle already reset `state` (E3).
-    if (generation === myGeneration && state.summarizingSids?.length) {
-      state = { ...state, summarizingSids: [] };
-      pushState();
-    }
-  } finally {
-    // Only clear our own generation's in-flight set: a conception switch mid-cycle
-    // set it to empty and a fresh tick may already have re-latched it, so clearing
-    // unconditionally would unlatch that running new cycle (E3).
-    if (generation === myGeneration) inFlightSids = new Set();
   }
+  publishLiveStatus();
+  void dispatchJobs();
+  if (batch) await batch.done;
 }
 
 /**
  * Force an immediate re-summarization of a single tab — the per-card "Update
  * now" button — bypassing both the interval and the activity gate so the user
  * can refresh a card whose status looks stale on demand. A no-op when the engine
- * isn't armed for an enabled, keyed conception, a cycle is already in flight, the
+ * isn't armed for an enabled, keyed conception, the
  * sid isn't a live tab, or the tab has no readable output yet. Refreshes only
- * that card and pushes its per-tab clock a full interval out.
+ * that card through the shared queue; repeated clicks await its existing job.
+ * Admission pushes its clock and byte baseline out even on a failed/null result.
  *
  * @param sid The tab to refresh.
  */
 export async function refreshTab(sid: string): Promise<void> {
   const armed = current;
-  if (!armed || inFlightSids.has(sid)) return;
+  if (!armed) return;
   // Same generation guard as `tick` (E3): a conception switch during either await
   // below must abort before this refresh clobbers the new tree's state.
   const myGeneration = generation;
@@ -664,55 +897,11 @@ export async function refreshTab(sid: string): Promise<void> {
   }
   if (generation !== myGeneration) return;
   if (!config.enabled || !config.apiKey) return;
+  latestConfig = config;
   const tabMeta = dashboardRoster().find((tab) => tab.sid === sid);
   if (!tabMeta) return;
 
-  inFlightSids.add(sid);
-  const now = Date.now();
-  clearSummarizerError();
-  // Badge just this card "Summarizing" while its single LLM call is in flight.
-  state = { ...state, summarizingSids: [sid] };
-  pushState();
-  try {
-    const prior = state.tabs.find((tab) => tab.sid === sid);
-    const summary = await buildSummary(config, armed.path, tabMeta, prior, now);
-    // A switch during the LLM round-trip means this refresh now belongs to the
-    // old tree — bail before writing its card into the new tree's state (E3).
-    if (generation !== myGeneration) return;
-    if (summary) {
-      const others = state.tabs.filter((tab) => tab.sid !== sid);
-      // Bank this sid's byte count and push its clock a full interval out so the
-      // next scheduled cycle's growth gate doesn't redundantly re-summarize a tab
-      // the user just refreshed.
-      prevBytes.set(sid, tabsBytes().get(sid) ?? prevBytes.get(sid) ?? 0);
-      nextDueAt.set(sid, now + config.intervalSec * 1000 + jitterFor(sid));
-      state = {
-        ...state,
-        tabs: [...others, summary],
-        updatedAt: now,
-        summarizingSids: [],
-        lastError: getSummarizerError() ?? undefined,
-      };
-    } else {
-      // Nothing summarizable (no output yet / model declined): clear the overlay
-      // and surface any error, leaving the prior summary in place.
-      state = { ...state, summarizingSids: [], lastError: getSummarizerError() ?? undefined };
-    }
-    pushState();
-    try {
-      await saveDashboardState(armed.path, state);
-    } catch (err) {
-      process.stderr.write(`condash dashboard: state persist failed: ${(err as Error).message}\n`);
-    }
-  } catch (err) {
-    process.stderr.write(`condash dashboard: tab refresh failed: ${(err as Error).message}\n`);
-    // Only clear the overlay for our own generation — a switch already reset it.
-    if (generation === myGeneration) {
-      state = { ...state, summarizingSids: [] };
-      pushState();
-    }
-  } finally {
-    // Unlatch only our own generation's guard (see the tick's finally, E3).
-    if (generation === myGeneration) inFlightSids.delete(sid);
-  }
+  const job = enqueueJob(sid, true);
+  void dispatchJobs();
+  await job.done;
 }

@@ -7,7 +7,7 @@ import type {
   TabState,
   TabSummary,
 } from '../../shared/types';
-import type { TabSummaryResult } from './summarizer';
+import type { SummaryOwner, TabSummaryResult } from './summarizer';
 
 // Mutable fixtures the mocks read, so each case can shape the engine's inputs.
 const h = vi.hoisted(() => ({
@@ -61,18 +61,18 @@ vi.mock('./summarizer', () => ({
   clearWriterCache: () => {},
   getSummarizerError: () => h.lastError,
   makeEvent: (text: string, at: number) => ({ at, text }),
-  summarizeTab: vi.fn(async () => {
+  summarizeTab: vi.fn(async (_config, _input, owner: SummaryOwner) => {
     if (h.fail) {
-      h.lastError = 'simulated failure';
+      owner.reportError('simulated failure');
       return null;
     }
     return h.summary;
   }),
   // The writer adds no title here, so the engine falls back to the cheap pass's
   // draft title (h.summary.title) — what these tests assert flows through.
-  writeCard: vi.fn(async () => {
+  writeCard: vi.fn(async (_config, _facts, _provenance, owner: SummaryOwner) => {
     if (h.fail) {
-      h.lastError = 'simulated failure';
+      owner.reportError('simulated failure');
       return { title: '', subtitle: '' };
     }
     return { title: '', subtitle: h.subtitle };
