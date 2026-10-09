@@ -1,7 +1,222 @@
 import { test, expect } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
+
+test('built opt-in dashboard shares full-job slots, coalesces Update and fences closed phases', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootApp({
+    globalConfig: {
+      dashboard: {
+        enabled: true,
+        apiKey: 'fixture-only',
+        baseUrl: 'https://dashboard-fixture.invalid',
+        model: 'fixture-card',
+        writerModel: 'fixture-writer',
+        intervalSec: 300,
+      },
+      terminal: { memory: { enabled: false, appScope: { enabled: false } } },
+      autoSync: { enabled: false },
+      layout: { projects: true, working: 'code', terminal: true },
+    },
+    beforeFirstWindow: async (app) => {
+      await app.evaluate(() => {
+        const probe = {
+          calls: [] as { phase: string; tab: number }[],
+          held: [] as { phase: string; tab: number; release(): void }[],
+          pending: 0,
+          peak: 0,
+        };
+        (globalThis as any).__dashboardProbe = probe;
+        globalThis.fetch = (async (url: string, options: any) => {
+          if (url !== 'https://dashboard-fixture.invalid/chat/completions') {
+            throw new Error('external fetch blocked by dashboard fixture');
+          }
+          const body = JSON.parse(options.body);
+          const phase = body.model === 'fixture-card' ? 'card' : 'writer';
+          const input = body.messages[1].content;
+          const match =
+            phase === 'card'
+              ? input.match(/fixture output (\d+)/)
+              : input.match(/Draft title.*: fixture (\d+)/);
+          if (!match) throw new Error('unexpected fixture prompt');
+          const tab = Number(match[1]);
+          probe.calls.push({ phase, tab });
+          probe.peak = Math.max(probe.peak, ++probe.pending);
+          await new Promise<void>((release) => {
+            probe.held.push({ phase, tab, release });
+          });
+          probe.pending--;
+          const content =
+            phase === 'card'
+              ? {
+                  title: `fixture ${tab}`,
+                  currentAction: `fixture action ${tab}`,
+                  contextLines: [],
+                  state: 'working',
+                  activity: 'testing',
+                }
+              : {
+                  title: `Built bounded fixture ${tab}`,
+                  subtitle: `Locally mocked work ${tab}`,
+                };
+          return {
+            ok: true,
+            json: async () => ({ choices: [{ message: { content: JSON.stringify(content) } }] }),
+          };
+        }) as typeof fetch;
+      });
+    },
+  });
+  const calls = () => booted.app.evaluate(() => (globalThis as any).__dashboardProbe.calls);
+  const release = (phase: string, tab: number) =>
+    booted.app.evaluate(
+      (_electron, { phase, tab }) => {
+        const held = (globalThis as any).__dashboardProbe.held;
+        const at = held.findIndex((entry: any) => entry.phase === phase && entry.tab === tab);
+        if (at < 0) throw new Error('fixture phase not pending');
+        held.splice(at, 1)[0].release();
+      },
+      { phase, tab },
+    );
+  try {
+    const sids: string[] = [];
+    for (let i = 0; i < 4; i++)
+      sids.push(
+        await booted.window.evaluate(
+          async (index) =>
+            (
+              await window.condash.termSpawn({
+                side: 'my',
+                command: `printf 'fixture output ${index}\\n'; sleep 90`,
+              })
+            ).id,
+          i,
+        ),
+      );
+    await booted.window.locator('.terminal-tab-dashboard').click();
+    await expect.poll(calls, { timeout: 45_000 }).toEqual([
+      { phase: 'card', tab: 0 },
+      { phase: 'card', tab: 1 },
+      { phase: 'card', tab: 2 },
+    ]);
+    await booted.window.evaluate((ids) => {
+      (window as any).__dashboardSettled = 0;
+      for (const sid of [ids[0], ids[3], ids[3]]) {
+        void window.condash.dashboardRefreshTab(sid).then(() => {
+          (window as any).__dashboardSettled++;
+        });
+      }
+    }, sids);
+    await release('card', 0);
+    await expect.poll(calls).toEqual([
+      { phase: 'card', tab: 0 },
+      { phase: 'card', tab: 1 },
+      { phase: 'card', tab: 2 },
+      { phase: 'writer', tab: 0 },
+    ]);
+    expect(await booted.window.evaluate(() => (window as any).__dashboardSettled)).toBe(0);
+    await booted.window.evaluate((sid) => window.condash.termClose(sid), sids[1]);
+    await release('card', 1);
+    await expect.poll(calls).toEqual([
+      { phase: 'card', tab: 0 },
+      { phase: 'card', tab: 1 },
+      { phase: 'card', tab: 2 },
+      { phase: 'writer', tab: 0 },
+      { phase: 'card', tab: 3 },
+    ]);
+    await expect
+      .poll(() =>
+        booted.window.evaluate(
+          async () => (await window.condash.dashboardGetState())?.summarizingSids?.length,
+        ),
+      )
+      .toBe(3);
+    await release('writer', 0);
+    await expect
+      .poll(() => booted.window.evaluate(() => (window as any).__dashboardSettled))
+      .toBe(1);
+    await release('card', 2);
+    await release('card', 3);
+    await expect
+      .poll(async () => (await calls()).filter((call: any) => call.phase === 'writer').length)
+      .toBe(3);
+    await release('writer', 3);
+    await expect
+      .poll(() => booted.window.evaluate(() => (window as any).__dashboardSettled))
+      .toBe(3);
+    const pane = booted.window.locator('.dashboard-pane');
+    await expect(
+      pane.locator('.dashboard-card-title', { hasText: 'Built bounded fixture 3' }),
+    ).toBeVisible();
+    const outDir = test.info().outputPath();
+    await mkdir(outDir, { recursive: true });
+    await booted.window.screenshot({ path: join(outDir, 'dashboard-bounds-held.png') });
+    console.log(
+      'dashboard-bounds held resource sample',
+      await booted.app.evaluate(({ app }) => ({
+        mainHeapBytes: process.memoryUsage().heapUsed,
+        mainRssBytes: process.memoryUsage().rss,
+        processes: app.getAppMetrics().map((metric) => ({
+          type: metric.type,
+          workingSetKiB: metric.memory.workingSetSize,
+          cpuPercent: metric.cpu.percentCPUUsage,
+        })),
+      })),
+    );
+    await release('writer', 2);
+    await expect
+      .poll(() =>
+        booted.window.evaluate(
+          async () => (await window.condash.dashboardGetState())?.summarizingSids ?? [],
+        ),
+      )
+      .toEqual([]);
+    await expect
+      .poll(async () => {
+        const saved = JSON.parse(
+          await readFile(join(booted.conceptionDir, '.condash/dashboard/state.json'), 'utf8'),
+        );
+        return saved.tabs.map((tab: any) => tab.sid).sort();
+      })
+      .toEqual([sids[0], sids[2], sids[3]].sort());
+    expect(await calls()).toEqual([
+      { phase: 'card', tab: 0 },
+      { phase: 'card', tab: 1 },
+      { phase: 'card', tab: 2 },
+      { phase: 'writer', tab: 0 },
+      { phase: 'card', tab: 3 },
+      { phase: 'writer', tab: 2 },
+      { phase: 'writer', tab: 3 },
+    ]);
+    expect(
+      await booted.app.evaluate(() => ({
+        peak: (globalThis as any).__dashboardProbe.peak,
+        pending: (globalThis as any).__dashboardProbe.pending,
+      })),
+    ).toEqual({ peak: 3, pending: 0 });
+    await booted.window.screenshot({ path: join(outDir, 'dashboard-bounds-settled.png') });
+    console.log(
+      'dashboard-bounds settled resource sample',
+      await booted.app.evaluate(({ app }) => ({
+        mainHeapBytes: process.memoryUsage().heapUsed,
+        mainRssBytes: process.memoryUsage().rss,
+        processes: app.getAppMetrics().map((metric) => ({
+          type: metric.type,
+          workingSetKiB: metric.memory.workingSetSize,
+          cpuPercent: metric.cpu.percentCPUUsage,
+        })),
+      })),
+    );
+  } finally {
+    await booted.app
+      .evaluate(() => {
+        for (const entry of (globalThis as any).__dashboardProbe.held.splice(0)) entry.release();
+      })
+      .catch(() => {});
+    await booted.cleanup();
+  }
+});
 
 /**
  * Regression for the "Dashboard is blind to active tabs" incident: every open

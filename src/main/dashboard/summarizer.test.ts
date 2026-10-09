@@ -1,15 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCompletionBody,
   buildTabUserPrompt,
   buildWriterUserPrompt,
   clearWriterCache,
+  clearSummarizerError,
+  getSummarizerError,
   parseCardWriter,
   parseTabSummary,
   TAB_SYSTEM_PROMPT,
   temperatureForModel,
   withTimeout,
   writeCard,
+  summarizeTab,
 } from './summarizer';
 
 describe('parseTabSummary', () => {
@@ -289,8 +292,227 @@ describe('writeCard writer cache', () => {
 
   beforeEach(() => {
     clearWriterCache();
+    clearSummarizerError();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  function mockWriter(reply = '{"title":"T","subtitle":"S"}') {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        ({
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: reply } }] }),
+        }) as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('retains exactly 256 entries, promotes hits and evicts the least recently reused key', async () => {
+    const fetchMock = mockWriter();
+    const input = (key: number) => ({ ...facts, title: `key ${key}` });
+    for (let key = 0; key < 256; key++) await writeCard(baseConfig, input(key), provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(256);
+    await writeCard(baseConfig, input(0), provenance); // promote oldest
+    await writeCard(baseConfig, input(256), provenance);
+    await writeCard(baseConfig, input(0), provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(257);
+    await writeCard(baseConfig, input(1), provenance); // evicted
+    expect(fetchMock).toHaveBeenCalledTimes(258);
+    // A full replay of the newest retained set proves both ceiling and retention.
+    for (const key of [0, 256, 1, ...Array.from({ length: 253 }, (_, i) => i + 3)]) {
+      await writeCard(baseConfig, input(key), provenance);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(258);
+    await writeCard(baseConfig, input(2), provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(259);
+  });
+
+  it.each([
+    { keys: 64, passes: 10, attempts: 640, writers: 64, full: 704 },
+    { keys: 129, passes: 3, attempts: 387, writers: 129, full: 516 },
+    { keys: 256, passes: 3, attempts: 768, writers: 256, full: 1024 },
+    { keys: 257, passes: 3, attempts: 771, writers: 771, full: 1542 },
+    { keys: 513, passes: 3, attempts: 1539, writers: 1539, full: 3078 },
+  ])(
+    'pins full actual-source request ledger for $keys keys × $passes',
+    async ({ keys, passes, attempts, writers, full }) => {
+      let cards = 0;
+      let writerCalls = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url, options) => {
+          const body = JSON.parse(options.body);
+          const card = body.model === baseConfig.model;
+          if (card) cards++;
+          else writerCalls++;
+          const title = card ? body.messages[1].content.match(/fixture-key-(\d+)/)[0] : 'written';
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify(
+                      card ? { ...facts, title } : { title, subtitle: 'fixture' },
+                    ),
+                  },
+                },
+              ],
+            }),
+          };
+        }),
+      );
+      for (let pass = 0; pass < passes; pass++) {
+        for (let key = 0; key < keys; key++) {
+          const card = await summarizeTab(baseConfig, {
+            sid: 's',
+            recentText: `fixture-key-${key}`,
+          });
+          await writeCard(baseConfig, card!, provenance);
+        }
+      }
+      expect({ cards, writerCalls, fullCalls: cards + writerCalls }).toEqual({
+        cards: attempts,
+        writerCalls: writers,
+        fullCalls: full,
+      });
+    },
+  );
+
+  it('pins hot/cold full request ledger: 17000 cards, 1016 writers, 18016 total', async () => {
+    let cards = 0;
+    let writers = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, options) => {
+        const body = JSON.parse(options.body);
+        const card = body.model === baseConfig.model;
+        if (card) cards++;
+        else writers++;
+        const title = card ? body.messages[1].content.match(/fixture-key-(\d+)/)[0] : 'written';
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify(
+                    card ? { ...facts, title } : { title, subtitle: 'fixture' },
+                  ),
+                },
+              },
+            ],
+          }),
+        };
+      }),
+    );
+    for (let cycle = 0; cycle < 1000; cycle++) {
+      for (const key of [...Array.from({ length: 16 }, (_, i) => i), 16 + cycle]) {
+        const card = await summarizeTab(baseConfig, { sid: 's', recentText: `fixture-key-${key}` });
+        await writeCard(baseConfig, card!, provenance);
+      }
+    }
+    expect({ cards, writers, full: cards + writers }).toEqual({
+      cards: 17000,
+      writers: 1016,
+      full: 18016,
+    });
+  }, 15_000);
+
+  it('keeps model/reasoning separation, explicit clear and no TTL', async () => {
+    const fetchMock = mockWriter();
+    await writeCard(baseConfig, facts, provenance);
+    await writeCard({ ...baseConfig, writerReasoning: true }, facts, provenance);
+    await writeCard({ ...baseConfig, writerModel: 'other' }, facts, provenance);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    await writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    clearWriterCache();
+    await writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('preserves successful-empty caching, thrown-request retries and endpoint omission', async () => {
+    const fetchMock = mockWriter('garbled');
+    expect(await writeCard(baseConfig, facts, provenance)).toEqual({ title: '', subtitle: '' });
+    await writeCard({ ...baseConfig, baseUrl: 'https://inert.invalid' }, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    clearWriterCache();
+    fetchMock.mockRejectedValue(new Error('fixture rejection'));
+    await writeCard(baseConfig, facts, provenance);
+    await writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getSummarizerError()).toBe('fixture rejection');
+  });
+
+  it('preserves existing delimiter key collisions without silently repairing the key', async () => {
+    const fetchMock = mockWriter();
+    await writeCard(baseConfig, { ...facts, contextLines: ['x\0y'] }, provenance);
+    await writeCard(baseConfig, { ...facts, contextLines: ['x', 'y'] }, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not deduplicate concurrent identical misses', async () => {
+    let resolve!: (value: Response) => void;
+    const response = new Promise<Response>((yes) => {
+      resolve = yes;
+    });
+    const fetchMock = vi.fn(() => response);
+    vi.stubGlobal('fetch', fetchMock);
+    const first = writeCard(baseConfig, facts, provenance);
+    const second = writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    resolve({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+    } as Response);
+    await Promise.all([first, second]);
+    await writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalid owners cannot insert, promote a hit or overwrite legacy error state', async () => {
+    const fetchMock = mockWriter();
+    let current = true;
+    const reportError = vi.fn();
+    const owner = { isCurrent: () => current, reportError };
+    let resolve!: (value: Response) => void;
+    const response = new Promise<Response>((yes) => {
+      resolve = yes;
+    });
+    fetchMock.mockImplementationOnce(() => response);
+    const old = writeCard(baseConfig, facts, provenance, owner);
+    current = false;
+    clearWriterCache();
+    resolve({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{"title":"old"}' } }] }),
+    } as Response);
+    expect(await old).toEqual({ title: '', subtitle: '' });
+    await writeCard(baseConfig, facts, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    clearWriterCache();
+    for (let key = 0; key < 256; key++)
+      await writeCard(baseConfig, { ...facts, title: `key ${key}` }, provenance);
+    await writeCard(baseConfig, { ...facts, title: 'key 0' }, provenance, owner);
+    await writeCard(baseConfig, { ...facts, title: 'key 256' }, provenance);
+    const before = fetchMock.mock.calls.length;
+    await writeCard(baseConfig, { ...facts, title: 'key 0' }, provenance);
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1); // invalid hit never promoted
+    fetchMock.mockRejectedValue(new Error('old error'));
+    current = true;
+    const failed = writeCard(baseConfig, { ...facts, title: 'never cached' }, provenance, owner);
+    current = false;
+    await failed;
+    expect(reportError).not.toHaveBeenCalled();
+    expect(getSummarizerError()).toBeNull();
   });
 
   it('reuses the previous result when facts + provenance + model are unchanged', async () => {
