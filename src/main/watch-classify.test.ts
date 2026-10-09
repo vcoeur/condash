@@ -22,6 +22,7 @@ describe('classify — in-project files become a scoped card patch (R1)', () => 
       kind: 'project',
       op: 'change',
       path: README,
+      changedPath: '/c/projects/2026-07/slug/notes/01-x.md',
     });
   });
 
@@ -31,6 +32,7 @@ describe('classify — in-project files become a scoped card patch (R1)', () => 
       kind: 'project',
       op: 'change',
       path: README,
+      changedPath: '/c/projects/2026-07/slug/notes/01-x.md',
     });
   });
 
@@ -39,6 +41,7 @@ describe('classify — in-project files become a scoped card patch (R1)', () => 
       kind: 'project',
       op: 'change',
       path: README,
+      changedPath: '/c/projects/2026-07/slug/local/shot.png',
     });
   });
 });
@@ -130,6 +133,13 @@ describe('classify — resources/local/ scratch is a no-op (B2b)', () => {
 });
 
 describe('classify — unchanged routing for the other panes', () => {
+  it('task files and directories invalidate only definitions', () => {
+    for (const event of ['change', 'add', 'unlink', 'addDir', 'unlinkDir'] as const) {
+      expect(cl(event, '/c/tasks/one/prompt.md')).toEqual({ kind: 'tasks' });
+      expect(cl(event, '/c/tasks')).toEqual({ kind: 'tasks' });
+      expect(cl(event, '/c/tasks-other/one')).toEqual({ kind: 'unknown' });
+    }
+  });
   it('knowledge markdown', () => {
     expect(cl('change', '/c/knowledge/topics/x.md')).toEqual({
       kind: 'knowledge',

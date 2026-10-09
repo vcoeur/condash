@@ -71,6 +71,8 @@ export function classify(
   // prefix/suffix checks behave the same on macOS, Linux, and Windows.
   const pathP = toPosix(path);
   const projectsRoot = paths.projectsPrefix.slice(0, -1); // strip trailing '/'
+  const tasksRoot = `${paths.conceptionP}/tasks`;
+  if (pathP === tasksRoot || pathP.startsWith(`${tasksRoot}/`)) return { kind: 'tasks' };
 
   // `resources/local/` is gitignored agent/task scratch (conception
   // convention) — writes there are constant and store-irrelevant, and they
@@ -139,6 +141,7 @@ export function classify(
         kind: 'project',
         op: 'change',
         path: `${paths.projectsPrefix}${parts[0]}/${parts[1]}/README.md`,
+        changedPath: pathP,
       };
     }
     // projects/index.md or projects/<month>/index.md (and any other file above

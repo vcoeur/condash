@@ -78,6 +78,34 @@ function expectOnlyProjectsReloaded(deps: Deps) {
 }
 
 describe('applyTreeEvents — scoped reloads (R1)', () => {
+  it('invalidates views and tasks before a held card lookup without losing mixed paths', async () => {
+    const deps = await makeDeps();
+    const invalidateViews = vi.fn();
+    const reloadTasks = vi.fn();
+    let release!: (value: Project) => void;
+    getProject.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const events: TreeEvent[] = [
+      { kind: 'project', op: 'change', path: README, changedPath: '/c/notes/a.md' },
+      { kind: 'unknown' },
+      { kind: 'tasks' },
+      { kind: 'tasks' },
+      { kind: 'project', op: 'change', path: README, changedPath: '/c/notes/b.md' },
+    ];
+    const flight = applyTreeEvents(events, { ...deps, invalidateViews, reloadTasks });
+    expect(invalidateViews).toHaveBeenCalledWith(events);
+    expect(reloadTasks).toHaveBeenCalledTimes(1);
+    expect(getProject).toHaveBeenCalledTimes(1);
+    release(projectRow(README, 'latest'));
+    await flight;
+    reloadTasks.mockClear();
+    await applyTreeEvents([{ kind: 'unknown' }], { ...deps, reloadTasks });
+    expect(reloadTasks).not.toHaveBeenCalled();
+  });
   it('projects-reload reloads only the projects list', async () => {
     const deps = await makeDeps();
     await applyTreeEvents([{ kind: 'projects-reload' }], deps);

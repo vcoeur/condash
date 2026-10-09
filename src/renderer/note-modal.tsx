@@ -11,13 +11,20 @@ import {
 import { highlightCode, renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
-import type { Deliverable } from '@shared/types';
+import type { Deliverable, TreeEvent } from '@shared/types';
+import { toPosix } from '@shared/path';
 import type { ModalState } from './modal-types';
 import { ConfirmModal } from './confirm-modal';
 import { Button } from './actions';
 import { IconClose, IconExternal } from './icons';
 import { IconEdit, IconPdf, IconSave, IconView } from './note-modal-parts/icons';
-import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
+import {
+  clearFindHighlights,
+  focusFindMatch,
+  highlightFindMatches,
+  FIND_HIGHLIGHT_CLASS,
+  FIND_CURRENT_CLASS,
+} from './note-modal-parts/find';
 import { ConfigSummaryPanel } from './note-modal-parts/config-summary';
 import { buildNotePdfHtml } from './note-modal-parts/export-pdf';
 import './note-modal.css';
@@ -46,6 +53,8 @@ function isConceptionConfig(path: string): boolean {
 }
 
 export function NoteModal(props: {
+  conceptionPath?: string | null;
+  treeEvents?: TreeEvent[];
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
@@ -101,6 +110,17 @@ export function NoteModal(props: {
   );
   const [draft, setDraft] = createSignal('');
   const [dirty, setDirty] = createSignal(false);
+  const [reloading, setReloading] = createSignal(false);
+  const [saving, setSaving] = createSignal(false);
+  const [changedOnDisk, setChangedOnDisk] = createSignal(false);
+  let disposed = false;
+  let owner = 0;
+  let requestGeneration = 0;
+  let draftRevision = 0;
+  let diskRevision = 0;
+  let reseeding = false;
+  let restorePreview: { owner: number; request: number; draft: number; scroll: number } | null =
+    null;
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [findOpen, setFindOpen] = createSignal(false);
@@ -117,11 +137,11 @@ export function NoteModal(props: {
    * the captured action; on cancel, clears. Replaces the three
    * window.confirm() sites that pass-9 deferred. */
   const [pendingDirtyAction, setPendingDirtyAction] = createSignal<{
-    verb: 'close' | 'leave';
+    verb: 'close' | 'leave' | 'reload';
     run: () => void;
   } | null>(null);
 
-  const guardDirty = (verb: 'close' | 'leave', run: () => void): void => {
+  const guardDirty = (verb: 'close' | 'leave' | 'reload', run: () => void): void => {
     if (!dirty()) {
       run();
       return;
@@ -176,10 +196,23 @@ export function NoteModal(props: {
   // the wrong base content. The path-keyed createResource above already
   // re-fetches `content`; we reset everything else explicitly here.
   let lastPath: string | null = null;
-  createEffect(() => {
-    const path = props.state?.path ?? null;
-    if (path === lastPath) return;
-    lastPath = path;
+  let bodyRef: HTMLDivElement | undefined;
+  let editorParent: HTMLDivElement | undefined;
+  let findInput: HTMLInputElement | undefined;
+  let editor: MountedEditor | null = null;
+  const resetDocument = (): void => {
+    const key = `${props.conceptionPath ?? ''}:${props.state?.readWith ?? 'note'}:${props.state?.path ?? ''}`;
+    if (key === lastPath) return;
+    lastPath = key;
+    owner++;
+    requestGeneration++;
+    draftRevision++;
+    diskRevision = 0;
+    restorePreview = null;
+    setChangedOnDisk(false);
+    setReloading(false);
+    setSaving(false);
+    setPendingDirtyAction(null);
     setDraft('');
     setDirty(false);
     setError(null);
@@ -199,15 +232,20 @@ export function NoteModal(props: {
       editor.destroy();
       editor = null;
     }
-  });
+  };
 
-  const [content, { mutate: mutateContent, refetch: refetchContent }] = createResource(
-    () => props.state?.path,
-    async (path) => {
+  const readContent = (path: string, kind?: string) =>
+    kind === 'skill' ? window.condash.readSkillFile(path) : window.condash.readNote(path);
+  const [content, { mutate: mutateContent }] = createResource(
+    () => {
+      resetDocument();
+      return { path: props.state?.path, kind: props.state?.readWith, root: props.conceptionPath };
+    },
+    async ({ path, kind }) => {
       if (!path) return null;
-      return props.state?.readWith === 'skill'
-        ? await window.condash.readSkillFile(path)
-        : await window.condash.readNote(path);
+      const readOwner = owner;
+      const text = await readContent(path, kind);
+      return !disposed && readOwner === owner ? text : null;
     },
   );
 
@@ -225,33 +263,67 @@ export function NoteModal(props: {
     text == null ? '' : highlightCode(text, props.state?.path ?? ''),
   );
 
-  let bodyRef: HTMLDivElement | undefined;
-  let editorParent: HTMLDivElement | undefined;
-  let findInput: HTMLInputElement | undefined;
-  let editor: MountedEditor | null = null;
+  createEffect(
+    on(
+      () => props.treeEvents,
+      (events) => {
+        const path = props.state?.path;
+        if (!path) return;
+        const matching = events?.some((event) => {
+          if (event.kind === 'project')
+            return toPosix(event.changedPath ?? event.path) === toPosix(path);
+          if (event.kind === 'knowledge' || event.kind === 'resources' || event.kind === 'skills')
+            return toPosix(event.path) === toPosix(path);
+          return false;
+        });
+        if (matching) {
+          diskRevision++;
+          setChangedOnDisk(true);
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   // Mount / unmount the CodeMirror editor when entering / leaving edit mode.
   // CodeMirror lives in a dynamically-imported chunk so the renderer's initial
   // load only pays for it once the user opens an editor.
-  let mounting = false;
+  const [mounting, setMounting] = createSignal(false);
   createEffect(() => {
     const m = mode();
     const text = content();
     // `content()` keeps the previous file's value while a new path's read is
     // in flight, so gate on `content.loading` — otherwise a path change in
     // edit mode would seed the fresh editor with the *old* file's text.
-    if (m === 'edit' && editorParent && text != null && !content.loading && !editor && !mounting) {
-      mounting = true;
+    if (
+      m === 'edit' &&
+      editorParent &&
+      text != null &&
+      !content.loading &&
+      !editor &&
+      !mounting()
+    ) {
+      setMounting(true);
       const parent = editorParent;
       const initial = text;
       const pathAtMount = props.state?.path;
+      const mountOwner = owner;
+      const mountRequest = requestGeneration;
+      const mountDraft = draftRevision;
       const language = props.state ? inferLanguage(props.state.path) : 'markdown';
       void loadEditor()
         .then(({ mountEditor }) => {
           // Bail if the user left edit mode or navigated to another file
           // while the chunk was loading.
-          if (mode() !== 'edit' || props.state?.path !== pathAtMount) {
-            mounting = false;
+          if (
+            disposed ||
+            mode() !== 'edit' ||
+            props.state?.path !== pathAtMount ||
+            owner !== mountOwner ||
+            requestGeneration !== mountRequest ||
+            draftRevision !== mountDraft
+          ) {
+            if (!disposed) setMounting(false);
             return;
           }
           editor = mountEditor({
@@ -261,17 +333,21 @@ export function NoteModal(props: {
             dark: props.dark,
             onSave: () => void save(),
             onChange: (next) => {
+              if (reseeding || disposed || mountOwner !== owner) return;
+              draftRevision++;
               setDraft(next);
               setDirty(next !== content());
             },
           });
           setDraft(initial);
           setDirty(false);
-          mounting = false;
+          setMounting(false);
         })
         .catch((err) => {
-          mounting = false;
-          setError(`Failed to load editor: ${(err as Error).message}`);
+          if (!disposed && owner === mountOwner) {
+            setError(`Failed to load editor: ${(err as Error).message}`);
+            // Do not retry a failed import until the next explicit mode/path change.
+          }
         });
     }
     if (m !== 'edit' && editor) {
@@ -315,22 +391,46 @@ export function NoteModal(props: {
   // letter typed in the find bar would otherwise walk the DOM, splice text
   // nodes, and re-highlight in line with the typing.
   let findTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFindQuery = '';
   createEffect(() => {
-    void findQuery();
+    const query = findQuery();
+    const navigate = query !== lastFindQuery;
+    lastFindQuery = query;
+    if (navigate) restorePreview = null;
     void findOpen();
     void html();
+    void codeHtml();
+    void html.loading;
+    void codeHtml.loading;
     if (mode() !== 'view') return;
     if (findTimer !== null) clearTimeout(findTimer);
     findTimer = setTimeout(() => {
       findTimer = null;
-      runFind();
+      runFind(navigate);
+      const restore = restorePreview;
+      if (
+        restore &&
+        !disposed &&
+        owner === restore.owner &&
+        requestGeneration === restore.request &&
+        draftRevision === restore.draft &&
+        !html.loading &&
+        !codeHtml.loading &&
+        bodyRef
+      ) {
+        bodyRef.scrollTop = Math.min(
+          restore.scroll,
+          Math.max(0, bodyRef.scrollHeight - bodyRef.clientHeight),
+        );
+        restorePreview = null;
+      }
     }, 100);
   });
   onCleanup(() => {
     if (findTimer !== null) clearTimeout(findTimer);
   });
 
-  const runFind = () => {
+  const runFind = (navigate = true) => {
     if (!bodyRef) return;
     clearFindHighlights(bodyRef);
     const query = findQuery();
@@ -339,8 +439,17 @@ export function NoteModal(props: {
       return;
     }
     const total = highlightFindMatches(bodyRef, query);
-    setFindMatch(total > 0 ? { index: 0, total } : { index: 0, total: 0 });
-    if (total > 0) focusFindMatch(bodyRef, 0);
+    const index = navigate ? 0 : Math.min(findMatch()?.index ?? 0, Math.max(0, total - 1));
+    setFindMatch({ index, total });
+    if (total > 0) {
+      if (navigate) focusFindMatch(bodyRef, index);
+      else
+        bodyRef
+          .querySelectorAll(`.${FIND_HIGHLIGHT_CLASS}`)
+          .forEach((element, ordinal) =>
+            element.classList.toggle(FIND_CURRENT_CLASS, ordinal === index),
+          );
+    }
   };
 
   const stepFind = (delta: number) => {
@@ -353,7 +462,21 @@ export function NoteModal(props: {
   };
 
   const save = async (): Promise<boolean> => {
-    if (!props.state) return false;
+    if (
+      !props.state ||
+      disposed ||
+      reloading() ||
+      saving() ||
+      content.loading ||
+      content() == null ||
+      (mode() === 'edit' && !editor)
+    )
+      return false;
+    const saveOwner = owner;
+    const saveRequest = ++requestGeneration;
+    const saveDraft = draftRevision;
+    const saveDisk = diskRevision;
+    const path = props.state.path;
     const expected = content() ?? '';
     const next = draft();
     setError(null);
@@ -368,18 +491,25 @@ export function NoteModal(props: {
     }
 
     try {
-      await window.condash.writeNote(props.state.path, expected, next);
+      setSaving(true);
+      await window.condash.writeNote(path, expected, next);
+      if (disposed || saveOwner !== owner || saveRequest !== requestGeneration) return false;
       mutateContent(next);
-      setDirty(false);
+      const stillSubmitted = saveDraft === draftRevision && draft() === next;
+      setDirty(!stillSubmitted);
+      if (saveDisk === diskRevision) setChangedOnDisk(false);
       setSavedAt(Date.now());
       // Snap the saved-at flag back after a moment so the indicator is
       // transient. Track the timer ID and clear in onCleanup so a modal
       // closed mid-grace doesn't fire setSavedAt on a disposed scope.
       scheduleSavedAtClear();
-      return true;
+      return stillSubmitted;
     } catch (err) {
-      setError((err as Error).message);
+      if (!disposed && owner === saveOwner && requestGeneration === saveRequest)
+        setError((err as Error).message);
       return false;
+    } finally {
+      if (!disposed && owner === saveOwner && requestGeneration === saveRequest) setSaving(false);
     }
   };
 
@@ -413,6 +543,7 @@ export function NoteModal(props: {
   // user resolves the Save / Discard / Cancel dialog so edits aren't silently
   // lost when CodeMirror unmounts.
   const requestViewMode = () => {
+    if (saving() || reloading()) return;
     if (mode() !== 'edit') {
       setMode('edit');
       return;
@@ -446,18 +577,76 @@ export function NoteModal(props: {
   };
 
   const reload = async () => {
+    if (!props.state || disposed || reloading() || saving()) return;
+    const reloadOwner = owner;
+    const request = ++requestGeneration;
+    const revision = draftRevision;
+    const noticeRevision = diskRevision;
+    const { path, readWith } = props.state;
     setError(null);
-    setDirty(false);
-    setDraft('');
-    if (editor) {
-      editor.destroy();
-      editor = null;
+    setReloading(true);
+    try {
+      const text = await readContent(path, readWith);
+      if (disposed || owner !== reloadOwner || requestGeneration !== request) return;
+      if (draftRevision !== revision) {
+        setChangedOnDisk(true);
+        return;
+      }
+      const scroll = bodyRef?.scrollTop ?? 0;
+      const view = editor?.view;
+      const editorScroll = view?.scrollDOM.scrollTop ?? 0;
+      const selection = view?.state.selection.main;
+      reseeding = true;
+      mutateContent(text);
+      editor?.setValue(text);
+      setDraft(text);
+      draftRevision++;
+      setDirty(false);
+      reseeding = false;
+      if (diskRevision === noticeRevision) setChangedOnDisk(false);
+      if (view && selection) {
+        view.dispatch({
+          selection: {
+            anchor: Math.min(selection.anchor, text.length),
+            head: Math.min(selection.head, text.length),
+          },
+        });
+        view.requestMeasure({
+          read: () => editorScroll,
+          write: () => {
+            if (
+              disposed ||
+              owner !== reloadOwner ||
+              requestGeneration !== request ||
+              draftRevision !== revision + 1
+            )
+              return;
+            view.scrollDOM.scrollTop = editorScroll;
+            if (mode() === 'edit' && bodyRef) bodyRef.scrollTop = scroll;
+          },
+        });
+      }
+      restorePreview = { owner: reloadOwner, request, draft: draftRevision, scroll };
+      if (bodyRef) bodyRef.scrollTop = scroll;
+    } catch (error) {
+      if (!disposed && owner === reloadOwner && requestGeneration === request)
+        setError((error as Error).message);
+    } finally {
+      reseeding = false;
+      if (!disposed && owner === reloadOwner && requestGeneration === request) setReloading(false);
     }
-    await refetchContent();
+  };
+  const requestReload = (): void => {
+    if (reloading() || saving() || pendingDirtyAction()) return;
+    const reloadOwner = owner;
+    guardDirty('reload', () => {
+      if (!disposed && owner === reloadOwner) void reload();
+    });
   };
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (!props.state) return;
+    if (pendingDirtyAction()) return;
 
     if (e.key === 'Escape') {
       if (pendingViewSwitch()) {
@@ -517,6 +706,9 @@ export function NoteModal(props: {
   });
 
   onCleanup(() => {
+    disposed = true;
+    owner++;
+    requestGeneration++;
     document.removeEventListener('keydown', handleKeydown, true);
     if (editor) editor.destroy();
   });
@@ -533,7 +725,12 @@ export function NoteModal(props: {
   };
 
   return (
-    <div class="modal-backdrop" onClick={handleBackdropClose}>
+    <div
+      class="modal-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) handleBackdropClose();
+      }}
+    >
       <div
         class="modal note-modal"
         role="dialog"
@@ -561,6 +758,21 @@ export function NoteModal(props: {
             </span>
           </Show>
           <span class="modal-head-spacer" />
+          <Show when={changedOnDisk()}>
+            <span class="modal-banner--warn" role="status">
+              Changed on disk
+            </span>
+          </Show>
+          <Button
+            variant="default"
+            class="btn--modal-head"
+            onClick={requestReload}
+            disabled={reloading() || saving() || content.loading}
+            aria-label="Reload"
+            title="Reload from disk"
+          >
+            {reloading() ? 'Reloading…' : 'Reload'}
+          </Button>
           <Show when={dirty()}>
             <span class="modal-dirty" title="Unsaved changes" aria-label="Unsaved changes">
               ●
@@ -593,7 +805,7 @@ export function NoteModal(props: {
               variant="default"
               class="btn--modal-head"
               onClick={() => void save()}
-              disabled={!dirty()}
+              disabled={!dirty() || reloading() || saving()}
               title="Save (Ctrl+S)"
               aria-label="Save"
             >
@@ -703,6 +915,7 @@ export function NoteModal(props: {
             <Button
               variant="default"
               onClick={() => void confirmSaveAndSwitch()}
+              disabled={saving() || reloading()}
               title="Save and switch to view"
             >
               Save
@@ -725,6 +938,9 @@ export function NoteModal(props: {
           ref={(el) => (bodyRef = el)}
           tabIndex={-1}
           onClick={handleBodyClick}
+          onScroll={(event) => {
+            if (restorePreview) restorePreview.scroll = event.currentTarget.scrollTop;
+          }}
         >
           <Show when={props.state && isConceptionConfig(props.state.path)}>
             <ConfigSummaryPanel onOpenFullDoc={() => props.onOpenHelp?.('configuration')} />
@@ -735,7 +951,7 @@ export function NoteModal(props: {
           <Show when={content.error}>
             <div class="empty warn">
               Failed to read: {(content.error as Error).message}
-              <Button variant="default" onClick={() => void reload()}>
+              <Button variant="default" onClick={requestReload}>
                 Reload
               </Button>
             </div>
@@ -796,12 +1012,16 @@ export function NoteModal(props: {
             title={
               action().verb === 'leave'
                 ? 'Leave with unsaved changes?'
-                : 'Close with unsaved changes?'
+                : action().verb === 'reload'
+                  ? 'Reload with unsaved changes?'
+                  : 'Close with unsaved changes?'
             }
             body={
               action().verb === 'leave'
                 ? 'You have unsaved edits. Leaving will discard them.'
-                : 'You have unsaved edits. Closing will discard them.'
+                : action().verb === 'reload'
+                  ? 'You have unsaved edits. Reloading will discard them.'
+                  : 'You have unsaved edits. Closing will discard them.'
             }
             confirmLabel="Discard changes"
             destructive

@@ -1,6 +1,16 @@
 import { render } from 'solid-js/web';
-import { createEffect, createMemo, createResource, createSignal, on, Show } from 'solid-js';
-import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  Show,
+  onCleanup,
+  untrack,
+} from 'solid-js';
+import type { KnowledgeNode, ResourceNode, SkillNode, TreeEvent } from '@shared/types';
+import type { TaskListItem } from '@shared/tasks';
 import { nextTheme, themeLabel } from '@shared/themes';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
@@ -289,17 +299,51 @@ function App() {
   });
   const agents = () => agentsResource() ?? [];
 
-  // --- Tasks (left-pane reusable agent prompts) -------------------------
-  // Re-fetched whenever the conception changes; `reloadTasks` refreshes the
-  // pane after a create / edit / delete so the card list stays live.
-  const [tasksResource, { refetch: reloadTasks }] = createResource(conceptionPath, async () => {
+  const [tasks, setTasks] = createSignal<readonly TaskListItem[]>([]);
+  let taskOwner = 0;
+  let taskRevision = 0;
+  let taskInFlight = false;
+  let taskDirtyAgain = false;
+  let taskDisposed = false;
+  const tasksEligible = () =>
+    !taskDisposed && !!conceptionPath() && activeModal()?.kind === 'automations';
+  const readTasks = async (): Promise<void> => {
+    if (!tasksEligible() || taskInFlight || !taskDirtyAgain) return;
+    taskInFlight = true;
+    taskDirtyAgain = false;
+    const owner = taskOwner;
+    const revision = taskRevision;
     try {
-      return await window.condash.listTasks();
+      const rows = await window.condash.listTasks();
+      if (tasksEligible() && owner === taskOwner && revision === taskRevision) setTasks(rows);
     } catch {
-      return [];
+      // Keep the last good list; a later event or explicit refresh can recover.
+    } finally {
+      taskInFlight = false;
+      if (tasksEligible() && taskDirtyAgain) void readTasks();
     }
+  };
+  const reloadTasks = (): void => {
+    if (!tasksEligible()) return;
+    taskRevision++;
+    taskDirtyAgain = true;
+    void readTasks();
+  };
+  createEffect(
+    on([conceptionPath, () => activeModal()?.kind === 'automations'], () => {
+      taskOwner++;
+      taskRevision++;
+      taskDirtyAgain = false;
+      setTasks([]);
+      untrack(reloadTasks);
+    }),
+  );
+  onCleanup(() => {
+    taskDisposed = true;
+    taskOwner++;
+    taskDirtyAgain = false;
   });
-  const tasks = () => tasksResource() ?? [];
+  const [liveViewEvents, setLiveViewEvents] = createSignal<TreeEvent[]>([]);
 
   // --- Logs refresh trigger ---------------------------------------------
   // The Logs pane owns its own createResource, so it can't expose a reload
@@ -396,6 +440,8 @@ function App() {
 
   // --- Tree-events handler (wires watcher pushes to store reloads) ------
   useTreeEvents({
+    invalidateViews: setLiveViewEvents,
+    reloadTasks,
     projectOwnership: projectsStore.ownership,
     mutateProjects: mutate,
     reloadProjects,
@@ -899,6 +945,7 @@ function App() {
       />
 
       <ModalHost
+        liveViewEvents={liveViewEvents}
         activeModal={activeModal}
         setActiveModal={setActiveModal}
         requestFocusReturn={requestFocusReturn}

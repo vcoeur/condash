@@ -86,6 +86,12 @@ Click a card to open the file. Click a folder header to expand it; the folder's 
 
 A card carries a bucket-coloured stripe (general / internal / topics / external, derived from the top-level directory), the file's title, and its first-paragraph summary.
 
+### Open-document freshness
+
+Notes and skill documents remain the content initially read until you choose **Reload** in their header. An exact watched-file change shows **Changed on disk** without replacing the preview or editor. Dirty Reload requires **Discard changes** or **Cancel** through the unsaved-edits guard. Typing during a held Reload wins over the reply; Save and Reload cannot overlap, and successful Reload reseeds the existing editor rather than remounting it. Read failures or a newer disk event retain the notice. Accepted replacement keeps the mode, find query/active match, selection and actual scroll position where the new content permits.
+
+Only exact file events can show the notice: a pathless ancestor-directory removal does not infer all affected children. User-scope skills outside the watched conception skills root still offer manual Reload, but receive no automatic notice. Navigation, close and conception changes invalidate late replies.
+
 ### Verification stamps
 
 A knowledge file can carry a **verification date** — the last time somebody checked its claims still hold. When present, the pane renders it as a `Verified <date>` chip on the file's card, and as a bare date on a directory's `INDEX` row, with the full date in the tooltip. The chip is colour-graded by age:

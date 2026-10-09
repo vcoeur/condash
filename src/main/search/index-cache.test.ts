@@ -189,6 +189,12 @@ describe('search index-cache', () => {
 
     await writeFile(readme, '# Foo\n\nmidbuildword body\n');
     const applied = applyIndexFsEvent(dir, 'change', readme);
+    let completed = false;
+    void applied.then(() => {
+      completed = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(completed).toBe(false);
     // Not applied synchronously — no index exists during the build window.
     expect(searchIndex(dir, parseQuery('midbuildword'), ALL)).toBeNull();
 
@@ -255,5 +261,44 @@ describe('search index-cache', () => {
     // overwrite the newer content.
     expect(hitPaths(dir, 'newword', ALL)).toEqual([toPosix(readme)]);
     expect(hitPaths(dir, 'oldword', ALL)).toEqual([]);
+  });
+  it('rejects replay failures and removes the stale RAM index', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached = 0;
+    prepareFileMock.mockImplementation(async (ref) => {
+      const prepared = await actualMatch.prepareFile(ref);
+      reached++;
+      await gate;
+      return prepared;
+    });
+    const build = rebuildSearchIndex(dir);
+    await vi.waitFor(() => expect(reached).toBe(3));
+    const replay = applyIndexFsEvent(dir, 'change', readme);
+    const rejection = expect(replay).rejects.toThrow('held replay failure');
+    prepareFileMock.mockRejectedValue(new Error('held replay failure'));
+    release();
+    await build;
+    await rejection;
+    expect(searchIndex(dir, parseQuery('alphaword'), ALL)).toBeNull();
+  });
+  it('clear settles buffered events without waiting for a superseded build', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    prepareFileMock.mockImplementation(async (ref) => {
+      await gate;
+      return actualMatch.prepareFile(ref);
+    });
+    const build = rebuildSearchIndex(dir);
+    const replay = applyIndexFsEvent(dir, 'change', readme);
+    clearSearchIndex();
+    await replay;
+    release();
+    await build;
+    expect(searchIndex(dir, parseQuery('alphaword'), ALL)).toBeNull();
   });
 });
