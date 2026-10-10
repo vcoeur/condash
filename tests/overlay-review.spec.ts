@@ -7,6 +7,8 @@ import { bootApp, sendMenu } from './fixtures/electron-app';
 type ReviewProbe = {
   calls: Record<string, number>;
   release?: () => void;
+  releaseConfig?: () => void;
+  configCompleted?: boolean;
 };
 
 async function holdResult(app: ElectronApplication, held: string, counted: string[]) {
@@ -39,6 +41,57 @@ async function holdResult(app: ElectronApplication, held: string, counted: strin
 async function releaseResult(app: ElectronApplication) {
   await app.evaluate(() => {
     (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe.release?.();
+  });
+}
+
+async function holdTaskConfigRead(
+  app: ElectronApplication,
+  path: string,
+  stage: 'before-read' | 'after-read',
+) {
+  await app.evaluate(
+    ({ ipcMain }, { path, stage }) => {
+      const fs = process.getBuiltinModule('fs').promises;
+      const handlers = (
+        ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => unknown> }
+      )._invokeHandlers;
+      const original = handlers.get('setTaskConfig')!;
+      handlers.set('setTaskConfig', async (...args) => {
+        const probe = (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe;
+        const read = fs.readFile;
+        fs.readFile = (async (...readArgs: any[]) => {
+          if (String(readArgs[0]) !== path) return (read as any).apply(fs, readArgs);
+          // Restore before parking so independent config reads do not share the hold.
+          fs.readFile = read;
+          if (stage === 'before-read') {
+            await new Promise<void>((resolve) => {
+              probe.releaseConfig = resolve;
+            });
+          }
+          const value = await (read as any).apply(fs, readArgs);
+          if (stage === 'after-read') {
+            await new Promise<void>((resolve) => {
+              probe.releaseConfig = resolve;
+            });
+          }
+          return value;
+        }) as typeof fs.readFile;
+        try {
+          const result = await original(...args);
+          probe.configCompleted = true;
+          return result;
+        } finally {
+          fs.readFile = read;
+        }
+      });
+    },
+    { path, stage },
+  );
+}
+
+async function releaseTaskConfigRead(app: ElectronApplication) {
+  await app.evaluate(() => {
+    (globalThis as unknown as { reviewProbe?: ReviewProbe }).reviewProbe?.releaseConfig?.();
   });
 }
 
@@ -338,14 +391,27 @@ test('review: closing during Save must not commit a task without its schedule', 
       .getByRole('button', { name: 'Cancel', exact: true })
       .evaluate((button: HTMLButtonElement) => button.click());
     await page.keyboard.press('Escape');
+    await expect(page.locator('.tasks-editor')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
     await releaseResult(app);
-    await page.evaluate(() => window.condash.getConceptionPath());
+    await expect(page.locator('.tasks-editor-modal')).toHaveCount(0);
     const definition = JSON.parse(
       await readFile(join(booted.conceptionDir, 'tasks', 'fixture', 'task.json'), 'utf8'),
     );
     expect(definition.name).toBe('Name committed before disposal');
-    const config = await page.evaluate(() => window.condash.getTaskConfig());
-    expect(config.fixture?.schedule).toBe('1h');
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(
+            await readFile(join(booted.conceptionDir, '.condash', 'settings.json'), 'utf8'),
+          ).taskConfig?.fixture?.schedule,
+      )
+      .toBe('1h');
+    await expect
+      .poll(
+        async () => (await page.evaluate(() => window.condash.getTaskConfig())).fixture?.schedule,
+      )
+      .toBe('1h');
   } finally {
     await releaseResult(booted.app);
     await booted.cleanup();
@@ -476,10 +542,21 @@ test('review: a committed task delete also clears its task configuration', async
     const overlay = page.locator('.surface-overlay');
     await page.keyboard.press('Escape');
     await expect(overlay).toHaveCount(1);
+    await expect(page.locator('.tasks-editor')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
     await releaseResult(app);
-    await page.evaluate(() => window.condash.getConceptionPath());
-    const config = await page.evaluate(() => window.condash.getTaskConfig());
-    expect(config.fixture).toBeUndefined();
+    await expect(page.locator('.tasks-editor-modal')).toHaveCount(0);
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(
+            await readFile(join(booted.conceptionDir, '.condash', 'settings.json'), 'utf8'),
+          ).taskConfig?.fixture,
+      )
+      .toBeUndefined();
+    await expect
+      .poll(async () => (await page.evaluate(() => window.condash.getTaskConfig())).fixture)
+      .toBeUndefined();
     await page.keyboard.press('Escape');
     await expect(overlay).toHaveCount(0);
   } finally {
@@ -487,3 +564,199 @@ test('review: a committed task delete also clears its task configuration', async
     await booted.cleanup();
   }
 });
+
+for (const action of ['Save', 'Delete'] as const) {
+  for (const stage of ['before-read', 'after-read'] as const) {
+    for (const departure of ['overlay', 'root'] as const) {
+      test(`review: held ${action} config ${stage} keeps mutation ownership through ${departure} departure`, async ({}, testInfo) => {
+        const second = await mkdtemp(join(tmpdir(), 'condash-mutation-next-'));
+        await mkdir(join(second, '.condash'), { recursive: true });
+        await writeFile(
+          join(second, '.condash', 'settings.json'),
+          JSON.stringify({ taskConfig: { fixture: { schedule: '5h' } } }),
+        );
+        await seedTask(second, 'Second root fixture');
+        const booted = await bootApp({
+          prepare: async (root) => {
+            await seedTask(root, 'Scheduled fixture');
+            await mkdir(join(root, 'tasks', 'outside'), { recursive: true });
+            await writeFile(
+              join(root, 'tasks', 'outside', 'task.json'),
+              JSON.stringify({ name: 'Outside initial', agent: 'fixture' }),
+            );
+            await writeFile(join(root, 'tasks', 'outside', 'prompt.md'), 'Outside prompt');
+            await writeFile(
+              join(root, '.condash', 'settings.json'),
+              JSON.stringify({ taskConfig: { fixture: { schedule: '2h' } } }),
+            );
+          },
+          globalConfig: {
+            dashboard: { enabled: false },
+            autoSync: { enabled: false },
+            terminal: { memory: { enabled: false, appScope: { enabled: false } } },
+            agents: [{ id: 'fixture', label: 'Fixture', command: '/bin/echo', promptFlags: true }],
+          },
+        });
+        const { app, window: page, conceptionDir } = booted;
+        const configPath = join(conceptionDir, '.condash', 'settings.json');
+        const persistedConfig = async () => JSON.parse(await readFile(configPath, 'utf8'));
+        try {
+          await page.getByRole('button', { name: 'Automations', exact: true }).click();
+          await page.locator('.tasks-row', { hasText: 'Scheduled fixture' }).click();
+          if (action === 'Save') {
+            await page.locator('.tasks-editor input').first().fill('Saved fixture');
+            await page.getByLabel('Schedule (e.g. 5m / 2h / 1d — blank = off)').fill('1h');
+          }
+          await page.evaluate(() => {
+            const state = window as typeof window & { mutationTaskEvents: number };
+            state.mutationTaskEvents = 0;
+            window.condash.onTreeEvents((events) => {
+              if (events.some((event) => event.kind === 'tasks')) state.mutationTaskEvents++;
+            });
+          });
+          await holdResult(app, action === 'Save' ? 'writeTask' : 'deleteTask', [
+            'setTaskConfig',
+            'openConception',
+          ]);
+          await holdTaskConfigRead(app, configPath, stage);
+          await page.getByRole('button', { name: action, exact: true }).click();
+          if (action === 'Delete')
+            await page
+              .locator('.confirm-modal')
+              .getByRole('button', { name: 'Delete', exact: true })
+              .click();
+          await expect
+            .poll(() =>
+              app.evaluate(() =>
+                Boolean(
+                  (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe.release,
+                ),
+              ),
+            )
+            .toBe(true);
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () => (window as typeof window & { mutationTaskEvents: number }).mutationTaskEvents,
+              ),
+            )
+            .toBeGreaterThan(0);
+          if (action === 'Delete')
+            await expect(page.locator('.tasks-row', { hasText: 'Scheduled fixture' })).toHaveCount(
+              0,
+            );
+          else
+            await expect(page.locator('.tasks-row', { hasText: 'Saved fixture' })).toHaveCount(1);
+          const editor = page.locator('.tasks-editor-modal');
+          const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+          await expect(editor).toBeVisible();
+          await expect(page.locator('.tasks-editor')).toHaveAttribute('aria-busy', 'true');
+          await expect(cancel).toBeDisabled();
+          await cancel.evaluate((button: HTMLButtonElement) => button.click());
+          await page.keyboard.press('Escape');
+          await expect(editor).toBeVisible();
+          await expect(page.locator('.surface-overlay')).toHaveCount(1);
+          await releaseResult(app);
+          await expect
+            .poll(() =>
+              app.evaluate(() =>
+                Boolean(
+                  (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe.releaseConfig,
+                ),
+              ),
+            )
+            .toBe(true);
+          expect((await persistedConfig()).taskConfig.fixture.schedule).toBe('2h');
+          expect(
+            (await page.evaluate(() => window.condash.getTaskConfig())).fixture?.schedule,
+          ).toBe('2h');
+          await expect(editor).toBeVisible();
+          await expect(cancel).toBeDisabled();
+          const eventsBefore = await page.evaluate(
+            () => (window as typeof window & { mutationTaskEvents: number }).mutationTaskEvents,
+          );
+          await writeFile(
+            join(conceptionDir, 'tasks', 'outside', 'task.json'),
+            JSON.stringify({ name: 'Outside live update', agent: 'fixture' }),
+          );
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () => (window as typeof window & { mutationTaskEvents: number }).mutationTaskEvents,
+              ),
+            )
+            .toBeGreaterThan(eventsBefore);
+          await expect(page.locator('.tasks-row', { hasText: 'Outside live update' })).toHaveCount(
+            1,
+          );
+          await expect(editor).toBeVisible();
+          await cancel.evaluate((button: HTMLButtonElement) => button.click());
+          await page.keyboard.press('Escape');
+          await expect(editor).toBeVisible();
+          if (departure === 'root') {
+            await app.evaluate(({ BrowserWindow }, path) => {
+              BrowserWindow.getAllWindows()[0].webContents.send('menu-open-recent', path);
+            }, second);
+            await expect(
+              page.getByRole('button', { name: 'Automations', exact: true }),
+            ).toBeDisabled();
+          } else {
+            await page
+              .locator('.surface-back')
+              .evaluate((button: HTMLButtonElement) => button.click());
+          }
+          await expect(page.locator('.status-bar-path')).toHaveText(conceptionDir);
+          await expect(editor).toBeVisible();
+          const before = await app.evaluate(() => {
+            const probe = (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe;
+            return { calls: probe.calls, configCompleted: probe.configCompleted === true };
+          });
+          expect(before.configCompleted).toBe(false);
+          expect(before.calls.openConception ?? 0).toBe(0);
+          expect(before.calls.setTaskConfig).toBe(1);
+          await page.screenshot({ path: testInfo.outputPath('held-task-config.png') });
+          await releaseTaskConfigRead(app);
+          await expect(editor).toHaveCount(0);
+          await expect(page.locator('.surface-overlay')).toHaveCount(0);
+          const after = await app.evaluate(() => {
+            const probe = (globalThis as unknown as { reviewProbe: ReviewProbe }).reviewProbe;
+            return { calls: probe.calls, configCompleted: probe.configCompleted === true };
+          });
+          expect(after.configCompleted).toBe(true);
+          expect(after.calls.setTaskConfig).toBe(1);
+          await expect
+            .poll(async () => (await persistedConfig()).taskConfig?.fixture?.schedule)
+            .toBe(action === 'Save' ? '1h' : undefined);
+          if (departure === 'root')
+            await expect(page.locator('.status-bar-path')).toHaveText(second);
+          else await expect(page.locator('.status-bar-path')).toHaveText(conceptionDir);
+          const nextConfig = JSON.parse(
+            await readFile(join(second, '.condash', 'settings.json'), 'utf8'),
+          );
+          expect(nextConfig.taskConfig.fixture.schedule).toBe('5h');
+          await writeFile(
+            testInfo.outputPath('task-mutation-state.json'),
+            JSON.stringify(
+              {
+                action,
+                stage,
+                departure,
+                before,
+                after,
+                finalConfig: await persistedConfig(),
+                nextConfig,
+              },
+              null,
+              2,
+            ),
+          );
+        } finally {
+          await releaseResult(app).catch(() => undefined);
+          await releaseTaskConfigRead(app).catch(() => undefined);
+          await booted.cleanup();
+          await rm(second, { recursive: true, force: true });
+        }
+      });
+    }
+  }
+}

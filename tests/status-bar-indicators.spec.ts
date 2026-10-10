@@ -80,12 +80,18 @@ test('a prior conception\u2019s held snapshot replies never paint after a concep
     await mkdir(join(nextDir, '.condash'), { recursive: true });
     await writeFile(join(nextDir, '.condash', 'settings.json'), '{}\n', 'utf8');
 
-    // The status bar must be mounted (subscribed) before any push fires.
-    await expect(booted.window.locator('.status-bar')).toBeVisible();
-    await expect(booted.window.locator('.status-bar .status-pill').first()).toBeVisible();
+    // Result-derived titles prove both initial snapshot reads have applied;
+    // mounted pills alone can still have those reads in flight.
+    const bar = booted.window.locator('.status-bar');
+    await expect(booted.window.locator('.status-bar-path')).toHaveText(booted.conceptionDir);
+    await expect(bar.locator('.status-pill').first()).toHaveAttribute('title', /^0 uncommitted ·/);
+    await expect(bar.locator('.status-pill--static')).toHaveAttribute(
+      'title',
+      'condash skills not installed here',
+    );
 
     const sync = await holdFirstCalls(booted.app, 'syncStatusSnapshot', 2);
-    const skills = await holdFirstCalls(booted.app, 'skillsSyncStatus', 2);
+    const skills = await holdFirstCalls(booted.app, 'skillsSyncStatus', 1);
 
     // A push-triggered refresh parks read 1 — it belongs to conception A.
     await booted.app.evaluate(({ BrowserWindow }) => {
@@ -100,18 +106,29 @@ test('a prior conception\u2019s held snapshot replies never paint after a concep
         blockedEpisode: null,
       });
     });
-    await expect(sync.count()).resolves.toBeGreaterThanOrEqual(1);
+    await expect
+      .poll(() => sync.count(), { timeout: 10_000, message: 'conception A sync read is parked' })
+      .toBe(1);
+    // Pushes refresh sync only; Skills has no held A read after initial settlement.
+    expect(await skills.count()).toBe(0);
 
-    // Switch conceptions: both owners recontext and park read 2 for B.
+    // Switch conceptions: sync parks its second call; Skills parks its first.
     await booted.app.evaluate(({ BrowserWindow }, path) => {
       BrowserWindow.getAllWindows()[0]?.webContents.send('menu-open-recent', path);
     }, nextDir);
     await expect(booted.window.locator('.status-bar-path')).toHaveText(nextDir, {
       timeout: 15_000,
     });
-    // The skills owner parks exactly one call here: its pre-switch read
-    // resolved before the gate, and the switch's recontext read parks at 0.
-    await expect(skills.count()).resolves.toBeGreaterThanOrEqual(1);
+    // Path paint does not acknowledge either snapshot IPC's arrival.
+    await expect
+      .poll(() => sync.count(), { timeout: 10_000, message: 'conception B sync read is parked' })
+      .toBe(2);
+    await expect
+      .poll(() => skills.count(), {
+        timeout: 10_000,
+        message: 'conception B Skills read is parked',
+      })
+      .toBe(1);
 
     // The NEW context's replies resolve first and paint. (The skills owner
     // has one parked call — its pre-switch read resolved before the gate —

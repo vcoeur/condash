@@ -42,6 +42,10 @@ let current: {
 let timer: NodeJS.Timeout | null = null;
 let pending: TreeEvent[] = [];
 let pendingUnknown = false;
+let pendingIndexWork: Promise<void>[] = [];
+let publicationChain: Promise<void> = Promise.resolve();
+let watcherGeneration = 0;
+let rootGeneration = 0;
 // Conception path for which we've already spent our one watcher re-arm. Keyed
 // on the path so a genuinely new conception gets a fresh attempt, but a
 // persistent error (e.g. EMFILE surviving the rebuild) can't loop (W3a).
@@ -52,10 +56,30 @@ export async function setWatchedConception(
   opts: { deferIndexBuild?: boolean } = {},
 ): Promise<void> {
   if (current?.path === conceptionPath) return;
+  await replaceWatchedConception(conceptionPath, opts, false);
+}
 
-  // Conception is changing — drop the in-memory search index; it's rebuilt
-  // below for the new conception (or left empty when clearing). Drop the
-  // README parse memo too so the new tree never serves a stale entry.
+async function replaceWatchedConception(
+  conceptionPath: string | null,
+  opts: { deferIndexBuild?: boolean },
+  sameRoot: boolean,
+): Promise<void> {
+  const generation = ++watcherGeneration;
+  if (!sameRoot) {
+    rootGeneration++;
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pending = [];
+    pendingUnknown = false;
+    pendingIndexWork = [];
+    publicationChain = Promise.resolve();
+    refreshChain = Promise.resolve();
+  }
+
+  // Clear RAM before retained same-root notifications can publish: queries use
+  // disk fallback until the replacement index is ready, never the old cache.
   clearSearchIndex();
   clearReadmeCache();
   // Same reason: the needle set names the old tree's projects, and serving it
@@ -64,22 +88,9 @@ export async function setWatchedConception(
 
   if (current) {
     await current.watcher.close().catch(() => undefined);
-    current = null;
   }
-  // Cancel any in-flight debounce so a stale event from the old
-  // conception's chokidar emit doesn't fire `tree-events` against the
-  // new tree's renderer.
-  if (timer !== null) {
-    clearTimeout(timer);
-    timer = null;
-  }
-  pending = [];
-  pendingUnknown = false;
-  // Reset the refresh-serialisation chain — pass-5 added the per-event
-  // promise chain to serialise rebuilds within a conception, but the
-  // module-level state needs to reset across conceptions or a queued
-  // rebuild from the old tree could fire after we've swapped.
-  refreshChain = Promise.resolve();
+  if (generation !== watcherGeneration) return;
+  current = null;
   if (!conceptionPath) return;
 
   // One-shot migration of legacy `condash.json` / `configuration.json` →
@@ -89,6 +100,7 @@ export async function setWatchedConception(
   await migrateLegacyConfig(conceptionPath).catch((err) => {
     process.stderr.write(`condash: migrateLegacyConfig failed: ${err}\n`);
   });
+  if (generation !== watcherGeneration) return;
 
   // Partition settings into the post-revamp layout: each key in exactly one
   // file (personal → settings.json, this-tree → .condash/settings.json).
@@ -110,6 +122,7 @@ export async function setWatchedConception(
     .catch((err) => {
       process.stderr.write(`condash: partitionSettingsScopes failed: ${err}\n`);
     });
+  if (generation !== watcherGeneration) return;
 
   const { resources, skills } = resolveConceptionPaths();
   const roots: RootSet = {
@@ -159,6 +172,7 @@ export async function setWatchedConception(
     [
       join(conceptionPath, 'projects'),
       join(conceptionPath, 'knowledge'),
+      join(conceptionPath, 'tasks'),
       join(conceptionPath, resources),
       join(conceptionPath, skills),
       // Canonical per-conception config plus the two legacy names — the single
@@ -182,8 +196,11 @@ export async function setWatchedConception(
   );
 
   const paths = buildWatchPaths(conceptionPath);
-  watcher.on('all', (eventName, path) => onWatchEvent(eventName, path, roots, paths));
+  watcher.on('all', (eventName, path) => {
+    if (generation === watcherGeneration) onWatchEvent(eventName, path, roots, paths);
+  });
   watcher.on('error', (err) => {
+    if (generation !== watcherGeneration) return;
     // Surface the failure to the user (inotify exhaustion etc. would otherwise
     // silently leave the tree views stale), then attempt ONE re-arm for this
     // conception — the rebuild both re-establishes coverage after a transient
@@ -192,8 +209,9 @@ export async function setWatchedConception(
     reportWatcherError(err, 'conception tree');
     if (treeReArmedForPath !== conceptionPath) {
       treeReArmedForPath = conceptionPath;
+      const root = rootGeneration;
       refreshChain = refreshChain
-        .then(() => refreshWatchedConception())
+        .then(() => refreshWatchedConception(root))
         .catch((e) => console.error('[watcher] re-arm failed', e));
     }
   });
@@ -209,8 +227,8 @@ export async function setWatchedConception(
   // an idle tick instead (S8), so it never competes with the renderer's first
   // listProjects/listRepos and the chokidar install for the cold page cache.
   // Search stays correct in the gap: index-cache returns null while unbuilt and
-  // search/index.ts falls back to an on-disk scan. Conception switches / config
-  // refreshes leave `deferIndexBuild` unset and rebuild immediately.
+  // search/index.ts falls back to an on-disk scan. Conception switches / error
+  // recovery leave `deferIndexBuild` unset and rebuild immediately.
   if (!opts.deferIndexBuild) {
     void rebuildSearchIndex(conceptionPath).catch((err) => {
       console.error('[watcher] rebuildSearchIndex failed', err);
@@ -219,19 +237,16 @@ export async function setWatchedConception(
 }
 
 /**
- * Tear down the current watcher and rebuild it. Called after a
- * `.condash/settings.json` (or legacy `condash.json` / `configuration.json`)
- * edit might have changed `skills_path`, so the new root is observed and the
- * old one isn't.
+ * Re-arm a failed watcher once for its current root. Routine configuration
+ * edits keep the live watcher: its roots and ignore policy are fixed.
  */
-async function refreshWatchedConception(): Promise<void> {
-  if (!current) return;
+async function refreshWatchedConception(root: number): Promise<void> {
+  if (!current || root !== rootGeneration) return;
   const path = current.path;
-  await current.watcher.close().catch(() => undefined);
-  current = null;
-  pending = [];
-  pendingUnknown = false;
-  await setWatchedConception(path);
+  // Received notifications belong to the conception, not this watcher instance.
+  // Re-arm preserves their debounce/publication chain; root departure drops it.
+  await replaceWatchedConception(path, {}, true);
+  if (root !== rootGeneration || current?.path !== path) return;
   // The close→reattach window above can drop FS events: the replacement
   // watcher's initial scan takes real time and `ignoreInitial: true` suppresses
   // a replay of it, so anything that changed while no watcher was live would be
@@ -244,10 +259,7 @@ async function refreshWatchedConception(): Promise<void> {
   }
 }
 
-// Promise chain so two rapid condash.json edits queue their
-// rebuilds instead of racing — the second close() can otherwise land
-// while the first refresh is still reassigning `current`, leaking a
-// chokidar handle or losing a config event entirely.
+// Error repair is queued with root ownership so departure cancels stale re-arm.
 let refreshChain: Promise<void> = Promise.resolve();
 
 function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: WatchPaths): void {
@@ -256,9 +268,13 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   // classify routes to a scoped project-card patch), and only touches indexed
   // markdown files.
   if (current) {
-    void applyIndexFsEvent(current.path, eventName, path).catch((err) => {
+    const owner = current;
+    const generation = watcherGeneration;
+    const work = applyIndexFsEvent(owner.path, eventName, path).catch((err) => {
       console.error('[watcher] applyIndexFsEvent failed', err);
+      if (current === owner && generation === watcherGeneration) clearSearchIndex();
     });
+    pendingIndexWork.push(work);
   }
 
   // Drop the README parse memo for a file that changed or was removed so the
@@ -287,18 +303,8 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   } else {
     pending.push(event);
   }
-  // A config edit may have changed `skills_path`. Rebuild the
-  // watcher so the new root is observed and the old one isn't.
-  // Serialise via refreshChain so concurrent edits don't race the
-  // close+rebuild — the in-flight `tree-events` batch still flushes
-  // through `schedule()` for the renderer.
-  if (event.kind === 'config') {
-    refreshChain = refreshChain
-      .then(() => refreshWatchedConception())
-      .catch((err) => {
-        console.error('[watcher] refreshWatchedConception failed', err);
-      });
-  }
+  // Config cannot change the fixed watch set. Keep this handle and its pending
+  // stability checks alive; the typed config event already refreshes consumers.
   schedule();
 }
 
@@ -306,13 +312,22 @@ function schedule(): void {
   if (timer) return;
   timer = setTimeout(() => {
     timer = null;
-    const events = pendingUnknown ? [{ kind: 'unknown' } as TreeEvent] : pending;
+    const events = pendingUnknown ? [...pending, { kind: 'unknown' } as TreeEvent] : pending;
+    const indexWork = pendingIndexWork;
+    const root = rootGeneration;
     pending = [];
     pendingUnknown = false;
+    pendingIndexWork = [];
     if (events.length === 0) return;
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (win.isDestroyed()) continue;
-      safeSend(win.webContents, EVENT_CHANNELS.treeEvents, events);
-    }
+    publicationChain = publicationChain
+      .then(async () => {
+        await Promise.all(indexWork);
+        if (root !== rootGeneration) return;
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (win.isDestroyed()) continue;
+          safeSend(win.webContents, EVENT_CHANNELS.treeEvents, events);
+        }
+      })
+      .catch((error) => console.error('[watcher] publication failed', error));
   }, DEBOUNCE_MS);
 }

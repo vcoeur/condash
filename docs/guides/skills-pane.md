@@ -5,6 +5,8 @@ description: Browse the markdown skills condash ships — the conception's .agen
 
 # The Skills pane
 
+An open skill is a snapshot with explicit **Reload**. Exact changes under the watched conception skills root show **Changed on disk** without replacing its content. User-scope files are outside that watcher: Reload works there too, but no automatic notice is promised. See [Open-document freshness](knowledge-tree.md#open-document-freshness) for scroll/find and ownership rules.
+
 > **Audience.** Daily user.
 
 **When to read this.** You want to see which management skills are installed in this conception (or globally on your machine), and whether any have drifted from what condash shipped.

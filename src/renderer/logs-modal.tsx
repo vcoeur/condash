@@ -1,12 +1,13 @@
 import {
   createEffect,
   createMemo,
-  createResource,
   createSignal,
   For,
   onCleanup,
   onMount,
   Show,
+  on,
+  untrack,
   type JSX,
 } from 'solid-js';
 import type { TermLogSessionMeta, TermLogSessionRead } from '@shared/types';
@@ -33,12 +34,54 @@ export function LogsViewerModal(props: {
   onClose: () => void;
   onDelete: (sess: TermLogSessionMeta) => void;
 }): JSX.Element {
-  const [sessionRead] = createResource(
-    () => props.path,
-    async (path): Promise<TermLogSessionRead> => {
-      return window.condash.logsReadSession(path);
-    },
+  const [sessionRead, setSessionRead] = createSignal<TermLogSessionRead>();
+  const [loading, setLoading] = createSignal(false);
+  const [readError, setReadError] = createSignal<string | null>(null);
+  let disposed = false;
+  let requestGeneration = 0;
+  const reload = async (): Promise<void> => {
+    if (disposed || loading()) return;
+    const path = props.path;
+    const request = ++requestGeneration;
+    setLoading(true);
+    setReadError(null);
+    try {
+      const next = await window.condash.logsReadSession(path);
+      if (disposed || props.path !== path || requestGeneration !== request) return;
+      const scroll = transcriptEl?.scrollTop ?? 0;
+      setSessionRead(next);
+      setActiveHit((active) => Math.min(active, Math.max(0, hits().length - 1)));
+      queueMicrotask(() => {
+        if (disposed || props.path !== path || requestGeneration !== request || !transcriptEl)
+          return;
+        transcriptEl.scrollTop = Math.min(
+          scroll,
+          Math.max(0, transcriptEl.scrollHeight - transcriptEl.clientHeight),
+        );
+        setScrollTop(transcriptEl.scrollTop);
+      });
+    } catch (error) {
+      if (!disposed && props.path === path && requestGeneration === request)
+        setReadError((error as Error).message);
+    } finally {
+      if (!disposed && props.path === path && requestGeneration === request) setLoading(false);
+    }
+  };
+  createEffect(
+    on(
+      () => props.path,
+      () => {
+        requestGeneration++;
+        setLoading(false);
+        setSessionRead(undefined);
+        untrack(() => void reload());
+      },
+    ),
   );
+  onCleanup(() => {
+    disposed = true;
+    requestGeneration++;
+  });
 
   const [query, setQuery] = createSignal('');
 
@@ -72,10 +115,6 @@ export function LogsViewerModal(props: {
   });
 
   const [activeHit, setActiveHit] = createSignal(0);
-  createEffect(() => {
-    query();
-    setActiveHit(0);
-  });
 
   // Row height is the single source of truth in CSS (`--logs-row-height`)
   // — read it from the mounted transcript so a future stylesheet change
@@ -142,7 +181,7 @@ export function LogsViewerModal(props: {
   };
 
   // Centre the active hit's line in the viewport.
-  createEffect(() => {
+  const centerHit = (): void => {
     const all = hits();
     if (all.length === 0) return;
     if (!transcriptEl) return;
@@ -150,12 +189,20 @@ export function LogsViewerModal(props: {
     if (!target) return;
     const desired = target.lineIdx * rowHeight() - transcriptEl.clientHeight / 2;
     transcriptEl.scrollTop = Math.max(0, desired);
-  });
+    setScrollTop(transcriptEl.scrollTop);
+  };
+  createEffect(
+    on(query, () => {
+      setActiveHit(0);
+      untrack(centerHit);
+    }),
+  );
 
   const stepHit = (direction: -1 | 1): void => {
     const n = hits().length;
     if (n === 0) return;
     setActiveHit((cur) => (((cur + direction) % n) + n) % n);
+    centerHit();
   };
 
   // Esc → close and backdrop dismissal are owned by the shared <Modal> shell.
@@ -186,20 +233,32 @@ export function LogsViewerModal(props: {
         </>
       }
       headExtra={
-        <Button
-          type="button"
-          variant="default"
-          class="btn--modal-head"
-          title="Delete this session"
-          aria-label="Delete this session"
-          disabled={!sessionRead()?.meta}
-          onClick={() => {
-            const meta = sessionRead()?.meta;
-            if (meta) props.onDelete(meta);
-          }}
-        >
-          ⌫
-        </Button>
+        <>
+          <Button
+            variant="default"
+            class="btn--modal-head"
+            aria-label="Reload"
+            title="Reload transcript from disk"
+            disabled={loading()}
+            onClick={() => void reload()}
+          >
+            {loading() ? 'Reloading…' : 'Reload'}
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            class="btn--modal-head"
+            title="Delete this session"
+            aria-label="Delete this session"
+            disabled={!sessionRead()?.meta}
+            onClick={() => {
+              const meta = sessionRead()?.meta;
+              if (meta) props.onDelete(meta);
+            }}
+          >
+            ⌫
+          </Button>
+        </>
       }
     >
       <div class="logs-modal-search">
@@ -244,28 +303,30 @@ export function LogsViewerModal(props: {
         </Show>
       </div>
 
-      <Show when={!sessionRead.loading} fallback={<div class="empty">Loading…</div>}>
-        <Show
-          when={(sessionRead()?.text.length ?? 0) > 0}
-          fallback={<div class="empty">Empty session.</div>}
-        >
-          <div class="logs-transcript" ref={attachTranscript} onScroll={onScroll}>
-            <div class="logs-transcript-spacer" style={{ height: `${totalHeight()}px` }}>
-              <For each={visible()}>
-                {(row) => (
-                  <div class="logs-line" style={{ top: `${row.idx * rowHeight()}px` }}>
-                    <LineContents
-                      text={row.text}
-                      hits={hitsByLine().get(row.idx) ?? []}
-                      activeHit={hits()[activeHit()]}
-                    />
-                  </div>
-                )}
-              </For>
-            </div>
-          </div>
-        </Show>
+      <Show when={readError()}>
+        <div class="modal-error">{readError()}</div>
       </Show>
+      <Show when={loading() && !sessionRead()}>
+        <div class="empty">Loading…</div>
+      </Show>
+      <Show when={!loading() && sessionRead()?.text.length === 0}>
+        <div class="empty">Empty session.</div>
+      </Show>
+      <div class="logs-transcript" ref={attachTranscript} onScroll={onScroll}>
+        <div class="logs-transcript-spacer" style={{ height: `${totalHeight()}px` }}>
+          <For each={visible()}>
+            {(row) => (
+              <div class="logs-line" style={{ top: `${row.idx * rowHeight()}px` }}>
+                <LineContents
+                  text={row.text}
+                  hits={hitsByLine().get(row.idx) ?? []}
+                  activeHit={hits()[activeHit()]}
+                />
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
     </Modal>
   );
 }

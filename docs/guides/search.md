@@ -96,6 +96,10 @@ Each result has:
 
 Click any result to close the modal and jump to the corresponding card, knowledge file, or log session. When the raw hit count exceeded 100, a *Showing 100 of N* footer tells you the list was truncated — narrow the query rather than scrolling.
 
+## Freshness while Search is open
+
+An unchanged query is re-run when a watcher batch affects its selected indexed scope. All means Projects, Knowledge, Resources and Skills, never Logs; unrelated events and task-definition changes perform no Search reads. Bursts during an active read coalesce into one follow-up. Replies from an older query, filter or conception cannot replace current results. Query, input, filter, scroll and the selected result's identity are preserved when that row still exists. Closing Search stops queued reads. The explicit Logs filter is a disk-scanned snapshot and does not requery on tree events.
+
 ## What isn't searched
 
 - Any extension outside the table above — images, PDFs, archives, and source files never reach the index at all, not even by filename.

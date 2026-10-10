@@ -8,12 +8,13 @@
 export type TreeRoot = 'knowledge' | 'resources' | 'skills';
 
 export type TreeEvent =
-  | { kind: 'project'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'project'; op: 'add' | 'change' | 'unlink'; path: string; changedPath?: string }
   | { kind: 'knowledge'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'resources'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'skills'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'logs'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'config'; path: string }
+  | { kind: 'tasks' }
   /** Project-tree structure changed (a project dir added/removed, a bulk
    *  checkout): reload only the project list, not the whole dashboard (R1). */
   | { kind: 'projects-reload' }
