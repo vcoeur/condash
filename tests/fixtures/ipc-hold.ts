@@ -7,7 +7,7 @@ import type { ElectronApplication } from '@playwright/test';
  * untouched. Used to replay held/stale IPC replies against the built app
  * — no application code is instrumented.
  *
- * Every `app.evaluate` body is self-contained (evaluate serialises the
+ * Every evaluation body is self-contained (evaluate serialises the
  * callback alone); the wrapper state lives on a `globalThis` slot in the
  * main process keyed by channel.
  */
@@ -30,12 +30,14 @@ export async function holdFirstCalls(
   channel: string,
   holdCount: number,
 ): Promise<IpcGate> {
-  await app.evaluate(
+  // Early by-value installation can fail with inspector's "Promise was
+  // collected". Keep the synchronous installer on the handle transport.
+  const installed = await app.evaluateHandle(
     ({ ipcMain }, { channel, holdCount }) => {
       const slot = (): Map<
         string,
         {
-          original: (event: unknown, ...args: unknown[]) => Promise<unknown>;
+          original: ((event: unknown, ...args: unknown[]) => Promise<unknown>) | undefined;
           held: {
             event: unknown;
             args: unknown[];
@@ -50,7 +52,7 @@ export async function holdFirstCalls(
           __condashIpcGates?: Map<
             string,
             {
-              original: (event: unknown, ...args: unknown[]) => Promise<unknown>;
+              original: ((event: unknown, ...args: unknown[]) => Promise<unknown>) | undefined;
               held: {
                 event: unknown;
                 args: unknown[];
@@ -70,8 +72,18 @@ export async function holdFirstCalls(
           _invokeHandlers: Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>;
         }
       )._invokeHandlers;
+      type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
+      const boot = (
+        globalThis as typeof globalThis & {
+          __condashBootHandshake?: {
+            held: boolean;
+            deferGate(channel: string, install: (handler: Handler) => Handler): void;
+          };
+        }
+      ).__condashBootHandshake;
       const original = handlers.get(channel);
-      if (!original) throw new Error(`no ipcMain handler for ${channel}`);
+      if (!original && !boot?.held) throw new Error(`no ipcMain handler for ${channel}`);
+      if (slot().has(channel)) throw new Error(`IPC gate already installed for ${channel}`);
       const state = {
         original,
         held: [] as {
@@ -84,21 +96,31 @@ export async function holdFirstCalls(
         holdCount,
       };
       slot().set(channel, state);
-      handlers.set(channel, async (event, ...args) => {
+      const wrapper: Handler = async (event, ...args) => {
+        if (!state.original) throw new Error(`IPC gate not registered for ${channel}`);
         state.seen += 1;
         if (state.seen <= state.holdCount) {
-          const timely = original(event, ...args).catch((err: unknown) => ({
+          const timely = state.original(event, ...args).catch((err: unknown) => ({
             __gateError: err instanceof Error ? err.message : String(err),
           }));
           return new Promise((resolve) => {
             state.held.push({ event, args, resolve, timely });
           });
         }
-        return original(event, ...args);
-      });
+        return state.original(event, ...args);
+      };
+      if (original) {
+        handlers.set(channel, wrapper);
+      } else {
+        boot!.deferGate(channel, (handler) => {
+          state.original = handler;
+          return wrapper;
+        });
+      }
     },
     { channel, holdCount },
   );
+  await installed.dispose();
   return {
     count: () =>
       app.evaluate((_electron, channel) => {
