@@ -111,6 +111,8 @@ On a Wayland session there's a catch: the shell exports `ELECTRON_OZONE_PLATFORM
 
 ## What the build pipeline produces
 
+After packaging and the Linux AppImage AppRun repack, `_build.yml` runs `node scripts/finalize-update-manifests.mjs release` once before uploading artifacts. The script refreshes the Linux AppImage's generated size and SHA-512, including legacy metadata, while preserving its filename and the `.deb` entry. Every `latest*.yml` reference must then match a regular installer file's exact flat name, size and SHA-512; macOS and Windows metadata are validated without rewriting. NSIS explicitly emits `condash.Setup.<version>.exe` so its actual filename and manifest agree. Missing/unsafe names, malformed manifests or other reference/name/size/hash drift fail the build before upload. For read-only local verification, run the same command with `--check`; it rejects stale AppImage metadata too. Auto-update remains disabled, and this check never installs or launches an artifact.
+
 ```
 make build       # → dist-electron/main/index.js, dist-electron/preload/index.js, dist/
 make package     # → release/{*.AppImage, *.deb, *.dmg, *.exe, latest*.yml}

@@ -109,4 +109,5 @@ win:
 # `include:` is here so the wiring isn't load-bearing on a default-
 # discovery convention. See GitHub issue #119.
 nsis:
+  artifactName: '${productName}.Setup.${version}.${ext}'
   include: build/installer.nsh

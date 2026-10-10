@@ -38,7 +38,7 @@ One card per **open** tab, in the same order as the tab strip. The whole card is
 
 - **State dot** — working / awaiting you / idle / error.
 - **Age** — time since this card's last refresh. A card being recomputed right now shows a small pulsing marker.
-- **Update** — force an immediate re-summarisation of just this tab. Shown only when the engine can actually run (enabled, with a key), and disabled while that card is already recomputing.
+- **Update** — queue a re-summarisation of just this tab, bypassing its interval/activity gate and scheduled backoff. Shown only when the engine can actually run (enabled, with a key), and disabled while that card is already recomputing. Repeated requests for a queued/running tab share that job; they do not create a follow-up refresh.
 - **Title + activity pill** — a few-word title plus the work stage: Implementing, Designing, Reviewing, Making PR, Documenting, Testing, Debugging, Researching, Awaiting, Idle.
 - **Breadcrumb** — `#app › wt:branch › project`, only the segments that exist. Each is clickable: the app and worktree crumbs open their directory, the project crumb opens its README. When several projects match, the first is shown with a `+N` carrying the rest in its tooltip.
 - **Subtitle** — one sentence of context: what this work is and why.
@@ -47,7 +47,15 @@ One card per **open** tab, in the same order as the tab strip. The whole card is
 
 A tab with no summary yet is never hidden. It falls back to a card drawn from its command and cwd, with the engine's next-attempt hint (`in 45s`, `soon`, `pending`) in the age slot and *"Waiting for first agent output"* as its subtitle.
 
-Each tab refreshes on its own independent timer, in parallel with the others.
+Each tab has its own timer, but automatic and manual refreshes share **three logical full-summary jobs** at most. A slot covers the card model, local provenance, optional writer model, live state update and ordered persistence. Queued tabs do not show the active pulsing marker. This is not a physical HTTP/socket/remote-execution limit: a timed-out underlying operation may outlive its logical job, and Settings' connection test is outside this count.
+
+Automatic work is FIFO by first eligible enqueue; manual work is FIFO by first request or promotion. While automatic work waits, at most two consecutive manual jobs start before one automatic job. Running work is never preempted. Larger cohorts take more waves to refresh; the policy is a resource budget, not a latency guarantee.
+
+Closing a tab or switching conceptions skips its queued work and unsent later phases. An already-sent phase settles under the existing timeout; stale results, errors and cache changes are discarded. Observation ticks still prune closed tabs and decay quiet cards while jobs/backoff are pending. Both kinds of refresh capture output and advance the clock/byte baseline **at admission**, including null/failed attempts, so output arriving during a request remains eligible for a later refresh.
+
+Scheduled failures back off once per captured batch (30 seconds, doubling to a five-minute ceiling), not once per tab. Manual-only outcomes do not change that backoff. The error banner keeps the latest owned failed admission: a successful scheduled batch clears older scheduled errors; a successful manual refresh clears only its tab's older manual error. State updates merge into the current roster/cards and push before saving. Saves run in order across conception switches; stale pending save intents are skipped and failures are best-effort, not model failures.
+
+The writer cache retains **256 entries**, evicts the least recently used on insertion, promotes hits, has **no TTL**, and clears on conception switches. Every attempt still runs the card model. Eviction can add writer calls: cycling 257 distinct keys three times produces 771 writer calls rather than 257 with unbounded retention (514 extra calls). This bounds entries, not bytes, heap or cost. Existing keys omit the endpoint and can collide across delimiter boundaries; successful empty/garbled writer replies remain cached until eviction/clear, and simultaneous identical misses can still issue separate requests. The retention policy does not promise semantic freshness or change those existing behaviors.
 
 ## Turning it on
 

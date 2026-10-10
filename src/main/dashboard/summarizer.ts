@@ -77,6 +77,12 @@ export interface TabInput {
   prior?: TabSummary;
 }
 
+/** Optional ownership for dashboard jobs; unrelated callers keep legacy errors. */
+export interface SummaryOwner {
+  isCurrent(): boolean;
+  reportError(error: string): void;
+}
+
 const MAX_RECENT_CHARS = 6000;
 const MAX_TITLE_WORDS = 7;
 const MAX_CONTEXT_LINES = 4;
@@ -100,13 +106,13 @@ const DASHBOARD_USER_AGENT = 'condash-dashboard';
 
 /** Last pi-completion failure within the current cycle, surfaced to the renderer
  *  so a silent no-op (bad key, unknown model, network) is explainable. The
- *  engine clears it at the start of each cycle and reads it after. */
+ *  legacy callers can clear/read it; dashboard jobs use their owned callback. */
 let lastError: string | null = null;
 /** Read the last summarization error (null when the last cycle was clean). */
 export function getSummarizerError(): string | null {
   return lastError;
 }
-/** Reset the captured error — called by the engine at the start of each cycle. */
+/** Reset the legacy captured error. */
 export function clearSummarizerError(): void {
   lastError = null;
 }
@@ -115,8 +121,10 @@ export function clearSummarizerError(): void {
  *  from already-distilled facts + provenance, so when the input is unchanged the
  *  previous title/subtitle can be reused without another LLM call. The key
  *  includes the model and reasoning flag so a settings change invalidates stale
- *  entries; the cache is cleared on conception switch. */
+ *  entries; the cache is cleared on conception switch. Retain at most 256 entries,
+ *  promoting hits with no TTL; existing key and empty-success semantics remain. */
 const writerCache = new Map<string, CardWriterResult>();
+const WRITER_CACHE_LIMIT = 256;
 
 /** Clear the writer cache, e.g. when arming a new conception. */
 export function clearWriterCache(): void {
@@ -531,8 +539,8 @@ async function runCompletion(config: DashboardConfig, request: CompletionRequest
   ensureUndiciElectronShim();
   const base = (config.baseUrl?.trim() || DEEPSEEK_DEFAULT_BASE).replace(/\/+$/, '');
   const url = `${base}/chat/completions`;
-  // AbortController frees the socket if the deadline wins; withTimeout bounds the
-  // await so a black-holed connection can't wedge the engine's single-flight guard.
+  // Bound the await and request abort on timeout. An uncooperative underlying
+  // operation may outlive this logical completion; no physical cap is implied.
   const controller = new AbortController();
   const fetchAndParse = fetch(url, {
     method: 'POST',
@@ -573,7 +581,9 @@ async function runCompletion(config: DashboardConfig, request: CompletionRequest
 export async function summarizeTab(
   config: DashboardConfig,
   input: TabInput,
+  owner?: SummaryOwner,
 ): Promise<TabSummaryResult | null> {
+  if (owner && !owner.isCurrent()) return null;
   try {
     const reply = await runCompletion(config, {
       model: config.model,
@@ -584,9 +594,12 @@ export async function summarizeTab(
       // card emits only the small JSON object.
       maxTokens: config.cardReasoning ? 4000 : 1500,
     });
-    return parseTabSummary(reply);
+    return owner && !owner.isCurrent() ? null : parseTabSummary(reply);
   } catch (err) {
-    lastError = (err as Error).message;
+    if (owner) {
+      if (!owner.isCurrent()) return null;
+      owner.reportError((err as Error).message);
+    } else lastError = (err as Error).message;
     process.stderr.write(`condash dashboard: summarizeTab failed: ${(err as Error).message}\n`);
     return null;
   }
@@ -603,10 +616,17 @@ export async function writeCard(
   config: DashboardConfig,
   facts: SubtitleInput,
   provenance: TabProvenance,
+  owner?: SummaryOwner,
 ): Promise<CardWriterResult> {
+  const empty = { title: '', subtitle: '' };
+  if (owner && !owner.isCurrent()) return empty;
   const key = writerCacheKey(config, facts, provenance);
   const cached = writerCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    writerCache.delete(key);
+    writerCache.set(key, cached);
+    return cached;
+  }
   try {
     const reply = await runCompletion(config, {
       model: config.writerModel,
@@ -618,10 +638,18 @@ export async function writeCard(
       maxTokens: config.writerReasoning ? 2000 : 500,
     });
     const result = parseCardWriter(reply);
+    if (owner && !owner.isCurrent()) return empty;
+    writerCache.delete(key);
     writerCache.set(key, result);
+    if (writerCache.size > WRITER_CACHE_LIMIT) {
+      writerCache.delete(writerCache.keys().next().value!);
+    }
     return result;
   } catch (err) {
-    lastError = (err as Error).message;
+    if (owner) {
+      if (!owner.isCurrent()) return empty;
+      owner.reportError((err as Error).message);
+    } else lastError = (err as Error).message;
     process.stderr.write(`condash dashboard: writeCard failed: ${(err as Error).message}\n`);
     return { title: '', subtitle: '' };
   }
