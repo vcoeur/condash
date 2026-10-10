@@ -15,8 +15,7 @@ export interface SampleSummary {
   /** Sample count — reported alongside every distribution, never implied. */
   n: number;
   median: number;
-  /** Interquartile range as the [q25, q75] pair (Tukey hinges on the sorted
-   *  sample; for n < 4 this equals [min, max]). */
+  /** Nearest-rank quartiles [q25, q75], at ranks ceil(0.25*n) and ceil(0.75*n). */
   iqrLow: number;
   iqrHigh: number;
   min: number;

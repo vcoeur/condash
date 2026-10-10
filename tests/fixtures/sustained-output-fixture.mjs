@@ -12,31 +12,18 @@
 // 128 KiB/s × 30 s = 3,932,160 bytes exactly, 64 sequence-numbered tokens
 // interleaved, plus the parent's 100-short-line probe block.
 //
-// Coverage pins (plan probe 5, corrected at plan review):
-//  - Token count ≥ 62: a token's main-side presence window is the 64,000-char
-//    termAttach tail; 3,932,160 / 64,000 ≈ 61.4 is the cadence minimum. Pinned
-//    at 64 for margin (review observation O1). The harness's transport
-//    accumulator observes the whole run regardless, so this pin is
-//    belt-and-braces for the tail layer.
-//  - Mean line length ≥ 787 B and total lines ≤ 5000: with ONE program line
-//    per GRID row, the whole burst fits the renderer's 5,000-line scrollback.
-//    One-line-per-row is a HARNESS choice, not a fixture property — the spec
-//    resizes the census tab's grid to ≥ 1024 columns before generation starts,
-//    because xterm scrollback counts grid rows and a 1 KiB line at a ~120
-//    column pane would wrap into ~9 rows and evict the burst (recorded in the
-//    run record). The self-checks below enforce the byte arithmetic that pin
-//    needs; the spec asserts the resize behind the settled barrier.
+// Exactly 64 tokens are required. The spec measures actual fitted columns and
+// mounted scrollback, counts wrapped/control rows and requires the final full
+// renderer census. A requested preference or a row-times-column byte estimate
+// does not establish retention; eviction is a failed gate.
 //
-// The final line is `DONE <scheduledBytes> <elapsedMs>` and the process then
+// PAYLOAD-BEGIN / PAYLOAD-END delimit payload bytes from framing. The process
 // stays alive (specs close the tab) so an exited tab can never unmount the
 // buffer a census is about to read.
 
 const out = process.stdout;
 
 // ---- pinned identity constants (mirrored by the specs' assertions) ----
-const SCROLLBACK_LINES = 5000; // xterm-mount.ts default, re-confirmed 2026-10
-const MIN_TOKENS = 62; // 3,932,160 / 64,000-char window
-const MIN_MEAN_LINE_BYTES = 787; // 3,932,160 / 5000 — the scrollback bound
 const BURST_RATE_BYTES_PER_SEC = 128 * 1024;
 const BURST_SECONDS = 30;
 
@@ -64,9 +51,7 @@ function parseArgs(argv) {
       continue;
     }
     if (key === 'hold') {
-      // Wait for a stdin `GO` before emitting: the burst census resizes the
-      // tab's grid to one-line-per-row BEFORE generation starts, and the
-      // resize must complete while the stream is silent.
+      // Wait for GO so the observer and naturally fitted terminal are ready.
       args.hold = true;
       continue;
     }
@@ -179,29 +164,24 @@ for (const text of lines) scheduled += text.length + 1;
 if (scheduled !== totalBytes) {
   const drift = totalBytes - scheduled;
   const last = lines[lines.length - 1];
-  const repaired =
-    drift > 0 ? synthLine(last.length + drift - 1, random) : last.slice(0, last.length + drift - 1);
-  lines[lines.length - 1] = repaired;
-  scheduled = totalBytes;
+   const repaired =
+     drift > 0 ? synthLine(last.length + drift, random) : last.slice(0, last.length + drift);
+   lines[lines.length - 1] = repaired;
+   scheduled = lines.reduce((sum, line) => sum + line.length + 1, 0);
+   if (scheduled !== totalBytes) fail(`unrepaired byte drift: ${scheduled}/${totalBytes}`);
 }
 
 // ---- self-checks: the coverage pins, with the arithmetic in the failure ----
 const totalLines = lines.length;
-const meanLine = totalBytes / totalLines;
 if (args.mode === 'burst') {
   if (totalBytes !== args.rate * BURST_SECONDS) {
     fail(`identity broken: total ${totalBytes} != rate ${args.rate} x ${BURST_SECONDS}s`);
   }
-  if (args.tokens < MIN_TOKENS) {
-    fail(`tokens ${args.tokens} < cadence minimum ${MIN_TOKENS} (3,932,160/64,000 window arithmetic)`);
-  }
-  if (meanLine < MIN_MEAN_LINE_BYTES) {
-    fail(`mean line ${meanLine.toFixed(1)} B < ${MIN_MEAN_LINE_BYTES} B — whole-burst scrollback coverage broken`);
+  if (args.tokens !== 64) {
+    fail(`burst token population must be exactly 64, got ${args.tokens}`);
   }
 }
-if (totalLines > SCROLLBACK_LINES) {
-  fail(`total lines ${totalLines} > scrollback ${SCROLLBACK_LINES} — census would be eviction-truncated`);
-}
+// Retention is checked by the spec against actual mounted geometry, including wraps.
 
 // ---- stdin echo (sustain probes only; burst census must stay unpolluted) ----
 let echoOn = args.echo;
@@ -218,29 +198,24 @@ process.stdin.on('data', (chunk) => {
     go = true;
     goResolve?.();
   }
-  for (const token of text.match(/P\d+/g) ?? []) {
+  const boundary = Math.max(text.lastIndexOf(' '), text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+  const complete = boundary >= 0 ? text.slice(0, boundary + 1) : '';
+  for (const token of complete.match(/P\d+\b/g) ?? []) {
     if (!echoOn || answered.has(token)) continue;
     answered.add(token);
     out.write(`ACK ${token}\n`);
   }
-  const last = text.search(/P\d+(?!.*P\d)/s);
-  carry = last >= 0 ? text.slice(last) : text.slice(-16);
-  if (carry.length > 64) carry = '';
+  carry = go && text.includes('GO') ? '' : text.slice(boundary + 1);
+  if (carry.length > 64) fail('unterminated probe input');
   if (text.trim() === 'Q') echoOn = false;
 });
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.resume();
 
-// ---- emit on an absolute-time schedule; the byte total is the identity ----
-out.write(
-  `SUSTAIN-READY mode=${args.mode} total=${totalBytes} lines=${totalLines} ` +
-    `tokens=${args.tokens} meanLine=${meanLine.toFixed(1)} seed=${args.seed}\n`,
-);
-
 // ---- emit on a paced schedule; the byte total is the identity ----
 out.write(
   `SUSTAIN-READY mode=${args.mode} total=${totalBytes} lines=${totalLines} ` +
-    `tokens=${args.tokens} meanLine=${meanLine.toFixed(1)} seed=${args.seed}\n`,
+    `tokens=${args.tokens} seed=${args.seed}\n`,
 );
 
 // The schedule starts (t=0) when GO arrives — or immediately without --hold —
@@ -260,6 +235,7 @@ let index = 0;
 // again. The byte total is untouched; only the wall clock stretches, and the
 // DONE line reports the achieved elapsed time.
 let startedAt = 0;
+let realStartedAt = 0;
 
 function emitNext() {
   while (index < lines.length) {
@@ -279,8 +255,8 @@ function emitNext() {
       return;
     }
   }
-  const elapsedMs = Date.now() - startedAt;
-  out.write(`DONE ${scheduled} ${elapsedMs}\n`);
+  const elapsedMs = Date.now() - realStartedAt;
+  out.write(`PAYLOAD-END ${scheduled} ${elapsedMs}\nDONE\n`);
   // Stay alive so the spec closes the tab after its census — an exited tab
   // must never unmount the buffer mid-read.
   setInterval(() => {}, 1 << 30);
@@ -288,5 +264,7 @@ function emitNext() {
 
 startedAtPromise.then((start) => {
   startedAt = start;
+  realStartedAt = start;
+  out.write('PAYLOAD-BEGIN\n');
   emitNext();
 });

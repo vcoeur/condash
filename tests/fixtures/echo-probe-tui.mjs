@@ -48,19 +48,31 @@ process.stdin.on('data', (chunk) => {
     return;
   }
   if (absorb) {
-    carry = text.slice(-16);
+    if (/(?:^|\s)F$/.test(text)) {
+      frozen = true;
+      out.write('FROZEN\n');
+      carry = '';
+      return;
+    }
+    carry = /\s$/.test(text) ? '' : text.slice(-64);
     return;
   }
   // Answer each unseen P<number> token once; keep the tail from the start of
   // the last (possibly partial) token so chunk boundaries cannot split one.
-  for (const token of text.match(/P\d+/g) ?? []) {
+  const boundary = Math.max(text.lastIndexOf(' '), text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+  const complete = boundary >= 0 ? text.slice(0, boundary + 1) : '';
+  for (const token of complete.match(/P\d+\b/g) ?? []) {
     if (answered.has(token)) continue;
     answered.add(token);
-    out.write(`ACK ${token}\n`);
+    out.write(`ACK ${token} rows=${out.rows ?? 24} cols=${out.columns ?? 80}\n`);
   }
-  const last = text.search(/P\d+(?!.*P\d)/s);
-  carry = last >= 0 ? text.slice(last) : text.slice(-16);
-  if (carry.length > 64) carry = '';
+  carry = text.slice(boundary + 1);
+  if (carry === 'F') {
+    frozen = true;
+    out.write('FROZEN\n');
+    carry = '';
+  }
+  if (carry.length > 64) throw new Error('unterminated probe input');
 });
 
 if (process.stdin.isTTY) process.stdin.setRawMode(true);

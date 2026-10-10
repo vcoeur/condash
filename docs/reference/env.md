@@ -30,7 +30,7 @@ description: Every environment variable condash reads — the GUI, the CLI, and 
 | `CONDASH_USER_AGENTS_MD`            | Override the user-scope `AGENTS.md` the Skills pane reads (test seam)                           | `~/.config/agents/AGENTS.md` | Any absolute path    |
 | `CONDASH_BENCH`                     | **Test only** — run the opt-in terminal-logger benchmark assertions                            | unset       | `1` or unset                          |
 | `CONDASH_TERM_ACCEPTANCE`           | **Test only** — run the terminal acceptance measurement harness (`terminal-acceptance-measure.spec.ts`) | unset | `1` or unset                    |
-| `CONDASH_TERM_ACCEPTANCE_LABEL`     | **Test only** — output label for the acceptance run record under `tests/acceptance-out/`       | `run`       | Any filename-safe string              |
+| `CONDASH_TERM_ACCEPTANCE_LABEL`     | **Test only** — prefix for a unique `<label>-<timestamp>-<pid>/record.json` under `tests/acceptance-out/` | `run` | Letters, digits, `_` and `-` |
 
 condash reads few environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The vars above either feed Electron's startup, back the embedded terminal, or exist as CLI ergonomics and test seams.
 
