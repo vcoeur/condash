@@ -11,6 +11,12 @@ export type VoiceProvider = 'openrouter' | 'mistral';
  *  by default they are read from `~/.config/agents/.env` instead and these
  *  fields stay unset. See `docs/reference/config.md`. */
 export interface VoicePrefs {
+  /** Master switch for dictation + readback. Unset or false (the default)
+   *  disables voice entirely: the pane controls do not render and the IPC
+   *  handlers answer with a typed disabled result without contacting any
+   *  provider or opening the microphone. Off by default — clips leave the
+   *  machine only after an explicit opt-in in Settings → Voice. */
+  enabled?: boolean;
   /** OpenRouter API key. Blank/unset → read `OPENROUTER_API_KEY` from
    *  `~/.config/agents/.env`. Never logged. */
   openrouterApiKey?: string;
@@ -57,8 +63,10 @@ export interface VoiceTranscribeResult {
    *  written). */
   chars?: number;
   /** `empty-transcript` — the clip transcribed to nothing usable;
-   *  `no-session` — the target tab is unknown or already exited. */
-  reason?: 'empty-transcript' | 'no-session';
+   *  `no-session` — the target tab is unknown or already exited;
+   *  `disabled` — voice is switched off (the default), so nothing was
+   *  recorded, contacted, or written. */
+  reason?: 'empty-transcript' | 'no-session' | 'disabled';
 }
 
 /** Result of the on-demand readback: recent pane output synthesized to MP3.
@@ -71,6 +79,9 @@ export interface VoiceSpeakResult {
   mime?: string;
   /** Which provider synthesized the audio. */
   provider?: VoiceProvider;
+  /** `disabled` — voice is switched off (the default); no provider was
+   *  contacted. Present only on the disabled no-op. */
+  reason?: 'disabled';
   /** Human-readable failure reason. Never carries key material. */
   error?: string;
 }

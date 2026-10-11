@@ -242,6 +242,19 @@ describe('voice session lifecycle', () => {
     expect(h.notices).toEqual(['That tab is gone — nothing was typed.']);
   });
 
+  it('surfaces a specific notice when main refuses the clip as disabled', async () => {
+    // Stale-controls defence: voice was switched off in Settings while a
+    // recording was in flight. The IPC gate answers `disabled` without any
+    // provider call; the pane must say so rather than read as a silent no-op.
+    await h.session.toggleDictation();
+    h.transcribe.mockResolvedValueOnce({ inserted: false, reason: 'disabled' });
+    await h.session.toggleDictation();
+
+    expect(h.recorder.stop).toHaveBeenCalledTimes(1);
+    expect(h.recorder.recording).toBe(false);
+    expect(h.notices).toEqual(['Voice is disabled — enable it in Settings → Voice.']);
+  });
+
   it('keeps one shared playback element across panes: a second read stops the first', async () => {
     // Two columns = two sessions over the one module graph, so the shared
     // `currentAudio` owner the controls used to hold is preserved.

@@ -503,14 +503,19 @@ const dashboardSettings = z
 /**
  * `voice` — push-to-talk dictation + on-demand readback for terminal panes.
  * Per-machine in `settings.json`: the API keys are secrets and MUST live in
- * the global file, never a versioned conception `condash.json`. By default
- * the keys are read read-only from `~/.config/agents/.env`
+ * the global file, never a versioned conception `condash.json`. **Default
+ * off**: `enabled` must be true before anything records, transmits, or
+ * speaks. By default the keys are read read-only from `~/.config/agents/.env`
  * (`OPENROUTER_API_KEY` / `MISTRAL_API_KEY`); the fields here are the manual
  * fallback for machines without that file. The adapter applies model/voice
  * defaults (`docs/reference/config.md` carries the table).
  */
 const voiceSettings = z
   .object({
+    /** Master switch. Unset/false (the default) disables voice entirely —
+     *  no pane controls, and the voice IPC handlers answer with a typed
+     *  disabled result without any provider call. */
+    enabled: z.boolean().optional(),
     /** OpenRouter API key. Unset → `OPENROUTER_API_KEY` from the agents env
      *  file. Never logged, never sent to the renderer. */
     openrouterApiKey: z.string().optional(),

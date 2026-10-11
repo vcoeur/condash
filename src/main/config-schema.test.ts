@@ -806,6 +806,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     },
     // Settings → Voice — every field
     voice: {
+      enabled: true,
       openrouterApiKey: 'sk-or-xxx',
       mistralApiKey: 'mistral-xxx',
       sttModel: 'mistralai/voxtral-small-24b-2507',

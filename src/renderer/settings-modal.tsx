@@ -99,6 +99,10 @@ export function SettingsModal(props: {
   /** Commit a partial per-category UI-font patch. The renderer applies the new
    *  CSS variables and persists. */
   onChangeUiFonts: (patch: UiFontPrefs) => void;
+  /** Mirror a saved `voice.enabled` into the running UI so the terminal-pane
+   *  Dictate/Read controls follow the setting without a reload. Fired from the
+   *  global-write callback, so it always carries the on-disk truth. */
+  onChangeVoiceEnabled: (next: boolean) => void;
   onClose: () => void;
 }) {
   // Conception read path: `.condash/settings.json` (canonical) or a legacy
@@ -472,6 +476,10 @@ export function SettingsModal(props: {
               if (g.theme && g.theme !== props.theme) props.onChangeTheme(g.theme);
               if (g.uiFonts) props.onChangeUiFonts(g.uiFonts);
               if (g.cardMinWidth) props.onChangeCardMinWidth(g.cardMinWidth);
+              // Voice is a plain boolean mirror — fire it on every global write
+              // (not only when the key is present) so an external edit that
+              // dropped the key also lands as off.
+              props.onChangeVoiceEnabled(g.voice?.enabled === true);
               setGlobalDraft(null);
             },
           ),

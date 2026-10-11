@@ -3,6 +3,11 @@
 // and a Read-aloud button (on-demand TTS of the tab's recent output — never
 // automatic). Both act on the column's active tab.
 //
+// The column gates mounting this component on `voice.enabled` (Settings →
+// Voice, default off): with the feature off the controls never render, and
+// switching it off mid-recording unmounts them — which is what triggers the
+// same-flush mic release described below.
+//
 // All lifecycle logic (mic release on activeSid nulling / disposal, playback
 // stop, insert-target capture) lives in the session controller next door
 // (../voice-session.ts) and is regression-tested there; this file only binds

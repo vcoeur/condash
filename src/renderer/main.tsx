@@ -42,6 +42,7 @@ import { useCardMinWidth } from './hooks/use-card-min-width';
 import { useUiFonts } from './hooks/use-ui-fonts';
 import { useLayout } from './hooks/use-layout';
 import { useConfigBindings } from './hooks/use-config-bindings';
+import { useVoiceEnabled } from './hooks/use-voice-enabled';
 import { useModals } from './hooks/use-modals';
 import { useProjectActions } from './hooks/use-project-actions';
 import { useTreeActions } from './hooks/use-tree-actions';
@@ -286,6 +287,11 @@ function App() {
 
   // --- Config bindings (Open With + terminal prefs) ---------------------
   const { openWithSlots, terminalPrefs, reloadConfig } = useConfigBindings({ conceptionPath });
+
+  // --- Voice master switch (global; default off) ------------------------
+  // Seeds from the boot bundle; the Settings modal live-fires a change once
+  // its global write lands. Gates the terminal-pane Dictate/Read controls.
+  const { voiceEnabled, handleVoiceEnabledChange } = useVoiceEnabled();
 
   // --- Agents (tab-strip spawn dropdown + action-template bindings) -----
   // The `agents` settings list, re-fetched whenever the conception changes.
@@ -939,6 +945,7 @@ function App() {
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
         autoRefreshOnTabSwitch={terminalPrefs()?.autoRefreshOnTabSwitch}
+        voiceEnabled={voiceEnabled()}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}
@@ -950,6 +957,7 @@ function App() {
         setActiveModal={setActiveModal}
         requestFocusReturn={requestFocusReturn}
         registerLeaveGuard={registerLeaveGuard}
+        onChangeVoiceEnabled={handleVoiceEnabledChange}
         tasks={tasks}
         reloadTasks={() => void reloadTasks()}
         agents={agents}

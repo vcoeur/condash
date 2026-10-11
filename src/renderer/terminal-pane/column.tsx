@@ -118,6 +118,11 @@ export interface TerminalColumnProps {
   /** Surface a user-facing notice/error (wired to the app toast). Used by the
    *  voice controls for dictation results and mic/readback errors. */
   onNotice: (message: string) => void;
+  /** Whether voice dictation + readback is enabled (`voice.enabled`, default
+   *  off). Gates the voice controls entirely: when false they never mount, so
+   *  a disable also unmounts them and the session's onCleanup releases the
+   *  microphone in the same flush that hides the buttons. */
+  voiceEnabled: boolean;
   /** True when the bottom band is showing the Dashboard rather than the
    *  terminals. Drives the active state of the Dashboard pseudo-tab (and
    *  suppresses the active ring on the real terminal tabs). */
@@ -414,10 +419,12 @@ export function TerminalColumn(props: TerminalColumnProps) {
           >
             Save
           </button>
-          <VoiceControls
-            activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
-            onNotice={props.onNotice}
-          />
+          <Show when={props.voiceEnabled}>
+            <VoiceControls
+              activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
+              onNotice={props.onNotice}
+            />
+          </Show>
         </div>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />

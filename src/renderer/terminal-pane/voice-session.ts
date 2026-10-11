@@ -115,6 +115,10 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           deps.onNotice('Heard nothing usable — nothing was typed.');
         } else if (result.reason === 'no-session') {
           deps.onNotice('That tab is gone — nothing was typed.');
+        } else if (result.reason === 'disabled') {
+          // Stale-controls defence: the feature was switched off while a
+          // recording was still in flight. Main already refused the clip.
+          deps.onNotice('Voice is disabled — enable it in Settings → Voice.');
         }
       } catch (err) {
         deps.onNotice((err as Error).message);

@@ -1,11 +1,15 @@
 # Voice dictation and readback
 
-Push-to-talk dictation and on-demand read-aloud for terminal tabs. Two controls live in each tab strip's header, beside Find and Save, and appear once the tab has a live session:
+Push-to-talk dictation and on-demand read-aloud for terminal tabs.
+
+**Enable it first** — voice is off by default. Open **Settings → Voice** (under *Personal · this machine*), tick **Enable voice dictation**, and save; the Dictate/Read controls appear in terminal tab strips immediately, no restart needed. Until then no tab shows voice controls and nothing records, transmits, or speaks.
+
+With voice enabled, two controls live in each tab strip's header, beside Find and Save, and appear once the tab has a live session:
 
 - **Dictate** — click to start recording; a pulsing dot marks the recording state. Click again to stop: the clip is transcribed and the transcript is inserted into the tab it was recorded in, exactly as typed keystrokes would be. The OS microphone prompt fires once, on first use. If the tab's controls disappear mid-recording — you switch column, open the Dashboard band, or close the tab — the recording is cancelled and the microphone released immediately.
 - **Read** — click to have the tab's recent output read aloud; click again (or start a new read) to stop. It never speaks unprompted.
 
-Both stay idle until clicked. Nothing records unless Dictate is toggled on.
+Both stay idle until clicked. Nothing records unless Dictate is toggled on — and nothing is reachable at all while voice is disabled in Settings.
 
 ## How it works
 
@@ -44,19 +48,20 @@ The OpenRouter TTS voice id carries the language in its prefix — `en_paul_*`, 
 
 ## Privacy
 
-- A clip leaves the machine **only while you are recording, only once, on stop**, and only to the configured speech provider. condash keeps no copy of clips or audio, and nothing records unless Dictate is toggled on.
+- A clip leaves the machine **only while you are recording, only once, on stop**, and only to the configured speech provider. condash keeps no copy of clips or audio, and nothing records unless voice is enabled in Settings *and* Dictate is toggled on.
 - Read-aloud sends the tab's recent output **text** to the TTS provider when you click Read. As with the Dashboard: leave it off for tabs that display credentials you don't want transmitted.
 - The mic permission handler is scoped to the app's own window contents — no embedded `<webview>` or other contents can open the microphone through condash. Every other permission class passes through untouched, keeping Electron's no-handler default (auto-approve) — denying them broke the Resources pane's clipboard read.
 
 ## Settings reference
 
-Every field is optional; the full per-key reference lives in [Config files → Voice](../reference/config.md#voice).
+Voice is **off by default**; the master switch is the first field in the section. Every field is optional; the full per-key reference lives in [Config files → Voice](../reference/config.md#voice).
 
 | Setting | Default | Meaning |
 |---|---|---|
-| OpenRouter API key | — (env file) | Manual key when the env file is missing the entry. |
-| Mistral API key | — (env file) | Fallback provider key. |
-| Transcription model | `mistralai/voxtral-small-24b-2507` | OpenRouter audio-input model. |
-| Speech model | `mistralai/voxtral-mini-tts-2603` | TTS model on both providers. |
-| Speech voice | `en_paul_neutral` | Voxtral voice id (language prefix: `en_paul_*` / `gb_jane_*` / `fr_marie_*`). |
-| Mistral voice id | — | Enables the Mistral TTS fallback; unset skips it. |
+| Enable voice dictation | off | Master switch. With it off, tab strips show no voice controls and the handlers refuse work with a typed disabled notice. |
+| OpenRouter API key | — (env file) | Manual key when the env file is missing the entry. Hidden while voice is disabled. |
+| Mistral API key | — (env file) | Fallback provider key. Hidden while voice is disabled. |
+| Transcription model | `mistralai/voxtral-small-24b-2507` | OpenRouter audio-input model. Hidden while voice is disabled. |
+| Speech model | `mistralai/voxtral-mini-tts-2603` | TTS model on both providers. Hidden while voice is disabled. |
+| Speech voice | `en_paul_neutral` | Voxtral voice id (language prefix: `en_paul_*` / `gb_jane_*` / `fr_marie_*`). Hidden while voice is disabled. |
+| Mistral voice id | — | Enables the Mistral TTS fallback; unset skips it. Hidden while voice is disabled. |

@@ -80,6 +80,7 @@ describe('bootstrap IPC', () => {
     selectedBranches: ['feat-1', 'feat-1', 'feat-2'],
     branchFilterStickyAll: false,
     skillsActiveScope: 'user',
+    voice: { enabled: true },
   };
 
   it('returns the same value as each individual getter (shape parity)', async () => {
@@ -99,6 +100,8 @@ describe('bootstrap IPC', () => {
       await handlers.getBranchFilterStickyAll(trustedEvent),
     );
     expect(boot.skillsActiveScope).toEqual(await handlers.getSkillsActiveScope(trustedEvent));
+    // Plain-boolean mirror of `voice.enabled` — the renderer's voice gate.
+    expect(boot.voiceEnabled).toBe(true);
   });
 
   it('carries the config-bound reads (open-with + terminal prefs)', async () => {
@@ -139,6 +142,14 @@ describe('bootstrap IPC', () => {
     );
     expect(boot.skillsActiveScope).toEqual(await handlers.getSkillsActiveScope(trustedEvent));
     expect(boot.openWith).toEqual({});
+    // Voice is default-off: with no `voice` key (or an unset/false enabled)
+    // the bundle must not enable it — the renderer hides the pane controls
+    // based on exactly this field.
+    expect(boot.voiceEnabled).toBe(false);
+    await writeSettings({ ...richSettings, voice: { enabled: false } });
+    expect(((await handlers.bootstrap(trustedEvent)) as Record<string, unknown>).voiceEnabled).toBe(
+      false,
+    );
   });
 
   it('exposes exactly the documented BootstrapData keys', async () => {
@@ -157,6 +168,7 @@ describe('bootstrap IPC', () => {
         'theme',
         'treeExpansion',
         'uiFonts',
+        'voiceEnabled',
         'welcomeDismissed',
         'welcomeInitShown',
       ].sort(),

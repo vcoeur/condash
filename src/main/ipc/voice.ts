@@ -44,13 +44,22 @@ function sessionIsLive(sid: string): boolean {
   return listTerminalSessions().some((s) => s.id === sid && s.exited === undefined);
 }
 
-/** Wire the voice dictation + readback handlers. Called once from main entry. */
+/** Wire the voice dictation + readback handlers. Called once from main entry.
+ *
+ *  Both handlers are gated on `voice.enabled` (default off): when the feature
+ *  is not explicitly enabled they answer with a typed disabled result — no
+ *  provider call, no key resolution, no recording side effect. Argument
+ *  validation still runs first so the trust boundary keeps its uniform
+ *  `<channel>: expected …` shape. */
 export function registerVoiceIpc(): void {
   ipcMain.handle('voiceTranscribe', async (event, id: unknown, clip: unknown) => {
     requireMainWindowSender(event);
     const sid = requireNonEmptyString('voiceTranscribe', id);
     const audio = requireAudioClip('voiceTranscribe', clip);
     const { voice: prefs } = await readSettings();
+    if (prefs?.enabled !== true) {
+      return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
+    }
     const keys = resolveVoiceKeys(prefs);
     // Adapter errors are pre-redacted; let them reject so the renderer toast
     // shows the reason instead of a silent no-op.
@@ -68,11 +77,18 @@ export function registerVoiceIpc(): void {
   ipcMain.handle('voiceSpeak', async (event, id: unknown) => {
     requireMainWindowSender(event);
     const sid = requireNonEmptyString('voiceSpeak', id);
+    const { voice: prefs } = await readSettings();
+    if (prefs?.enabled !== true) {
+      return {
+        ok: false,
+        reason: 'disabled',
+        error: 'Voice is disabled — enable it in Settings → Voice.',
+      } satisfies VoiceSpeakResult;
+    }
     const text = tabRecentText(sid, TTS_INPUT_CHARS).trim();
     if (!text) {
       return { ok: false, error: 'No recent output in this tab to read aloud.' };
     }
-    const { voice: prefs } = await readSettings();
     const keys = resolveVoiceKeys(prefs);
     try {
       const spoken = await speakText(text, keys, prefs);
