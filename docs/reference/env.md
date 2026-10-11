@@ -30,7 +30,8 @@ description: Every environment variable condash reads — the GUI, the CLI, and 
 | `CONDASH_USER_AGENTS_MD`            | Override the user-scope `AGENTS.md` the Skills pane reads (test seam)                           | `~/.config/agents/AGENTS.md` | Any absolute path    |
 | `CONDASH_BENCH`                     | **Test only** — run the opt-in terminal-logger benchmark assertions                            | unset       | `1` or unset                          |
 | `CONDASH_TERM_ACCEPTANCE`           | **Test only** — run the terminal acceptance measurement harness (`terminal-acceptance-measure.spec.ts`) | unset | `1` or unset                    |
-| `CONDASH_TERM_ACCEPTANCE_LABEL`     | **Test only** — prefix for a unique `<label>-<timestamp>-<pid>/record.json` under `tests/acceptance-out/` | `run` | Letters, digits, `_` and `-` |
+| `CONDASH_TERM_QUALIFICATION_SMOKE`  | **Test only** — run the full measurement driver as qualification smoke, never acceptance; mutually exclusive with `CONDASH_TERM_ACCEPTANCE=1` | unset | `1` or unset |
+| `CONDASH_TERM_ACCEPTANCE_LABEL`     | **Test only** — prefix for a unique `<label>-<timestamp>-<pid>/record.json` under `tests/acceptance-out/` | `run` (`qualification-smoke` for smoke) | Letters, digits, `_` and `-` |
 
 condash reads few environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The vars above either feed Electron's startup, back the embedded terminal, or exist as CLI ergonomics and test seams.
 
@@ -130,9 +131,11 @@ CONDASH_BENCH=1 npm run test:unit -- src/main/terminal-logger-bench.test.ts
 
 The benchmark compares the incremental grid-body flush against a pinned copy of the pre-change flush and asserts both arms still produce the right bytes — see the terminal-logging notes in `AGENTS.md` for what the ratios mean and which ones are real.
 
-## `CONDASH_TERM_ACCEPTANCE`, `CONDASH_TERM_ACCEPTANCE_LABEL`
+## `CONDASH_TERM_ACCEPTANCE`, `CONDASH_TERM_QUALIFICATION_SMOKE`, `CONDASH_TERM_ACCEPTANCE_LABEL`
 
-**Test only — never set it in normal use.** `CONDASH_TERM_ACCEPTANCE=1` opts the Playwright suite into the terminal acceptance **measurement** harness (`tests/terminal-acceptance-measure.spec.ts`): a fresh-boot run of every probe family with per-case sample distributions, census ledgers and transport floors, written to `tests/acceptance-out/<label>.json` (`CONDASH_TERM_ACCEPTANCE_LABEL`, default `run`). Threshold judgments belong to the CI-faithful recipe `CI=1 taskset -c 0,1`; the always-on structural half (`terminal-acceptance.spec.ts`) needs no env var. Mechanism, thresholds and the two census traps the harness designs around: [the terminal acceptance harness explanation](../explanation/terminal-acceptance.md).
+**Test only — never set these in normal use.** `CONDASH_TERM_ACCEPTANCE=1` opts the Playwright suite into the terminal acceptance **measurement** harness (`tests/terminal-acceptance-measure.spec.ts`): a fresh-boot run of every probe family with per-case sample distributions, census ledgers and transport floors, written to `tests/acceptance-out/<label>-<timestamp>-<pid>/record.json` (`CONDASH_TERM_ACCEPTANCE_LABEL`, default `run`). Threshold judgments belong to the CI-faithful recipe `CI=1 taskset -c 0,1`; the always-on structural half (`terminal-acceptance.spec.ts`) needs no env var. Mechanism, thresholds and the two census traps the harness designs around: [the terminal acceptance harness explanation](../explanation/terminal-acceptance.md).
+
+`CONDASH_TERM_QUALIFICATION_SMOKE=1` independently enables the same full fixed-count measurement driver; it does not require `CONDASH_TERM_ACCEPTANCE=1`, and setting both to `1` is rejected. Smoke records use `purpose: qualification-smoke` and default label `qualification-smoke`; completed/classified smoke records have `allPass: false`, including under eligible CI affinity. Incomplete records can omit `allPass` and are never accepted. A smoke is an integration exercise, never a substitute for an accepted campaign boot.
 
 ## Not read from the environment
 
