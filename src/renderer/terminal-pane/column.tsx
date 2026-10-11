@@ -5,6 +5,7 @@ import { isAbnormalDeath } from '@shared/term-death-shape';
 import { RefreshIcon } from '../icons';
 import { createDropdownMenu } from '../dropdown-menu';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
+import { VoiceControls } from './column-parts/voice-controls';
 import type { DragDropController } from './drag-drop';
 import { linkedProjectsOf, unlinkAllForTab, unlinkProjectFromTab } from '../link-store';
 import { type Column, displayName, type Tab } from './types';
@@ -114,6 +115,9 @@ export interface TerminalColumnProps {
    *  Only reachable from a dead tab's row, which is kept on screen precisely so
    *  this is possible. */
   onRestartTab: (id: string) => void;
+  /** Surface a user-facing notice/error (wired to the app toast). Used by the
+   *  voice controls for dictation results and mic/readback errors. */
+  onNotice: (message: string) => void;
   /** True when the bottom band is showing the Dashboard rather than the
    *  terminals. Drives the active state of the Dashboard pseudo-tab (and
    *  suppresses the active ring on the real terminal tabs). */
@@ -410,6 +414,10 @@ export function TerminalColumn(props: TerminalColumnProps) {
           >
             Save
           </button>
+          <VoiceControls
+            activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
+            onNotice={props.onNotice}
+          />
         </div>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />

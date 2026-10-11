@@ -184,6 +184,7 @@ export function TerminalPane(props: TerminalPaneProps) {
       }}
       onRefreshTab={(id) => refreshSession(id)}
       onRestartTab={(id) => restartTab(id)}
+      onNotice={(message) => props.onError?.(message)}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
     />

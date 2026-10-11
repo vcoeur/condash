@@ -12,6 +12,7 @@
 //   settings    — persisted settings + per-pane prefs + open-with slots
 //   git         — git/worktree status + repo entries + repo events
 //   terminal    — terminal sessions, prefs, agents, spawn/data/exit messages
+//   voice       — push-to-talk dictation + readback (clips, prefs, results)
 //   logs        — terminal-log session browsing
 //   task-runs   — task scheduling + run tracking (runtime side of tasks)
 //   search      — global search query/hit/result shapes
@@ -25,6 +26,7 @@ export * from './sync';
 export * from './settings';
 export * from './git';
 export * from './terminal';
+export * from './voice';
 export * from './logs';
 export * from './task-runs';
 export * from './search';

@@ -145,6 +145,33 @@
   border-color: var(--border-strong);
 }
 
+/* Dictate toggle while recording: danger-tinted border + pulsing dot so the
+   recording state reads at a glance (and the mic is visibly live). */
+.terminal-header-action.voice-dictate.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.voice-record-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: voice-record-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-record-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
 .terminal-column.active::after {
   content: '';
   position: absolute;

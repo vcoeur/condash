@@ -50,6 +50,7 @@ import {
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
 import { AgentsSection } from './settings-modal-parts/sections-agents';
 import { DashboardSection } from './settings-modal-parts/sections-dashboard';
+import { VoiceSection } from './settings-modal-parts/sections-voice';
 import { SyncSection } from './settings-modal-parts/sections-sync';
 import { ActionBar, Button } from './actions';
 import { IconClose } from './icons';
@@ -938,6 +939,8 @@ export function SettingsModal(props: {
               <OpenWithSection parsed={globalParsed} bindText={bindText} patch={patchSettings} />
 
               <DashboardSection parsed={globalParsed} patch={patchSettings} />
+
+              <VoiceSection parsed={globalParsed} patch={patchSettings} />
 
               <SyncSection parsed={globalParsed} patch={patchSettings} />
 

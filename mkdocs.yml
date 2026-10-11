@@ -109,6 +109,7 @@ nav:
     - Auto-commit: guides/auto-commit.md
     - Use the embedded terminal: guides/terminal.md
     - Dashboard band (tab summaries): guides/dashboard.md
+    - Voice dictation and readback: guides/voice-dictation.md
     - Agent CLIs and model providers: guides/agent-clis-and-models.md
     - The Projects pane: guides/projects-pane.md
     - The Code pane: guides/code-pane.md

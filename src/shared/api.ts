@@ -50,6 +50,9 @@ import type {
   TreeEvent,
   TreeExpansionPrefs,
   TreeRoot,
+  VoiceAudioClip,
+  VoiceSpeakResult,
+  VoiceTranscribeResult,
 } from './types';
 
 export interface CondashApi {
@@ -377,6 +380,23 @@ export interface CondashApi {
    *  `terminal.perf.enabled` preference. Returns an unsubscribe function. */
   onPerfState(callback: (state: { recording: boolean }) => void): () => void;
   termWrite(id: string, data: string): Promise<void>;
+  /**
+   * Transcribe a recorded clip (push-to-talk) and insert the transcript into
+   * session `id`'s PTY input through the same terminal-service write path
+   * typed input uses. The provider call runs in main (OpenRouter first,
+   * Mistral fallback); the renderer never sees key values. Empty transcript
+   * and dead sessions are reported no-ops — `reason` names which, so the
+   * pane can show a notice instead of writing nothing silently.
+   */
+  voiceTranscribe(id: string, clip: VoiceAudioClip): Promise<VoiceTranscribeResult>;
+  /**
+   * Synthesize the session's recent visible output to speech (on-demand
+   * readback — never automatic). Reads the same recent-output slice the
+   * dashboard summarizer uses (recent scrollback, not a parsed "final
+   * answer") and returns base64 MP3 for the renderer to play. Provider
+   * selection + fallback mirror `voiceTranscribe`.
+   */
+  voiceSpeak(id: string): Promise<VoiceSpeakResult>;
   /** Read the system clipboard via the main process. Used by the terminal's
    * Ctrl+V handler — the renderer's navigator.clipboard.readText() is
    * permission-gated and unreliable in Electron. */

@@ -6,6 +6,7 @@ import type { Theme, UiFont, UiFontSize, UiFontWeight } from './common';
 import type { LayoutState } from './layout';
 import type { TerminalPrefs } from './terminal';
 import type { TaskConfigEntry } from './task-runs';
+import type { VoicePrefs } from './voice';
 
 /** Scope toggle in the Skills pane. `conception` reads the active
  *  conception's `AGENTS.md` + `.agents/skills/` tree; `user` reads the
@@ -33,6 +34,11 @@ export interface Settings {
   /** Per-machine terminal prefs. Moved here from condash.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
+  /** Per-machine voice-dictation prefs (provider keys + model/voice
+   * overrides). Global-only: the key fields are secrets and must never land
+   * in a versioned conception settings file. Read by the main-process voice
+   * adapter; the renderer never sees resolved key values. */
+  voice?: VoicePrefs;
   /** Composite-layout visibility + sizes. Persisted globally (per-machine)
    * so a fresh launch reopens with the last layout. */
   layout?: LayoutState;
