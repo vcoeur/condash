@@ -804,6 +804,16 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       gateOnActivity: true,
       historyLimit: 20,
     },
+    // Settings → Voice — every field
+    voice: {
+      enabled: true,
+      openrouterApiKey: 'sk-or-xxx',
+      mistralApiKey: 'mistral-xxx',
+      sttModel: 'mistralai/voxtral-small-24b-2507',
+      ttsModel: 'mistralai/voxtral-mini-tts-2603',
+      ttsVoice: 'en_paul_neutral',
+      mistralVoiceId: 'my-saved-voice',
+    },
     // Settings → Auto-commit — every field
     autoSync: {
       enabled: true,

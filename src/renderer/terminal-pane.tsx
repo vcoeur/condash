@@ -112,6 +112,10 @@ export interface TerminalPaneProps {
    *  (repaint) action on the newly-active tab. Pulled from
    *  `terminal.autoRefreshOnTabSwitch`. */
   autoRefreshOnTabSwitch?: boolean;
+  /** Whether voice dictation + readback is enabled (`voice.enabled`, default
+   *  off). Gates the per-column Dictate/Read controls: when false they do not
+   *  render at all, so nothing can start a recording. */
+  voiceEnabled?: boolean;
   /** Surface a user-facing error (wired to the app toast). Optional so the pane
    *  stays usable in tests and stories without a toast host. */
   onError?: (message: string) => void;
@@ -184,6 +188,8 @@ export function TerminalPane(props: TerminalPaneProps) {
       }}
       onRefreshTab={(id) => refreshSession(id)}
       onRestartTab={(id) => restartTab(id)}
+      onNotice={(message) => props.onError?.(message)}
+      voiceEnabled={props.voiceEnabled === true}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
     />

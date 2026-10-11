@@ -130,6 +130,9 @@ export interface ModalHostProps {
   handleCardMinWidthChange: UseCardMinWidth['handleCardMinWidthChange'];
   uiFonts: UseUiFonts['uiFonts'];
   handleUiFontsChange: UseUiFonts['handleUiFontsChange'];
+  /** Settings-modal callback: mirror a saved `voice.enabled` change into the
+   *  running UI (the modal owns the write). */
+  onChangeVoiceEnabled: (next: boolean) => void;
   // --- New project modal ---
   newProjectOpen: UseModals['newProjectOpen'];
   setNewProjectOpen: UseModals['setNewProjectOpen'];
@@ -223,6 +226,7 @@ export function ModalHost(props: ModalHostProps) {
     handleCardMinWidthChange,
     uiFonts,
     handleUiFontsChange,
+    onChangeVoiceEnabled,
     newProjectOpen,
     setNewProjectOpen,
     reloadProjects,
@@ -438,6 +442,7 @@ export function ModalHost(props: ModalHostProps) {
           onChangeCardMinWidth={handleCardMinWidthChange}
           uiFonts={uiFonts()}
           onChangeUiFonts={handleUiFontsChange}
+          onChangeVoiceEnabled={onChangeVoiceEnabled}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>

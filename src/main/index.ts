@@ -1,4 +1,4 @@
-import { app, BrowserWindow, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, net, protocol, session, shell } from 'electron';
 import { spawnSync } from 'node:child_process';
 import { existsSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
@@ -44,6 +44,7 @@ import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
 import { registerDashboardIpc } from './ipc/dashboard';
 import { registerAutoSyncIpc } from './ipc/auto-sync';
+import { registerVoiceIpc } from './ipc/voice';
 import { instrumentIpcMain } from './ipc/instrument';
 
 // Unified-binary dispatch (v2.24.0). The Linux bash wrapper at
@@ -223,6 +224,14 @@ function windowTitleFor(path: string | null): string {
   return path ? `Condash - ${path}` : 'Condash';
 }
 
+/** True only for the app's own top-level window contents — the guard behind
+ *  the media permission grant. A `<webview>` guest (`type: 'webview'`),
+ *  devtools, or a background page all fail the type check, so they can never
+ *  open the mic through condash. */
+function isOwnWindowContents(contents: Electron.WebContents | null): boolean {
+  return contents !== null && contents.getType() === 'window';
+}
+
 function updateWindowTitle(path: string | null): void {
   if (!mainWindow) return;
   mainWindow.setTitle(windowTitleFor(path));
@@ -374,6 +383,7 @@ function registerIpc(): void {
   registerTreesIpc();
   registerReposIpc();
   registerTerminalIpc();
+  registerVoiceIpc();
   registerLogsIpc();
   registerDashboardIpc();
   registerAutoSyncIpc();
@@ -490,6 +500,29 @@ app.whenReady().then(async () => {
   instrumentIpcMain();
   registerIpc();
   registerNoteAssetProtocol();
+  // Mic permission for push-to-talk dictation. The handler intercepts ONLY
+  // `media` — granted to the app's own top-level window contents, denied to
+  // a <webview> guest (the PDF viewer), devtools, or any other contents.
+  // Every other permission class keeps the no-handler default (auto-approve):
+  // denying them here would be an unrequested behaviour change (it broke the
+  // clipboard read in the Resources pane, which relies on the default). The
+  // OS mic prompt fires only on first use, never at boot.
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission !== 'media') {
+      callback(true);
+      return;
+    }
+    callback(isOwnWindowContents(webContents));
+  });
+  // The synchronous check variant Chromium consults before/alongside the
+  // request: same media-only scoping, audio capture only (the check carries a
+  // mediaType).
+  session.defaultSession.setPermissionCheckHandler(
+    (webContents, permission, _requestingOrigin, details) => {
+      if (permission !== 'media') return true;
+      return details.mediaType === 'audio' && isOwnWindowContents(webContents);
+    },
+  );
   // Warm the login-shell PATH cache so the first terminal / launcher spawn
   // doesn't pay the probe-shell latency. Fire-and-forget; resolveLoginPath
   // swallows its own failures and falls back to the inherited PATH.

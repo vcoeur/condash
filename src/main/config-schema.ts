@@ -18,6 +18,7 @@ import type {
   TreeExpansionPrefs,
   UiFontCategoryPrefs,
   UiFontPrefs,
+  VoicePrefs,
 } from '../shared/types';
 import { UI_FONTS, UI_FONT_SIZES, UI_FONT_WEIGHTS } from '../shared/types';
 import { THEME_VALUES } from '../shared/themes';
@@ -500,6 +501,41 @@ const dashboardSettings = z
   .strict();
 
 /**
+ * `voice` — push-to-talk dictation + on-demand readback for terminal panes.
+ * Per-machine in `settings.json`: the API keys are secrets and MUST live in
+ * the global file, never a versioned conception `condash.json`. **Default
+ * off**: `enabled` must be true before anything records, transmits, or
+ * speaks. By default the keys are read read-only from `~/.config/agents/.env`
+ * (`OPENROUTER_API_KEY` / `MISTRAL_API_KEY`); the fields here are the manual
+ * fallback for machines without that file. The adapter applies model/voice
+ * defaults (`docs/reference/config.md` carries the table).
+ */
+const voiceSettings = z
+  .object({
+    /** Master switch. Unset/false (the default) disables voice entirely —
+     *  no pane controls, and the voice IPC handlers answer with a typed
+     *  disabled result without any provider call. */
+    enabled: z.boolean().optional(),
+    /** OpenRouter API key. Unset → `OPENROUTER_API_KEY` from the agents env
+     *  file. Never logged, never sent to the renderer. */
+    openrouterApiKey: z.string().optional(),
+    /** Mistral API key. Unset → `MISTRAL_API_KEY` from the agents env file. */
+    mistralApiKey: z.string().optional(),
+    /** OpenRouter transcription model (audio-in chat completion). Default
+     *  `mistralai/voxtral-small-24b-2507`. */
+    sttModel: z.string().optional(),
+    /** OpenRouter TTS model. Default `mistralai/voxtral-mini-tts-2603`. */
+    ttsModel: z.string().optional(),
+    /** OpenRouter TTS voice id (Voxtral `en_paul_*` / `gb_jane_*` /
+     *  `fr_marie_*` personas). Default `en_paul_neutral`. */
+    ttsVoice: z.string().optional(),
+    /** Mistral TTS fallback voice (`voice_id` — preset or custom). Unset →
+     *  the Mistral TTS fallback is skipped. */
+    mistralVoiceId: z.string().optional(),
+  } satisfies Record<keyof VoicePrefs, z.ZodTypeAny>)
+  .strict();
+
+/**
  * `autoSync` — the GUI-driven periodic committer. Global/per-machine: it
  * describes how *this machine* drives commits while a conception is open, not
  * anything about the tree itself. All fields optional; `intervalMinutes` is
@@ -596,6 +632,9 @@ const globalOnlyFields = {
    *  it reads the same terminal-capture pipeline as `terminal.logging`. See
    *  {@link dashboardSettings}. */
   dashboard: dashboardSettings.optional(),
+  /** Push-to-talk dictation + readback. The key fields are secrets and keep
+   *  this global; see {@link voiceSettings}. */
+  voice: voiceSettings.optional(),
   /** GUI-driven periodic committer. Per-machine — describes how this machine
    *  drives commits, not the tree. See {@link autoSyncSettings}. */
   autoSync: autoSyncSettings.optional(),

@@ -61,6 +61,10 @@ export function registerBootstrapIpc(): void {
       skillsActiveScope: resolveSkillsActiveScope(settings),
       openWith,
       terminalPrefs,
+      // Master switch for the voice feature — the renderer hides the pane
+      // controls unless this is true, mirroring the default-off gate in the
+      // voice IPC handlers.
+      voiceEnabled: settings.voice?.enabled === true,
     };
   });
 }

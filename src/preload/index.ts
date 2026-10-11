@@ -125,6 +125,8 @@ const api: CondashApi = {
     };
   },
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
+  voiceTranscribe: (id, clip) => ipcRenderer.invoke('voiceTranscribe', id, clip),
+  voiceSpeak: (id) => ipcRenderer.invoke('voiceSpeak', id),
   clipboardReadText: () => ipcRenderer.invoke('clipboardReadText'),
   termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),
   termGeometry: (id) => ipcRenderer.invoke('termGeometry', id),

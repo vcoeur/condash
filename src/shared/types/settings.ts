@@ -6,6 +6,7 @@ import type { Theme, UiFont, UiFontSize, UiFontWeight } from './common';
 import type { LayoutState } from './layout';
 import type { TerminalPrefs } from './terminal';
 import type { TaskConfigEntry } from './task-runs';
+import type { VoicePrefs } from './voice';
 
 /** Scope toggle in the Skills pane. `conception` reads the active
  *  conception's `AGENTS.md` + `.agents/skills/` tree; `user` reads the
@@ -33,6 +34,11 @@ export interface Settings {
   /** Per-machine terminal prefs. Moved here from condash.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
+  /** Per-machine voice-dictation prefs (provider keys + model/voice
+   * overrides). Global-only: the key fields are secrets and must never land
+   * in a versioned conception settings file. Read by the main-process voice
+   * adapter; the renderer never sees resolved key values. */
+  voice?: VoicePrefs;
   /** Composite-layout visibility + sizes. Persisted globally (per-machine)
    * so a fresh launch reopens with the last layout. */
   layout?: LayoutState;
@@ -101,9 +107,10 @@ export interface Settings {
  * One-shot boot bundle returned by the `bootstrap` IPC. Collapses the active
  * conception path plus every mount-time settings getter (theme, layout,
  * welcome, card min-widths, tree expansion, branch filter, skills scope, open-
- * with slots, terminal prefs) into a single round-trip + a single settings read
- * in main, so the renderer's stores start without the serial `getConceptionPath`
- * gate and without ~15 separate settings reads (review finding S6). Each field
+ * with slots, terminal prefs, voice enabled) into a single round-trip + a
+ * single settings read in main, so the renderer's stores start without the
+ * serial `getConceptionPath` gate and without ~15 separate settings reads
+ * (review finding S6). Each field
  * carries the exact value — same shape — its individual getter would return, so
  * a renderer store can seed from it interchangeably. The individual getters stay
  * for reloads / other call sites.
@@ -136,6 +143,10 @@ export interface BootstrapData {
   openWith: OpenWithSlots;
   /** Effective terminal prefs (`termGetPrefs`). */
   terminalPrefs: TerminalPrefs;
+  /** Whether voice dictation + readback is enabled (`voice.enabled` — the
+   *  default is off). The renderer hides the pane controls unless true;
+   *  the Settings modal live-fires changes to this after a save. */
+  voiceEnabled: boolean;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The

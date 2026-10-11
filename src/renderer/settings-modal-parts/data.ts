@@ -13,6 +13,7 @@ import type {
   UiFontPrefs,
   UiFontSize,
   UiFontWeight,
+  VoicePrefs,
 } from '@shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '@shared/config-types';
 
@@ -33,6 +34,7 @@ export type Section =
   | 'agents'
   | 'open-with'
   | 'dashboard'
+  | 'voice'
   | 'auto-sync'
   | 'workspace'
   | 'repositories';
@@ -57,6 +59,7 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'agents', label: 'Launchers', scope: 'global' },
   { id: 'open-with', label: 'Open with', scope: 'global' },
   { id: 'dashboard', label: 'Dashboard', scope: 'global' },
+  { id: 'voice', label: 'Voice', scope: 'global' },
   { id: 'auto-sync', label: 'Auto-commit', scope: 'global' },
   // This conception — .condash/settings.json.
   { id: 'workspace', label: 'Workspace & paths', scope: 'conception' },
@@ -76,6 +79,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   agents: ['agents'],
   'open-with': ['open_with'],
   dashboard: ['dashboard'],
+  voice: ['voice'],
   'auto-sync': ['autoSync'],
   workspace: ['workspace_path', 'worktrees_path', 'long_lived_branches'],
   repositories: ['repositories'],
@@ -345,6 +349,9 @@ export interface RawConfig {
   /** Live terminal-tab summarization. Personal/global key (the `apiKey`
    *  secret never lands in a tree's settings file). */
   dashboard?: DashboardSettings;
+  /** Push-to-talk dictation + readback. Personal/global key (the provider
+   *  key fields are secrets and never land in a tree's settings file). */
+  voice?: VoicePrefs;
   /** GUI-driven periodic committer. Personal/global key. */
   autoSync?: AutoSyncSettings;
   /** Path-tracking fields — global file only, never written by a section. */
@@ -376,6 +383,7 @@ export const RAW_CONFIG_KEYS = [
   'cardMinWidth',
   'terminal',
   'dashboard',
+  'voice',
   'autoSync',
   'lastConceptionPath',
   'recentConceptionPaths',
