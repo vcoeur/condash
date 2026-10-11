@@ -1,10 +1,12 @@
 import { onCleanup } from 'solid-js';
-import type { SkillNode, Project } from '@shared/types';
+import type { SkillNode, Project, TreeEvent } from '@shared/types';
 import { applyTreeEvents } from '../tree-events';
 import type { ProjectsOwnership } from '../projects-store';
 import type { createTreeStore } from '../tree-store';
 
 export interface UseTreeEventsDeps {
+  invalidateViews: (events: TreeEvent[]) => void;
+  reloadTasks: () => void;
   /** Batch-arrival ownership shared with the projects store; forwarded
    *  unchanged into `applyTreeEvents`. */
   projectOwnership: ProjectsOwnership;
@@ -23,6 +25,8 @@ export interface UseTreeEventsDeps {
 export function useTreeEvents(deps: UseTreeEventsDeps): void {
   const unsubscribe = window.condash.onTreeEvents((events) => {
     void applyTreeEvents(events, {
+      invalidateViews: deps.invalidateViews,
+      reloadTasks: deps.reloadTasks,
       projectOwnership: deps.projectOwnership,
       mutateProjects: deps.mutateProjects,
       reloadProjects: deps.reloadProjects,

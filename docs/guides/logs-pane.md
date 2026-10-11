@@ -51,6 +51,8 @@ Clicking a card opens a full-overlay viewer. Its header shows `<day> <time> · <
 
 The transcript is **virtualised**: only the visible window of lines is mounted, so a multi-megabyte log scrolls as smoothly as a short one. Long lines scroll horizontally rather than wrapping — every row has to stay exactly one line tall for the virtualiser to work.
 
+The open transcript is a **snapshot**. Its header's **Reload** explicitly reads the same session again; parent Refresh does not reload an already-open transcript. No log watcher, polling or tail is added. Reload leaves the last successful transcript mounted while busy or after a read failure. It preserves the latest search text and scroll, clamps the active match to the new hit count (even when line count is unchanged), and does not automatically center a match on replacement. Scroll clamps when the transcript becomes shorter. Close, path changes and conception departure reject late replies and do not initiate more reads.
+
 Search sits above the transcript:
 
 | Key / control | Effect |

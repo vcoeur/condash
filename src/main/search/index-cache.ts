@@ -70,7 +70,12 @@ let buildToken = 0;
 let buildBuffer: {
   token: number;
   conceptionPath: string;
-  events: { eventName: string; absPath: string }[];
+  events: {
+    eventName: string;
+    absPath: string;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }[];
 } | null = null;
 
 // Per-path FIFO for in-flight `applyIndexFsEvent` work. Two concurrent events
@@ -95,6 +100,7 @@ function enqueuePerPath(key: string, work: () => Promise<void>): Promise<void> {
 export function clearSearchIndex(): void {
   current = null;
   buildToken++;
+  for (const event of buildBuffer?.events ?? []) event.resolve();
   buildBuffer = null;
 }
 
@@ -187,53 +193,68 @@ export async function rebuildSearchIndex(conceptionPath: string | null): Promise
   if (!conceptionPath) return;
   const token = buildToken;
   buildBuffer = { token, conceptionPath, events: [] };
-  const { resources, skills } = resolveConceptionPaths();
+  try {
+    const { resources, skills } = resolveConceptionPaths();
 
-  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles] = await Promise.all([
-    collectProjectFiles(join(conceptionPath, 'projects')),
-    collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
-    collectResourceFiles(join(conceptionPath, resources)),
-    collectSkillFiles(join(conceptionPath, skills)),
-  ]);
+    const [projectFiles, knowledgeFiles, resourceFiles, skillFiles] = await Promise.all([
+      collectProjectFiles(join(conceptionPath, 'projects')),
+      collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
+      collectResourceFiles(join(conceptionPath, resources)),
+      collectSkillFiles(join(conceptionPath, skills)),
+    ]);
 
-  const refs: FileRef[] = [
-    ...projectFiles.map((f) => toRef(conceptionPath, f.path, 'project', f.projectPath)),
-    ...knowledgeFiles.map((p) => toRef(conceptionPath, p, 'knowledge')),
-    ...resourceFiles.map((p) => toRef(conceptionPath, p, 'resources')),
-    ...skillFiles.map((p) => toRef(conceptionPath, p, 'skills')),
-  ];
+    const refs: FileRef[] = [
+      ...projectFiles.map((f) => toRef(conceptionPath, f.path, 'project', f.projectPath)),
+      ...knowledgeFiles.map((p) => toRef(conceptionPath, p, 'knowledge')),
+      ...resourceFiles.map((p) => toRef(conceptionPath, p, 'resources')),
+      ...skillFiles.map((p) => toRef(conceptionPath, p, 'skills')),
+    ];
 
-  const byPath = new Map<string, PreparedFile>();
-  await runWithConcurrency(
-    refs.map((ref) => async () => {
-      const prepared = await prepareFile(ref);
-      if (prepared) byPath.set(ref.path, prepared);
-    }),
-    PREPARE_CONCURRENCY,
-  );
+    const byPath = new Map<string, PreparedFile>();
+    await runWithConcurrency(
+      refs.map((ref) => async () => {
+        const prepared = await prepareFile(ref);
+        if (prepared) byPath.set(ref.path, prepared);
+      }),
+      PREPARE_CONCURRENCY,
+    );
 
-  // A newer rebuild/clear (conception switch) superseded us — drop the result
-  // (and the event buffer, which the newer build/clear already replaced).
-  if (token !== buildToken) return;
+    // A newer rebuild/clear (conception switch) superseded us — drop the result
+    // (and the event buffer, which the newer build/clear already replaced).
+    if (token !== buildToken) return;
 
-  // Cache each project's README title so every project hit can carry its
-  // human-readable project title, even when the README itself didn't match.
-  const projectTitleByPath = new Map<string, string>();
-  for (const file of byPath.values()) {
-    if (file.source === 'project' && file.path.toLowerCase().endsWith('/readme.md')) {
-      projectTitleByPath.set(file.projectPath!, file.title);
+    // Cache each project's README title so every project hit can carry its
+    // human-readable project title, even when the README itself didn't match.
+    const projectTitleByPath = new Map<string, string>();
+    for (const file of byPath.values()) {
+      if (file.source === 'project' && file.path.toLowerCase().endsWith('/readme.md')) {
+        projectTitleByPath.set(file.projectPath!, file.title);
+      }
     }
-  }
 
-  current = { conceptionPath, byPath, projectTitleByPath };
+    current = { conceptionPath, byPath, projectTitleByPath };
 
-  // Replay events that fired during the build window, in arrival order. Each
-  // replay re-reads the file, so the index converges on the on-disk state even
-  // when the walk above captured a pre-event version.
-  const buffered = buildBuffer?.events ?? [];
-  buildBuffer = null;
-  for (const event of buffered) {
-    await applyIndexFsEvent(conceptionPath, event.eventName, event.absPath);
+    // Replay events that fired during the build window, in arrival order. Each
+    // replay re-reads the file, so the index converges on the on-disk state even
+    // when the walk above captured a pre-event version.
+    const buffered = buildBuffer?.events ?? [];
+    buildBuffer = null;
+    for (const event of buffered) {
+      try {
+        if (token === buildToken)
+          await applyIndexFsEvent(conceptionPath, event.eventName, event.absPath);
+        event.resolve();
+      } catch (error) {
+        event.reject(error);
+        if (token === buildToken) clearSearchIndex();
+      }
+    }
+  } catch (error) {
+    if (token === buildToken) {
+      for (const event of buildBuffer?.events ?? []) event.reject(error);
+      clearSearchIndex();
+    }
+    throw error;
   }
 }
 
@@ -257,11 +278,15 @@ export async function applyIndexFsEvent(
       buildBuffer.conceptionPath === conceptionPath &&
       buildBuffer.token === buildToken
     ) {
-      buildBuffer.events.push({ eventName, absPath });
+      const buffer = buildBuffer;
+      return new Promise<void>((resolve, reject) => {
+        buffer.events.push({ eventName, absPath, resolve, reject });
+      });
     }
     return;
   }
   const key = toPosix(absPath);
+  const indexAtArrival = getIndex(conceptionPath);
 
   if (eventName === 'unlink') {
     const classified = classifyIndexedPath(conceptionPath, key);
@@ -269,7 +294,7 @@ export async function applyIndexFsEvent(
     // earlier add/change read for the same path.
     return enqueuePerPath(key, async () => {
       const live = getIndex(conceptionPath);
-      if (!live) return;
+      if (!live || live !== indexAtArrival) return;
       live.byPath.delete(key);
       if (
         classified?.source === 'project' &&
@@ -305,7 +330,7 @@ export async function applyIndexFsEvent(
     });
     // Re-fetch: a conception switch could have landed while we read the file.
     const live = getIndex(conceptionPath);
-    if (!live) return;
+    if (!live || live !== indexAtArrival) return;
     if (prepared) {
       live.byPath.set(key, prepared);
       if (

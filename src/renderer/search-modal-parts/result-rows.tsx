@@ -57,6 +57,7 @@ export function ProjectGroupRow(props: {
     <li class="search-result search-project-group">
       <button
         class="search-row search-project-header"
+        data-result-id={`project:${props.group.projectPath}`}
         onClick={() => props.onOpenProject(props.group.projectPath)}
       >
         <div class="search-row-main">
@@ -84,6 +85,7 @@ export function ProjectGroupRow(props: {
               <li>
                 <button
                   class="search-row search-file-row"
+                  data-result-id={`file:${file.path}`}
                   onClick={() =>
                     props.onOpenFile(
                       file.path,
@@ -117,7 +119,11 @@ export function ProjectGroupRow(props: {
 export function FileResultRow(props: { hit: SearchHit; onOpen: (path: string) => void }) {
   return (
     <li class="search-result">
-      <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
+      <button
+        class="search-row"
+        data-result-id={`${props.hit.source}:${props.hit.path}`}
+        onClick={() => props.onOpen(props.hit.path)}
+      >
         <div class="search-row-main">
           <RowIcon source={props.hit.source} />
           <div class="search-row-content">
@@ -148,7 +154,11 @@ export function LogResultRow(props: { hit: SearchHit; onOpen: (path: string) => 
   };
   return (
     <li class="search-result">
-      <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
+      <button
+        class="search-row"
+        data-result-id={`logs:${props.hit.path}`}
+        onClick={() => props.onOpen(props.hit.path)}
+      >
         <div class="search-row-main">
           <RowIcon source="logs" />
           <div class="search-row-content">

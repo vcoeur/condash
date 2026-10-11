@@ -7,7 +7,14 @@
 // through from App, so the modals render exactly when and how they did inline.
 
 import { createEffect, createSignal, Show } from 'solid-js';
-import type { ActionTemplate, Agent, Deliverable, Project, TermSession } from '@shared/types';
+import type {
+  ActionTemplate,
+  Agent,
+  Deliverable,
+  Project,
+  TermSession,
+  TreeEvent,
+} from '@shared/types';
 import type { TaskListItem } from '@shared/tasks';
 import type { AppOption } from './panes/tasks-parts/data';
 import { TasksView } from './panes/tasks';
@@ -46,6 +53,7 @@ import type { UsePromptModal } from './hooks/use-prompt-modal';
  *  handlers the modal tree reads, passed through verbatim from App. Field types
  *  reuse the owning hook / store interfaces so the surface stays exact. */
 export interface ModalHostProps {
+  liveViewEvents: () => TreeEvent[];
   activeModal: UseModals['activeModal'];
   setActiveModal: UseModals['setActiveModal'];
   requestFocusReturn: UseModals['requestFocusReturn'];
@@ -262,6 +270,8 @@ export function ModalHost(props: ModalHostProps) {
 
       <Show when={modal()}>
         <NoteModal
+          conceptionPath={conceptionPath()}
+          treeEvents={props.liveViewEvents()}
           state={modal()}
           onClose={() => router.closeChildModal(() => setModal(null))}
           onOpenInEditor={handleOpenInEditor}
@@ -333,6 +343,8 @@ export function ModalHost(props: ModalHostProps) {
 
       <Show when={searchModalOpen()}>
         <SearchModal
+          conceptionPath={conceptionPath()}
+          treeEvents={props.liveViewEvents()}
           onClose={() => setSearchModalOpen(false)}
           onOpenProject={(projectDir) => {
             // ProjectPreview is keyed on the README path (matching

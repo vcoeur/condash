@@ -1,17 +1,17 @@
 import {
   createEffect,
   createMemo,
-  createResource,
   createSignal,
   For,
   onCleanup,
   onMount,
   Show,
-  Suspense,
+  on,
+  untrack,
   type Component,
   type JSX,
 } from 'solid-js';
-import { ALL_SCOPES, type SearchResults } from '@shared/types';
+import { ALL_SCOPES, type SearchResults, type TreeEvent } from '@shared/types';
 import { groupHits } from './search/grouping';
 import { Modal } from './modal';
 import { KnowledgeIcon, LogsIcon, ProjectsIcon, ResourcesIcon, SkillsIcon } from './icons';
@@ -67,6 +67,8 @@ const SOURCE_META: Record<SourceFilter, SourceMeta> = {
 };
 
 export function SearchModal(props: {
+  conceptionPath?: string | null;
+  treeEvents?: TreeEvent[];
   onClose: () => void;
   onOpenProject: (projectPath: string) => void;
   onOpenFile: (path: string, projectPath?: string, projectTitle?: string) => void;
@@ -80,6 +82,15 @@ export function SearchModal(props: {
   const [selectedIndex, setSelectedIndex] = createSignal<number>(-1);
   let inputEl: HTMLInputElement | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let bodyEl: HTMLDivElement | undefined;
+  let disposed = false;
+  let owner = 0;
+  let revision = 0;
+  let inFlight = false;
+  let dirtyAgain = false;
+  const [results, setResults] = createSignal<SearchResults>(EMPTY_RESULTS);
+  const [loading, setLoading] = createSignal(false);
+  const [searchError, setSearchError] = createSignal<string | null>(null);
 
   // Re-runs whenever the query OR the active source filter changes. The scope
   // is always forwarded to the backend so it scans only what's needed: a
@@ -87,13 +98,79 @@ export function SearchModal(props: {
   // the four indexed markdown sources (ALL_SCOPES) — never the heavy, unindexed
   // logs tree. Logs are searched only when the Logs filter is active. Sub-
   // MIN_QUERY_LEN queries never reach the backend.
-  const [results] = createResource(
-    () => ({ q: query(), filter: sourceFilter() }),
-    async ({ q, filter }) => {
-      if (q.trim().length < MIN_QUERY_LEN) return EMPTY_RESULTS;
-      const scopes = filter === 'all' ? [...ALL_SCOPES] : [filter];
-      return window.condash.search(q, scopes);
-    },
+  const eligible = () => !disposed && query() === input() && query().trim().length >= MIN_QUERY_LEN;
+  const read = async (): Promise<void> => {
+    if (!eligible() || inFlight || !dirtyAgain) return;
+    inFlight = true;
+    dirtyAgain = false;
+    const readOwner = owner;
+    const readRevision = revision;
+    const q = query();
+    const filter = sourceFilter();
+    setLoading(true);
+    setSearchError(null);
+    try {
+      const next = await window.condash.search(q, filter === 'all' ? [...ALL_SCOPES] : [filter]);
+      if (!eligible() || owner !== readOwner || revision !== readRevision) return;
+      const selected = bodyEl?.querySelector<HTMLElement>('.search-row[data-selected]')?.dataset
+        .resultId;
+      const scroll = bodyEl?.querySelector<HTMLElement>('.search-results')?.scrollTop ?? 0;
+      setResults(next);
+      queueMicrotask(() => {
+        if (!eligible() || owner !== readOwner || revision !== readRevision) return;
+        const rows = [...(bodyEl?.querySelectorAll<HTMLElement>('.search-row') ?? [])];
+        setSelectedIndex(
+          selected ? rows.findIndex((row) => row.dataset.resultId === selected) : -1,
+        );
+        const scroller = bodyEl?.querySelector<HTMLElement>('.search-results');
+        if (scroller) scroller.scrollTop = scroll;
+      });
+    } catch (error) {
+      if (!disposed && owner === readOwner && revision === readRevision)
+        setSearchError(String(error));
+    } finally {
+      inFlight = false;
+      if (!disposed) setLoading(false);
+      if (eligible() && dirtyAgain) void read();
+    }
+  };
+  const invalidate = (): void => {
+    revision++;
+    if (!eligible()) return;
+    dirtyAgain = true;
+    void read();
+  };
+  createEffect(
+    on([query, sourceFilter, () => props.conceptionPath], () => {
+      owner++;
+      dirtyAgain = false;
+      if (!eligible()) setResults(EMPTY_RESULTS);
+      untrack(invalidate);
+    }),
+  );
+  createEffect(
+    on(
+      () => props.treeEvents,
+      (events) => {
+        const filter = sourceFilter();
+        if (filter === 'logs') return;
+        const scopes = filter === 'all' ? ALL_SCOPES : [filter];
+        if (
+          events?.some(
+            (event) =>
+              event.kind === 'unknown' ||
+              scopes.includes(
+                event.kind === 'project' || event.kind === 'projects-reload'
+                  ? 'projects'
+                  : event.kind,
+              ),
+          )
+        ) {
+          untrack(invalidate);
+        }
+      },
+      { defer: true },
+    ),
   );
 
   const grouped = createMemo(() => groupHits(results()?.hits ?? []));
@@ -175,6 +252,9 @@ export function SearchModal(props: {
   };
 
   const onInput = (value: string): void => {
+    owner++;
+    revision++;
+    dirtyAgain = false;
     setInput(value);
     setSelectedIndex(-1);
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -210,6 +290,9 @@ export function SearchModal(props: {
     queueMicrotask(() => inputEl?.focus());
   });
   onCleanup(() => {
+    disposed = true;
+    owner++;
+    dirtyAgain = false;
     document.removeEventListener('keydown', handleKeydown, true);
     if (debounceTimer) clearTimeout(debounceTimer);
   });
@@ -302,80 +385,84 @@ export function SearchModal(props: {
           <FilterButton filter="logs" />
         </div>
       </Show>
-      <div class="search-modal-body">
+      <div class="search-modal-body" ref={bodyEl}>
+        <Show when={searchError()}>
+          <div class="modal-error">{searchError()}</div>
+        </Show>
         <Show when={queryLongEnough()} fallback={<SearchTips />}>
-          <Suspense fallback={<div class="empty">Searching…</div>}>
-            <Show
-              when={visibleCount() > 0}
-              fallback={
-                <div class="empty">
-                  {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
-                  <Show when={grouped().total > 0 && sourceFilter() !== 'all'}>
-                    <div class="search-source-hints">
-                      Also found in{' '}
-                      <For each={filterHints()}>
-                        {(hint, i) => (
-                          <span class="search-source-hint-item">
-                            <Show when={i() > 0}>, </Show>
-                            <button
-                              class="search-source-hint-link"
-                              onClick={() => changeFilter(hint.filter)}
-                            >
-                              {hint.label} ({hint.count})
-                            </button>
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                </div>
-              }
-            >
-              <ul class="search-results search-results-sectioned">
-                <Show when={showProjects() && projectCount() > 0}>
-                  <SectionHeader filter="projects" count={projectCount()} />
-                  <For each={grouped().projects}>
-                    {(g) => (
-                      <ProjectGroupRow
-                        group={g}
-                        onOpenProject={openProjectAndClose}
-                        onOpenFile={openFileAndClose}
-                      />
-                    )}
-                  </For>
+          <Show when={loading() && results().hits.length === 0}>
+            <div class="empty">Searching…</div>
+          </Show>
+          <Show
+            when={visibleCount() > 0}
+            fallback={
+              <div class="empty">
+                {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
+                <Show when={grouped().total > 0 && sourceFilter() !== 'all'}>
+                  <div class="search-source-hints">
+                    Also found in{' '}
+                    <For each={filterHints()}>
+                      {(hint, i) => (
+                        <span class="search-source-hint-item">
+                          <Show when={i() > 0}>, </Show>
+                          <button
+                            class="search-source-hint-link"
+                            onClick={() => changeFilter(hint.filter)}
+                          >
+                            {hint.label} ({hint.count})
+                          </button>
+                        </span>
+                      )}
+                    </For>
+                  </div>
                 </Show>
-                <Show when={showKnowledge() && knowledgeCount() > 0}>
-                  <SectionHeader filter="knowledge" count={knowledgeCount()} />
-                  <For each={grouped().knowledge}>
-                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                  </For>
-                </Show>
-                <Show when={showResources() && resourcesCount() > 0}>
-                  <SectionHeader filter="resources" count={resourcesCount()} />
-                  <For each={grouped().resources}>
-                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                  </For>
-                </Show>
-                <Show when={showSkills() && skillsCount() > 0}>
-                  <SectionHeader filter="skills" count={skillsCount()} />
-                  <For each={grouped().skills}>
-                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                  </For>
-                </Show>
-                <Show when={showLogs() && logsCount() > 0}>
-                  <SectionHeader filter="logs" count={logsCount()} />
-                  <For each={grouped().logs}>
-                    {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
-                  </For>
-                </Show>
-              </ul>
-              <Show when={truncated()}>
-                <div class="search-truncated-hint">
-                  Showing top 100 of {totalBeforeCap()} matches — refine the query for more.
-                </div>
+              </div>
+            }
+          >
+            <ul class="search-results search-results-sectioned">
+              <Show when={showProjects() && projectCount() > 0}>
+                <SectionHeader filter="projects" count={projectCount()} />
+                <For each={grouped().projects}>
+                  {(g) => (
+                    <ProjectGroupRow
+                      group={g}
+                      onOpenProject={openProjectAndClose}
+                      onOpenFile={openFileAndClose}
+                    />
+                  )}
+                </For>
               </Show>
+              <Show when={showKnowledge() && knowledgeCount() > 0}>
+                <SectionHeader filter="knowledge" count={knowledgeCount()} />
+                <For each={grouped().knowledge}>
+                  {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                </For>
+              </Show>
+              <Show when={showResources() && resourcesCount() > 0}>
+                <SectionHeader filter="resources" count={resourcesCount()} />
+                <For each={grouped().resources}>
+                  {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                </For>
+              </Show>
+              <Show when={showSkills() && skillsCount() > 0}>
+                <SectionHeader filter="skills" count={skillsCount()} />
+                <For each={grouped().skills}>
+                  {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                </For>
+              </Show>
+              <Show when={showLogs() && logsCount() > 0}>
+                <SectionHeader filter="logs" count={logsCount()} />
+                <For each={grouped().logs}>
+                  {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
+                </For>
+              </Show>
+            </ul>
+            <Show when={truncated()}>
+              <div class="search-truncated-hint">
+                Showing top 100 of {totalBeforeCap()} matches — refine the query for more.
+              </div>
             </Show>
-          </Suspense>
+          </Show>
         </Show>
       </div>
     </Modal>

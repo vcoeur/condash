@@ -18,6 +18,8 @@ A **task** is a reusable, parameterized agent prompt: a name, a referenced [agen
 
 ## Where tasks live
 
+While Automations is open, external file or directory changes under `tasks/` refresh the definition cards through the existing watcher batch. The list has one active read and one coalesced follow-up; unrelated events do not refresh it. An open editor or run form keeps its existing draft, markers and filled values, even if its definition changes on disk. Close and reopen that child form to use the new definition. Closed Automations performs no definition-list reads; reopening loads current definitions. Running-task subscriptions remain separate from list refresh.
+
 Each task is one directory under your conception:
 
 ```

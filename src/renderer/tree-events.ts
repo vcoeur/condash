@@ -9,6 +9,8 @@ import { rendererPerf } from './perf-renderer';
  * matching reloader so an edit in one pane doesn't refetch the others.
  */
 export interface TreeEventsDeps {
+  invalidateViews?: (events: TreeEvent[]) => void;
+  reloadTasks?: () => void;
   /** Ownership for per-project patches, shared with the projects store.
    *  `registerBatch` runs synchronously before this dispatcher's first
    *  `await`, so every operation in the received batch — including unlink
@@ -53,6 +55,8 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
 }
 
 async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Promise<void> {
+  deps.invalidateViews?.(events);
+  if (events.some((event) => event.kind === 'tasks')) deps.reloadTasks?.();
   // Registration pass — strictly before the first await, so a held
   // `getProject` reply for an early event can never apply over a later
   // operation in the same batch (a deletion must never be resurrected by
@@ -81,6 +85,7 @@ async function dispatchTreeEvents(events: TreeEvent[], deps: TreeEventsDeps): Pr
       // before notifying; guarded here so a stray one is a no-op, not a crash.
       continue;
     }
+    if (event.kind === 'tasks' || event.kind === 'logs') continue;
     if (event.kind === 'projects-reload') {
       // Project-tree structure changed (dir add/remove, bulk checkout): reload
       // only the project list — none of the other panes (R1).

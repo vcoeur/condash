@@ -237,21 +237,24 @@ The main process pushes to the renderer over several one-way channels, **all** d
 
 The PTY (`onTermData` / `onTermExit` / `onTermSessions`), dashboard (`onDashboardState` / `onDashboardTabSummaries`), auto-sync (`onAutoSyncStatus`, channel `auto-sync-status`), task-run (`onTaskRuns`), and perf (`onPerfState`) channels are documented in their own sections above; the file-watcher and status channels follow. A single chokidar watcher rooted at `<conception>/`, debounced 250 ms, drives `onTreeEvents` and `onRepoEvents`.
 
-That watcher covers `projects/`, `knowledge/`, the resources and skills roots, the three conception-config candidates, and the conception-level `AGENTS.md` / `CLAUDE.md`. It does **not** cover the per-machine `settings.json`, which lives outside the conception — a hand-edit there produces no event.
+That watcher covers `projects/`, `knowledge/`, `tasks/`, the resources and skills roots, the three conception-config candidates, and the conception-level `AGENTS.md` / `CLAUDE.md`. It does **not** cover the per-machine `settings.json`, user-scope skills, or `.condash/logs/` — a hand-edit there produces no tree event.
 
 ### `onTreeEvents(cb)`
 
-Per-path tree events for projects + knowledge + resources + skills + logs + configuration. Classification:
+Per-path tree events on the existing `tree-events` channel. Classification:
 
-- `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
+- `project` — `{ kind: 'project', op: 'add' | 'change' | 'unlink', path, changedPath? }`. `path` remains the project's README for card patches via `getProject`. A child-file event carries its original absolute POSIX path as optional `changedPath`, with card `op: 'change'` even when that child was removed. Distinct children sharing one README remain distinct document notifications.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
 - `resources` — any file under `<conception>/resources/`. Coarse.
 - `skills` — any file under `<conception>/.agents/skills/`, the [agedum](skill.md#the-harness-launcher-agedum) source tree the Skills pane reads. Coarse.
-- `logs` — any session file under `.condash/logs/`. Drives the Logs surface's live refresh.
-- `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
+- `tasks` — `{ kind: 'tasks' }`, emitted for file/directory changes under `tasks/`. Invalidates the visible Automations definition list once per batch, not its open drafts or run subscriptions.
+- `logs` — retained in the shared type for compatibility; the conception watcher does not emit it or watch session logs. An open transcript uses explicit `logsReadSession` Reload only.
+- `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Refreshes renderer config-backed consumers, not the watcher: the Resources/Skills watch roots and ignore policy are fixed.
 - `unknown` — any classification failure. Forces a full re-render.
+- `projects-reload` — project directory structure changed; reload only Projects. A pathless ancestor removal cannot identify an open child document.
+- `ignore` — generated project indexes or excluded scratch paths; no renderer invalidation.
 
-A burst of `unknown` events collapses to one event before the renderer is notified.
+Each captured 250 ms batch waits for its incremental search-index completion, including initial-build replay, before ordered publication. A failed update clears stale RAM so the existing search disk fallback is used. Config edits keep the same live watcher, index and pending stability checks, including real changes not yet delivered by chokidar; no synthetic unknown or routine close/reopen is needed. Received pending/captured exact-path and task events survive the separate one-shot error repair under conception-root ownership; genuine root departure suppresses them. Watcher-instance ownership separately rejects obsolete callbacks and reattachment. Error repair clears RAM before replacement, leaving disk fallback available until the new index builds. Unknown events coalesce to one backstop **beside**, never instead of, retained typed events. Unknown alone does not request task definitions or guess changed-document paths. These payload additions use the existing subscription and introduce no new IPC method/channel.
 
 ### `onRepoEvents(cb)`
 
