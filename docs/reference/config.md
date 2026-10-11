@@ -174,7 +174,7 @@ Edit it in **Settings → Voice** (under **Personal · this machine**). It is a 
 | `ttsVoice`          | string | `en_paul_neutral`                | OpenRouter TTS voice id. Voxtral encodes language + persona + emotion in the id — `en_paul_*`, `gb_jane_*`, `fr_marie_*`.                                                          |
 | `mistralVoiceId`    | string | —                                | Voice id for the Mistral TTS fallback only (its API has no anonymous preset voice). Unset → the fallback is skipped and read-aloud relies on OpenRouter alone.                     |
 
-> **Privacy:** a clip leaves the machine only while you are recording and only once, on stop, to the configured speech provider; read-aloud sends the tab's recent output text when you click **Read**. condash keeps no copy of clips or audio, records nothing unless Dictate is toggled on, and never transmits key values to the renderer. The OS mic prompt fires on first use only. Read-aloud output inherits everything the tab shows — the same caution as the dashboard applies to tabs displaying secrets.
+> **Privacy:** a clip leaves the machine only while you are recording and only once, on stop, to the configured speech provider; read-aloud sends the tab's recent output text when you click **Read**. condash keeps no copy of clips or audio, records nothing unless Dictate is toggled on, and uses key values only in the main process for provider calls (a key entered in Settings is displayed back by the Settings prefill). The OS mic prompt fires on first use only. Read-aloud output inherits everything the tab shows — the same caution as the dashboard applies to tabs displaying secrets.
 
 ### Auto-commit
 

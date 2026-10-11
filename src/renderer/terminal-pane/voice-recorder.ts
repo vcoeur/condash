@@ -15,9 +15,11 @@
 import { bytesToBase64, encodeWav, float32ToInt16, RECORD_SAMPLE_RATE } from './voice-capture';
 import type { VoiceAudioClip } from '@shared/types';
 
-/** Clip shorter than ~250 ms carries no usable speech — treat it as an
- *  accidental double-click and report an empty clip. */
-const MIN_SAMPLES = RECORD_SAMPLE_RATE / 4;
+/** A clip shorter than ~250 ms carries no usable speech — treat it as an
+ *  accidental double-click and report an empty clip. Compared against a
+ *  duration so the gate stays honest when the backend ignores the requested
+ *  rate (samples are counted at `capturedRate`, not RECORD_SAMPLE_RATE). */
+const MIN_CLIP_MS = 250;
 
 const BUFFER_SIZE = 4096;
 
@@ -137,7 +139,7 @@ export function createVoiceRecorder(): VoiceRecorder {
       release();
       chunks = [];
       sampleCount = 0;
-      if (samples < MIN_SAMPLES) return null;
+      if (samples < (rate * MIN_CLIP_MS) / 1000) return null;
       const merged = new Float32Array(samples);
       let offset = 0;
       for (const chunk of collected) {
