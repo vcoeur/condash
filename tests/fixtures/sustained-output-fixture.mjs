@@ -83,9 +83,26 @@ function makeRandom(seed) {
 }
 
 const WORDS = [
-  'resolved', 'emitted', 'chunk', 'module', 'cached', 'skipped', 'rebuilt',
-  'entry', 'bytes', 'window', 'session', 'flushed', 'parsed', 'scanned',
-  'batch', 'steady', 'fresh', 'stale', 'queued', 'drained',
+  'resolved',
+  'emitted',
+  'chunk',
+  'module',
+  'cached',
+  'skipped',
+  'rebuilt',
+  'entry',
+  'bytes',
+  'window',
+  'session',
+  'flushed',
+  'parsed',
+  'scanned',
+  'batch',
+  'steady',
+  'fresh',
+  'stale',
+  'queued',
+  'drained',
 ];
 
 /** One line of EXACTLY `length` printable ASCII, last char never blank. */
@@ -125,8 +142,7 @@ if (payloadBudget < args.lineBytes) {
 }
 const random = makeRandom(args.seed);
 const fullPayloadLines = Math.floor(payloadBudget / (args.lineBytes + 1));
-const lastPayloadLength =
-  payloadBudget - fullPayloadLines * (args.lineBytes + 1) - 1; // -1: its newline
+const lastPayloadLength = payloadBudget - fullPayloadLines * (args.lineBytes + 1) - 1; // -1: its newline
 
 // Token lines interleave by BYTE OFFSET (count-scheduled), never by clock:
 // token i rides once cumulative scheduled payload bytes cross (i+1)/(tokens+1)
@@ -164,11 +180,11 @@ for (const text of lines) scheduled += text.length + 1;
 if (scheduled !== totalBytes) {
   const drift = totalBytes - scheduled;
   const last = lines[lines.length - 1];
-   const repaired =
-     drift > 0 ? synthLine(last.length + drift, random) : last.slice(0, last.length + drift);
-   lines[lines.length - 1] = repaired;
-   scheduled = lines.reduce((sum, line) => sum + line.length + 1, 0);
-   if (scheduled !== totalBytes) fail(`unrepaired byte drift: ${scheduled}/${totalBytes}`);
+  const repaired =
+    drift > 0 ? synthLine(last.length + drift, random) : last.slice(0, last.length + drift);
+  lines[lines.length - 1] = repaired;
+  scheduled = lines.reduce((sum, line) => sum + line.length + 1, 0);
+  if (scheduled !== totalBytes) fail(`unrepaired byte drift: ${scheduled}/${totalBytes}`);
 }
 
 // ---- self-checks: the coverage pins, with the arithmetic in the failure ----
@@ -184,6 +200,158 @@ if (args.mode === 'burst') {
 // Retention is checked by the spec against actual mounted geometry, including wraps.
 
 // ---- stdin echo (sustain probes only; burst census must stay unpolluted) ----
+import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
+import {
+  openSync,
+  writeSync,
+  fsyncSync,
+  closeSync,
+  statSync,
+  writeFileSync,
+  renameSync,
+} from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const sourceNow = () => performance.now();
+const tracing = process.env.CONDASH_CAUSAL_SEAL_PATH !== undefined;
+let traceHelper;
+let storage;
+let expectedTrace;
+if (tracing) {
+  if (args.mode !== 'burst' || args.seed !== 271828 || !args.hold || args.echo)
+    throw new Error('causal trace requires the held, non-echoing pinned burst');
+  // Compile the exact shared module before GO; Node22 builds without native TS support need no loader flags.
+  const { build } = await import('esbuild');
+  const compiled = await build({
+    entryPoints: [fileURLToPath(new URL('./terminal-causal-trace.ts', import.meta.url))],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node22',
+    write: false,
+  });
+  traceHelper = await import(
+    'data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64')
+  );
+  storage = new traceHelper.TraceStorage();
+  let bytes = 0;
+  expectedTrace = {
+    runId: process.env.CONDASH_CAUSAL_RUN_ID,
+    sourceId: process.env.CONDASH_CAUSAL_SOURCE_ID,
+    mode: 'normal',
+    arm: process.env.CONDASH_CAUSAL_ARM,
+    sealPath: process.env.CONDASH_CAUSAL_SEAL_PATH,
+    eventsFile: process.env.CONDASH_CAUSAL_SEAL_PATH + '.events.jsonl',
+    writeEnds: lines.map((line) => (bytes += line.length + 1)),
+  };
+  if (
+    !expectedTrace.runId ||
+    !expectedTrace.sourceId ||
+    !['active-census', 'hidden-burst-idle'].includes(expectedTrace.arm)
+  )
+    throw new Error('missing independently declared causal trace identity');
+}
+const memoryBeforeGo = process.memoryUsage();
+let appendMs = 0;
+let appendCpuUserMicros = 0;
+let appendCpuSystemMicros = 0;
+let controlBytes = 0;
+let controlChunks = 0;
+let controlHandlingMs = 0;
+
+function traceEvent(kind, fields = {}) {
+  if (!tracing) return;
+  const appendStart = sourceNow();
+  const cpuStart = process.cpuUsage();
+  const lo = kind === 'go' ? Math.min(appendStart, fields.startedAt) : appendStart;
+  storage.append(kind, lo, lo, fields);
+  storage.buffer[(storage.count - 1) * traceHelper.TRACE_SLOTS + 3] = sourceNow();
+  const cpu = process.cpuUsage(cpuStart);
+  appendCpuUserMicros += cpu.user;
+  appendCpuSystemMicros += cpu.system;
+  appendMs += sourceNow() - appendStart;
+}
+
+function exportCompletedTrace() {
+  if (!tracing) return;
+  const exportStart = sourceNow();
+  const exportCpuStart = process.cpuUsage();
+  const exported = traceHelper.serializeCompletedTrace(storage, expectedTrace);
+  const payloadSha256 = createHash('sha256')
+    .update(lines.join('\n') + '\n')
+    .digest('hex');
+  const serializationHashMs = sourceNow() - exportStart;
+  const fileStart = sourceNow();
+  const fd = openSync(expectedTrace.eventsFile, 'wx');
+  try {
+    const bytes = Buffer.from(exported.serialized);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset);
+      if (written <= 0) throw new Error('trace export made no progress');
+      offset += written;
+    }
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  const exportFileMs = sourceNow() - fileStart;
+  if (statSync(expectedTrace.eventsFile).size !== exported.eventBytes)
+    throw new Error('trace export byte mismatch');
+  const exportCpu = process.cpuUsage(exportCpuStart);
+  const seal = {
+    protocol: traceHelper.TRACE_PROTOCOL,
+    recordLayout: 'float64-slots-v4',
+    eventEncoding: 'jsonl-number-array-16-v1',
+    fieldMaskVersion: 1,
+    runId: expectedTrace.runId,
+    sourceId: expectedTrace.sourceId,
+    mode: expectedTrace.mode,
+    eventsFile: expectedTrace.eventsFile,
+    eventCount: storage.count,
+    eventBytes: exported.eventBytes,
+    maxEventBytes: exported.maxEventBytes,
+    digest: exported.digest,
+    overflow: storage.overflow,
+    traceMemoryBytes: storage.buffer.byteLength,
+    traceRecordSlots: traceHelper.TRACE_SLOTS,
+    traceCapacity: traceHelper.TRACE_CAPACITY,
+    traceUtilization: storage.count / traceHelper.TRACE_CAPACITY,
+    traceMemoryUsedBytes: storage.count * traceHelper.TRACE_SLOTS * Float64Array.BYTES_PER_ELEMENT,
+    producerTraceMemory: traceHelper.MEMORY_POLICY,
+    noMeasuredPathSerializationHashOrFileIO: true,
+    completeSequence: exported.events.at(-1).sequence,
+    appendMs,
+    appendCpuUserMicros,
+    appendCpuSystemMicros,
+    controlBytes,
+    controlHandlingMs,
+    controlChunks,
+    payloadBytes: totalBytes,
+    completedPayloadBytes: scheduled,
+    payloadSha256,
+    exportStartSourceMs: exportStart,
+    serializationHashMs,
+    exportFileMs,
+    exportPreparationMs: sourceNow() - exportStart,
+    exportCpuUserMicros: exportCpu.user,
+    exportCpuSystemMicros: exportCpu.system,
+    memoryBeforeGo,
+    memoryAfterExport: process.memoryUsage(),
+    resourceUsage: process.resourceUsage(),
+    sourcePid: process.pid,
+    sourceVersions: process.versions,
+    sealWriteTimingScope: traceHelper.TIMING_SCOPE,
+  };
+  traceHelper.validateSeal(seal, expectedTrace, exported.events);
+  const sealText = JSON.stringify(seal);
+  if (Buffer.byteLength(sealText) > traceHelper.SEAL_LIMIT)
+    throw new Error('trace seal export limit');
+  writeFileSync(expectedTrace.sealPath + '.tmp', sealText, { flag: 'wx' });
+  renameSync(expectedTrace.sealPath + '.tmp', expectedTrace.sealPath);
+}
+
 let echoOn = args.echo;
 let carry = '';
 const answered = new Set();
@@ -193,6 +361,32 @@ const goPromise = new Promise((resolve) => {
   goResolve = resolve;
 });
 process.stdin.on('data', (chunk) => {
+  if (tracing) {
+    const handlingStart = sourceNow();
+    controlBytes += chunk.length;
+    controlChunks++;
+    try {
+      for (const token of controls.consume(chunk.toString('utf8'))) {
+        if (token === 'GO' && !go) {
+          go = true;
+          goResolve?.();
+        } else if (token.startsWith('C'))
+          traceEvent('checkpoint', {
+            token,
+            bytes: cumulativeBytes[index],
+            paused: false,
+            nextDue:
+              index < lines.length
+                ? startedAt + (cumulativeBytes[index + 1] * 1000) / args.rate
+                : null,
+          });
+        else throw new Error('unexpected control on non-echoing causal source');
+      }
+    } finally {
+      controlHandlingMs += sourceNow() - handlingStart;
+    }
+    return;
+  }
   const text = carry + chunk.toString('utf8');
   if (!go && text.includes('GO')) {
     go = true;
@@ -209,6 +403,7 @@ process.stdin.on('data', (chunk) => {
   if (carry.length > 64) fail('unterminated probe input');
   if (text.trim() === 'Q') echoOn = false;
 });
+const controls = tracing ? new traceHelper.TraceControls() : null;
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.resume();
 
@@ -220,10 +415,11 @@ out.write(
 
 // The schedule starts (t=0) when GO arrives — or immediately without --hold —
 // so the achieved rate is measured over generation time only.
-const startedAtPromise = go ? Promise.resolve(Date.now()) : goPromise.then(() => Date.now());
+const startedAtPromise = go ? Promise.resolve(sourceNow()) : goPromise.then(() => sourceNow());
 
 const cumulativeBytes = [0];
-for (const text of lines) cumulativeBytes.push(cumulativeBytes[cumulativeBytes.length - 1] + text.length + 1);
+for (const text of lines)
+  cumulativeBytes.push(cumulativeBytes[cumulativeBytes.length - 1] + text.length + 1);
 let index = 0;
 
 // Backpressure discipline: `out.write` into a paused pty queues in this
@@ -240,23 +436,46 @@ let realStartedAt = 0;
 function emitNext() {
   while (index < lines.length) {
     const dueMs = startedAt + (cumulativeBytes[index + 1] * 1000) / args.rate;
-    const now = Date.now();
+    const now = sourceNow();
+    traceEvent('scheduler-check', { due: dueMs, now, bytes: cumulativeBytes[index] });
     if (dueMs > now) {
-      setTimeout(emitNext, dueMs - now);
+      traceEvent('pace-arm', { due: dueMs, bytes: cumulativeBytes[index] });
+      setTimeout(() => {
+        traceEvent('timer-dispatch', { due: dueMs });
+        emitNext();
+      }, dueMs - now);
       return;
     }
     const line = lines[index];
     index++;
-    if (!out.write(`${line}\n`)) {
+    traceEvent('write-enter', {
+      writeIndex: index,
+      from: cumulativeBytes[index - 1],
+      to: cumulativeBytes[index],
+      due: dueMs,
+    });
+    const accepted = out.write(`${line}\n`);
+    traceEvent('write-return', {
+      writeIndex: index,
+      from: cumulativeBytes[index - 1],
+      to: cumulativeBytes[index],
+      accepted,
+    });
+    if (!accepted) {
+      traceEvent('drain-enter', { writeIndex: index });
       out.once('drain', () => {
-        startedAt = Date.now() - (cumulativeBytes[index] * 1000) / args.rate;
+        traceEvent('drain-exit');
+        startedAt = sourceNow() - (cumulativeBytes[index] * 1000) / args.rate;
+        traceEvent('rebase', { startedAt });
         emitNext();
       });
       return;
     }
   }
-  const elapsedMs = Date.now() - realStartedAt;
-  out.write(`PAYLOAD-END ${scheduled} ${elapsedMs}\nDONE\n`);
+  const elapsedMs = sourceNow() - realStartedAt;
+  traceEvent('complete', { bytes: scheduled });
+  out.write(`PAYLOAD-END ${scheduled} ${Math.round(elapsedMs)}\nDONE\n`);
+  exportCompletedTrace();
   // Stay alive so the spec closes the tab after its census — an exited tab
   // must never unmount the buffer mid-read.
   setInterval(() => {}, 1 << 30);
@@ -265,6 +484,7 @@ function emitNext() {
 startedAtPromise.then((start) => {
   startedAt = start;
   realStartedAt = start;
+  traceEvent('go', { startedAt: start });
   out.write('PAYLOAD-BEGIN\n');
   emitNext();
 });

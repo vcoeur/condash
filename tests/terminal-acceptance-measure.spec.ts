@@ -3,6 +3,13 @@ import { dirname, join, resolve } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { bootApp } from './fixtures/electron-app';
 import { summarize } from './fixtures/acceptance-stats';
+import { randomUUID } from 'node:crypto';
+import {
+  qualify,
+  TRACE_PROTOCOL,
+  QUALIFICATION_PROTOCOL,
+  type TraceExpected,
+} from './fixtures/terminal-causal-trace';
 import {
   armTerminalTestSurfaces,
   burstCensus,
@@ -16,7 +23,6 @@ import {
   measureSettledSwitch,
   measureTransportFloor,
   measureObserverOverhead,
-  isLoadedAck,
   prepareBurstRetention,
   recordIdentity,
   registryCensus,
@@ -28,6 +34,11 @@ import {
   waitForDomTerm,
   waitForPayload,
   waitForPerfEvidence,
+  causalPayloadPlan,
+  startCausalPayload,
+  causalObservations,
+  waitForCausalSource,
+  requireTraceFilesAbsent,
   type ProbeOutcome,
 } from './fixtures/terminal-acceptance';
 
@@ -39,7 +50,11 @@ const RECEIPT_BYTES = 48 * 1024;
 const BURST_BYTES = 3_932_160;
 const SCROLLBACK = 50_000;
 
-test.skip(process.env.CONDASH_TERM_ACCEPTANCE !== '1', 'set CONDASH_TERM_ACCEPTANCE=1');
+const SMOKE = process.env.CONDASH_TERM_QUALIFICATION_SMOKE === '1';
+test.skip(
+  process.env.CONDASH_TERM_ACCEPTANCE !== '1' && !SMOKE,
+  'set CONDASH_TERM_ACCEPTANCE=1 or CONDASH_TERM_QUALIFICATION_SMOKE=1',
+);
 test.setTimeout(900_000);
 // Independent boots have independent labels; retries are not acceptance repetitions.
 test.describe.configure({ retries: 0 });
@@ -92,11 +107,22 @@ async function spawn(
   script: string,
   args = '',
   ready = 'ECHO-PROBE READY',
+  trace?: TraceExpected,
 ): Promise<string> {
+  const quote = (value: string) => "'" + value.replace(/'/g, "'\\''") + "'";
+  const environment = trace
+    ? Object.entries({
+        CONDASH_CAUSAL_RUN_ID: trace.runId,
+        CONDASH_CAUSAL_SOURCE_ID: trace.sourceId,
+        CONDASH_CAUSAL_ARM: trace.arm,
+        CONDASH_CAUSAL_SEAL_PATH: trace.sealPath,
+      })
+        .map(([key, value]) => `${key}=${quote(value)}`)
+        .join(' ') + ' '
+    : '';
   const { id } = await page.evaluate(
-    ({ script, args }) =>
-      window.condash.termSpawn({ side: 'my', command: `node '${script}' ${args}` }),
-    { script, args },
+    ({ command }) => window.condash.termSpawn({ side: 'my', command }),
+    { command: `${environment}node ${quote(script)} ${args}` },
   );
   await page.waitForSelector(`[data-sid="${id}"]`);
   await page.locator(`[data-sid="${id}"]`).click();
@@ -154,12 +180,19 @@ async function freshness(page: Page, title: string, write: () => Promise<void>):
 }
 
 test('terminal acceptance measurement run (all probe families)', async ({}, testInfo) => {
-  const label = process.env.CONDASH_TERM_ACCEPTANCE_LABEL ?? 'run';
+  if (SMOKE && process.env.CONDASH_TERM_ACCEPTANCE === '1')
+    throw new Error('smoke and acceptance purposes are mutually exclusive');
+  const purpose = SMOKE ? 'qualification-smoke' : 'acceptance';
+  const label =
+    process.env.CONDASH_TERM_ACCEPTANCE_LABEL ?? (SMOKE ? 'qualification-smoke' : 'run');
   if (!/^[a-zA-Z0-9_-]+$/.test(label)) throw new Error('invalid acceptance label');
   const output = resolve(__dirname, 'acceptance-out', `${label}-${Date.now()}-${process.pid}`);
   await mkdir(output, { recursive: true });
   const record: Record<string, unknown> = {
     label,
+    purpose,
+    protocol: TRACE_PROTOCOL,
+    qualificationProtocol: QUALIFICATION_PROTOCOL,
     output,
     state: 'running',
     quantizationMs: 4,
@@ -183,6 +216,36 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
   const sessions: string[] = [];
   const measured: Record<string, ProbeOutcome[]> = {};
   record.samples = measured;
+  const writeEnds = await causalPayloadPlan(SUSTAIN);
+  const runId = randomUUID();
+  const makeTrace = (arm: TraceExpected['arm']): TraceExpected => {
+    const sealPath = join(output, `${arm}-${randomUUID()}.seal.json`);
+    return {
+      runId,
+      sourceId: randomUUID(),
+      mode: 'normal',
+      arm,
+      sealPath,
+      eventsFile: sealPath + '.events.jsonl',
+      writeEnds,
+    };
+  };
+  const activeTrace = makeTrace('active-census');
+  const hiddenTrace = makeTrace('hidden-burst-idle');
+  record.causalDeclaration = {
+    protocol: TRACE_PROTOCOL,
+    qualificationProtocol: QUALIFICATION_PROTOCOL,
+    sourceBudgets: { maxProgressSpanMs: 125, minPayloadBytesPerSecond: 124518.4 },
+    targets: Array.from({ length: 30 }, (_, index) => Math.floor((BURST_BYTES * (index + 1)) / 31)),
+    activeTrace,
+    hiddenTrace,
+    sourceSessionBinding:
+      'each source nonce belongs to its independently spawned/observed PTY session; active census and hidden ACK streams never share witnesses',
+    smoke: SMOKE,
+    retries: 0,
+    fourBootCampaign: false,
+  };
+  await checkpoint();
   try {
     const launchStart = performance.now();
     booted = await bootApp({
@@ -267,6 +330,37 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
     };
     const echo = await spawn(page, ECHO);
     sessions.push(echo);
+    const collectCausal = async (sid: string, expected: TraceExpected) => {
+      try {
+        const trace = await waitForCausalSource(page, sid, expected);
+        const observations = await causalObservations(page, sid);
+        const qualification = qualify(trace, observations, {
+          runId,
+          sourceId: expected.sourceId,
+          sessionId: sid,
+          arm: expected.arm,
+        });
+        return {
+          expected,
+          sessionId: sid,
+          echoSessionId: expected.arm === 'hidden-burst-idle' ? echo : null,
+          trace,
+          observations,
+          qualification,
+        };
+      } catch (error) {
+        const observations = await causalObservations(page, sid).catch(() => null);
+        record[expected.arm === 'active-census' ? 'activeCausalSource' : 'hiddenCausalSource'] = {
+          expected,
+          sessionId: sid,
+          observations,
+          error: String(error),
+        };
+        if (observations?.attempts.length) record.burstIdleAttempts = observations.attempts;
+        await checkpoint();
+        throw error;
+      }
+    };
     await phase('idle', async () => {
       for (let index = 0; index < SAMPLES; index++)
         await sample(
@@ -375,7 +469,13 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
         .toBe(1);
     });
     await phase('burst', async () => {
-      const sid = await spawn(page, SUSTAIN, '--mode burst --seed 271828 --hold', 'SUSTAIN-READY');
+      const sid = await spawn(
+        page,
+        SUSTAIN,
+        '--mode burst --seed 271828 --hold',
+        'SUSTAIN-READY',
+        activeTrace,
+      );
       sessions.push(sid);
       const preparation = await prepareBurstRetention(page, sid, SCROLLBACK);
       record.burstPreparation = {
@@ -384,8 +484,13 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
         ...preparation,
       };
       const geometryBefore = preparation.prepared;
+      expect(geometryBefore).toMatchObject({ cols: 180, rows: 17, pty: { cols: 180, rows: 17 } });
+      await requireTraceFilesAbsent(activeTrace);
       const triggerStart = performance.now();
-      await startPayload(page, sid, BURST_BYTES);
+      await startCausalPayload(page, sid, 'active-census');
+      const sourceEvidence = await collectCausal(sid, activeTrace);
+      const { trace, observations, qualification } = sourceEvidence;
+      record.activeCausalSource = sourceEvidence;
       const receipt = await waitForPayload(page, sid, BURST_BYTES, true);
       const triggerThroughReceiptMs = receipt.timing?.fullReceiptMs;
       expect(typeof triggerThroughReceiptMs).toBe('number');
@@ -445,58 +550,81 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
         ),
         'final renderer burst census must retain all 64 tokens exactly once, with delivered provenance',
       );
+      requireGate(
+        !observations.ownerLost && observations.samePreparedOwner,
+        'census must keep the same prepared active instance',
+      );
+      requireGate(
+        qualification.errors.length === 0 &&
+          qualification.sourceWriteCount === 3931 &&
+          qualification.checkpointCount === 0 &&
+          trace.controlBytes === 3,
+        'active census complete source/profile/identity/control gates',
+      );
+      requireGate(
+        geometry.cols === 180 &&
+          geometry.rows === 17 &&
+          geometry.pty.cols === 180 &&
+          geometry.pty.rows === 17,
+        'unchanged active 180x17 fitted/PTY geometry',
+      );
       await checkpoint();
+      if (structuralFailures.length)
+        throw new Error(
+          'material active-census qualification failure: no retry/downstream campaign',
+        );
     });
     await phase('burstIdle', async () => {
-      const sid = await spawn(page, SUSTAIN, '--mode burst --seed 271828 --hold', 'SUSTAIN-READY');
+      const sid = await spawn(
+        page,
+        SUSTAIN,
+        '--mode burst --seed 271828 --hold',
+        'SUSTAIN-READY',
+        hiddenTrace,
+      );
       sessions.push(sid);
       await activate(page, echo);
-      await startPayload(page, sid, BURST_BYTES);
-      const attempts: unknown[] = [];
-      record.burstIdleAttempts = attempts;
-      for (let index = 1; index <= SAMPLES; index++) {
-        const atMark = await waitForPayload(
-          page,
-          sid,
-          Math.floor((BURST_BYTES * index) / (SAMPLES + 1)),
+      await requireTraceFilesAbsent(hiddenTrace);
+      await startCausalPayload(page, sid, 'hidden-burst-idle', echo);
+      const sourceEvidence = await collectCausal(sid, hiddenTrace);
+      const { trace, observations, qualification } = sourceEvidence;
+      record.hiddenCausalSource = sourceEvidence;
+      record.burstIdleAttempts = observations.attempts.map((attempt, index) => ({
+        ...attempt,
+        certificate: qualification.rows[index],
+      }));
+      for (const [index, attempt] of observations.attempts.entries()) {
+        const included =
+          qualification.rows[index].causalPacedSegmentQualified && attempt.settlementValid;
+        requireGate(
+          !!included,
+          `burst idle ${attempt.index}: ${qualification.rows[index].reasons.join(', ') || 'settlement failed'}`,
         );
-        if (atMark.done || atMark.payloadBytes >= BURST_BYTES) {
-          attempts.push({
-            index,
-            included: false,
-            reason: 'load completed before ACK trigger',
-            atMark,
-          });
-          requireGate(false, `burst idle ${index}: load completed before ACK`);
-          break;
-        }
-        const outcome = await measureEchoFirstFrame(
-          page,
-          echo,
-          `P32${String(index).padStart(3, '0')}`,
-          10_000,
-          sid,
-        );
-        const included = isLoadedAck(outcome);
-        attempts.push({
-          index,
-          included,
-          outcome,
-          reason: included
-            ? null
-            : 'no positive incomplete delivered-stream progress during trigger-to-ACK interval',
-        });
-        if (!included) {
-          requireGate(false, `burst idle ${index}: excluded invalid loaded interval`);
-          continue;
-        }
-        await sample('burstIdle', outcome, echo);
+        if (included)
+          await sample(
+            'burstIdle',
+            {
+              firstMs: attempt.firstMs!,
+              settledMs: attempt.settledMs,
+              timedOut: false,
+              stage: 'settled',
+            },
+            echo,
+          );
       }
+      requireGate(
+        !observations.hiddenOwnerAppeared,
+        'loaded source must stay hidden throughout the ACK stream',
+      );
       requireGate(
         (measured.burstIdle?.length ?? 0) === SAMPLES,
         `burst idle population ${measured.burstIdle?.length ?? 0}/${SAMPLES}`,
       );
       record.burstIdleReceipt = await waitForPayload(page, sid, BURST_BYTES, true);
+      if (structuralFailures.length)
+        throw new Error(
+          'material hidden-stream qualification failure: no retry/downstream campaign',
+        );
     });
     await phase('freshness', async () => {
       const times: number[] = [];
@@ -610,6 +738,7 @@ test('terminal acceptance measurement run (all probe families)', async ({}, test
         structuralFailures: structuralFailures.length,
         validityFailures: validityFailures.length,
         thresholdChecksPass: checks.every((check) => check.pass),
+        purpose,
       }),
     );
     await checkpoint();

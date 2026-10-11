@@ -10,12 +10,17 @@ source, batching, backpressure, worker and hydration behavior remain unchanged.
   a small complete census, first-frame/settled markers, geometry, positive perf
   telemetry with zero watchdogs, and an explicit processed-input absorb control.
 - `tests/terminal-acceptance-measure.spec.ts` requires
-  `CONDASH_TERM_ACCEPTANCE=1`. It records n=30 per distribution family, including
+  `CONDASH_TERM_ACCEPTANCE=1` for acceptance or
+  `CONDASH_TERM_QUALIFICATION_SMOKE=1` for a qualification smoke. Both execute
+  the full fixed-count driver: n=30 per distribution family, including
   receipt and hidden return, plus six separately labelled actual-keyboard samples.
   Census is a full population of exactly 64 tokens, never a sample.
 
 ```bash
 npm run build
+# A separately declared one-boot integration exercise; never an acceptance substitute:
+CONDASH_TERM_QUALIFICATION_SMOKE=1 CONDASH_TERM_ACCEPTANCE_LABEL=qualification-smoke npm run test -- terminal-acceptance-measure.spec.ts
+# Only after a fresh integration review PASS, declare the single four-boot campaign:
 CONDASH_TERM_ACCEPTANCE=1 CONDASH_TERM_ACCEPTANCE_LABEL=run1 npm run test -- terminal-acceptance-measure.spec.ts
 # Repeat as run2 and run3, each a fresh process boot; then:
 CI=1 CONDASH_TERM_ACCEPTANCE=1 CONDASH_TERM_ACCEPTANCE_LABEL=ci-faithful taskset -c 0,1 npm run test -- terminal-acceptance-measure.spec.ts
@@ -25,6 +30,11 @@ Check that the host permits CPUs 0 and 1 before the constrained run. Run records
 verify main and renderer affinity from `/proc`, not an environment declaration.
 The distribution spec disables retries: a retry is not an independent repetition.
 Use unique Playwright `--output` paths when retaining multiple executions.
+Smoke and acceptance flags are mutually exclusive. A smoke always has
+`purpose: qualification-smoke` and `allPass: false`, even under eligible CI
+affinity; it cannot supply an acceptance boot. Its failures and full sample rows
+are retained. Material source-budget, population or census failures stop the
+driver; no retry, replacement opportunity or tuning is permitted.
 
 Each invocation creates `tests/acceptance-out/<label>-<timestamp>-<pid>/` with
 `record.json`, a final screenshot, and copies of disposable fixture/userData.
@@ -81,12 +91,55 @@ grid override or row-times-column byte estimate is accepted; failed preparation
 or final retention remains a failed gate. Overhead is measured on this actual
 full retained buffer, not the earlier 5,017-row truncated buffer.
 
-Burst-idle ACKs retain callback-observed load bytes/completion at trigger and ACK.
-Only positive delivered-stream byte progress with incomplete payload budget at both endpoints qualifies
-as a loaded first-marker sample. Completed, cumulative-only or stalled intervals
-are explicitly excluded, retained in the attempt ledger, and make an inadequate
-population fail rather than reporting post-load ACKs as loaded. There is no retry
-or artificial delay to improve validity or calibration.
+New burst records use `causal-app-strict-memory-v4` and qualification label
+`causal-paced-125ms-v4`. Active census and hidden burst-idle ACKs use separate
+source nonces, expected files and actual PTY sessions; neither stream can borrow
+the other's payload witnesses. The active census keeps the same prepared current
+instance selected through the final64/64. The hidden stream is unprepared and
+does not claim a complete default-retention census.
+
+The in-page delivery tracker declares exactly30 original `floor(B*i/31)` targets.
+On actual target crossing it captures the latest positive same-session callback
+and complete payload-line boundary, then immediately triggers the echo without
+a Node/evaluate round-trip. The first successful ACK poll-entry timestamp and
+latency are frozen before one unawaited checkpoint send in that same poll;
+settlement/evidence collection cannot delay that send or inflate latency. The
+tracker retains every callback and every attempted, timed-out or later
+unattemptable row. Positive byte progress strictly inside ACK remains a diagnostic,
+including zero, not the new qualification gate.
+
+One common helper owns numeric packing, exact16-slot masks/null/reserved-zero
+rules, strict schemas, schedule/mode validation, bounded sealed readback and
+causal qualification. The fixture compiles/imports that exact module with the
+existing esbuild before READY/GO, avoiding dependence on native Node22 TypeScript
+support; no new package or loader flag is needed. Source pacing and tracing use
+one monotonic clock with unchanged cumulative-byte scheduling, write order and
+drain/rebase algorithm. The fixed16 MiB/131,072-record quota stores every event;
+overflow invalidates evidence, never truncates it. No measured-path JSON/hash/file
+I/O occurs. Serialization, hashing, file write/fsync/close and strict seal
+publication occur once after source COMPLETE. END/DONE is not export completion:
+the session stays alive through full valid readback, census and telemetry.
+
+Qualification requires the full3932160-byte pinned identity, whole-generation
+rate≥124,518.4 B/s (95% of nominal), and every conservative completed-progress
+span≤125 ms (16 normal cadences), including startup and finish. Exact schedule
+truth is checked without requiring zero write lateness or pre-deadline checkpoints.
+The source preceding write→real pre-trigger delivery→trigger→frozen ACK and
+ACK→checkpoint send→source receipt→first new source write→real post-ACK delivery
+form a clock-free enclosure. Pending/false writes, drain, pause, rebase or completion
+inside that conservative envelope reject, even below125 ms. A stale queued
+callback cannot replace the first genuinely new following source write. The
+literal claim is “ACK causally enclosed by a trace-verified paced-output segment
+with approved rate/gap budgets and preceding/following delivered payload”—not
+continuous output, instantaneous activity or independent upstream attribution.
+
+Readback checks known regular canonical paths and actual file sizes before reading
+either file, then enforces independent streaming limits:64 KiB seal,2,048-byte
+LF-inclusive record and256 MiB sidefile, with fatal UTF-8, exact raw digest/count/
+size reconciliation and complete relational validation. Seal-advertised sizes
+never authorize reads. All producer append/control/export CPU, time, memory and
+resource metadata, source records, callback/ACK clocks and raw files are retained;
+no field or cost is dropped or subtracted.
 
 Exactly 30 count-scheduled opportunities remain the approved protocol. Within-run
 oversampling or extra opportunities were explicitly denied. Existing 29/30
@@ -143,10 +196,12 @@ retains their local calculations, but `allPass` additionally requires `CI=1` and
 actual main/renderer affinity `0-1`. New report states are
 `complete-descriptive-clear` / `complete-descriptive-failed-checks` for ineligible
 boots and `complete-acceptance-pass` / `complete-acceptance-failed-gates` for
-eligible boots. These are per-record judgments, not programme-wide acceptance:
+eligible boots. Smoke uses `complete-qualification-smoke-clear` or
+`complete-qualification-smoke-failed-checks` and always keeps acceptance `allPass`
+false. These are per-record judgments, not programme-wide acceptance:
 the required repeated loaded populations remain blocked at 29/30 in two boots.
-Original records retain their historical labels and are not rewritten as outputs
-of this reporting fix. Report median/IQR/range/n,
+Original records retain their historical labels/protocols and are not rewritten
+or retro-passed by strict-v4 qualification. Report median/IQR/range/n,
 run-level spread, nearest-rank quartiles and descriptive p95 without treating correlated in-run counts as
 independent populations. Every number inherits the Xvfb/software-graphics caveat.
 

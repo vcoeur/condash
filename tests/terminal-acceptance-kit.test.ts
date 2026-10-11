@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Page } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { mkdtemp, lstat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import {
   armTerminalTestSurfaces,
   classifyAcceptanceReport,
@@ -11,6 +13,9 @@ import {
   perfCoverage,
   requiredWrappedRows,
   startPayload,
+  causalPayloadPlan,
+  startCausalPayload,
+  causalObservations,
 } from './fixtures/terminal-acceptance';
 import { summarize } from './fixtures/acceptance-stats';
 
@@ -45,6 +50,17 @@ describe('acceptance report eligibility', () => {
       state: 'complete-acceptance-pass',
     });
   });
+  it('a full-count qualification smoke cannot become an acceptance pass under eligible CI affinity', () => {
+    expect(classifyAcceptanceReport({ ...clear, purpose: 'qualification-smoke' })).toEqual({
+      thresholdJudgmentEligible: true,
+      allDescriptiveChecksClear: true,
+      allPass: false,
+      state: 'complete-qualification-smoke-clear',
+    });
+    expect(
+      classifyAcceptanceReport({ ...clear, purpose: 'qualification-smoke', structuralFailures: 1 }),
+    ).toMatchObject({ allPass: false, state: 'complete-qualification-smoke-failed-checks' });
+  });
   it.each([{ structuralFailures: 1 }, { validityFailures: 1 }, { thresholdChecksPass: false }])(
     'keeps each failed gate failed in both scopes: %j',
     (failure) => {
@@ -61,6 +77,136 @@ describe('acceptance report eligibility', () => {
       });
     },
   );
+});
+
+it('tracked fixture plan remains exactly the independently pinned burst and 3931 write boundaries', async () => {
+  const plan = await causalPayloadPlan(resolve(__dirname, 'fixtures/sustained-output-fixture.mjs'));
+  expect(plan).toHaveLength(3931);
+  expect(plan.slice(0, 3)).toEqual([97, 194, 291]);
+  expect(plan.at(-1)).toBe(3932160);
+});
+
+it('traced source loads the common helper before READY/GO without native TypeScript support or an early export', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'condash-causal-bootstrap-'));
+  const sealPath = resolve(directory, 'source.seal.json');
+  await new Promise<void>((resolveDone, reject) => {
+    const child = spawn(
+      process.execPath,
+      [
+        resolve(__dirname, 'fixtures/sustained-output-fixture.mjs'),
+        '--mode',
+        'burst',
+        '--seed',
+        '271828',
+        '--hold',
+      ],
+      {
+        env: {
+          ...process.env,
+          CONDASH_CAUSAL_RUN_ID: 'bootstrap-unit',
+          CONDASH_CAUSAL_SOURCE_ID: 'bootstrap-source',
+          CONDASH_CAUSAL_ARM: 'active-census',
+          CONDASH_CAUSAL_SEAL_PATH: sealPath,
+        },
+      },
+    );
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error('traced fixture pre-GO bootstrap deadline: ' + stderr));
+    }, 15000);
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    child.stdout.on('data', async (data) => {
+      stdout += data.toString();
+      if (!stdout.includes('SUSTAIN-READY')) return;
+      clearTimeout(timer);
+      child.kill();
+      try {
+        expect(stdout).not.toContain('PAYLOAD-BEGIN');
+        await expect(lstat(sealPath)).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(lstat(sealPath + '.events.jsonl')).rejects.toMatchObject({ code: 'ENOENT' });
+        resolveDone();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (!stdout.includes('SUSTAIN-READY')) {
+        clearTimeout(timer);
+        reject(new Error('bootstrap exit ' + code + ': ' + stderr));
+      }
+    });
+  });
+}, 20000);
+
+it('causal scheduler captures the actual latest callback at target and freezes first ACK before same-poll checkpoint', async () => {
+  vi.useFakeTimers();
+  let deliver: (message: { id: string; data: string }) => void = () => undefined;
+  const sent: { id: string; data: string; firstMs?: number; ackAt?: number }[] = [];
+  const state: any = {
+    document: { readyState: 'complete', body: { setAttribute: vi.fn() } },
+    __condashRepaints: { started: 0, settled: 0 },
+    __condashXterms: new Map([
+      [
+        'echo',
+        {
+          rows: 17,
+          buffer: {
+            active: { length: 1, getLine: () => ({ translateToString: () => 'ACK P0001' }) },
+          },
+        },
+      ],
+    ]),
+    condash: {
+      onTermData: (callback: typeof deliver) => {
+        deliver = callback;
+        return () => undefined;
+      },
+      termWrite: vi.fn(async (id: string, data: string) => {
+        const attempt = state.__condashTermTransport?.bySid.get('source')?.causal?.attempts[0];
+        sent.push({ id, data, firstMs: attempt?.firstMs, ackAt: attempt?.ackAt });
+      }),
+    },
+  };
+  const page = {
+    addInitScript: async () => undefined,
+    evaluate: async (body: (arg: unknown) => unknown, arg?: unknown) => body(arg),
+  } as unknown as Page;
+  vi.stubGlobal('window', state);
+  try {
+    await armTerminalTestSurfaces(page);
+    deliver({ id: 'source', data: 'SUSTAIN-READY\r\n' });
+    await startCausalPayload(page, 'source', 'hidden-burst-idle', 'echo');
+    deliver({ id: 'source', data: 'PAYLOAD-BE' });
+    deliver({ id: 'source', data: 'GIN\r\n' + '.'.repeat(126842) });
+    expect(sent.filter((row) => row.id === 'echo')).toHaveLength(0);
+    deliver({ id: 'source', data: '\r' });
+    deliver({ id: 'source', data: '\n' });
+    const started = await causalObservations(page, 'source');
+    expect(started.attempts).toHaveLength(30);
+    expect(started.attempts[0]).toMatchObject({
+      target: 126843,
+      status: 'pending',
+      before: { from: 126842, to: 126843, lastBoundary: 126843 },
+    });
+    expect(sent.filter((row) => row.id === 'echo')).toEqual([
+      expect.objectContaining({ data: 'P0001 ' }),
+    ]);
+    await vi.advanceTimersByTimeAsync(4);
+    const checkpoint = sent.find((row) => row.data === 'C1 ');
+    expect(checkpoint?.id).toBe('source');
+    expect(typeof checkpoint?.firstMs).toBe('number');
+    expect(typeof checkpoint?.ackAt).toBe('number');
+    expect((await causalObservations(page, 'source')).attempts[0].status).toBe('acked');
+    await disposeTerminalTestSurfaces(page);
+  } finally {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
 });
 
 describe('acceptance evidence arithmetic', () => {

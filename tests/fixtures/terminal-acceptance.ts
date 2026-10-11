@@ -1,10 +1,18 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, lstat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { summarize, type SampleSummary } from './acceptance-stats';
+import { runInNewContext } from 'node:vm';
+import {
+  readSealedTrace,
+  qualify,
+  PAYLOAD_BYTES,
+  PAYLOAD_SHA256,
+  type TraceExpected,
+} from './terminal-causal-trace';
 
 /** Test-only measurement of delivered IPC receipt and final parsed buffers.
  * The delivery observer never attaches, acknowledges or modifies flow control;
@@ -44,6 +52,7 @@ interface ProbeWindow {
         observerMs: number;
         overflow: boolean;
         receipt?: PayloadReceiptWatch;
+        causal?: CausalPayloadWatch;
       }
     >;
     dispose(): void;
@@ -64,6 +73,41 @@ interface PayloadReceiptWatch {
   receiptAt: number | null;
   completionAt: number | null;
   marks: { bytes: number; elapsedMs: number | null }[];
+}
+
+type CausalObservations = Parameters<typeof qualify>[1];
+type CausalAttempt = CausalObservations['attempts'][number] & {
+  settledMs?: number;
+  settlementValid?: boolean;
+  startedBaseline?: number;
+};
+interface CausalPayloadWatch {
+  source: string;
+  echo: string | null;
+  arm: TraceExpected['arm'];
+  payloadBytes: number;
+  chunks: string[];
+  pending: string;
+  rawPending: string;
+  inPayload: boolean;
+  trailer: string;
+  done: boolean;
+  error: string | null;
+  callbacks: CausalObservations['callbacks'];
+  attempts: CausalAttempt[];
+  unexpected: string[];
+  lastBoundary: number;
+  observerMs: number;
+  observerCalls: number;
+  ackPollMs: number;
+  ackPollCalls: number;
+  owner: unknown;
+  ownerLost: boolean;
+  hiddenOwnerAppeared: boolean;
+  next: number;
+  pendingAttempt: CausalAttempt | null;
+  timers: ReturnType<typeof setInterval>[];
+  launch(): void;
 }
 
 export interface ProbeOutcome {
@@ -104,6 +148,7 @@ const armSurfaces = (): void => {
         observerMs: number;
         overflow: boolean;
         receipt?: PayloadReceiptWatch;
+        causal?: CausalPayloadWatch;
       }
     >();
     const unsubscribe = w.condash.onTermData(({ id, data }) => {
@@ -120,7 +165,7 @@ const armSurfaces = (): void => {
       if (entry.text.length + data.length <= 32_000_000) entry.text += data;
       else entry.overflow = true;
       const receipt = entry.receipt;
-      if (receipt && receipt.completionAt === null) {
+      if (receipt && !entry.causal && receipt.completionAt === null) {
         const lines = (receipt.pending + data).split('\n');
         receipt.pending = lines.pop() ?? '';
         for (const rawLine of lines) {
@@ -144,6 +189,70 @@ const armSurfaces = (): void => {
           if (receipt.receiptAt === null && receipt.payloadBytes >= receipt.budget)
             receipt.receiptAt = started;
         }
+      }
+      const causal = entry.causal;
+      if (causal && receipt && !causal.error) {
+        if (causal.arm === 'active-census' && w.__condashXterms?.get(id) !== causal.owner)
+          causal.ownerLost = true;
+        if (causal.arm === 'hidden-burst-idle' && w.__condashXterms?.has(id))
+          causal.hiddenOwnerAppeared = true;
+        let raw = causal.rawPending + data;
+        causal.rawPending = raw.endsWith('\r') ? '\r' : '';
+        if (causal.rawPending) raw = raw.slice(0, -1);
+        let text = causal.pending + raw.replace(/\r\n/g, '\n');
+        causal.pending = '';
+        if (text.includes('\r')) causal.error = 'unexpected non-newline carriage return';
+        if (!causal.inPayload && causal.payloadBytes === 0) {
+          const begin = text.indexOf('PAYLOAD-BEGIN\n');
+          if (begin < 0) {
+            if (text.length > 4096) causal.error = 'causal framing overflow';
+            else causal.pending = text;
+            text = '';
+          } else {
+            const preamble = text.slice(0, begin);
+            if (preamble.trim()) causal.unexpected.push(preamble);
+            text = text.slice(begin + 'PAYLOAD-BEGIN\n'.length);
+            causal.inPayload = true;
+          }
+        }
+        if (causal.inPayload && text.length) {
+          const from = causal.payloadBytes;
+          const take = Math.min(text.length, 3932160 - from);
+          const segment = text.slice(0, take);
+          if (/[^\x20-\x7e\n]/.test(segment)) causal.error = 'unexpected stdout control bytes';
+          causal.chunks.push(segment);
+          causal.payloadBytes += take;
+          text = text.slice(take);
+          const newline = segment.lastIndexOf('\n');
+          if (newline >= 0) causal.lastBoundary = from + newline + 1;
+          if (take > 0)
+            causal.callbacks.push({
+              id,
+              at: started,
+              from,
+              to: causal.payloadBytes,
+              lastBoundary: causal.lastBoundary,
+            });
+          receipt.payloadBytes = causal.payloadBytes;
+          for (const mark of receipt.marks)
+            if (mark.elapsedMs === null && causal.payloadBytes >= mark.bytes)
+              mark.elapsedMs = started - receipt.triggerAt;
+          if (causal.payloadBytes === 3932160) {
+            causal.inPayload = false;
+            receipt.receiptAt ??= started;
+          }
+        }
+        if (!causal.inPayload && causal.payloadBytes > 0) {
+          causal.trailer += text;
+          if (/^PAYLOAD-END 3932160 \d+\nDONE\n$/.test(causal.trailer)) {
+            causal.done = true;
+            receipt.completionAt ??= started;
+          } else if (causal.trailer.includes('DONE\n') || causal.trailer.length > 4096)
+            causal.error = 'unexpected causal completion framing';
+        }
+        causal.launch();
+        causal.observerMs += performance.now() - started;
+        causal.observerCalls++;
       }
       entry.observerMs += performance.now() - started;
     });
@@ -926,6 +1035,7 @@ export async function recordIdentity(
         'sustained-output-fixture.mjs',
         'terminal-acceptance.ts',
         'acceptance-stats.ts',
+        'terminal-causal-trace.ts',
       ].map(async (name) => ({
         name,
         sha256: await sha256File(join(repoRoot, 'tests', 'fixtures', name)),
@@ -937,6 +1047,7 @@ export async function recordIdentity(
         'terminal-acceptance.spec.ts',
         'terminal-acceptance-measure.spec.ts',
         'terminal-acceptance-kit.test.ts',
+        'terminal-causal-trace.test.ts',
       ].map(async (name) => ({ name, sha256: await sha256File(join(repoRoot, 'tests', name)) })),
     ),
     lockfileSha256: await sha256File(join(repoRoot, 'package-lock.json')),
@@ -993,6 +1104,7 @@ export function classifyAcceptanceReport(input: {
   structuralFailures: number;
   validityFailures: number;
   thresholdChecksPass: boolean;
+  purpose?: 'acceptance' | 'qualification-smoke';
 }): {
   thresholdJudgmentEligible: boolean;
   allDescriptiveChecksClear: boolean;
@@ -1001,20 +1113,27 @@ export function classifyAcceptanceReport(input: {
     | 'complete-descriptive-clear'
     | 'complete-descriptive-failed-checks'
     | 'complete-acceptance-pass'
-    | 'complete-acceptance-failed-gates';
+    | 'complete-acceptance-failed-gates'
+    | 'complete-qualification-smoke-clear'
+    | 'complete-qualification-smoke-failed-checks';
 } {
   const thresholdJudgmentEligible =
     input.ciFlag === '1' && input.cpuAffinity === '0-1' && input.rendererAffinity === '0-1';
   const allDescriptiveChecksClear =
     input.structuralFailures === 0 && input.validityFailures === 0 && input.thresholdChecksPass;
-  const allPass = thresholdJudgmentEligible && allDescriptiveChecksClear;
-  const state = thresholdJudgmentEligible
-    ? allPass
-      ? 'complete-acceptance-pass'
-      : 'complete-acceptance-failed-gates'
-    : allDescriptiveChecksClear
-      ? 'complete-descriptive-clear'
-      : 'complete-descriptive-failed-checks';
+  const smoke = input.purpose === 'qualification-smoke';
+  const allPass = !smoke && thresholdJudgmentEligible && allDescriptiveChecksClear;
+  const state = smoke
+    ? allDescriptiveChecksClear
+      ? 'complete-qualification-smoke-clear'
+      : 'complete-qualification-smoke-failed-checks'
+    : thresholdJudgmentEligible
+      ? allPass
+        ? 'complete-acceptance-pass'
+        : 'complete-acceptance-failed-gates'
+      : allDescriptiveChecksClear
+        ? 'complete-descriptive-clear'
+        : 'complete-descriptive-failed-checks';
   return { thresholdJudgmentEligible, allDescriptiveChecksClear, allPass, state };
 }
 
@@ -1023,10 +1142,246 @@ export { summarize };
 export async function disposeTerminalTestSurfaces(page: Page): Promise<void> {
   await page.evaluate(() => {
     const state = window as unknown as ProbeWindow & { __acceptanceHeartbeat?: number };
+    for (const entry of state.__condashTermTransport?.bySid.values() ?? [])
+      for (const timer of entry.causal?.timers ?? []) clearInterval(timer);
     state.__condashTermTransport?.dispose();
     delete state.__condashTermTransport;
     if (state.__acceptanceHeartbeat) clearInterval(state.__acceptanceHeartbeat);
   });
+}
+
+export async function causalPayloadPlan(fixturePath: string): Promise<TraceExpected['writeEnds']> {
+  const source = await readFile(fixturePath, 'utf8');
+  const boundary = source.indexOf('// ---- stdin echo');
+  if (boundary < 0) throw new Error('fixture plan boundary missing');
+  const lines: string[] = runInNewContext(source.slice(0, boundary) + '\nlines;', {
+    process: {
+      argv: ['node', 'fixture', '--mode', 'burst', '--seed', '271828'],
+      stdout: {
+        write() {
+          throw new Error('invalid pinned fixture plan');
+        },
+      },
+      exit() {
+        throw new Error('invalid pinned fixture plan');
+      },
+    },
+  });
+  const payload = lines.join('\n') + '\n';
+  if (
+    payload.length !== PAYLOAD_BYTES ||
+    createHash('sha256').update(payload).digest('hex') !== PAYLOAD_SHA256
+  )
+    throw new Error('pinned fixture plan identity changed');
+  let bytes = 0;
+  return lines.map((line) => (bytes += line.length + 1));
+}
+
+/** Arm the complete callback history and count scheduler before GO. No transport round-trip chooses an ACK phase. */
+export async function startCausalPayload(
+  page: Page,
+  sid: string,
+  arm: TraceExpected['arm'],
+  echoSid?: string,
+): Promise<void> {
+  await page.evaluate(
+    ({ source, arm, echo }) => {
+      const state = window as unknown as ProbeWindow;
+      const entry = state.__condashTermTransport?.bySid.get(source);
+      if (!entry || entry.causal || (arm === 'hidden-burst-idle' && (!echo || echo === source)))
+        throw new Error('invalid causal stream preparation');
+      const owner = state.__condashXterms?.get(source);
+      if ((arm === 'active-census') !== !!owner)
+        throw new Error('causal source owner/arm mismatch before GO');
+      const causal: CausalPayloadWatch = {
+        source,
+        echo: echo ?? null,
+        arm,
+        payloadBytes: 0,
+        chunks: [],
+        pending: '',
+        rawPending: '',
+        inPayload: false,
+        trailer: '',
+        done: false,
+        error: null,
+        callbacks: [],
+        attempts:
+          arm === 'hidden-burst-idle'
+            ? Array.from({ length: 30 }, (_, index) => ({
+                index: index + 1,
+                target: Math.floor((3932160 * (index + 1)) / 31),
+                status: 'unattempted',
+              }))
+            : [],
+        unexpected: [],
+        lastBoundary: 0,
+        observerMs: 0,
+        observerCalls: 0,
+        ackPollMs: 0,
+        ackPollCalls: 0,
+        owner,
+        ownerLost: false,
+        hiddenOwnerAppeared: false,
+        next: 0,
+        pendingAttempt: null,
+        timers: [],
+        launch: () => undefined,
+      };
+      entry.causal = causal;
+      entry.receipt = {
+        budget: 3932160,
+        triggerAt: performance.now(),
+        pending: '',
+        inPayload: false,
+        payloadBytes: 0,
+        receiptAt: null,
+        completionAt: null,
+        marks: [{ bytes: 3932160, elapsedMs: null }],
+      };
+      causal.launch = () => {
+        if (causal.error || causal.pendingAttempt || causal.next >= causal.attempts.length) return;
+        const attempt = causal.attempts[causal.next];
+        if (causal.payloadBytes < attempt.target && !causal.done) return;
+        if (causal.done || causal.payloadBytes >= 3932160) {
+          for (let index = causal.next; index < 30; index++)
+            causal.attempts[index].status = 'unattemptable-completed';
+          causal.next = 30;
+          return;
+        }
+        causal.next++;
+        attempt.before = { ...causal.callbacks.at(-1)! };
+        attempt.token = `P${String(attempt.index).padStart(4, '0')}`;
+        attempt.triggerAt = performance.now();
+        attempt.startedBaseline = state.__condashRepaints?.started ?? 0;
+        attempt.status = 'pending';
+        causal.pendingAttempt = attempt;
+        void state.condash.termWrite(echo!, attempt.token + ' ').catch((error) => {
+          causal.error = 'echo trigger failed: ' + String(error);
+        });
+        const timer = setInterval(() => {
+          const pollAt = performance.now();
+          const term = state.__condashXterms?.get(echo!);
+          let found = false;
+          if (term)
+            for (
+              let row = Math.max(0, term.buffer.active.length - Math.max(term.rows, 200));
+              row < term.buffer.active.length;
+              row++
+            )
+              if (
+                term.buffer.active
+                  .getLine(row)
+                  ?.translateToString(true)
+                  .includes('ACK ' + attempt.token)
+              )
+                found = true;
+          causal.ackPollMs += performance.now() - pollAt;
+          causal.ackPollCalls++;
+          if (found) {
+            attempt.ackAt = pollAt;
+            attempt.firstMs = pollAt - attempt.triggerAt!;
+            attempt.atAckBytes = causal.payloadBytes;
+            attempt.status = 'acked';
+            attempt.checkpointSentAt = performance.now();
+            void state.condash.termWrite(source, `C${attempt.index} `).catch((error) => {
+              causal.error = 'checkpoint send failed: ' + String(error);
+            });
+            clearInterval(timer);
+            const settlement = setInterval(() => {
+              const counters = state.__condashRepaints;
+              const settled =
+                counters &&
+                counters.started >= attempt.startedBaseline! &&
+                counters.started === counters.settled;
+              if (settled || performance.now() - attempt.triggerAt! > 10000) {
+                attempt.settlementValid = !!settled;
+                attempt.settledMs = settled ? performance.now() - attempt.triggerAt! : -1;
+                clearInterval(settlement);
+                causal.pendingAttempt = null;
+                causal.launch();
+              }
+            }, 4);
+            causal.timers.push(settlement);
+          } else if (pollAt - attempt.triggerAt! > 10000) {
+            attempt.status = 'timeout';
+            clearInterval(timer);
+            causal.pendingAttempt = null;
+            causal.launch();
+          }
+        }, 4);
+        causal.timers.push(timer);
+      };
+      void state.condash.termWrite(source, 'GO ').catch((error) => {
+        causal.error = 'source GO failed: ' + String(error);
+      });
+    },
+    { source: sid, arm, echo: echoSid },
+  );
+}
+
+export async function causalObservations(page: Page, sid: string) {
+  return page.evaluate((id) => {
+    const state = window as unknown as ProbeWindow;
+    const watch = state.__condashTermTransport?.bySid.get(id)?.causal;
+    if (!watch) throw new Error('missing causal observation stream');
+    return {
+      payload: watch.chunks.join(''),
+      callbacks: watch.callbacks,
+      attempts: watch.attempts,
+      unexpected: watch.unexpected,
+      trailer: watch.trailer,
+      done: watch.done,
+      error: watch.error,
+      ownerLost: watch.ownerLost,
+      samePreparedOwner: watch.owner === state.__condashXterms?.get(id),
+      hiddenOwnerAppeared: watch.hiddenOwnerAppeared,
+      pendingAttempt: watch.pendingAttempt !== null,
+      observerMs: watch.observerMs,
+      observerCalls: watch.observerCalls,
+      ackPollMs: watch.ackPollMs,
+      ackPollCalls: watch.ackPollCalls,
+    };
+  }, sid);
+}
+
+export async function waitForCausalSource(
+  page: Page,
+  sid: string,
+  expected: TraceExpected,
+  timeoutMs = 90000,
+) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const state = await page.evaluate((id) => {
+      const watch = (window as unknown as ProbeWindow).__condashTermTransport?.bySid.get(
+        id,
+      )?.causal;
+      return { error: watch?.error, ready: watch?.done && !watch.pendingAttempt };
+    }, sid);
+    if (state.error) throw new Error(state.error);
+    try {
+      await lstat(expected.sealPath);
+      if (state.ready) return await readSealedTrace(expected);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    if (Date.now() > deadline)
+      throw new Error('complete causal export/observation deadline: ' + sid);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+export async function requireTraceFilesAbsent(expected: TraceExpected): Promise<void> {
+  for (const path of [expected.sealPath, expected.eventsFile]) {
+    try {
+      await lstat(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    throw new Error('trace unexpectedly exists before GO: ' + path);
+  }
 }
 
 export async function startTelemetryHeartbeat(page: Page, conceptionDir: string): Promise<string> {
