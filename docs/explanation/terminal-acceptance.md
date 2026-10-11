@@ -30,9 +30,10 @@ Check that the host permits CPUs 0 and 1 before the constrained run. Run records
 verify main and renderer affinity from `/proc`, not an environment declaration.
 The distribution spec disables retries: a retry is not an independent repetition.
 Use unique Playwright `--output` paths when retaining multiple executions.
-Smoke and acceptance flags are mutually exclusive. A smoke always has
-`purpose: qualification-smoke` and `allPass: false`, even under eligible CI
-affinity; it cannot supply an acceptance boot. Its failures and full sample rows
+Smoke and acceptance flags are mutually exclusive. Smoke records have
+`purpose: qualification-smoke`; completed/classified smoke records have
+`allPass: false`, even under eligible CI affinity. Incomplete records can omit
+`allPass` and are never accepted; a smoke cannot supply an acceptance boot. Its failures and full sample rows
 are retained. Material source-budget, population or census failures stop the
 driver; no retry, replacement opportunity or tuning is permitted.
 
@@ -142,9 +143,9 @@ resource metadata, source records, callback/ACK clocks and raw files are retaine
 no field or cost is dropped or subtracted.
 
 Exactly 30 count-scheduled opportunities remain the approved protocol. Within-run
-oversampling or extra opportunities were explicitly denied. Existing 29/30
-populations remain failed/inadequate; neither a successful constrained screen nor
-another descriptive boot supplies the missing repeated population.
+oversampling or extra opportunities were explicitly denied. Earlier-protocol 29/30
+populations remain historical failed/inadequate evidence; the later strict-v4
+campaign does not retro-pass them.
 
 **Hidden return** is band show/select, not inactive-tab hydration. Knowledge is
 selected only if not already visible. The same mounted registry identities must
@@ -198,8 +199,14 @@ actual main/renderer affinity `0-1`. New report states are
 boots and `complete-acceptance-pass` / `complete-acceptance-failed-gates` for
 eligible boots. Smoke uses `complete-qualification-smoke-clear` or
 `complete-qualification-smoke-failed-checks` and always keeps acceptance `allPass`
-false. These are per-record judgments, not programme-wide acceptance:
-the required repeated loaded populations remain blocked at 29/30 in two boots.
+false. These are per-record judgments, not programme-wide acceptance. The reviewed
+2026-10-11 strict-v4 campaign completed all four required structural/source
+populations at 30/30 and passed the sole eligible numerical judgment: actual
+`CI=1` with main and renderer affinity `0-1`. Ordinary boots 2/3 retain descriptive
+idle five-times-floor failures; all three ordinary boots remain `allPass: false`.
+This is complete campaign acceptance, not four numerical passes or a source
+performance optimization; the 125 ms/95% source gates and parsed-buffer ACK
+claim remain unchanged.
 Original records retain their historical labels/protocols and are not rewritten
 or retro-passed by strict-v4 qualification. Report median/IQR/range/n,
 run-level spread, nearest-rank quartiles and descriptive p95 without treating correlated in-run counts as
