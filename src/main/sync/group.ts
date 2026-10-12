@@ -157,8 +157,9 @@ export function commitGroups(
 // ---------------------------------------------------------------------------
 
 /** One detected item move: `oldItem`'s tracked files are all deleted, and
- *  `newItem`'s are all new to HEAD, with identical per-file shapes. The pair
- *  commits as one unit under the new item's subject. */
+ *  `newItem`'s are all new to HEAD, with identical per-file shapes and the
+ *  same `YYYY-MM-DD-` date prefix. The pair commits as one unit under the
+ *  new item's subject. */
 export interface RenamePair {
   oldItem: string;
   newItem: string;
@@ -174,9 +175,14 @@ export interface RenamePair {
  * surfaces as one group of deleted paths (HEAD holds the blobs) plus one
  * group of new-to-HEAD paths. When an all-deleted item group and an
  * all-newToHead item group — both under `projects/` — carry identical
- * per-file suffix sets, they are one logical rename. Any other shape (a
- * modified path on either side, a conflict, two candidate targets, unequal
- * suffix sets) refuses to pair: those sweep exactly as they did before.
+ * per-file suffix sets and the same `YYYY-MM-DD-` date prefix, they are one
+ * logical rename. The prefix clause is what kills the false pair: an
+ * unrelated deletion coinciding with a same-shaped new item must not merge
+ * into one mislabelled commit, and the rename verb always preserves the
+ * prefix, so verb-driven renames still pair. Any other shape (a modified
+ * path on either side, a conflict, two candidate targets, unequal suffix
+ * sets, different date prefixes) refuses to pair: those sweep exactly as
+ * they did before.
  *
  * Pure: porcelain codes in, pairs out — no disk access.
  */
@@ -217,6 +223,9 @@ export function detectRenamePairs(changed: readonly ChangedPath[]): RenamePair[]
         newItem !== oldItem &&
         !consumed.has(newItem) &&
         !mixed.has(newItem) &&
+        // The rename verb preserves the date prefix (only the tail moves),
+        // so a mismatch is an unrelated delete+create, not a move.
+        oldItem.slice(0, 10) === newItem.slice(0, 10) &&
         sameMembers(oldSide.suffixes, newSide.suffixes),
     );
     // Two candidates with identical shapes — refuse rather than guess.

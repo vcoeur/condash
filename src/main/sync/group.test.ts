@@ -164,7 +164,7 @@ describe('commitGroups', () => {
 
 describe('detectRenamePairs', () => {
   const OLD = 'projects/2026-07/2026-07-10-old';
-  const NEW = 'projects/2026-07/2026-07-11-new';
+  const NEW = 'projects/2026-07/2026-07-10-new';
 
   it('pairs an all-deleted item with an all-new item of identical suffix sets', () => {
     const pairs = detectRenamePairs([
@@ -176,7 +176,7 @@ describe('detectRenamePairs', () => {
     expect(pairs).toEqual([
       {
         oldItem: '2026-07-10-old',
-        newItem: '2026-07-11-new',
+        newItem: '2026-07-10-new',
         oldPaths: [`${OLD}/README.md`, `${OLD}/notes/01-x.md`],
         newPaths: [`${NEW}/README.md`, `${NEW}/notes/01-x.md`],
       },
@@ -192,6 +192,20 @@ describe('detectRenamePairs', () => {
     expect(pairs).toEqual([]);
   });
 
+  it('does not pair when the date prefixes differ (same suffix sets)', () => {
+    // The false pair the constraint kills: an unrelated deletion plus a
+    // created item whose file shapes coincidentally match must stay two
+    // commits, not merge into one mislabelled rename. Only the kebab tail
+    // may differ — the rename verb never moves the date prefix.
+    const pairs = detectRenamePairs([
+      changed('projects/2026-07/2026-07-10-old/README.md', { deleted: true }),
+      changed('projects/2026-07/2026-07-10-old/notes/01-x.md', { deleted: true }),
+      changed('projects/2026-07/2026-07-11-new/README.md', { newToHead: true }),
+      changed('projects/2026-07/2026-07-11-new/notes/01-x.md', { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
   it('does not pair when either side carries a modified (non-move) path', () => {
     const pairs = detectRenamePairs([
       changed(`${OLD}/README.md`, { deleted: true }),
@@ -203,7 +217,9 @@ describe('detectRenamePairs', () => {
   });
 
   it('does not pair two candidate targets with identical shapes (refuse to guess)', () => {
-    const OTHER = 'projects/2026-07/2026-07-12-other';
+    // Both candidates share OLD's date prefix — the refusal is about the
+    // ambiguity, not the prefix.
+    const OTHER = 'projects/2026-07/2026-07-10-other';
     const pairs = detectRenamePairs([
       changed(`${OLD}/README.md`, { deleted: true }),
       changed(`${NEW}/README.md`, { newToHead: true }),
@@ -212,9 +228,11 @@ describe('detectRenamePairs', () => {
     expect(pairs).toEqual([]);
   });
 
-  it('pairs across month directories and handles two pairs at once', () => {
+  it('pairs across month directories when the date prefix matches, two pairs at once', () => {
+    // Pairing keys on the item name's date prefix, not the month dir — a
+    // hand mv across months that keeps the prefix is still one move.
     const A_OLD = 'projects/2026-06/2026-06-01-a';
-    const A_NEW = 'projects/2026-07/2026-07-01-a';
+    const A_NEW = 'projects/2026-07/2026-06-01-b';
     const pairs = detectRenamePairs([
       changed(`${A_OLD}/README.md`, { deleted: true }),
       changed(`${A_NEW}/README.md`, { newToHead: true }),
@@ -225,8 +243,8 @@ describe('detectRenamePairs', () => {
     ]);
     expect(pairs).toHaveLength(2);
     expect(pairs.map((p) => [p.oldItem, p.newItem])).toEqual([
-      ['2026-06-01-a', '2026-07-01-a'],
-      ['2026-07-10-old', '2026-07-11-new'],
+      ['2026-06-01-a', '2026-06-01-b'],
+      ['2026-07-10-old', '2026-07-10-new'],
     ]);
   });
 

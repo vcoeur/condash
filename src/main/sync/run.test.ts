@@ -691,7 +691,108 @@ describe('syncRun', () => {
     // immediately, additions sit out the quiet period), which breaks
     // `git log --follow`. A detected pair is one logical change: both sides
     // commit together, keyed by the new item, so rename detection connects
-    // the history.
+    // the history. The hand mv below keeps the `YYYY-MM-DD-` date prefix
+    // and changes only the tail — the rename verb's exact shape, and the
+    // shape the pairing constraint accepts.
+    const readme = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await fs.mkdir(join(root, 'projects', '2026-07', '2026-07-10-alpha', 'notes'));
+    const note = join(root, 'projects', '2026-07', '2026-07-10-alpha', 'notes', '01-design.md');
+    await fs.writeFile(note, '# design\n');
+    await settle(readme, note);
+    await syncRun(root, RUN_DEFAULTS);
+
+    const oldDir = join(root, 'projects', '2026-07', '2026-07-10-alpha');
+    const newDir = join(root, 'projects', '2026-07', '2026-07-10-beta');
+    await fs.rename(oldDir, newDir);
+    await settle(join(newDir, 'README.md'), join(newDir, 'notes', '01-design.md'));
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
+
+    expect(report.skipped).toEqual([]);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-beta: sync',
+      'indexes: sync',
+    ]);
+    // One commit carries the deletion and the addition (`--no-renames` on the
+    // show so git's own rename detection doesn't collapse the two into R).
+    const nameStatus = await git(
+      root,
+      'show',
+      '--name-status',
+      '--format=',
+      '--no-renames',
+      'HEAD~1',
+    );
+    expect(nameStatus.trim().split('\n').sort()).toEqual([
+      'A\tprojects/2026-07/2026-07-10-beta/README.md',
+      'A\tprojects/2026-07/2026-07-10-beta/notes/01-design.md',
+      'D\tprojects/2026-07/2026-07-10-alpha/README.md',
+      'D\tprojects/2026-07/2026-07-10-alpha/notes/01-design.md',
+    ]);
+
+    // The point of the pairing: --follow walks old → new through the single
+    // rename commit.
+    const followed = await git(
+      root,
+      'log',
+      '--follow',
+      '--format=%s',
+      '--',
+      'projects/2026-07/2026-07-10-beta/README.md',
+    );
+    expect(followed.trim().split('\n')).toEqual([
+      '2026-07-10-beta: sync',
+      '2026-07-10-alpha: sync',
+    ]);
+  });
+
+  it('holds back both sides of a rename until the new files settle', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', {
+      date: '2026-07-10',
+      kind: 'project',
+      status: 'now',
+    });
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+
+    const oldDir = join(root, 'projects', '2026-07', '2026-07-10-alpha');
+    const newDir = join(root, 'projects', '2026-07', '2026-07-10-beta');
+    await fs.rename(oldDir, newDir);
+    // fs.rename preserves mtimes — the moved files would look settled from
+    // the baseline. Force them fresh, the way the rename verb's own rewrites
+    // of recently-touched files would.
+    const now = new Date();
+    await fs.utimes(join(newDir, 'README.md'), now, now);
+    // The rename verb touches the dirty marker; with it pending, the held-back
+    // tree's index work must defer too (an index over the new dir would point
+    // at a directory this sweep refuses to commit).
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+
+    const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
+
+    // The deletions are settled on their own but hold back with their partner:
+    // committing a bare deletion now is the two-commit split this prevents.
+    expect(report.commits).toEqual([]);
+    expect(report.indexesDeferred).toBe(true);
+    expect(report.skipped).toEqual([
+      { path: 'projects/2026-07/2026-07-10-alpha/README.md', reason: 'quiet-period' },
+      { path: 'projects/2026-07/2026-07-10-beta/README.md', reason: 'quiet-period' },
+    ]);
+    expect(await subjects(root)).toEqual(['indexes: sync', '2026-07-10-alpha: sync', 'init']);
+  });
+
+  it('sweeps a date-changing hand mv as two commits — the prefix constraint refuses to pair it', async () => {
+    // A hand mv that changes the `YYYY-MM-DD-` prefix is outside the rename
+    // verb's contract (the verb never moves the prefix), and pairing it
+    // would merge an unrelated deletion with a coincidentally same-shaped
+    // new item into one mislabelled commit. The date-prefix constraint is
+    // why it stays unpaired: the deletion commits alongside the addition —
+    // both settled here, so two item commits in one sweep instead of one.
+    // Accepted trade-off; `git log --follow` breaks only for this shape.
     const readme = await writeProjectReadme(root, 'alpha', {
       date: '2026-07-10',
       kind: 'project',
@@ -712,12 +813,25 @@ describe('syncRun', () => {
 
     expect(report.skipped).toEqual([]);
     expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
       '2026-07-11-alpha: sync',
       'indexes: sync',
     ]);
-    // One commit carries the deletion and the addition (`--no-renames` on the
-    // show so git's own rename detection doesn't collapse the two into R).
-    const nameStatus = await git(
+    // Each commit is pure on its side — a bare deletion and a bare addition,
+    // never one merged rename commit.
+    const deletion = await git(
+      root,
+      'show',
+      '--name-status',
+      '--format=',
+      '--no-renames',
+      'HEAD~2',
+    );
+    expect(deletion.trim().split('\n')).toEqual([
+      'D\tprojects/2026-07/2026-07-10-alpha/README.md',
+      'D\tprojects/2026-07/2026-07-10-alpha/notes/01-design.md',
+    ]);
+    const addition = await git(
       root,
       'show',
       '--name-status',
@@ -725,62 +839,10 @@ describe('syncRun', () => {
       '--no-renames',
       'HEAD~1',
     );
-    expect(nameStatus.trim().split('\n').sort()).toEqual([
+    expect(addition.trim().split('\n')).toEqual([
       'A\tprojects/2026-07/2026-07-11-alpha/README.md',
       'A\tprojects/2026-07/2026-07-11-alpha/notes/01-design.md',
-      'D\tprojects/2026-07/2026-07-10-alpha/README.md',
-      'D\tprojects/2026-07/2026-07-10-alpha/notes/01-design.md',
     ]);
-
-    // The point of the pairing: --follow walks old → new through the single
-    // rename commit.
-    const followed = await git(
-      root,
-      'log',
-      '--follow',
-      '--format=%s',
-      '--',
-      'projects/2026-07/2026-07-11-alpha/README.md',
-    );
-    expect(followed.trim().split('\n')).toEqual([
-      '2026-07-11-alpha: sync',
-      '2026-07-10-alpha: sync',
-    ]);
-  });
-
-  it('holds back both sides of a rename until the new files settle', async () => {
-    const readme = await writeProjectReadme(root, 'alpha', {
-      date: '2026-07-10',
-      kind: 'project',
-      status: 'now',
-    });
-    await settle(readme);
-    await syncRun(root, RUN_DEFAULTS);
-
-    const oldDir = join(root, 'projects', '2026-07', '2026-07-10-alpha');
-    const newDir = join(root, 'projects', '2026-07', '2026-07-11-alpha');
-    await fs.rename(oldDir, newDir);
-    // fs.rename preserves mtimes — the moved files would look settled from
-    // the baseline. Force them fresh, the way the rename verb's own rewrites
-    // of recently-touched files would.
-    const now = new Date();
-    await fs.utimes(join(newDir, 'README.md'), now, now);
-    // The rename verb touches the dirty marker; with it pending, the held-back
-    // tree's index work must defer too (an index over the new dir would point
-    // at a directory this sweep refuses to commit).
-    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
-
-    const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 3600 });
-
-    // The deletions are settled on their own but hold back with their partner:
-    // committing a bare deletion now is the two-commit split this prevents.
-    expect(report.commits).toEqual([]);
-    expect(report.indexesDeferred).toBe(true);
-    expect(report.skipped).toEqual([
-      { path: 'projects/2026-07/2026-07-10-alpha/README.md', reason: 'quiet-period' },
-      { path: 'projects/2026-07/2026-07-11-alpha/README.md', reason: 'quiet-period' },
-    ]);
-    expect(await subjects(root)).toEqual(['indexes: sync', '2026-07-10-alpha: sync', 'init']);
   });
 
   it('does not pair an unrelated deletion with a new item of a different shape', async () => {

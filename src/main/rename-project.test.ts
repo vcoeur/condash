@@ -158,6 +158,13 @@ describe('renameProjectCore (driver)', () => {
       ].join('\n'),
       'utf8',
     );
+    // `.mdx` is in the scan set alongside `.md` — a reference living in an
+    // MDX file is planned and rewritten like any other.
+    await fs.writeFile(
+      join(root, 'knowledge', 'topics', 'plan.mdx'),
+      `Exported plan: [[${OLD}]] — see projects/2026-10/${OLD}/README.md.\n`,
+      'utf8',
+    );
     await fs.mkdir(join(root, 'docs'), { recursive: true });
     await fs.writeFile(
       join(root, 'docs', 'note.md'),
@@ -207,6 +214,8 @@ describe('renameProjectCore (driver)', () => {
     expect(knowledge).toContain(`projects/2026-10/${NEW}/README.md`);
     expect(knowledge).toContain('[[old-one]] must survive');
     expect(knowledge).toContain('[[2026-10-12-old-one-bar]] must survive');
+    const mdx = await fs.readFile(join(root, 'knowledge', 'topics', 'plan.mdx'), 'utf8');
+    expect(mdx).toBe(`Exported plan: [[${NEW}]] — see projects/2026-10/${NEW}/README.md.\n`);
     const docs = await fs.readFile(join(root, 'docs', 'note.md'), 'utf8');
     expect(docs).toContain(`projects/2026-10/${NEW} end.`);
     const child = await fs.readFile(join(childReadme(root)), 'utf8');
@@ -279,6 +288,16 @@ describe('renameProjectCore (driver)', () => {
         (e) => !e.file.includes(OLD) || e.file.startsWith(`projects/2026-10/${NEW}/`),
       ),
     ).toBe(true);
+  });
+
+  it('plans identical edits under --dry-run and apply over the same tree', async () => {
+    // Dry-run is the printed contract for what apply will do: same files,
+    // lines, old/new strings — not a near-copy.
+    await seedTree();
+    const dry = await renameProjectCore(root, OLD, 'renamed-one', { dryRun: true });
+    const apply = await renameProjectCore(root, OLD, 'renamed-one');
+    expect(dry.edits.length).toBeGreaterThan(3);
+    expect(apply.edits).toEqual(dry.edits);
   });
 
   it('rejects an invalid new slug, identity renames, and an existing target dir', async () => {
