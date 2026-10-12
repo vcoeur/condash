@@ -24,6 +24,7 @@ import {
   createProjectCore,
   isValidSlugTail,
 } from './projects-maintenance';
+import { renameCommand } from './projects-rename';
 import type { CreateProjectInput, CreateProjectResult } from './projects-maintenance';
 
 // Re-exports kept on the historical import path. `createProjectCore` and
@@ -69,6 +70,7 @@ export const KNOWN_FLAGS_CREATE = [
 ] as const;
 export const KNOWN_FLAGS_SCAN_PROMOTIONS: readonly string[] = [];
 export const KNOWN_FLAGS_REWRITE_HEADERS = ['dry-run'] as const;
+export const KNOWN_FLAGS_RENAME = ['dry-run'] as const;
 
 export const NOUN_FLAGS: readonly string[] = [
   ...new Set<string>([
@@ -87,6 +89,7 @@ export const NOUN_FLAGS: readonly string[] = [
     ...KNOWN_FLAGS_SCAN_PROMOTIONS,
     ...KNOWN_FLAGS_CHECK_KNOWLEDGE,
     ...KNOWN_FLAGS_REWRITE_HEADERS,
+    ...KNOWN_FLAGS_RENAME,
   ]),
 ];
 
@@ -117,6 +120,7 @@ export async function runProjects(
       create: () => createCommand(args, ctx, conceptionPath),
       'scan-promotions': () => scanPromotionsCommand(args, ctx, conceptionPath),
       'rewrite-headers': () => rewriteHeadersCommand(args, ctx, conceptionPath),
+      rename: () => renameCommand(args, ctx, conceptionPath),
     },
     printHelp,
     universalHelp,
@@ -370,6 +374,36 @@ function printHelp(verb: string | null): void {
         '  condash projects rewrite-headers --dry-run',
       ]);
       return;
+    case 'rename':
+      writeBlock([
+        'condash projects rename <old-slug> <new-slug> [--dry-run]',
+        '',
+        'Move an item dir and rewrite every inbound reference across the tree.',
+        'The date prefix and month directory never change. The full dated slug',
+        '(YYYY-MM-DD-<kebab>) is the match key everywhere — renaming `-foo` never',
+        'touches `-foo-bar`. Short-form wikilinks ([[foo]]) are deliberately not',
+        'rewritten: they match on substrings of the tail and would silently',
+        'retarget unrelated items.',
+        '',
+        'Rewritten shapes:',
+        '  [[YYYY-MM-DD-slug]] / [[…|label]] / [[…#anchor]] / [[…/path]] wikilinks,',
+        '  parent: / **Parent**: header fields, and projects/<month>/<slug>/ path',
+        '  text (relative links, backticked citations, Verified stamps) in .md/.mdx',
+        '  under projects/, knowledge/ and docs/, generated index.md files excluded',
+        '  (those regenerate).',
+        '',
+        '<old-slug>  any resolver form (full / short / month-qualified).',
+        '<new-slug>  the new kebab tail, same rule `create` validates.',
+        '',
+        'Optional:',
+        '  --dry-run   Print every planned edit as `file:line old → new` plus the',
+        '              move; change nothing.',
+        '',
+        'Examples:',
+        '  condash projects rename 2026-10-12-old-slug new-slug --dry-run',
+        '  condash projects rename old-slug new-slug --json',
+      ]);
+      return;
     default:
       printSubHelp();
   }
@@ -398,6 +432,7 @@ function printSubHelp(): void {
       '  backfill-closed  One-shot: append `Closed.` to legacy done items.',
       '  index            Regenerate projects/index.md + month indexes.',
       '  create           Create a new item.',
+      '  rename           Move an item dir + rewrite every inbound reference.',
       '  scan-promotions  Surface durable-finding candidates inside notes/.',
       '  rewrite-headers  One-shot: convert legacy bold-prose headers to YAML.',
     ]),

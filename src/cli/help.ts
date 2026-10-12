@@ -30,7 +30,7 @@ GUI: (packaged binary only — the \`bin\` CLI bundle prints this help and has n
 Daily:
   init         [--path <dir>] Initialise a conception from the bundled template
   projects     list, read, activity, resolve, search, validate, status get|set,
-               close, check-knowledge, reopen, index, create,
+               close, check-knowledge, reopen, index, create, rename,
                backfill-closed [internal], scan-promotions [internal],
                rewrite-headers [internal]
   knowledge    tree, verify, retrieve, stamp, index

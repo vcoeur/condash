@@ -27,7 +27,7 @@ condash <noun> <verb> [args] [--flags]
 | Noun | Common verbs |
 |---|---|
 | `init` | `condash init [--path <dir>]` — bootstrap a conception tree from the bundled template (existing files are never overwritten; re-running exits 0) |
-| `projects` | `list`, `read`, `activity`, `search`, `validate`, `status get/set`, `close`, `check-knowledge`, `reopen`, `index`, `create` |
+| `projects` | `list`, `read`, `activity`, `search`, `validate`, `status get/set`, `close`, `check-knowledge`, `reopen`, `index`, `create`, `rename <old> <new>` (moves the item dir + rewrites every reference; `--dry-run` previews) |
 | `knowledge` | `tree`, `verify`, `retrieve`, `stamp`, `index` |
 | `search` | `condash search "<query>" [--scope all\|projects\|knowledge\|resources\|skills\|logs]` |
 | `repos` | `list [--include-worktrees]` |

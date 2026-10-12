@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT, META_COMMIT_SUBJECT } from './group';
+import {
+  classifyPath,
+  commitGroups,
+  detectRenamePairs,
+  INDEX_COMMIT_SUBJECT,
+  META_COMMIT_SUBJECT,
+  type RenamePair,
+} from './group';
+import type { ChangedPath } from './git';
+
+function changed(
+  path: string,
+  flags: Partial<Pick<ChangedPath, 'conflicted' | 'newToHead' | 'deleted'>> = {},
+): ChangedPath {
+  return { path, conflicted: false, newToHead: false, deleted: false, ...flags };
+}
 
 describe('classifyPath', () => {
   it('assigns files under an item dir to that item', () => {
@@ -115,5 +130,132 @@ describe('commitGroups', () => {
   it('names the index and meta commits distinctly from any item', () => {
     expect(INDEX_COMMIT_SUBJECT).toBe('indexes: sync');
     expect(META_COMMIT_SUBJECT).toBe('meta: sync');
+  });
+
+  it('merges a renamed item into one group keyed by the new item', () => {
+    const groups = commitGroups(
+      [
+        'projects/2026-07/2026-07-10-old/README.md',
+        'projects/2026-07/2026-07-10-old/notes/01-x.md',
+        'projects/2026-07/2026-07-11-new/README.md',
+        'projects/2026-07/2026-07-11-new/notes/01-x.md',
+        'knowledge/internal/condash.md',
+      ],
+      { itemAliases: new Map([['2026-07-10-old', '2026-07-11-new']]) },
+    );
+
+    expect(groups.map((g) => g.key)).toEqual(['2026-07-11-new', 'knowledge']);
+    expect(groups[0].subject).toBe('2026-07-11-new: sync');
+    expect(groups[0].paths).toEqual([
+      'projects/2026-07/2026-07-10-old/README.md',
+      'projects/2026-07/2026-07-10-old/notes/01-x.md',
+      'projects/2026-07/2026-07-11-new/README.md',
+      'projects/2026-07/2026-07-11-new/notes/01-x.md',
+    ]);
+  });
+
+  it('ignores aliases that name no item in the sweep', () => {
+    const groups = commitGroups(['projects/2026-07/2026-07-10-zeta/README.md'], {
+      itemAliases: new Map([['2026-07-10-old', '2026-07-10-zeta']]),
+    });
+    expect(groups.map((g) => g.key)).toEqual(['2026-07-10-zeta']);
+  });
+});
+
+describe('detectRenamePairs', () => {
+  const OLD = 'projects/2026-07/2026-07-10-old';
+  const NEW = 'projects/2026-07/2026-07-10-new';
+
+  it('pairs an all-deleted item with an all-new item of identical suffix sets', () => {
+    const pairs = detectRenamePairs([
+      changed(`${OLD}/README.md`, { deleted: true }),
+      changed(`${OLD}/notes/01-x.md`, { deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+      changed(`${NEW}/notes/01-x.md`, { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([
+      {
+        oldItem: '2026-07-10-old',
+        newItem: '2026-07-10-new',
+        oldPaths: [`${OLD}/README.md`, `${OLD}/notes/01-x.md`],
+        newPaths: [`${NEW}/README.md`, `${NEW}/notes/01-x.md`],
+      },
+    ] satisfies RenamePair[]);
+  });
+
+  it('does not pair when the per-file suffix sets differ', () => {
+    const pairs = detectRenamePairs([
+      changed(`${OLD}/README.md`, { deleted: true }),
+      changed(`${OLD}/notes/01-x.md`, { deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it('does not pair when the date prefixes differ (same suffix sets)', () => {
+    // The false pair the constraint kills: an unrelated deletion plus a
+    // created item whose file shapes coincidentally match must stay two
+    // commits, not merge into one mislabelled rename. Only the kebab tail
+    // may differ — the rename verb never moves the date prefix.
+    const pairs = detectRenamePairs([
+      changed('projects/2026-07/2026-07-10-old/README.md', { deleted: true }),
+      changed('projects/2026-07/2026-07-10-old/notes/01-x.md', { deleted: true }),
+      changed('projects/2026-07/2026-07-11-new/README.md', { newToHead: true }),
+      changed('projects/2026-07/2026-07-11-new/notes/01-x.md', { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it('does not pair when either side carries a modified (non-move) path', () => {
+    const pairs = detectRenamePairs([
+      changed(`${OLD}/README.md`, { deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+      changed(`${NEW}/notes/01-x.md`, { newToHead: true }),
+      changed(`${OLD}/notes/01-x.md`), // modified: the old side is not a pure move
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it('does not pair two candidate targets with identical shapes (refuse to guess)', () => {
+    // Both candidates share OLD's date prefix — the refusal is about the
+    // ambiguity, not the prefix.
+    const OTHER = 'projects/2026-07/2026-07-10-other';
+    const pairs = detectRenamePairs([
+      changed(`${OLD}/README.md`, { deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+      changed(`${OTHER}/README.md`, { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it('pairs across month directories when the date prefix matches, two pairs at once', () => {
+    // Pairing keys on the item name's date prefix, not the month dir — a
+    // hand mv across months that keeps the prefix is still one move.
+    const A_OLD = 'projects/2026-06/2026-06-01-a';
+    const A_NEW = 'projects/2026-07/2026-06-01-b';
+    const pairs = detectRenamePairs([
+      changed(`${A_OLD}/README.md`, { deleted: true }),
+      changed(`${A_NEW}/README.md`, { newToHead: true }),
+      changed(`${OLD}/README.md`, { deleted: true }),
+      changed(`${OLD}/notes/01-x.md`, { deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+      changed(`${NEW}/notes/01-x.md`, { newToHead: true }),
+    ]);
+    expect(pairs).toHaveLength(2);
+    expect(pairs.map((p) => [p.oldItem, p.newItem])).toEqual([
+      ['2026-06-01-a', '2026-06-01-b'],
+      ['2026-07-10-old', '2026-07-10-new'],
+    ]);
+  });
+
+  it('ignores non-item paths, conflicts, and both-deleted porcelain codes', () => {
+    const pairs = detectRenamePairs([
+      changed('knowledge/internal/condash.md', { deleted: true }),
+      changed('knowledge/internal/renamed.md', { newToHead: true }),
+      changed('projects/2026-07/index.md', { deleted: true }),
+      changed(`${OLD}/README.md`, { conflicted: true, deleted: true }),
+      changed(`${NEW}/README.md`, { newToHead: true }),
+    ]);
+    expect(pairs).toEqual([]);
   });
 });
