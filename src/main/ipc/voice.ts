@@ -1,11 +1,23 @@
 import { ipcMain } from 'electron';
 import { listTerminalSessions, tabRecentText, writeTerminal } from '../terminals';
 import { readSettings } from '../settings';
-import type { VoiceAudioClip, VoiceSpeakResult, VoiceTranscribeResult } from '../../shared/types';
+import type {
+  VoiceAudioClip,
+  VoicePrefs,
+  VoiceSpeakResult,
+  VoiceTranscribeResult,
+} from '../../shared/types';
 import { resolveVoiceKeys } from '../voice/keys';
 import { speakText, transcribeClip } from '../voice/adapter';
 import { insertTranscript } from '../voice/insert';
-import { requireMainWindowSender, requireNonEmptyString, requireRecord } from './utils';
+import { resolveContextBias } from '../voice/resolve-context-bias';
+import { getEffectiveConceptionConfig } from '../effective-config';
+import {
+  requireMainWindowSender,
+  requireNonEmptyString,
+  requireRecord,
+  withConception,
+} from './utils';
 
 /** Base64 length cap on an uploaded clip (~20 MB of WAV ≈ 10 min of 16 kHz
  *  mono — far past any push-to-talk utterance; the bound exists so a wedged
@@ -44,6 +56,19 @@ function sessionIsLive(sid: string): boolean {
   return listTerminalSessions().some((s) => s.id === sid && s.exited === undefined);
 }
 
+/** Resolve the effective context-bias list for one transcription: the user's
+ *  `voice.contextBias` phrases merged with the open conception's app
+ *  handles/names/aliases (§8). No conception → the user list alone. */
+async function effectiveContextBias(prefs: VoicePrefs | undefined): Promise<string[]> {
+  return withConception(
+    async (conceptionPath) => {
+      const config = await getEffectiveConceptionConfig(conceptionPath);
+      return resolveContextBias(prefs?.contextBias, config.repositories);
+    },
+    resolveContextBias(prefs?.contextBias, undefined),
+  );
+}
+
 /** Wire the voice dictation + readback handlers. Called once from main entry.
  *
  *  Both handlers are gated on `voice.enabled` (default off): when the feature
@@ -63,7 +88,13 @@ export function registerVoiceIpc(): void {
     const keys = resolveVoiceKeys(prefs);
     // Adapter errors are pre-redacted; let them reject so the renderer toast
     // shows the reason instead of a silent no-op.
-    const transcript = await transcribeClip(audio, keys, prefs);
+    const transcript = await transcribeClip(
+      audio,
+      keys,
+      prefs,
+      undefined,
+      await effectiveContextBias(prefs),
+    );
     const outcome = insertTranscript(sid, transcript.text, {
       isLive: sessionIsLive,
       write: writeTerminal,

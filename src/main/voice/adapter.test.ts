@@ -7,6 +7,7 @@ import {
   redactKeys,
   speakText,
   transcribeClip,
+  transcribeClipBiasFirst,
 } from './adapter';
 import type { FetchLike } from './adapter';
 
@@ -206,5 +207,89 @@ describe('redactKeys', () => {
 
   it('leaves text without keys untouched', () => {
     expect(redactKeys('HTTP 401', KEYS)).toBe('HTTP 401');
+  });
+});
+
+describe('transcribeClip context bias', () => {
+  it('appends the glossary sentence to the OpenRouter prompt only when the list is non-empty', async () => {
+    const prompts: string[] = [];
+    for (const bias of [[], ['condash', 'knoten']]) {
+      await transcribeClip(
+        CLIP,
+        { openrouter: OPENROUTER_KEY },
+        undefined,
+        {
+          fetch: (_url, init) => {
+            prompts.push(JSON.parse(String(init?.body)).messages[0].content[0].text);
+            return Promise.resolve(jsonRes({ choices: [{ message: { content: 'x' } }] }));
+          },
+        },
+        bias,
+      );
+    }
+    expect(prompts[0]).not.toContain('Glossary');
+    expect(prompts[1]).toContain('Glossary of proper nouns to spell exactly: condash, knoten.');
+  });
+
+  it('carries exactly N repeatable context_bias fields on the Mistral multipart body', async () => {
+    await transcribeClip(
+      CLIP,
+      { mistral: MISTRAL_KEY },
+      undefined,
+      {
+        fetch: (_url, init) => {
+          const form = init?.body as FormData;
+          expect(form.getAll('context_bias')).toEqual(['condash', 'knoten', 'vcoeur']);
+          return Promise.resolve(jsonRes({ text: 'x' }));
+        },
+      },
+      ['condash', 'knoten', 'vcoeur'],
+    );
+  });
+
+  it('sends no context_bias fields when the list is empty', async () => {
+    await transcribeClip(CLIP, { mistral: MISTRAL_KEY }, undefined, {
+      fetch: (_url, init) => {
+        expect((init?.body as FormData).has('context_bias')).toBe(false);
+        return Promise.resolve(jsonRes({ text: 'x' }));
+      },
+    });
+  });
+});
+
+describe('transcribeClipBiasFirst', () => {
+  it('tries Mistral (native bias) before OpenRouter', async () => {
+    const seen: string[] = [];
+    const result = await transcribeClipBiasFirst(
+      CLIP,
+      KEYS,
+      undefined,
+      {
+        fetch: (url) => {
+          seen.push(String(url));
+          return Promise.resolve(jsonRes({ text: 'bias-first' }));
+        },
+      },
+      ['condash'],
+    );
+    expect(result).toEqual({ text: 'bias-first', provider: 'mistral' });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('api.mistral.ai');
+  });
+
+  it('falls back to OpenRouter when the Mistral repass fails', async () => {
+    const result = await transcribeClipBiasFirst(
+      CLIP,
+      KEYS,
+      undefined,
+      {
+        fetch: fetchSequence([
+          { match: (u) => u.includes('mistral'), reply: () => jsonRes({}, 500) },
+          { reply: () => jsonRes({ choices: [{ message: { content: 'from openrouter' } }] }) },
+        ]),
+      },
+      ['condash'],
+    );
+    expect(result).toEqual({ text: 'from openrouter', provider: 'openrouter' });
   });
 });
