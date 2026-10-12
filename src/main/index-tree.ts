@@ -355,7 +355,19 @@ export function indexHumanContent(raw: string): string {
 export async function regenerateIndex(
   conceptionPath: string,
   strategy: IndexStrategy,
-  options: { dryRun?: boolean; rewriteAggregated?: boolean } = {},
+  options: {
+    dryRun?: boolean;
+    rewriteAggregated?: boolean;
+    /** Canonical NEW item names that are confirmed renames (the caller
+     *  performed the move itself — `projects rename`). Without this, a moved
+     *  item's new name is only ever *flagged* as a suspected rename — the
+     *  pass refuses to draft its bullet and leaves the whole directory
+     *  untouched — so the item stays missing from its index. A confirmed
+     *  name IS drafted in the same pass (old bullet dropped, new bullet
+     *  added); the flag still surfaces in `flaggedRenames` for visibility.
+     *  Entries may carry the directory trailing slash or not. */
+    confirmedRenames?: ReadonlySet<string>;
+  } = {},
 ): Promise<IndexRegenReport> {
   const dryRun = options.dryRun === true;
   const rewriteAggregated = options.rewriteAggregated === true;
@@ -403,6 +415,7 @@ export async function regenerateIndex(
       aggregatedKeywords,
       dryRun,
       rewriteAggregated,
+      options.confirmedRenames,
     );
 
     if (result.created) report.created.push(result.indexPath);
@@ -456,6 +469,7 @@ async function processDirectory(
   aggregatedKeywords: Map<string, Map<string, number>>,
   dryRun: boolean,
   rewriteAggregated: boolean,
+  confirmedRenames?: ReadonlySet<string>,
 ): Promise<DirResult> {
   const indexPath = join(dirAbsPath, 'index.md');
   const indexRel = relative(conceptionPath, indexPath);
@@ -523,7 +537,15 @@ async function processDirectory(
   for (const child of children) {
     const canonical = canonicalName(child);
     if (shape.bullets.has(canonical)) continue;
-    if (result.renames.some((r) => r.newName === canonical)) continue;
+    // A suspected rename's new name is skipped so the human decides — unless
+    // the caller confirmed the rename (`projects rename`), in which case the
+    // bullet is drafted right away from the moved item's own content.
+    if (
+      result.renames.some((r) => r.newName === canonical) &&
+      !hasConfirmedRename(confirmedRenames, canonical)
+    ) {
+      continue;
+    }
 
     let draft: DraftResult;
     if (child.kind === 'file') {
@@ -1041,6 +1063,13 @@ async function listChildren(dirAbsPath: string, strategy: IndexStrategy): Promis
 
 function canonicalName(child: ChildInfo): string {
   return child.kind === 'directory' ? `${child.name}/` : child.name;
+}
+
+/** Canonical names carry a trailing slash for directories; callers holding
+ *  the bare folder name (the rename verb) match either spelling. */
+function hasConfirmedRename(set: ReadonlySet<string> | undefined, canonical: string): boolean {
+  if (!set || set.size === 0) return false;
+  return set.has(canonical) || set.has(canonical.replace(/\/$/, ''));
 }
 
 function canonicalNameFromBullet(name: string, link: string): string {

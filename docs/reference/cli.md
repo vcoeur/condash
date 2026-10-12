@@ -126,6 +126,7 @@ Item lifecycle and reads.
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
 | `create --kind <k> --slug <s> --title "<t>" [--apps "<a>"] [flags]` | Create a new project / incident / document folder + README from the canonical template. `--apps` is optional (defaults to `[]` — the GUI create modal omits the field; a fresh tree with an empty registry gets a one-line stderr nudge pointing at `condash applications add`). `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. `--date <YYYY-MM-DD>` overrides today (it picks both the `YYYY-MM/` bucket and the folder's date prefix), `--branch <name>` and `--base <ref>` seed the matching header fields, and `--parent <slug>` records the plan this item spins off from — the slug is resolved against the tree and stored in its canonical dated form, so a short form works and an unknown one exits 4 / 6. Incidents add `--severity` + `--severity-impact` + `--environment`. Every create also emits a **Prior art** block — the two most recent items sharing an app, and up to five `knowledge/` lines matching the title — so what the tree already knows arrives without anyone remembering to go and look for it (`priorArt` in the JSON envelope; omitted entirely when nothing matches) |
+| `rename <old-slug> <new-slug> [--dry-run]` | Rename an item: move `projects/<month>/<YYYY-MM-DD>-<old>/` to `…/<YYYY-MM-DD>-<new>/` (date prefix and month directory never change; gitignored content under the item moves along) and rewrite every inbound reference — `[[dated-slug]]` wikilinks (with `\|label`, `#anchor`, `/path`), `parent:` / `**Parent**:` header fields, and `projects/<month>/<slug>/` path text (relative links, backticked citations, `**Verified:**` stamps) — across `.md`/`.mdx` under `projects/`, `knowledge/` and `docs/`, generated `index.md` files excluded. The full dated slug is the match key on a slug boundary, so renaming `…-foo` never touches `…-foo-bar`; short-form wikilinks (`[[foo]]`) are deliberately **not** rewritten (substring collisions). Then regenerates the projects indexes. `--dry-run` prints every planned edit as `file:line old → new` plus the move and writes nothing |
 | `scan-promotions <slug>` | Walk a closed item's notes for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
 | `check-knowledge <slug> [--record]` | Signal whether a `done` project still needs a knowledge-promotion check (read-only). `--record` remains the standalone recorder: after a real review it appends dated `Checked knowledge promotion` as the last timeline entry. `close --knowledge-checked` is the equivalent recorder when closing after that review. No mass/backfill writer: the marker is only ever written for a project that was actually reviewed |
 | `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
@@ -135,6 +136,15 @@ Slug forms accepted:
 - Full dated: `2026-04-17-foo` — exact folder name, minus the month dir.
 - Short: `foo` — any part of the slug after the date prefix.
 - Month-qualified: `2026-04/2026-04-17-foo`.
+
+`rename` keeps the tree's history intact in two ways. The directory move and
+every rewritten reference land as ordinary working-tree changes, so the
+sweeper commits them; a detected move (one item's paths all deleted, another
+item's all new, identical per-file shapes) commits as a **single** commit
+keyed by the new slug, so `git log --follow` walks straight through the
+rename. References outside the tree (tracker cards, other repos) are out of
+reach — run `audit --include links` afterwards if you want a residual-dangle
+check.
 
 `--summary` (on `close`, `reopen`, and `status set`) must be **single-line**: the
 text is written into one `## Timeline` bullet, so a carriage return, newline, or
