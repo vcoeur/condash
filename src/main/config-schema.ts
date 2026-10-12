@@ -532,6 +532,19 @@ const voiceSettings = z
     /** Mistral TTS fallback voice (`voice_id` — preset or custom). Unset →
      *  the Mistral TTS fallback is skipped. */
     mistralVoiceId: z.string().optional(),
+    /** Realtime streaming dictation (Mistral realtime WebSocket). Unset or
+     *  true (the default) opens the stream while recording; false restores
+     *  batch-only behaviour. A stream failure still falls back to batch
+     *  regardless of this key — it only decides whether the socket opens. */
+    streaming: z.boolean().optional(),
+    /** Vocabulary phrases for dictation (max 100 — the provider cap).
+     *  Trimmed, deduplicated, and seeded with the conception's app
+     *  handles/names at use time; empty list → single-pass streaming
+     *  commit. */
+    contextBias: z.array(z.string()).max(100).optional(),
+    /** Hold-to-dictate chord (`Ctrl+Shift+Space` grammar, `parseShortcut`
+     *  compatible). Empty string disables push-to-talk. */
+    pptShortcut: z.string().optional(),
   } satisfies Record<keyof VoicePrefs, z.ZodTypeAny>)
   .strict();
 

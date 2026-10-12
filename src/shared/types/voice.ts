@@ -37,6 +37,21 @@ export interface VoicePrefs {
    *  custom voice` on `POST /v1/audio/speech`). Unset → the fallback is
    *  skipped with a clear error. */
   mistralVoiceId?: string;
+  /** Realtime streaming dictation (Mistral realtime WebSocket). Unset or
+   *  true (the default) streams audio while recording so partial text shows
+   *  live; false restores batch-only behaviour. The batch chain stays the
+   *  fallback either way — this key only decides whether the socket opens. */
+  streaming?: boolean;
+  /** Vocabulary phrases for dictation (max 100 — the provider cap),
+   *  one concern each: app handles, project slugs, domain terms. Merged
+   *  with the conception's `repositories[]` handles/names/aliases at use
+   *  time; the effective list applies on the batch surfaces (OpenRouter
+   *  prompt glossary, Mistral `context_bias` form fields) and a non-empty
+   *  list routes a streaming stop through a bias-corrected batch repass. */
+  contextBias?: string[];
+  /** Hold-to-dictate chord in the `parseShortcut` grammar (default
+   *  `Ctrl+Shift+Space`). An empty string disables push-to-talk. */
+  pptShortcut?: string;
 }
 
 /** One recorded clip the renderer hands to main for transcription. Always

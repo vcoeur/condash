@@ -540,7 +540,7 @@ export function pruneEmpty(value: unknown): unknown {
  * rejects with `expected string, received undefined`.
  */
 export function buildSavePayload(config: RawConfig): RawConfig {
-  const { repositories, agents, terminal, long_lived_branches, ...rest } = config;
+  const { repositories, agents, terminal, long_lived_branches, voice, ...rest } = config;
   const pruned = pruneEmpty(rest) as RawConfig;
   if (terminal !== undefined) {
     const compacted = compactTerminal(terminal as RawTerminal);
@@ -556,7 +556,24 @@ export function buildSavePayload(config: RawConfig): RawConfig {
     const filtered = long_lived_branches.filter((p) => p.trim().length > 0);
     if (filtered.length > 0) pruned.long_lived_branches = filtered;
   }
+  if (voice !== undefined) {
+    pruned.voice = compactVoice(voice);
+  }
   return pruned;
+}
+
+/**
+ * Normalise the voice block for disk. Everything rides `pruneEmpty` except
+ * `pptShortcut`: an empty string is meaningful there (it disables
+ * push-to-talk, vs. unset = the `Ctrl+Shift+Space` default), so it bypasses
+ * the empty-string strip — the same reasoning as `compactAgents`' blank-row
+ * survival. The key is written only when the field was touched, so
+ * machines that never opened the field keep no `pptShortcut` entry at all.
+ */
+export function compactVoice(voice: VoicePrefs): VoicePrefs {
+  const compacted = pruneEmpty({ ...voice }) as VoicePrefs;
+  if (voice.pptShortcut !== undefined) compacted.pptShortcut = voice.pptShortcut;
+  return compacted;
 }
 
 /**
