@@ -21,6 +21,11 @@ export interface ChangedPath {
    *  An index bullet pointing at such a path would dangle on `main`, which is
    *  what the sweeper's index deferral exists to prevent. */
   newToHead: boolean;
+  /** The path is deleted in the worktree (or staged for deletion) while HEAD
+   *  still holds its blob. With `--no-renames` this is the old side of a
+   *  move: paired with the matching `newToHead` paths, it is what lets the
+   *  sweeper commit a rename as one unit (see `detectRenamePairs`). */
+  deleted: boolean;
 }
 
 /** Error carrying git's own stderr, so callers can pattern-match on it. */
@@ -87,6 +92,7 @@ export async function readChangedPaths(cwd: string): Promise<ChangedPath[]> {
       path: entry.slice(3),
       conflicted: isConflict(x, y),
       newToHead: isNewToHead(x),
+      deleted: isDeleted(x, y),
     });
   }
   return out;
@@ -102,6 +108,12 @@ function isNewToHead(x: string): boolean {
 /** Porcelain v1 conflict codes: either side unmerged, or both-added/both-deleted. */
 function isConflict(x: string, y: string): boolean {
   return x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
+}
+
+/** Porcelain v1 delete codes on either column, excluding conflicts (a DD
+ *  both-deleted path is conflict state, not the old side of a move). */
+function isDeleted(x: string, y: string): boolean {
+  return !isConflict(x, y) && (x === 'D' || y === 'D');
 }
 
 /**

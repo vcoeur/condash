@@ -11,6 +11,8 @@
  * the item.
  */
 
+import type { ChangedPath } from './git';
+
 /** `2026-07`. Exported for the create-verb bound in `files.ts`, which must
  * agree with the sweeper on what an item path looks like. */
 export const MONTH_DIR = /^\d{4}-\d{2}$/;
@@ -110,16 +112,25 @@ const TRAILING_KEYS = ['knowledge', 'meta'];
  * beforehand (indexes get their own commit after regeneration, unresolved
  * paths are reported and never committed).
  *
+ * `itemAliases` maps an old item folder name to the new one it was renamed
+ * to (a detected {@link RenamePair}): paths of both sides land in ONE group
+ * keyed by the new item, so git sees the delete+add pair in a single commit
+ * and rename detection connects the history.
+ *
  * @param paths repo-relative paths that passed the quiet-period filter
+ * @param options.itemAliases old item folder → new item folder
  * @returns groups ordered items-first (by item name), then knowledge, then meta
  */
-export function commitGroups(paths: readonly string[]): CommitGroup[] {
+export function commitGroups(
+  paths: readonly string[],
+  options: { itemAliases?: ReadonlyMap<string, string> } = {},
+): CommitGroup[] {
   const byKey = new Map<string, string[]>();
   for (const path of paths) {
     const cls = classifyPath(path);
     const key =
       cls.kind === 'item'
-        ? cls.item
+        ? (options.itemAliases?.get(cls.item) ?? cls.item)
         : cls.kind === 'knowledge'
           ? 'knowledge'
           : cls.kind === 'meta'
@@ -139,4 +150,100 @@ export function commitGroups(paths: readonly string[]): CommitGroup[] {
     subject: `${key}: sync`,
     paths: (byKey.get(key) as string[]).sort(),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Rename pairing.
+// ---------------------------------------------------------------------------
+
+/** One detected item move: `oldItem`'s tracked files are all deleted, and
+ *  `newItem`'s are all new to HEAD, with identical per-file shapes. The pair
+ *  commits as one unit under the new item's subject. */
+export interface RenamePair {
+  oldItem: string;
+  newItem: string;
+  oldPaths: string[];
+  newPaths: string[];
+}
+
+/**
+ * Detect item moves in the `--no-renames` porcelain stream, before any
+ * eligibility filtering.
+ *
+ * `readChangedPaths` deliberately keeps `--no-renames`, so a moved item
+ * surfaces as one group of deleted paths (HEAD holds the blobs) plus one
+ * group of new-to-HEAD paths. When an all-deleted item group and an
+ * all-newToHead item group — both under `projects/` — carry identical
+ * per-file suffix sets, they are one logical rename. Any other shape (a
+ * modified path on either side, a conflict, two candidate targets, unequal
+ * suffix sets) refuses to pair: those sweep exactly as they did before.
+ *
+ * Pure: porcelain codes in, pairs out — no disk access.
+ */
+export function detectRenamePairs(changed: readonly ChangedPath[]): RenamePair[] {
+  interface Side {
+    suffixes: Set<string>;
+    paths: string[];
+  }
+  const deleted = new Map<string, Side>();
+  const added = new Map<string, Side>();
+  // Items with any path that is neither a clean deletion nor a clean
+  // addition — a modified file, a conflict — are not pure moves on that side.
+  const mixed = new Set<string>();
+
+  for (const change of changed) {
+    const cls = classifyPath(change.path);
+    if (cls.kind !== 'item') continue;
+    if (change.conflicted || change.deleted === change.newToHead) {
+      mixed.add(cls.item);
+      continue;
+    }
+    const side = change.deleted ? deleted : added;
+    let bucket = side.get(cls.item);
+    if (!bucket) {
+      bucket = { suffixes: new Set(), paths: [] };
+      side.set(cls.item, bucket);
+    }
+    bucket.suffixes.add(itemSuffix(change.path));
+    bucket.paths.push(change.path);
+  }
+
+  const pairs: RenamePair[] = [];
+  const consumed = new Set<string>();
+  for (const [oldItem, oldSide] of [...deleted.entries()].sort()) {
+    if (mixed.has(oldItem) || consumed.has(oldItem)) continue;
+    const matches = [...added.entries()].filter(
+      ([newItem, newSide]) =>
+        newItem !== oldItem &&
+        !consumed.has(newItem) &&
+        !mixed.has(newItem) &&
+        sameMembers(oldSide.suffixes, newSide.suffixes),
+    );
+    // Two candidates with identical shapes — refuse rather than guess.
+    if (matches.length !== 1) continue;
+    const [newItem, newSide] = matches[0];
+    consumed.add(oldItem);
+    consumed.add(newItem);
+    pairs.push({
+      oldItem,
+      newItem,
+      oldPaths: oldSide.paths.sort(),
+      newPaths: newSide.paths.sort(),
+    });
+  }
+  return pairs;
+}
+
+/** The path below `projects/<month>/<item>/` — the per-file shape a move
+ *  preserves (`README.md`, `notes/01-plan.md`, …). */
+function itemSuffix(path: string): string {
+  return path.split('/').slice(3).join('/');
+}
+
+function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
 }

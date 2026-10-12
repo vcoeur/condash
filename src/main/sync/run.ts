@@ -18,8 +18,10 @@ import { closeMilestoneSubject, extractClosedEntries } from './close-milestone';
 import {
   classifyPath,
   commitGroups,
+  detectRenamePairs,
   INDEX_COMMIT_SUBJECT,
   type CommitGroup,
+  type RenamePair,
   type SyncTree,
 } from './group';
 import {
@@ -135,6 +137,18 @@ export async function syncRun(
 
     const cutoffMs = Date.now() - options.quietPeriodSeconds * 1000;
 
+    // A detected rename is ONE logical change: the old paths are all deleted
+    // (settled by definition — no mtime to compare), the new ones sit out the
+    // quiet period like any fresh write. Left to the plain loop the deletion
+    // would commit this tick and the addition the next, breaking
+    // `git log --follow`; instead both sides commit together under the NEW
+    // item's subject (see the pairing block after the loop).
+    const renamePairs: RenamePair[] = detectRenamePairs(changed);
+    const pairedPaths = new Set<string>(
+      renamePairs.flatMap((pair) => [...pair.oldPaths, ...pair.newPaths]),
+    );
+    const itemAliases = new Map(renamePairs.map((pair) => [pair.oldItem, pair.newItem]));
+
     const eligible: string[] = [];
     const skipped: SkippedPath[] = [];
     // Two different facts about a mid-write item/knowledge path, per tree.
@@ -162,6 +176,7 @@ export async function syncRun(
     // body file drops its bullet in the tick that commits the deletion.
     const committingTrees = new Set<SyncTree>();
     for (const { path, newToHead } of changed) {
+      if (pairedPaths.has(path)) continue; // handled with its rename partner
       const cls = classifyPath(path);
       if (cls.kind === 'index') {
         preExistingIndexChanges.add(path);
@@ -186,6 +201,26 @@ export async function syncRun(
       }
       eligible.push(path);
       if (tree) committingTrees.add(tree);
+    }
+
+    // The rename pairs commit as one unit: settled → both sides go eligible
+    // (commitGroups merges them under the new item's subject via the alias
+    // map); unsettled → BOTH sides wait out the quiet period together, the
+    // deletions included — committing a bare deletion now is exactly the
+    // two-commit split this exists to prevent.
+    for (const pair of renamePairs) {
+      const settled = await pathsSettled(conceptionPath, pair.newPaths, cutoffMs);
+      if (!settled) {
+        for (const path of [...pair.oldPaths, ...pair.newPaths]) {
+          skipped.push({ path, reason: 'quiet-period' });
+        }
+        unsettledTrees.add('projects');
+        heldBackTrees.add('projects');
+        heldBackPaths.push(...pair.newPaths);
+        continue;
+      }
+      eligible.push(...pair.oldPaths, ...pair.newPaths);
+      committingTrees.add('projects');
     }
 
     // An index is fan-in over every item *of its tree*, so regenerating it
@@ -270,8 +305,8 @@ export async function syncRun(
       .sort();
 
     const commits: SyncCommitRecord[] = integration?.mergeCommit ? [integration.mergeCommit] : [];
-    for (const group of commitGroups(eligible)) {
-      const subject = (await closeSubject(conceptionPath, group)) ?? group.subject;
+    for (const group of commitGroups(eligible, { itemAliases })) {
+      const subject = (await closeSubject(conceptionPath, group, itemAliases)) ?? group.subject;
       commits.push(await record(conceptionPath, group.paths, subject, options.dryRun));
     }
     if (indexPaths.length > 0) {
@@ -436,8 +471,17 @@ async function regenerateDirtyTrees(
  * `Closed.` timeline entry, or `null` to keep the group's `<item>: sync`
  * default. Closing is write-files-only for agents, so the real history line
  * has to come from the sweeper itself.
+ *
+ * `itemAliases` (old item → renamed item) keeps a renamed already-closed item
+ * from masquerading as a fresh close: the README's HEAD history lives under
+ * the OLD path, so when the new path has no blob in HEAD, the old README's
+ * HEAD text is compared instead.
  */
-async function closeSubject(conceptionPath: string, group: CommitGroup): Promise<string | null> {
+async function closeSubject(
+  conceptionPath: string,
+  group: CommitGroup,
+  itemAliases: ReadonlyMap<string, string>,
+): Promise<string | null> {
   // Only an item group carries its own README at projects/<month>/<item>/README.md.
   const readmeRel = group.paths.find((path) => {
     const segments = path.split('/');
@@ -456,7 +500,19 @@ async function closeSubject(conceptionPath: string, group: CommitGroup): Promise
   } catch {
     return null; // README deleted in this sweep — nothing to close.
   }
-  const headText = await readFileAtHead(conceptionPath, readmeRel);
+  let headText = await readFileAtHead(conceptionPath, readmeRel);
+  if (headText === null) {
+    const oldReadmeRel = group.paths.find((path) => {
+      const segments = path.split('/');
+      return (
+        segments.length === 4 &&
+        segments[0] === 'projects' &&
+        itemAliases.get(segments[2]) === group.key &&
+        segments[3] === 'README.md'
+      );
+    });
+    if (oldReadmeRel) headText = await readFileAtHead(conceptionPath, oldReadmeRel);
+  }
   return closeMilestoneSubject(
     group.key,
     extractClosedEntries(headText ?? ''),
@@ -663,6 +719,19 @@ async function isSettled(absPath: string, cutoffMs: number): Promise<boolean> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return true;
     throw err;
   }
+}
+
+/** Every path settled — a rename pair moves as one unit, so the NEW side's
+ *  mtimes decide (the old side is deleted on disk and settled by definition). */
+async function pathsSettled(
+  conceptionPath: string,
+  paths: readonly string[],
+  cutoffMs: number,
+): Promise<boolean> {
+  for (const path of paths) {
+    if (!(await isSettled(join(conceptionPath, path), cutoffMs))) return false;
+  }
+  return true;
 }
 
 async function exists(path: string): Promise<boolean> {
