@@ -46,6 +46,10 @@ export function VoiceControls(props: VoiceControlsProps) {
         data-label="dictate"
         disabled={session.busy()}
         aria-pressed={session.recording()}
+        // Suppressing the pointerdown default keeps the click from moving
+        // focus off the xterm textarea — dictation is spoken, but the user is
+        // still typing in this tab and must not lose the caret to a control.
+        onPointerDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
           void session.toggleDictation();
@@ -66,6 +70,7 @@ export function VoiceControls(props: VoiceControlsProps) {
         class="terminal-header-action"
         data-label="read-aloud"
         disabled={session.recording() || session.transcribing()}
+        onPointerDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
           void session.readAloud();

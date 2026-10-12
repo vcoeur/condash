@@ -946,6 +946,10 @@ function App() {
         xtermPrefs={terminalPrefs()?.xterm}
         autoRefreshOnTabSwitch={terminalPrefs()?.autoRefreshOnTabSwitch}
         voiceEnabled={voiceEnabled()}
+        // Voice notices (dictation results, mic/transcribe errors) surface on
+        // the app toast — the pane's own onError hop would otherwise drop
+        // them, since nothing above the pane consumed it.
+        onError={(message) => flashToast(message)}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}

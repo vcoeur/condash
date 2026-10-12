@@ -1,0 +1,84 @@
+import { test, expect } from '@playwright/test';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { bootApp } from './fixtures/electron-app';
+
+/**
+ * Focus preservation + UI surfaces of the voice controls (§6.2 of the
+ * realtime-STT design, project 2026-10-12-condash-voice-tests).
+ *
+ * The defect pinned here: the Dictate/Read buttons live in the column
+ * header, and a button click's default pointerdown behaviour moves focus off
+ * the xterm textarea — after dictating once, the user's keystrokes went
+ * nowhere until they clicked back into the terminal. The fix suppresses the
+ * pointerdown default on both voice buttons; the click still fires, the
+ * caret stays in the terminal.
+ *
+ * The microphone is stubbed with Chromium's synthetic device
+ * (`--use-fake-device-for-media-stream` + `--use-fake-ui-for-media-stream`):
+ * a real MediaStream from a fake source, so the recorder's real graph runs
+ * under Xvfb where no mic exists. Key resolution is pointed at a nonexistent
+ * env file (`CONDASH_AGENTS_ENV`), so stopping a recording answers a
+ * "no API key" error — the whole spec exercises the app with **no network
+ * access and no provider call**, which is the E2E line the design draws
+ * (full socket round-trips stay unit-level).
+ */
+
+/** True when the hidden xterm textarea holds keyboard focus. */
+const focusInTerminal = (): boolean => {
+  const active = document.activeElement;
+  return (
+    active instanceof HTMLTextAreaElement &&
+    (active.closest('.xterm-host') !== null || active.classList.contains('xterm-helper-textarea'))
+  );
+};
+
+test('clicking Dictate keeps keyboard focus in the terminal', async () => {
+  test.setTimeout(90_000);
+  // A path that does not exist: key resolution finds nothing, so a stop can
+  // never reach a provider — the error toast at the end proves the flow ran.
+  const noKeysEnv = join(tmpdir(), 'condash-voice-focus-no-keys.env');
+  const booted = await bootApp({
+    globalConfig: { layout: { projects: true, terminal: true }, voice: { enabled: true } },
+    env: { CONDASH_AGENTS_ENV: noKeysEnv },
+    beforeFirstWindow: async (app) => {
+      // Fake mic + auto-granted permission, staged before the window exists.
+      await app.evaluate(({ app: electronApp }) => {
+        electronApp.commandLine.appendSwitch('use-fake-device-for-media-stream');
+        electronApp.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+      });
+    },
+  });
+  const DICTATE = booted.window.locator('[data-label="dictate"]');
+  try {
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "VOICE-FOCUS\\n"; sleep 60' }),
+    );
+    await expect(booted.window.locator('[data-label="find"]')).toBeVisible();
+    await expect(DICTATE).toBeVisible();
+
+    // Baseline: the terminal textarea owns focus (click into the terminal).
+    await booted.window.locator('.terminal-host').click();
+    await expect.poll(() => booted.window.evaluate(focusInTerminal)).toBe(true);
+
+    // Click Dictate: recording starts, and focus must not move.
+    await DICTATE.click();
+    await expect(DICTATE).toHaveClass(/recording/);
+    expect(await booted.window.evaluate(focusInTerminal)).toBe(true);
+
+    // Typed input still lands in the terminal while recording.
+    await booted.window.keyboard.type('echo kept-focus');
+    await expect.poll(() => booted.window.evaluate(focusInTerminal), { timeout: 5_000 }).toBe(true);
+
+    // Click again to stop: recording ends (the no-key adapter error surfaces
+    // as a toast; the assertion below pins the non-network outcome loosely —
+    // the exact text belongs to the adapter, not this spec).
+    await DICTATE.click();
+    await expect(DICTATE).not.toHaveClass(/recording/);
+    await expect(booted.window.locator('.toast, [role="alert"]').first()).toBeVisible({
+      timeout: 15_000,
+    });
+  } finally {
+    await booted.cleanup();
+  }
+});
