@@ -46,6 +46,10 @@ export const EVENT_CHANNELS = {
    *  the pane, the Settings modal, a hand-edited settings.json — reaches both
    *  sides of the instrument. */
   perfState: 'perf-state',
+  /** Accumulated realtime dictation partial for one recording session, pushed
+   *  on each `transcription.text.delta`. Rendered by the live-caption strip;
+   *  never written to the PTY. */
+  voicePartial: 'voice-partial',
 } as const;
 
 /**

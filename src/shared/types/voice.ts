@@ -100,3 +100,33 @@ export interface VoiceSpeakResult {
   /** Human-readable failure reason. Never carries key material. */
   error?: string;
 }
+
+/** Result of opening a realtime transcription stream. A refusal is always a
+ *  typed `ok: false` — the renderer treats every reason as "stay on the
+ *  batch path" (streaming is an upgrade, not a requirement), so the strings
+ *  only need to be diagnosable, never actionable in the UI. */
+export interface VoiceStreamStartResult {
+  ok: boolean;
+  /** `disabled` — voice (or `voice.streaming`) is off; `no-mistral-key` —
+   *  the realtime endpoint is Mistral-only and no key resolved;
+   *  `already-active` — one stream is already running; `error` — the socket
+   *  failed to open. */
+  reason?: 'disabled' | 'no-mistral-key' | 'already-active' | 'error';
+  /** Redacted human-readable detail for `error`. Never carries key material. */
+  error?: string;
+}
+
+/** One chunk of raw s16le mono 16 kHz PCM from the renderer's per-chunk tap
+ *  — no WAV header; the realtime endpoint takes bare samples as binary
+ *  frames. */
+export interface VoiceStreamChunk {
+  pcmBase64: string;
+}
+
+/** Accumulated partial transcript pushed main → renderer while a stream is
+ *  live (the whole text so far, not a delta — small payloads, no lost-update
+ *  ordering, and the caption strip can remount losslessly). */
+export interface VoicePartialMessage {
+  sid: string;
+  text: string;
+}

@@ -3,15 +3,27 @@ import { listTerminalSessions, tabRecentText, writeTerminal } from '../terminals
 import { readSettings } from '../settings';
 import type {
   VoiceAudioClip,
+  VoicePartialMessage,
   VoicePrefs,
   VoiceSpeakResult,
+  VoiceStreamStartResult,
   VoiceTranscribeResult,
 } from '../../shared/types';
+import { EVENT_CHANNELS } from '../../shared/ipc-channels';
 import { resolveVoiceKeys } from '../voice/keys';
-import { speakText, transcribeClip } from '../voice/adapter';
+import { speakText, transcribeClip, transcribeClipBiasFirst } from '../voice/adapter';
 import { insertTranscript } from '../voice/insert';
 import { resolveContextBias } from '../voice/resolve-context-bias';
+import {
+  beginVoiceStream,
+  cancelActiveVoiceStream,
+  createRealtimeSocket,
+  getActiveVoiceStream,
+  takeActiveVoiceStream,
+} from '../voice/stream';
+import type { VoiceAudioClipLike } from '../voice/stream';
 import { getEffectiveConceptionConfig } from '../effective-config';
+import { safeSend } from '../safe-send';
 import {
   requireMainWindowSender,
   requireNonEmptyString,
@@ -23,6 +35,11 @@ import {
  *  mono — far past any push-to-talk utterance; the bound exists so a wedged
  *  renderer cannot OOM main with one IPC payload). */
 const MAX_CLIP_BASE64_CHARS = 20_000_000;
+
+/** Base64 length cap on one streamed PCM chunk. The renderer sends ~256 ms
+ *  frames (~11 KB base64); the bound keeps a wedged renderer from shipping
+ *  an unbounded payload per call, same reasoning as the clip cap. */
+const MAX_STREAM_CHUNK_BASE64_CHARS = 1_000_000;
 
 /** Chars of recent pane output fed to the TTS readback. The same spirit as
  *  the dashboard's slice, tuned shorter: this text is billed per character
@@ -48,6 +65,20 @@ function requireAudioClip(channel: string, value: unknown): VoiceAudioClip {
     throw new Error(`${channel}: expected format 'wav'`);
   }
   return { data, sampleRate, format: 'wav' };
+}
+
+/** Structural validation of a streamed PCM chunk. Throws the uniform
+ *  `<channel>: expected …` shape on a malformed payload. */
+function requireStreamChunk(channel: string, value: unknown): { pcmBase64: string } {
+  const record = requireRecord(channel, value);
+  const pcmBase64 = record.pcmBase64;
+  if (typeof pcmBase64 !== 'string' || pcmBase64.length === 0) {
+    throw new Error(`${channel}: expected a non-empty pcmBase64 string`);
+  }
+  if (pcmBase64.length > MAX_STREAM_CHUNK_BASE64_CHARS) {
+    throw new Error(`${channel}: chunk too large`);
+  }
+  return { pcmBase64 };
 }
 
 /** True when `sid` names a session that can still accept input (unknown ids
@@ -137,5 +168,81 @@ export function registerVoiceIpc(): void {
       };
       return result;
     }
+  });
+
+  // --- Realtime dictation stream -----------------------------------------
+  // Same gates and validation-first shape as the batch handlers: a stream
+  // start that hits a disabled feature or a missing Mistral key answers a
+  // typed refusal and the renderer stays on the batch path (design §9.1).
+
+  ipcMain.handle('voiceStreamStart', async (event, id: unknown) => {
+    requireMainWindowSender(event);
+    const sid = requireNonEmptyString('voiceStreamStart', id);
+    const { voice: prefs } = await readSettings();
+    if (prefs?.enabled !== true || prefs.streaming === false) {
+      return { ok: false, reason: 'disabled' } satisfies VoiceStreamStartResult;
+    }
+    const keys = resolveVoiceKeys(prefs);
+    if (!keys.mistral) {
+      return { ok: false, reason: 'no-mistral-key' } satisfies VoiceStreamStartResult;
+    }
+    const contextBias = await effectiveContextBias(prefs);
+    const sender = event.sender;
+    const batchTranscribers = {
+      normal: (clip: VoiceAudioClipLike) =>
+        transcribeClip(clip, keys, prefs, undefined, contextBias),
+      biasFirst: (clip: VoiceAudioClipLike) =>
+        transcribeClipBiasFirst(clip, keys, prefs, undefined, contextBias),
+    };
+    const started = await beginVoiceStream({
+      sid,
+      apiKey: keys.mistral,
+      contextBias,
+      keys,
+      prefs,
+      createSocket: createRealtimeSocket,
+      onPartial: (text) => {
+        safeSend(sender, EVENT_CHANNELS.voicePartial, { sid, text } satisfies VoicePartialMessage);
+      },
+      insert: (insertSid, text) =>
+        insertTranscript(insertSid, text, { isLive: sessionIsLive, write: writeTerminal }),
+      batchTranscribers,
+    });
+    if (started.ok) return { ok: true } satisfies VoiceStreamStartResult;
+    return started satisfies VoiceStreamStartResult;
+  });
+
+  ipcMain.handle('voiceStreamAudio', async (event, chunk: unknown) => {
+    requireMainWindowSender(event);
+    const payload = requireStreamChunk('voiceStreamAudio', chunk);
+    const { voice: prefs } = await readSettings();
+    if (prefs?.enabled !== true) {
+      // The feature was switched off mid-recording — tear the socket down so
+      // no audio keeps flowing after the gate would have refused it.
+      cancelActiveVoiceStream();
+      return;
+    }
+    getActiveVoiceStream()?.handleAudio(payload.pcmBase64);
+  });
+
+  ipcMain.handle('voiceStreamStop', async (event) => {
+    requireMainWindowSender(event);
+    const { voice: prefs } = await readSettings();
+    if (prefs?.enabled !== true) {
+      cancelActiveVoiceStream();
+      return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
+    }
+    const session = takeActiveVoiceStream();
+    if (!session) {
+      // The stream already died (or never started) — the renderer answers
+      // with its buffered-clip batch chain (§9.3).
+      return { inserted: false, reason: 'no-session' } satisfies VoiceTranscribeResult;
+    }
+    return session.stop();
+  });
+
+  ipcMain.handle('voiceStreamCancel', async (event) => {
+    requireMainWindowSender(event);
+    cancelActiveVoiceStream();
   });
 }

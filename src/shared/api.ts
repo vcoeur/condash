@@ -51,7 +51,10 @@ import type {
   TreeExpansionPrefs,
   TreeRoot,
   VoiceAudioClip,
+  VoicePartialMessage,
   VoiceSpeakResult,
+  VoiceStreamChunk,
+  VoiceStreamStartResult,
   VoiceTranscribeResult,
 } from './types';
 
@@ -389,6 +392,29 @@ export interface CondashApi {
    * pane can show a notice instead of writing nothing silently.
    */
   voiceTranscribe(id: string, clip: VoiceAudioClip): Promise<VoiceTranscribeResult>;
+  /**
+   * Open the realtime dictation stream for session `id` (one WebSocket in
+   * main, Mistral realtime, Authorization header set there — the key never
+   * reaches the renderer). A refusal is a typed `{ok:false, reason}`; the
+   * renderer stays on the batch path for every reason.
+   */
+  voiceStreamStart(id: string): Promise<VoiceStreamStartResult>;
+  /** Forward one chunk of raw s16le PCM (base64, no WAV header) from the
+   *  recording tap to the active stream. No-op when no stream is live. */
+  voiceStreamAudio(chunk: VoiceStreamChunk): Promise<void>;
+  /**
+   * Finalise the active stream: stop sending audio, wait bounded for the
+   * provider's final text, and commit once through the same insert path as
+   * `voiceTranscribe` (with a bias-corrected batch repass first when
+   * `voice.contextBias` is configured). Returns the same result union so
+   * the pane's notice handling is unchanged.
+   */
+  voiceStreamStop(): Promise<VoiceTranscribeResult>;
+  /** Abort the active stream: close the socket, commit nothing. */
+  voiceStreamCancel(): Promise<void>;
+  /** Subscribe to accumulated partial transcripts pushed while a stream is
+   *  live. Returns an unsubscribe function. */
+  onVoicePartial(callback: (msg: VoicePartialMessage) => void): () => void;
   /**
    * Synthesize the session's recent visible output to speech (on-demand
    * readback — never automatic). Reads the same recent-output slice the

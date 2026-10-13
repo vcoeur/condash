@@ -12,7 +12,12 @@
 // dependency entirely. For seconds-long push-to-talk clips the main-thread
 // callback cost is negligible.
 
-import { bytesToBase64, encodeWav, float32ToInt16, RECORD_SAMPLE_RATE } from './voice-capture';
+import {
+  bytesToBase64,
+  encodeWav,
+  float32ToInt16,
+  RECORD_SAMPLE_RATE,
+} from '@shared/voice-capture';
 import type { VoiceAudioClip } from '@shared/types';
 
 /** A clip shorter than ~250 ms carries no usable speech — treat it as an

@@ -25,7 +25,18 @@ const transcribeClip = vi.fn();
 const speakText = vi.fn();
 vi.mock('../voice/adapter', () => ({
   transcribeClip: (...args: unknown[]) => transcribeClip(...(args as [])),
+  transcribeClipBiasFirst: (...args: unknown[]) => transcribeClip(...(args as [])),
   speakText: (...args: unknown[]) => speakText(...(args as [])),
+}));
+
+// The realtime socket is the other network edge — same treatment.
+const beginVoiceStream = vi.fn();
+vi.mock('../voice/stream', () => ({
+  beginVoiceStream: (...args: unknown[]) => beginVoiceStream(...(args as [])),
+  createRealtimeSocket: vi.fn(),
+  getActiveVoiceStream: () => null,
+  takeActiveVoiceStream: () => null,
+  cancelActiveVoiceStream: vi.fn(),
 }));
 
 // `../terminals` drags in node-pty; the handlers only need these three edges.
@@ -152,5 +163,79 @@ describe('voice IPC default-off gating', () => {
     const result = (await handlers.voiceSpeak(trustedEvent, 's1')) as { ok: boolean };
     expect(result.ok).toBe(true);
     expect(speakText).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('voice realtime stream gating', () => {
+  it('voiceStreamStart answers disabled when the voice key is absent (the default)', async () => {
+    await writeSettings({});
+    await expect(handlers.voiceStreamStart(trustedEvent, 's1')).resolves.toEqual({
+      ok: false,
+      reason: 'disabled',
+    });
+    expect(beginVoiceStream).not.toHaveBeenCalled();
+  });
+
+  it('voiceStreamStart answers disabled when enabled but streaming is off', async () => {
+    await writeSettings({ voice: { enabled: true, streaming: false } });
+    await expect(handlers.voiceStreamStart(trustedEvent, 's1')).resolves.toEqual({
+      ok: false,
+      reason: 'disabled',
+    });
+    expect(beginVoiceStream).not.toHaveBeenCalled();
+  });
+
+  it('voiceStreamStart answers no-mistral-key when the realtime provider is unkeyed', async () => {
+    await writeSettings({ voice: { enabled: true, streaming: true } });
+    await expect(handlers.voiceStreamStart(trustedEvent, 's1')).resolves.toEqual({
+      ok: false,
+      reason: 'no-mistral-key',
+    });
+    expect(beginVoiceStream).not.toHaveBeenCalled();
+  });
+
+  it('voiceStreamStart opens the stream when enabled, streaming, and keyed', async () => {
+    await writeSettings({ voice: { enabled: true, streaming: true } });
+    await fs.writeFile(join(tmpdir(), 'noop'), '');
+    beginVoiceStream.mockResolvedValue({ ok: true });
+    // A Mistral key must resolve — seed the agents env file the handlers read.
+    await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, 'MISTRAL_API_KEY=stream-test-key\n');
+    await expect(handlers.voiceStreamStart(trustedEvent, 's1')).resolves.toEqual({ ok: true });
+    expect(beginVoiceStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('voiceStreamAudio validates its payload before the gate', async () => {
+    await writeSettings({});
+    await expect(handlers.voiceStreamAudio(trustedEvent, { pcmBase64: '' })).rejects.toThrow(
+      'voiceStreamAudio: expected a non-empty pcmBase64 string',
+    );
+  });
+
+  it('voiceStreamAudio is a no-op when no stream is live', async () => {
+    await writeSettings({ voice: { enabled: true } });
+    await expect(
+      handlers.voiceStreamAudio(trustedEvent, { pcmBase64: 'AAAA' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('voiceStreamStop answers no-session when no stream is live', async () => {
+    await writeSettings({ voice: { enabled: true } });
+    await expect(handlers.voiceStreamStop(trustedEvent)).resolves.toEqual({
+      inserted: false,
+      reason: 'no-session',
+    });
+  });
+
+  it('voiceStreamStop answers disabled (and kills the stream) when the gate is off', async () => {
+    await writeSettings({});
+    await expect(handlers.voiceStreamStop(trustedEvent)).resolves.toEqual({
+      inserted: false,
+      reason: 'disabled',
+    });
+  });
+
+  it('voiceStreamCancel resolves without a session', async () => {
+    await writeSettings({});
+    await expect(handlers.voiceStreamCancel(trustedEvent)).resolves.toBeUndefined();
   });
 });

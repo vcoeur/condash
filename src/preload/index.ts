@@ -11,6 +11,7 @@ import type {
   TermExitMessage,
   TermSession,
   TreeEvent,
+  VoicePartialMessage,
 } from '../shared/types';
 
 const api: CondashApi = {
@@ -127,6 +128,15 @@ const api: CondashApi = {
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
   voiceTranscribe: (id, clip) => ipcRenderer.invoke('voiceTranscribe', id, clip),
   voiceSpeak: (id) => ipcRenderer.invoke('voiceSpeak', id),
+  voiceStreamStart: (id) => ipcRenderer.invoke('voiceStreamStart', id),
+  voiceStreamAudio: (chunk) => ipcRenderer.invoke('voiceStreamAudio', chunk),
+  voiceStreamStop: () => ipcRenderer.invoke('voiceStreamStop'),
+  voiceStreamCancel: () => ipcRenderer.invoke('voiceStreamCancel'),
+  onVoicePartial: (callback) => {
+    const handler = (_: unknown, msg: VoicePartialMessage): void => callback(msg);
+    ipcRenderer.on(EVENT_CHANNELS.voicePartial, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.voicePartial, handler);
+  },
   clipboardReadText: () => ipcRenderer.invoke('clipboardReadText'),
   termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),
   termGeometry: (id) => ipcRenderer.invoke('termGeometry', id),
