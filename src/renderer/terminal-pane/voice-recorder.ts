@@ -65,7 +65,15 @@ export interface VoiceRecorder {
   readonly recording: boolean;
 }
 
-export function createVoiceRecorder(): VoiceRecorder {
+export interface VoiceRecorderOptions {
+  /** Per-chunk tap for the realtime stream: every captured buffer, base64
+   *  s16le PCM (no WAV header), right after it joins the batch buffer. The
+   *  batch fallback buffering below is untouched — the tap is an additive
+   *  observer, so a stream that never consumes the chunks loses nothing. */
+  onChunk?: (pcmBase64: string) => void;
+}
+
+export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRecorder {
   let stream: MediaStream | null = null;
   let context: AudioContext | null = null;
   let processor: ScriptProcessorNode | null = null;
@@ -127,6 +135,12 @@ export function createVoiceRecorder(): VoiceRecorder {
         const input = event.inputBuffer.getChannelData(0);
         chunks.push(new Float32Array(input));
         sampleCount += input.length;
+        if (options.onChunk) {
+          const pcm = float32ToInt16(input);
+          options.onChunk(
+            bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
+          );
+        }
       };
       sink = context.createGain();
       sink.gain.value = 0; // silent sink: keeps the graph pumping without audio out

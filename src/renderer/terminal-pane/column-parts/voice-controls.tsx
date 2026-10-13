@@ -1,7 +1,14 @@
 // The voice controls in a terminal column's header: a Dictate toggle
-// (push-to-talk MVP — click to start, click again to transcribe-and-insert)
-// and a Read-aloud button (on-demand TTS of the tab's recent output — never
-// automatic). Both act on the column's active tab.
+// (click to start, click again to transcribe-and-insert; hold the
+// push-to-talk chord for the same without the mouse) and a Read-aloud
+// button (on-demand TTS of the tab's recent output — never automatic). Both
+// act on the column's active tab.
+//
+// With streaming accepted by main, the recording rides the realtime socket:
+// chunks flow through the recorder's per-chunk tap and the accumulated
+// partial is pushed up to the column's live-caption strip via `onPartial`.
+// A stream refusal or failure changes nothing visible here — the buffered
+// clip batch chain commits on stop exactly as before.
 //
 // The column gates mounting this component on `voice.enabled` (Settings →
 // Voice, default off): with the feature off the controls never render, and
@@ -13,7 +20,7 @@
 // (../voice-session.ts) and is regression-tested there; this file only binds
 // it to buttons.
 
-import { Show } from 'solid-js';
+import { createEffect, Show } from 'solid-js';
 import { createVoiceRecorder } from '../voice-recorder';
 import { createVoiceSession } from '../voice-session';
 
@@ -25,17 +32,38 @@ export interface VoiceControlsProps {
   /** Surface a notice (insert result, empty transcript, errors) to the app
    *  toast. */
   onNotice: (message: string) => void;
+  /** Live-caption feed: the accumulated streaming partial, or null when no
+   *  stream is live. The column renders it under the tab row. */
+  onPartial?: (text: string | null) => void;
 }
 
 export function VoiceControls(props: VoiceControlsProps) {
   const session = createVoiceSession({
     activeSid: () => props.activeSid,
     onNotice: props.onNotice,
-    recorder: createVoiceRecorder(),
+    recorder: createVoiceRecorder({
+      // Realtime tap: only while a stream is actually live — a refused or
+      // dead stream must not ship chunks. Fire-and-forget: a dropped chunk
+      // only thins the partial view; the buffered clip keeps everything.
+      onChunk: (pcmBase64) => {
+        if (session.partial() !== null) {
+          void window.condash.voiceStreamAudio({ pcmBase64 }).catch(() => undefined);
+        }
+      },
+    }),
+    stream: {
+      start: (sid) => window.condash.voiceStreamStart(sid),
+      audio: (chunk) => window.condash.voiceStreamAudio(chunk),
+      stop: () => window.condash.voiceStreamStop(),
+      cancel: () => window.condash.voiceStreamCancel(),
+      onPartial: (callback) => window.condash.onVoicePartial(callback),
+    },
     transcribe: (sid, clip) => window.condash.voiceTranscribe(sid, clip),
     speak: (sid) => window.condash.voiceSpeak(sid),
     createAudio: (src) => new Audio(src),
   });
+
+  createEffect(() => props.onPartial?.(session.partial()));
 
   return (
     <Show when={props.activeSid}>
