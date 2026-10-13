@@ -76,26 +76,29 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
 
     // Push-to-talk wins inside the xterm too — dictation exists so the user
     // never touches the mouse, and the focused surface during dictation is
-    // the terminal. Keydown starts; while a recording is already live the
-    // handler absorbs the chord's keydown (held-key auto-repeat, or a chord
-    // press over a click-recording) so it never reaches the xterm. The
+    // the terminal. Keydown starts (active column, when idle); while ANY
+    // recording is live the handler absorbs the chord's keydown (held-key
+    // auto-repeat, a chord press over a click-recording, or a recording
+    // parked in a non-active column) so it never reaches the xterm. The
     // matching keyup below commits, ignoring modifier order.
     const pttChord = resolvePttShortcut(deps.voicePptShortcut?.());
     if (pttChord && matchesShortcut(event, pttChord)) {
+      // One recording state machine (design §7): while any recording is
+      // live — in the active column or parked in a non-active one — the
+      // keydown is a no-op on the recording and is absorbed, or auto-repeat
+      // (and a plain chord press) would reach the focused xterm's textarea
+      // (Ctrl+Space garbage into the very shell the transcript is about to
+      // be committed to). The chord's keyup commits the live recording.
+      if (pttEndTarget()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const target = pttBeginTarget();
       if (target) {
         event.preventDefault();
         event.stopPropagation();
         target.begin();
-        return;
-      }
-      // Begin refused = a recording is live. Absorb the keydown anyway:
-      // auto-repeat fires ~30 keydowns/s after ~500 ms, and each one falls
-      // through to the focused xterm's textarea here (Ctrl+Space garbage
-      // into the very shell the transcript is about to be committed to).
-      if (pttEndTarget()) {
-        event.preventDefault();
-        event.stopPropagation();
         return;
       }
     }

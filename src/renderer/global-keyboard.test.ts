@@ -135,8 +135,12 @@ describe('global keyboard PTT wiring', () => {
 
   it('absorbs a chord press over a click-started recording in another column', async () => {
     const h = await createKeyboardHarness();
-    // Two columns: the recording one is NOT the active column, so begin has
-    // no target either — the live recording alone must absorb the chord.
+    // A recording parked in a NON-active column makes pttEndTarget() the
+    // parked entry, so the absorb branch fires before begin is even
+    // consulted — the chord starts no second recording in the idle active
+    // column. (NIT-6: pre-fix this took the active column's begin branch;
+    // the begin-not-called assertion below is RED on that revert.)
+    const beginB = vi.fn();
     const unregisterA = registerVoicePtt({
       isActiveColumn: () => false,
       isRecording: () => true,
@@ -146,13 +150,49 @@ describe('global keyboard PTT wiring', () => {
     const unregisterB = registerVoicePtt({
       isActiveColumn: () => true,
       isRecording: () => false,
-      begin: vi.fn(),
+      begin: beginB,
       end: vi.fn(),
     });
     const event = keyEvent(CHORD);
     h.dispatchDown(event);
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(beginB).not.toHaveBeenCalled();
+    unregisterA();
+    unregisterB();
+    h.dispose();
+  });
+
+  it('commits the parked recording on the chord keyup while the active column is idle', async () => {
+    const h = await createKeyboardHarness();
+    // Full chord cycle over a recording parked in a non-active column: the
+    // absorbed keydown starts nothing, and the keyup reaches the parked
+    // column's session through the registry — pttEndTarget() ignores which
+    // column is active (design §7: one recording state machine, two
+    // triggers). (NIT-6 follow-up: pre-fix the keydown began the active
+    // column, so the begin-not-called assertion is RED on that revert.)
+    const endA = vi.fn();
+    const beginB = vi.fn();
+    const unregisterA = registerVoicePtt({
+      isActiveColumn: () => false,
+      isRecording: () => true,
+      begin: vi.fn(),
+      end: endA,
+    });
+    const unregisterB = registerVoicePtt({
+      isActiveColumn: () => true,
+      isRecording: () => false,
+      begin: beginB,
+      end: vi.fn(),
+    });
+    const down = keyEvent(CHORD);
+    h.dispatchDown(down);
+    expect(beginB).not.toHaveBeenCalled();
+    const up = keyEvent({ key: ' ' });
+    h.dispatchUp(up);
+    expect(up.preventDefault).toHaveBeenCalledTimes(1);
+    expect(up.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(endA).toHaveBeenCalledTimes(1);
     unregisterA();
     unregisterB();
     h.dispose();
