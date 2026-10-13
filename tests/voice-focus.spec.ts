@@ -33,6 +33,19 @@ const focusInTerminal = (): boolean => {
   );
 };
 
+/**
+ * The §10 caption-strip assertions, in the shape this harness can reach.
+ * The strip mounts on `partial() !== null`, and a partial only exists once
+ * a stream STARTS OK — with no keys reachable, main refuses every start, so
+ * a positive mount is not reachable E2E (the mount/unmount signal itself is
+ * unit-pinned in voice-session.test.ts). What E2E CAN pin, and what a
+ * regression would break: the strip's key is the STREAM, never the bare
+ * recording — it must stay absent while a recording is live — and it must
+ * leave no stale element after the recording stops.
+ */
+const expectNoCaptionStrip = (window: import('@playwright/test').Page) =>
+  expect(window.locator('[data-test-voice-caption]')).toHaveCount(0);
+
 /** Boot with voice enabled, a fake mic, and no provider keys reachable. */
 async function bootVoiceApp() {
   // A path that does not exist: key resolution finds nothing, so a stop can
@@ -71,6 +84,11 @@ test('clicking Dictate keeps keyboard focus in the terminal', async () => {
     await expect(DICTATE).toHaveClass(/recording/);
     expect(await booted.window.evaluate(focusInTerminal)).toBe(true);
 
+    // The caption strip is stream-keyed: with no key main refuses the
+    // stream start, so no partial exists and the strip must stay absent
+    // while the recording is live (see expectNoCaptionStrip above).
+    await expectNoCaptionStrip(booted.window);
+
     // Typed input still lands in the terminal while recording.
     await booted.window.keyboard.type('echo kept-focus');
     await expect.poll(() => booted.window.evaluate(focusInTerminal), { timeout: 5_000 }).toBe(true);
@@ -80,6 +98,8 @@ test('clicking Dictate keeps keyboard focus in the terminal', async () => {
     // the exact text belongs to the adapter, not this spec).
     await DICTATE.click();
     await expect(DICTATE).not.toHaveClass(/recording/);
+    // ...and no stale caption strip survives the stop.
+    await expectNoCaptionStrip(booted.window);
     await expect(booted.window.locator('.toast, [role="alert"]').first()).toBeVisible({
       timeout: 15_000,
     });
@@ -108,6 +128,10 @@ test('the push-to-talk chord starts and commits dictation from the keyboard', as
     await booted.window.keyboard.down('Space');
     await expect(DICTATE).toHaveClass(/recording/);
 
+    // Stream-keyed strip: a held chord starts a recording, not a stream —
+    // with no key the start is refused and the strip stays absent.
+    await expectNoCaptionStrip(booted.window);
+
     // Release the base key first (modifiers still held): the chord commits
     // on the base key alone, ignoring modifier order (§7).
     await booted.window.keyboard.up('Space');
@@ -118,6 +142,8 @@ test('the push-to-talk chord starts and commits dictation from the keyboard', as
     // The commit ran main's stream/batch chain; with no keys it surfaces as
     // the adapter error toast — the no-network outcome this spec pins.
     await expect(booted.window.locator('.toast').first()).toBeVisible({ timeout: 15_000 });
+    // No stale caption strip survives the commit.
+    await expectNoCaptionStrip(booted.window);
   } finally {
     await booted.cleanup();
   }

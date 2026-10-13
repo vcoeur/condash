@@ -255,6 +255,27 @@ describe('transcribeClip context bias', () => {
       },
     });
   });
+
+  it('caps the context_bias fields at the provider limit of 100 on emission', async () => {
+    // Defence-in-depth: the resolver and schema already enforce the cap; the
+    // multipart emission must not ship more than 100 fields even when handed
+    // a longer list directly.
+    const oversize = Array.from({ length: 130 }, (_, i) => `phrase-${i}`);
+    await transcribeClip(
+      CLIP,
+      { mistral: MISTRAL_KEY },
+      undefined,
+      {
+        fetch: (_url, init) => {
+          const fields = (init?.body as FormData).getAll('context_bias');
+          expect(fields).toHaveLength(100);
+          expect(fields[0]).toBe('phrase-0');
+          return Promise.resolve(jsonRes({ text: 'x' }));
+        },
+      },
+      oversize,
+    );
+  });
 });
 
 describe('transcribeClipBiasFirst', () => {

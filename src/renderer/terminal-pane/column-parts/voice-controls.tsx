@@ -42,21 +42,28 @@ export interface VoiceControlsProps {
 }
 
 export function VoiceControls(props: VoiceControlsProps) {
+  const recorder = createVoiceRecorder({
+    // Realtime tap: while the recording is live — not only once a partial
+    // exists — so chunks captured during the stream-start round-trip (the
+    // utterance's leading edge) reach the stream and the bias repass too.
+    // A refused or dead stream no-ops in main; fire-and-forget either way:
+    // a dropped chunk only thins the partial view, the buffered clip keeps
+    // everything.
+    onChunk: (pcmBase64) => {
+      if (session.recording()) {
+        void window.condash.voiceStreamAudio({ pcmBase64 }).catch(() => undefined);
+      }
+    },
+  });
   const session = createVoiceSession({
     activeSid: () => props.activeSid,
     onNotice: props.onNotice,
-    recorder: createVoiceRecorder({
-      // Realtime tap: only while a stream is actually live — a refused or
-      // dead stream must not ship chunks. Fire-and-forget: a dropped chunk
-      // only thins the partial view; the buffered clip keeps everything.
-      onChunk: (pcmBase64) => {
-        if (session.partial() !== null) {
-          void window.condash.voiceStreamAudio({ pcmBase64 }).catch(() => undefined);
-        }
-      },
-    }),
+    recorder,
     stream: {
-      start: (sid) => window.condash.voiceStreamStart(sid),
+      // The start labels the session with the rate the mic actually
+      // captured at, so main's reassembled repass WAV header is honest
+      // (same semantics as the recorder's own clip).
+      start: (sid) => window.condash.voiceStreamStart({ sid, sampleRate: recorder.capturedRate }),
       audio: (chunk) => window.condash.voiceStreamAudio(chunk),
       stop: () => window.condash.voiceStreamStop(),
       cancel: () => window.condash.voiceStreamCancel(),

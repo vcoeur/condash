@@ -76,8 +76,10 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
 
     // Push-to-talk wins inside the xterm too — dictation exists so the user
     // never touches the mouse, and the focused surface during dictation is
-    // the terminal. Keydown starts (the recording guard absorbs auto-repeat);
-    // the matching keyup below commits, ignoring modifier order.
+    // the terminal. Keydown starts; while a recording is already live the
+    // handler absorbs the chord's keydown (held-key auto-repeat, or a chord
+    // press over a click-recording) so it never reaches the xterm. The
+    // matching keyup below commits, ignoring modifier order.
     const pttChord = resolvePttShortcut(deps.voicePptShortcut?.());
     if (pttChord && matchesShortcut(event, pttChord)) {
       const target = pttBeginTarget();
@@ -85,6 +87,15 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
         event.preventDefault();
         event.stopPropagation();
         target.begin();
+        return;
+      }
+      // Begin refused = a recording is live. Absorb the keydown anyway:
+      // auto-repeat fires ~30 keydowns/s after ~500 ms, and each one falls
+      // through to the focused xterm's textarea here (Ctrl+Space garbage
+      // into the very shell the transcript is about to be committed to).
+      if (pttEndTarget()) {
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
     }

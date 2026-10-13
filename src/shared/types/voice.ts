@@ -101,6 +101,15 @@ export interface VoiceSpeakResult {
   error?: string;
 }
 
+/** Renderer → main request to open a realtime transcription stream for one
+ *  tab. `sampleRate` is the rate the mic actually captured at (the
+ *  AudioContext's real rate, which some backends vary from the requested
+ *  16 kHz) so main's reassembled repass WAV can carry an honest header. */
+export interface VoiceStreamStartRequest {
+  sid: string;
+  sampleRate: number;
+}
+
 /** Result of opening a realtime transcription stream. A refusal is always a
  *  typed `ok: false` — the renderer treats every reason as "stay on the
  *  batch path" (streaming is an upgrade, not a requirement), so the strings

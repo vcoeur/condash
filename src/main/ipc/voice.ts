@@ -175,9 +175,14 @@ export function registerVoiceIpc(): void {
   // start that hits a disabled feature or a missing Mistral key answers a
   // typed refusal and the renderer stays on the batch path (design §9.1).
 
-  ipcMain.handle('voiceStreamStart', async (event, id: unknown) => {
+  ipcMain.handle('voiceStreamStart', async (event, request: unknown) => {
     requireMainWindowSender(event);
-    const sid = requireNonEmptyString('voiceStreamStart', id);
+    const record = requireRecord('voiceStreamStart', request);
+    const sid = requireNonEmptyString('voiceStreamStart', record.sid);
+    const sampleRate = record.sampleRate;
+    if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+      throw new Error('voiceStreamStart: expected a positive sampleRate');
+    }
     const { voice: prefs } = await readSettings();
     if (prefs?.enabled !== true || prefs.streaming === false) {
       return { ok: false, reason: 'disabled' } satisfies VoiceStreamStartResult;
@@ -196,6 +201,7 @@ export function registerVoiceIpc(): void {
     };
     const started = await beginVoiceStream({
       sid,
+      sampleRate,
       apiKey: keys.mistral,
       contextBias,
       keys,

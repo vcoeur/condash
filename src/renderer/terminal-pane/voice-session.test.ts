@@ -26,6 +26,7 @@ interface FakeRecorder {
   cancel: ReturnType<typeof vi.fn>;
   active: boolean;
   readonly recording: boolean;
+  capturedRate: number;
 }
 
 function makeFakeRecorder(): FakeRecorder {
@@ -44,6 +45,7 @@ function makeFakeRecorder(): FakeRecorder {
     get recording(): boolean {
       return rec.active;
     },
+    capturedRate: 16000,
   };
   return rec;
 }
@@ -476,6 +478,23 @@ describe('voice session streaming', () => {
     const h = await createStreamHarness({ startResult: { ok: false, reason: 'disabled' } });
     await h.session.toggleDictation();
     expect(h.stream.audio).not.toHaveBeenCalled();
+    h.dispose();
+  });
+
+  it('reports an accurate notice when the stream start rejects — not a mic error', async () => {
+    // NIT-4 (note 06): a voiceStreamStart IPC rejection (e.g. a corrupt
+    // conception config thrown while resolving the bias list) used to map
+    // through micErrorMessage and surface as "Could not open the
+    // microphone." while the mic was in fact open and recording on batch.
+    const h = await createStreamHarness();
+    h.stream.start.mockRejectedValueOnce(new Error('config parse failed'));
+    await h.session.toggleDictation();
+    expect(h.session.recording()).toBe(true);
+    expect(h.notices).toEqual(['Streaming unavailable — using batch transcription.']);
+    // The recording continues; the commit runs the buffered-clip batch chain.
+    await h.session.toggleDictation();
+    expect(h.stream.stop).not.toHaveBeenCalled();
+    expect(h.transcribe).toHaveBeenCalledTimes(1);
     h.dispose();
   });
 });

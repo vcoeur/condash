@@ -90,6 +90,11 @@ export interface VoiceAudioClipLike {
 
 export interface VoiceStreamSessionDeps {
   sid: string;
+  /** The rate the renderer's mic actually captured at (Hz) — the reassembled
+   *  repass clip labels its WAV header with this instead of assuming the
+   *  requested 16 kHz, mirroring the recorder's `capturedRate` semantics.
+   *  Unset → RECORD_SAMPLE_RATE. */
+  sampleRate?: number;
   apiKey: string;
   /** Resolved effective bias list (user phrases + app handles). Non-empty
    *  routes the stop commit through `batchTranscribers.biasFirst` (§8). */
@@ -356,12 +361,15 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
 
   private reassembledClip(): VoiceAudioClipLike | null {
     if (this.pcmBytes < 2) return null;
+    // The header carries the rate the renderer actually captured at — the
+    // same honesty rule as the recorder's own clip (voice-recorder.ts).
+    const rate = this.deps.sampleRate ?? RECORD_SAMPLE_RATE;
     const merged = Buffer.concat(this.pcm, this.pcmBytes);
     const samples = new Int16Array(merged.buffer, merged.byteOffset, Math.floor(merged.length / 2));
-    const wav = encodeWav(samples, RECORD_SAMPLE_RATE);
+    const wav = encodeWav(samples, rate);
     return {
       data: Buffer.from(wav).toString('base64'),
-      sampleRate: RECORD_SAMPLE_RATE,
+      sampleRate: rate,
       format: 'wav',
     };
   }

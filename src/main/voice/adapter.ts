@@ -30,6 +30,7 @@
 
 import type { VoiceAudioClip, VoicePrefs, VoiceProvider } from '../../shared/types';
 import type { ResolvedVoiceKeys } from './keys';
+import { MAX_CONTEXT_BIAS } from './resolve-context-bias';
 
 export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 export const MISTRAL_BASE = 'https://api.mistral.ai/v1';
@@ -283,7 +284,9 @@ async function mistralTranscribe(
   form.set('model', MISTRAL_STT_MODEL);
   // `context_bias` is a repeatable form field (up to 100 phrases) on this
   // endpoint — one field per phrase, not a joined list (design note 04 §2.3).
-  for (const phrase of contextBias) form.append('context_bias', phrase);
+  // Capped here too: the resolver, schema and Settings UI already enforce
+  // MAX_CONTEXT_BIAS, so this is defence-in-depth at the emission itself.
+  for (const phrase of contextBias.slice(0, MAX_CONTEXT_BIAS)) form.append('context_bias', phrase);
   const bytes = base64ToBytes(clip.data);
   form.set('file', new Blob([bytes], { type: 'audio/wav' }), 'clip.wav');
   const res = await doFetch(`${MISTRAL_BASE}/audio/transcriptions`, {

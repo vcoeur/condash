@@ -54,6 +54,7 @@ import type {
   VoicePartialMessage,
   VoiceSpeakResult,
   VoiceStreamChunk,
+  VoiceStreamStartRequest,
   VoiceStreamStartResult,
   VoiceTranscribeResult,
 } from './types';
@@ -395,10 +396,11 @@ export interface CondashApi {
   /**
    * Open the realtime dictation stream for session `id` (one WebSocket in
    * main, Mistral realtime, Authorization header set there — the key never
-   * reaches the renderer). A refusal is a typed `{ok:false, reason}`; the
-   * renderer stays on the batch path for every reason.
+   * reaches the renderer). `sampleRate` labels the session with the rate
+   * the mic actually captured at. A refusal is a typed `{ok:false, reason}`;
+   * the renderer stays on the batch path for every reason.
    */
-  voiceStreamStart(id: string): Promise<VoiceStreamStartResult>;
+  voiceStreamStart(request: VoiceStreamStartRequest): Promise<VoiceStreamStartResult>;
   /** Forward one chunk of raw s16le PCM (base64, no WAV header) from the
    *  recording tap to the active stream. No-op when no stream is live. */
   voiceStreamAudio(chunk: VoiceStreamChunk): Promise<void>;

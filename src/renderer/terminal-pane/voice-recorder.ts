@@ -63,6 +63,11 @@ export interface VoiceRecorder {
   cancel(): void;
   /** True between a resolved start() and stop()/cancel(). */
   readonly recording: boolean;
+  /** The rate the current (or last) capture ran at — the AudioContext's
+   *  actual rate, which some backends vary from the requested 16 kHz. The
+   *  realtime stream start labels its session with this so main's
+   *  reassembled repass WAV carries an honest header. */
+  readonly capturedRate: number;
 }
 
 export interface VoiceRecorderOptions {
@@ -105,6 +110,10 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
   return {
     get recording(): boolean {
       return active;
+    },
+
+    get capturedRate(): number {
+      return capturedRate;
     },
 
     async start(): Promise<void> {

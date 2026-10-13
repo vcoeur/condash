@@ -193,10 +193,18 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       // is silent — the buffered-clip batch chain stays the commit path and
       // the recording continues unchanged (§9.1).
       if (deps.stream) {
-        const started = await deps.stream.start(sid);
-        if (started.ok && !disposed && deps.activeSid() !== null && recording()) {
-          streamActive = true;
-          setPartial('');
+        try {
+          const started = await deps.stream.start(sid);
+          if (started.ok && !disposed && deps.activeSid() !== null && recording()) {
+            streamActive = true;
+            setPartial('');
+          }
+        } catch {
+          // A stream-start IPC rejection is not a microphone failure — the
+          // mic is already open and the recording continues on the batch
+          // chain, so the notice must say that, not "could not open the
+          // microphone" (the outer catch is for recorder.start() errors).
+          deps.onNotice('Streaming unavailable — using batch transcription.');
         }
       }
     } catch (err) {

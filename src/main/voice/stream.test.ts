@@ -302,6 +302,30 @@ describe('voice stream session', () => {
     expect(harness.batchNormal).not.toHaveBeenCalled();
   });
 
+  it('labels the reassembled repass clip with the captured sample rate, not a hardcoded 16 kHz', async () => {
+    // NIT-2 (note 06): the session start carries the rate the renderer's mic
+    // actually captured at; the repass WAV header must mirror it the way the
+    // recorder's own clip does, instead of assuming the requested 16 kHz.
+    await makeHarness({ sampleRate: 48000, contextBias: ['condash'] });
+    const starting = harness.start();
+    const socket = harness.sockets[0];
+    socket.emitOpen();
+    await starting;
+    const session = getActiveVoiceStream()!;
+    session.handleAudio(Buffer.alloc(1600 * 2).toString('base64')); // 100 ms of PCM
+    socket.emitText({ type: 'transcription.done', text: 'stream text' });
+    await takeActiveVoiceStream()!.stop();
+    const clip = harness.batchBiasFirst.mock.calls[0][0];
+    expect(clip.sampleRate).toBe(48000);
+    const wav = Buffer.from(clip.data, 'base64');
+    // RIFF header: sample rate at offset 24, byte rate (rate × mono × 2 B) at 28.
+    expect(wav.readUInt32LE(24)).toBe(48000);
+    expect(wav.readUInt32LE(28)).toBe(96000);
+    // The PCM byte count is rate-independent — same size pin as above.
+    expect(wav.length).toBe(44 + 1600 * 2);
+    expect(harness.writes).toEqual([{ sid: 's1', text: 'bias first text' }]);
+  });
+
   it('falls back to the realtime text when the bias repass fails (last resort)', async () => {
     await makeHarness({
       contextBias: ['condash'],
