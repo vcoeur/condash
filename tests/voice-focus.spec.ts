@@ -33,12 +33,12 @@ const focusInTerminal = (): boolean => {
   );
 };
 
-test('clicking Dictate keeps keyboard focus in the terminal', async () => {
-  test.setTimeout(90_000);
+/** Boot with voice enabled, a fake mic, and no provider keys reachable. */
+async function bootVoiceApp() {
   // A path that does not exist: key resolution finds nothing, so a stop can
   // never reach a provider — the error toast at the end proves the flow ran.
   const noKeysEnv = join(tmpdir(), 'condash-voice-focus-no-keys.env');
-  const booted = await bootApp({
+  return bootApp({
     globalConfig: { layout: { projects: true, terminal: true }, voice: { enabled: true } },
     env: { CONDASH_AGENTS_ENV: noKeysEnv },
     beforeFirstWindow: async (app) => {
@@ -49,6 +49,11 @@ test('clicking Dictate keeps keyboard focus in the terminal', async () => {
       });
     },
   });
+}
+
+test('clicking Dictate keeps keyboard focus in the terminal', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootVoiceApp();
   const DICTATE = booted.window.locator('[data-label="dictate"]');
   try {
     await booted.window.evaluate(() =>
@@ -78,6 +83,41 @@ test('clicking Dictate keeps keyboard focus in the terminal', async () => {
     await expect(booted.window.locator('.toast, [role="alert"]').first()).toBeVisible({
       timeout: 15_000,
     });
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('the push-to-talk chord starts and commits dictation from the keyboard', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootVoiceApp();
+  const DICTATE = booted.window.locator('[data-label="dictate"]');
+  try {
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "VOICE-PTT\\n"; sleep 60' }),
+    );
+    await expect(booted.window.locator('[data-label="find"]')).toBeVisible();
+    await expect(DICTATE).toBeVisible();
+    await booted.window.locator('.terminal-host').click();
+    await expect.poll(() => booted.window.evaluate(focusInTerminal)).toBe(true);
+
+    // Hold the default chord (Ctrl+Shift+Space): the keydown of the base key
+    // starts the recording — and must NOT type a space into the terminal.
+    await booted.window.keyboard.down('Control');
+    await booted.window.keyboard.down('Shift');
+    await booted.window.keyboard.down('Space');
+    await expect(DICTATE).toHaveClass(/recording/);
+
+    // Release the base key first (modifiers still held): the chord commits
+    // on the base key alone, ignoring modifier order (§7).
+    await booted.window.keyboard.up('Space');
+    await expect(DICTATE).not.toHaveClass(/recording/);
+    await booted.window.keyboard.up('Shift');
+    await booted.window.keyboard.up('Control');
+
+    // The commit ran main's stream/batch chain; with no keys it surfaces as
+    // the adapter error toast — the no-network outcome this spec pins.
+    await expect(booted.window.locator('.toast').first()).toBeVisible({ timeout: 15_000 });
   } finally {
     await booted.cleanup();
   }

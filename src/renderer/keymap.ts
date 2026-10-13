@@ -26,6 +26,13 @@ function canonicaliseKey(key: string): string {
   return KEY_ALIASES[key] ?? key;
 }
 
+/** Normalise a `KeyboardEvent.key`-style key the way `parseShortcut` does —
+ *  exported for the push-to-talk keyup matcher, which compares the released
+ *  base key against the chord's base key ignoring modifier order. */
+export function canonicalKey(key: string): string {
+  return canonicaliseKey(key);
+}
+
 /** Parse a `Ctrl+Shift+P`-style spec. Returns null when the spec is empty
  *  or has no key portion. Aliases: Control=Ctrl, Option=Alt, Cmd/Super=Meta.
  *  Arrow-key shorthands `Left`/`Right`/`Up`/`Down` are expanded to the

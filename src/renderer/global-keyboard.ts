@@ -4,6 +4,8 @@ import type { LayoutState, TerminalPrefs } from '@shared/types';
 import type { TerminalPaneHandle } from './terminal-pane';
 import type { TerminalBridge } from './terminal-bridge';
 import { matchesShortcut, parseShortcut } from './keymap';
+import { pttBeginTarget, pttEndTarget } from './terminal-pane/voice-ptt-registry';
+import { pttCommitMatches, resolvePttShortcut } from './ptt';
 
 export interface GlobalKeyboardDeps {
   layout: Accessor<LayoutState>;
@@ -14,22 +16,29 @@ export interface GlobalKeyboardDeps {
   bridge: TerminalBridge;
   setSearchModalOpen: (open: boolean) => void;
   setShortcutsOpen: (updater: (cur: boolean) => boolean) => void;
+  /** `voice.pptShortcut` — hold-to-dictate chord (empty disables; unset →
+   *  the Ctrl+Shift+Space default). Live-fired by the Settings modal. */
+  voicePptShortcut?: () => string | undefined;
 }
 
 /**
- * Wires the global `keydown` listener (capture phase) covering the four
+ * Wires the global `keydown` listener (capture phase) covering the five
  * top-level shortcut clusters:
  *
  *   1. Pane-toggle (`Ctrl+\``) — always wins, even from inside an input.
  *   2. Screenshot-paste — wins inside the xterm too; uses `stopPropagation`
  *      to suppress xterm.js's built-in Ctrl+Shift+V text paste.
- *   3. `?` overlay + `Ctrl+K` search — yield to text inputs / xterm.
- *   4. Terminal tab move (`Ctrl+Left` / `Ctrl+Right`) — only when the pane
+ *   3. Push-to-talk (`Ctrl+Shift+Space` by default) — wins inside the xterm
+ *      too (dictation's whole point is not touching the mouse); the chord
+ *      starts the ACTIVE column's recording on keydown and commits it on
+ *      the base key's keyup, ignoring modifier order.
+ *   4. `?` overlay + `Ctrl+K` search — yield to text inputs / xterm.
+ *   5. Terminal tab move (`Ctrl+Left` / `Ctrl+Right`) — only when the pane
  *      is open.
  *
- * Capture phase: the screenshot-paste branch needs to run before xterm.js's
- * textarea keydown listener so `stopPropagation` can suppress its built-in
- * Ctrl+Shift+V paste. Other branches don't stopPropagation, so events
+ * Capture phase: the screenshot-paste and PTT branches need to run before
+ * xterm.js's textarea keydown listener so `stopPropagation` can suppress
+ * its built-in handling. Other branches don't stopPropagation, so events
  * still bubble normally to descendants when no shortcut matches.
  */
 export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
@@ -61,6 +70,21 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
         event.preventDefault();
         event.stopPropagation();
         void deps.bridge.handleScreenshotPaste();
+        return;
+      }
+    }
+
+    // Push-to-talk wins inside the xterm too — dictation exists so the user
+    // never touches the mouse, and the focused surface during dictation is
+    // the terminal. Keydown starts (the recording guard absorbs auto-repeat);
+    // the matching keyup below commits, ignoring modifier order.
+    const pttChord = resolvePttShortcut(deps.voicePptShortcut?.());
+    if (pttChord && matchesShortcut(event, pttChord)) {
+      const target = pttBeginTarget();
+      if (target) {
+        event.preventDefault();
+        event.stopPropagation();
+        target.begin();
         return;
       }
     }
@@ -105,10 +129,25 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
     }
   };
 
+  // Push-to-talk commit: keyup of the chord's base key, modifiers ignored
+  // (releasing Ctrl before Space must still commit). Only engages while a
+  // recording is live — an ordinary Space keyup is untouched.
+  const handleGlobalKeyUp = (event: KeyboardEvent): void => {
+    const chord = resolvePttShortcut(deps.voicePptShortcut?.());
+    if (!chord || !pttCommitMatches(event, chord)) return;
+    const target = pttEndTarget();
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.end();
+  };
+
   onMount(() => {
     document.addEventListener('keydown', handleGlobalKeyDown, true);
+    document.addEventListener('keyup', handleGlobalKeyUp, true);
   });
   onCleanup(() => {
     document.removeEventListener('keydown', handleGlobalKeyDown, true);
+    document.removeEventListener('keyup', handleGlobalKeyUp, true);
   });
 }

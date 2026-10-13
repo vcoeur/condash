@@ -20,9 +20,10 @@
 // (../voice-session.ts) and is regression-tested there; this file only binds
 // it to buttons.
 
-import { createEffect, Show } from 'solid-js';
+import { createEffect, onCleanup, onMount, Show } from 'solid-js';
 import { createVoiceRecorder } from '../voice-recorder';
 import { createVoiceSession } from '../voice-session';
+import { registerVoicePtt } from '../voice-ptt-registry';
 
 export interface VoiceControlsProps {
   /** The column's active session id, or null when none is live. Both
@@ -35,6 +36,9 @@ export interface VoiceControlsProps {
   /** Live-caption feed: the accumulated streaming partial, or null when no
    *  stream is live. The column renders it under the tab row. */
   onPartial?: (text: string | null) => void;
+  /** True when this column is the app's active terminal column — the
+   *  push-to-talk chord starts dictation here. */
+  isActiveColumn?: boolean;
 }
 
 export function VoiceControls(props: VoiceControlsProps) {
@@ -64,6 +68,20 @@ export function VoiceControls(props: VoiceControlsProps) {
   });
 
   createEffect(() => props.onPartial?.(session.partial()));
+
+  // Push-to-talk: register this column with the global registry for the
+  // lifetime of the controls. The chord only engages when this is the active
+  // column with a live tab — pressing it over the Dashboard band must not
+  // flash the microphone.
+  onMount(() => {
+    const unregister = registerVoicePtt({
+      isActiveColumn: () => props.isActiveColumn === true && props.activeSid !== null,
+      isRecording: () => session.recording(),
+      begin: () => void session.startDictation(),
+      end: () => void session.stopDictation(),
+    });
+    onCleanup(unregister);
+  });
 
   return (
     <Show when={props.activeSid}>

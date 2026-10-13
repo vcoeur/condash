@@ -293,6 +293,14 @@ function App() {
   // its global write lands. Gates the terminal-pane Dictate/Read controls.
   const { voiceEnabled, handleVoiceEnabledChange } = useVoiceEnabled();
 
+  // Push-to-talk chord (`voice.pptShortcut`) as a renderer signal — seeded
+  // from the boot bundle and live-fired by the Settings modal alongside the
+  // master switch. Verbatim: undefined → default chord, '' → disabled.
+  const [voicePptShortcut, setVoicePptShortcut] = createSignal<string | undefined>(undefined);
+  void getBootstrap()
+    .then((boot) => setVoicePptShortcut(boot.voicePptShortcut))
+    .catch(() => undefined);
+
   // --- Agents (tab-strip spawn dropdown + action-template bindings) -----
   // The `agents` settings list, re-fetched whenever the conception changes.
   // `reloadAgents` refreshes the dropdown after a settings edit.
@@ -599,6 +607,7 @@ function App() {
     bridge,
     setSearchModalOpen,
     setShortcutsOpen,
+    voicePptShortcut,
   });
   createMenuRouter({
     openRecent,
@@ -962,6 +971,7 @@ function App() {
         requestFocusReturn={requestFocusReturn}
         registerLeaveGuard={registerLeaveGuard}
         onChangeVoiceEnabled={handleVoiceEnabledChange}
+        onChangeVoicePptShortcut={setVoicePptShortcut}
         tasks={tasks}
         reloadTasks={() => void reloadTasks()}
         agents={agents}

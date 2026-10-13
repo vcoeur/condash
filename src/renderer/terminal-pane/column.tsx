@@ -428,6 +428,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
               activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
               onNotice={props.onNotice}
               onPartial={setVoicePartial}
+              isActiveColumn={props.isActiveColumn && !props.dashboardActive}
             />
           </Show>
         </div>
