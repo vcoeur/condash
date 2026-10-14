@@ -97,6 +97,7 @@ A Playwright run launches the **real Electron app**, which on a Wayland desktop 
 - **A bare `npx vitest run` runs only the first half** and reports green having skipped the timing tests. `tests/vitest-split-guard.test.ts` pins the wiring (both configs, the npm script, the CI lane) so the second invocation cannot be quietly dropped — but nothing can stop a human typing the bare command.
 - **Serializing the whole suite is the tempting shortcut; it was tried and reverted.** `fileParallelism: false` (v4.101.3) fixed the flake by running all 182 files one at a time: 97.5 s wall clock against 28.9 s parallel, and the CI vitest step went 35 s → 69 s against the fast lane's documented ≤ 90 s target. The split costs 31.7 s + 4.4 s. Isolate the two files, don't slow the other 180.
 - **Keep the p50 bounds at the discriminating values** (10 ms perf-log, 20 ms renderer): the isolated subtracted p50 is 0.1-0.3 ms and the un-subtracted raw floor is ~10.3 ms, so a broken subtraction still fails.
+- Spawn-deadline test heartbeats stage a complete timestamp beside the published file and synchronously rename it on each child tick; never truncate the published liveness oracle. The forced-interleaving regression runs that same fixture script.
 
 ### Documentation screenshots
 

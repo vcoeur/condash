@@ -10,7 +10,8 @@
  * the blocked parent loop reaps it, so `process.kill(pid, 0)` would lie.
  */
 import { once } from 'node:events';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -20,7 +21,11 @@ import { exec } from './exec';
 
 const HEARTBEAT_SCRIPT = `
 const fs = require('node:fs');
-setInterval(() => fs.writeFileSync(process.argv[1], String(Date.now())), 50);
+setInterval(() => {
+  const staged = process.argv[1] + '.next';
+  fs.writeFileSync(staged, String(Date.now()));
+  fs.renameSync(staged, process.argv[1]);
+}, 50);
 `;
 
 /** Block the main thread for `ms` — the condition the JS-timer timeout fails. */
@@ -66,6 +71,40 @@ describe('armSpawnDeadline', () => {
       }
     }
     await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('publishes complete heartbeats even during a truncated or partial write', async () => {
+    const hb = join(dir, 'heartbeat.txt');
+    const previous = '1792003217000';
+    const next = '1792003217050';
+    writeFileSync(hb, previous);
+    const observed: string[] = [];
+    let tick: (() => void) | undefined;
+    runInNewContext(HEARTBEAT_SCRIPT, {
+      require: () => ({
+        writeFileSync: (path: string, value: string) => {
+          writeFileSync(path, '');
+          observed.push(readFileSync(hb, 'utf8'));
+          writeFileSync(path, value.slice(0, 5));
+          observed.push(readFileSync(hb, 'utf8'));
+          writeFileSync(path, value);
+        },
+        renameSync: (from: string, to: string) => {
+          observed.push(readFileSync(hb, 'utf8'));
+          renameSync(from, to);
+        },
+      }),
+      process: { argv: ['node', hb] },
+      Date: { now: () => Number(next) },
+      setInterval: (callback: () => void, interval: number) => {
+        expect(interval).toBe(50);
+        tick = callback;
+      },
+    });
+    expect(tick).toBeTypeOf('function');
+    tick!();
+    expect(observed).toEqual([previous, previous, previous]);
+    expect(await fs.readFile(hb, 'utf8')).toBe(next);
   });
 
   it('kills on schedule even while the main event loop is blocked', async () => {
