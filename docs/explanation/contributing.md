@@ -91,6 +91,8 @@ make deadcode      # knip — dead files / deps / duplicate exports
 ```
 
 - **Vitest** (`make test-unit`) — `src/**/*.test.ts`. Fast. Pure-function tests (parsers, path helpers, regexes). `environment: 'node'`.
+
+  Spawn-deadline heartbeat fixtures publish complete timestamps by synchronous same-directory staging and rename. Their forced-interleaving test checks the published value during truncation and partial staging writes without weakening the deadline liveness assertions.
 - **knip** (`make deadcode`) — the dead-code / over-export guard, configured in `knip.json`. It fails the build on dead source files, dead / unlisted / unresolved dependencies, and duplicate exports (the grade that keeps re-added back-compat aliases and orphaned modules out). The pre-existing unused-export / unused-type backlog is graded `warn`: reported for a future sweep, but non-failing. The intentionally-tracked-but-unimported `electron-updater` dependency is allowlisted in `knip.json`. This check is part of the light gate, so it runs on every PR.
 - **Playwright** (`make test`) — `tests/*.spec.ts`. Drives the real Electron app. Slower, more authoritative. The Playwright fixture launches Electron with `CONDASH_FORCE_PROD=1` so the renderer loads the real `dist/` build, not the Vite dev server.
 

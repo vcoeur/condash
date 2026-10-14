@@ -982,3 +982,38 @@ describe('SCOPE_OF is consistent with the two disjoint schemas', () => {
     expect(globalShape.has('$schema_doc')).toBe(true);
   });
 });
+
+describe('configSchema voice realtime keys', () => {
+  it('accepts streaming / contextBias / pptShortcut with their designed types', () => {
+    const parsed = globalSettingsSchema.parse({
+      voice: {
+        enabled: true,
+        streaming: false,
+        contextBias: ['condash', 'knoten', 'vcoeur'],
+        pptShortcut: 'Ctrl+Shift+Space',
+      },
+    });
+    expect(parsed.voice).toMatchObject({
+      streaming: false,
+      contextBias: ['condash', 'knoten', 'vcoeur'],
+      pptShortcut: 'Ctrl+Shift+Space',
+    });
+  });
+
+  it('keeps every new key optional with no schema-level default', () => {
+    const parsed = globalSettingsSchema.parse({ voice: { enabled: true } });
+    expect(parsed.voice).toEqual({ enabled: true });
+  });
+
+  it('enforces the 100-entry provider cap on contextBias', () => {
+    const bias = Array.from({ length: 100 }, (_, i) => `phrase-${i}`);
+    expect(globalSettingsSchema.safeParse({ voice: { contextBias: bias } }).success).toBe(true);
+    expect(
+      globalSettingsSchema.safeParse({ voice: { contextBias: [...bias, 'one-past'] } }).success,
+    ).toBe(false);
+  });
+
+  it('accepts an empty pptShortcut (the disable push-to-talk value)', () => {
+    expect(globalSettingsSchema.safeParse({ voice: { pptShortcut: '' } }).success).toBe(true);
+  });
+});

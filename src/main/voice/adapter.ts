@@ -30,6 +30,7 @@
 
 import type { VoiceAudioClip, VoicePrefs, VoiceProvider } from '../../shared/types';
 import type { ResolvedVoiceKeys } from './keys';
+import { MAX_CONTEXT_BIAS } from './resolve-context-bias';
 
 export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 export const MISTRAL_BASE = 'https://api.mistral.ai/v1';
@@ -48,6 +49,14 @@ export const MISTRAL_STT_MODEL = 'voxtral-mini-latest';
 const STT_PROMPT =
   'Transcribe this audio exactly as spoken. Output only the transcript text, nothing else.';
 
+/** The OpenRouter chat path has no bias parameter — the prompt glossary is
+ *  the portable mechanism (design note 04 §8). Appended only when the
+ *  effective list is non-empty. */
+function sttPrompt(contextBias: readonly string[]): string {
+  if (contextBias.length === 0) return STT_PROMPT;
+  return `${STT_PROMPT} Glossary of proper nouns to spell exactly: ${contextBias.join(', ')}.`;
+}
+
 /** Seconds before an outbound provider call gives up; the pane button must
  *  never spin forever on a hung request. */
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -65,28 +74,65 @@ export interface TranscribeSuccess {
 
 /**
  * Transcribe one clip: OpenRouter first, Mistral when OpenRouter is unkeyed
- * or fails. Throws a redacted, user-displayable error when nothing answers.
+ * or fails. `contextBias` rides both paths where the providers accept it —
+ * the prompt glossary on OpenRouter, repeatable `context_bias` form fields
+ * on Mistral's multipart endpoint. Throws a redacted, user-displayable error
+ * when nothing answers.
  */
 export async function transcribeClip(
   clip: VoiceAudioClip,
   keys: ResolvedVoiceKeys,
   prefs?: VoicePrefs,
   deps?: AdapterDeps,
+  contextBias: readonly string[] = [],
+): Promise<TranscribeSuccess> {
+  return runTranscribeChain(clip, keys, prefs, deps, contextBias, [
+    'openrouter',
+    'mistral',
+  ] as const);
+}
+
+/**
+ * The streaming stop repass (design note 04 §8): Mistral's documented native
+ * `context_bias` first, OpenRouter's prompt glossary second. Same redaction
+ * and aggregation contract as `transcribeClip`.
+ */
+export async function transcribeClipBiasFirst(
+  clip: VoiceAudioClip,
+  keys: ResolvedVoiceKeys,
+  prefs?: VoicePrefs,
+  deps?: AdapterDeps,
+  contextBias: readonly string[] = [],
+): Promise<TranscribeSuccess> {
+  return runTranscribeChain(clip, keys, prefs, deps, contextBias, [
+    'mistral',
+    'openrouter',
+  ] as const);
+}
+
+async function runTranscribeChain(
+  clip: VoiceAudioClip,
+  keys: ResolvedVoiceKeys,
+  prefs: VoicePrefs | undefined,
+  deps: AdapterDeps | undefined,
+  contextBias: readonly string[],
+  order: readonly ('openrouter' | 'mistral')[],
 ): Promise<TranscribeSuccess> {
   const doFetch = deps?.fetch ?? globalThis.fetch.bind(globalThis);
-  const attempts: { provider: VoiceProvider; run: () => Promise<TranscribeSuccess> }[] = [];
-  if (keys.openrouter) {
-    attempts.push({
-      provider: 'openrouter',
-      run: () => openrouterTranscribe(clip, keys.openrouter!, prefs, doFetch),
-    });
-  }
-  if (keys.mistral) {
-    attempts.push({
-      provider: 'mistral',
-      run: () => mistralTranscribe(clip, keys.mistral!, doFetch),
-    });
-  }
+  const runners: Record<'openrouter' | 'mistral', (() => Promise<TranscribeSuccess>) | undefined> =
+    {
+      openrouter: keys.openrouter
+        ? () => openrouterTranscribe(clip, keys.openrouter!, prefs, doFetch, contextBias)
+        : undefined,
+      mistral: keys.mistral
+        ? () => mistralTranscribe(clip, keys.mistral!, doFetch, contextBias)
+        : undefined,
+    };
+  const attempts = order
+    .map((provider) => ({ provider, run: runners[provider] }))
+    .filter((a): a is { provider: VoiceProvider; run: () => Promise<TranscribeSuccess> } =>
+      Boolean(a.run),
+    );
   if (attempts.length === 0) {
     throw new Error(
       'No speech-to-text API key available — set OPENROUTER_API_KEY in ~/.config/agents/.env ' +
@@ -168,6 +214,7 @@ async function openrouterTranscribe(
   apiKey: string,
   prefs: VoicePrefs | undefined,
   doFetch: FetchLike,
+  contextBias: readonly string[] = [],
 ): Promise<TranscribeSuccess> {
   const model = prefs?.sttModel?.trim() || DEFAULT_STT_MODEL;
   const res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -179,7 +226,7 @@ async function openrouterTranscribe(
         {
           role: 'user',
           content: [
-            { type: 'text', text: STT_PROMPT },
+            { type: 'text', text: sttPrompt(contextBias) },
             { type: 'input_audio', input_audio: { data: clip.data, format: clip.format } },
           ],
         },
@@ -231,9 +278,15 @@ async function mistralTranscribe(
   clip: VoiceAudioClip,
   apiKey: string,
   doFetch: FetchLike,
+  contextBias: readonly string[] = [],
 ): Promise<TranscribeSuccess> {
   const form = new FormData();
   form.set('model', MISTRAL_STT_MODEL);
+  // `context_bias` is a repeatable form field (up to 100 phrases) on this
+  // endpoint — one field per phrase, not a joined list (design note 04 §2.3).
+  // Capped here too: the resolver, schema and Settings UI already enforce
+  // MAX_CONTEXT_BIAS, so this is defence-in-depth at the emission itself.
+  for (const phrase of contextBias.slice(0, MAX_CONTEXT_BIAS)) form.append('context_bias', phrase);
   const bytes = base64ToBytes(clip.data);
   form.set('file', new Blob([bytes], { type: 'audio/wav' }), 'clip.wav');
   const res = await doFetch(`${MISTRAL_BASE}/audio/transcriptions`, {

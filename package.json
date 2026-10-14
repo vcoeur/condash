@@ -78,6 +78,7 @@
     "node-pty": "^1.1.0",
     "simple-git": "^3.36.0",
     "solid-js": "^1.9.3",
+    "ws": "^8.22.0",
     "yaml": "^2.8.4",
     "zod": "^4.3.6"
   },
@@ -87,6 +88,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/mdast": "^4.0.4",
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.2",
     "concurrently": "^9.1.0",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",

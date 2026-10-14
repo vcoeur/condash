@@ -59,7 +59,11 @@ test('voice is inert until enabled in Settings, then live after a save', async (
     await openSettings(booted);
     const voice = booted.window.locator('#settings-section-voice');
     await voice.scrollIntoViewIfNeeded();
-    const enable = voice.locator('label.settings-checkbox input');
+    // Scoped by label text: the Voice section now carries a second checkbox
+    // (streaming, hidden while voice is off) behind the same class.
+    const enable = voice
+      .locator('label.settings-checkbox', { hasText: 'Enable voice dictation' })
+      .locator('input');
     await expect(enable).toBeVisible();
     await expect(enable).not.toBeChecked();
     await expect(voice.locator('input[type="password"]')).toHaveCount(0);
@@ -91,7 +95,10 @@ test('voice is inert until enabled in Settings, then live after a save', async (
     await openSettings(booted);
     const voiceAgain = booted.window.locator('#settings-section-voice');
     await voiceAgain.scrollIntoViewIfNeeded();
-    await voiceAgain.locator('label.settings-checkbox input').uncheck();
+    await voiceAgain
+      .locator('label.settings-checkbox', { hasText: 'Enable voice dictation' })
+      .locator('input')
+      .uncheck();
     await booted.window.locator('button.settings-save').click();
     await expect
       .poll(async () => {

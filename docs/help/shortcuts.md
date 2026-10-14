@@ -27,12 +27,15 @@ The few you'll actually use.
 |---|---|
 | `` Ctrl+` `` | Toggle the terminal pane |
 | `Ctrl+Shift+V` | Paste path of the most recent screenshot |
+| `Ctrl+Shift+Space` | Hold to dictate, release to insert (push-to-talk; needs Voice enabled) |
 | `Ctrl+Left` / `Ctrl+Right` | Move the active terminal tab between left/right panes |
 | `Ctrl+F` (in xterm) | In-pane output search |
 | `Ctrl+Up` / `Ctrl+Down` | Jump between OSC 133 prompts (needs shell integration) |
 
 The terminal toggle, screenshot-paste, and move-tab shortcuts are
-configurable in the **Terminal** section of **File → Settings**.
+configurable in the **Terminal** section of **File → Settings**. The
+push-to-talk chord is configurable in **Settings → Voice** (an empty field
+disables it).
 
 ## Project cards
 

@@ -28,6 +28,20 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
     props.patch((config) => {
       config.voice = { ...config.voice, ...partial };
     });
+  /** One phrase per line in the textarea ↔ `contextBias` array. Blank lines
+   *  never enter the draft (they'd waste the 100-entry budget), and the cap
+   *  is enforced here: extra lines beyond 100 are ignored, so the counter
+   *  cannot pass 100 and the save cannot be rejected. Trim/dedup at use time
+   *  stays the resolver's job (main-side, seeded with app handles). */
+  const biasLines = (): string[] => voice().contextBias ?? [];
+  const updateBias = (text: string): Promise<void> =>
+    update({
+      contextBias: text
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .slice(0, 100),
+    });
 
   return (
     <SectionShell
@@ -40,14 +54,18 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             Push-to-talk dictation and on-demand readback for terminal tabs. Off by default — until
             you enable it below, tabs show no voice controls and nothing records or speaks. When
             enabled, the Dictate control in a tab strip records only while toggled on, then inserts
-            the transcript as typed input; the Read control speaks the tab's recent output. Both
-            stay idle until clicked.
+            the transcript as typed input; with streaming on, the words appear as a temporary
+            caption while you speak; the Read control speaks the tab's recent output. Both stay idle
+            until clicked, and the tab keeps keyboard focus while you click them.
           </p>
           <p class="settings-hint">
-            <strong>Privacy:</strong> a clip is sent to the configured speech provider only while
-            you are recording and only on stop; read-aloud sends the tab's recent output text to the
-            provider when you click Read. Nothing is recorded, transmitted, or stored by condash
-            outside those actions.
+            <strong>Privacy:</strong> capture requires an explicit dictation action. Streaming sends
+            PCM chunks to Mistral while you speak. Stop releases the microphone immediately, but
+            buffered uploads, bias repasses, and provider processing can continue afterward. There
+            is no always-on capture and condash does not persist clips or audio. Partials are local
+            display only; the final transcript is inserted after stop. Provider calls and
+            environment keys stay in main; manually entered Settings keys are displayed back by
+            Settings prefill.
           </p>
         </>
       }
@@ -162,6 +180,56 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 Used only by the Mistral fallback — a preset or saved voice id from Mistral's
                 text-to-speech API.
               </Show>
+            </small>
+          </label>
+
+          <div class="settings-field-span">
+            <label class="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={voice().streaming ?? true}
+                onChange={(e) => void update({ streaming: e.currentTarget.checked })}
+              />
+              <span>Stream dictation live (partial text while speaking)</span>
+            </label>
+            <small class="settings-field-hint">
+              While recording, audio streams to Mistral's realtime endpoint and the forming
+              transcript shows as a temporary caption under the tab strip; the final text is
+              inserted once after stop. Off restores batch-only dictation. Startup failures keep the
+              buffered batch path; main handles mid-stream failures. A failed stop reply does not
+              launch another upload because main may already have inserted.
+            </small>
+          </div>
+
+          <label class="settings-field-span">
+            <span>Context bias — vocabulary to spell exactly ({biasLines().length}/100)</span>
+            <textarea
+              rows={4}
+              placeholder={'condash\nknoten\nvcoeur'}
+              value={biasLines().join('\n')}
+              onChange={(e) => void updateBias(e.currentTarget.value)}
+            />
+            <small class="settings-field-hint">
+              One phrase per line — names, app handles, project slugs. Sent as bias hints on the
+              transcription requests; the open conception's app handles are added automatically. A
+              non-empty effective list re-checks a streamed dictation's final text with the batch
+              provider, adding provider-dependent stop latency and potentially a second
+              transcription charge for the same audio. An empty user list does not disable repass
+              when automatic app seeding makes the effective list non-empty.
+            </small>
+          </label>
+
+          <label>
+            <span>Push-to-talk shortcut</span>
+            <input
+              type="text"
+              placeholder="Ctrl+Shift+Space"
+              value={voice().pptShortcut ?? ''}
+              onChange={(e) => void update({ pptShortcut: e.currentTarget.value.trim() })}
+            />
+            <small class="settings-field-hint">
+              Hold to dictate, release to insert (no mouse needed). Default{' '}
+              <code>Ctrl+Shift+Space</code>; empty disables push-to-talk.
             </small>
           </label>
         </Show>

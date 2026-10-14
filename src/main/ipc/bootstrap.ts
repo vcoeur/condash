@@ -65,6 +65,10 @@ export function registerBootstrapIpc(): void {
       // controls unless this is true, mirroring the default-off gate in the
       // voice IPC handlers.
       voiceEnabled: settings.voice?.enabled === true,
+      // Push-to-talk chord (`voice.pptShortcut`): undefined → the
+      // Ctrl+Shift+Space default; '' → disabled. Carried verbatim so the
+      // disable-on-empty semantics survive the round-trip.
+      voicePptShortcut: settings.voice?.pptShortcut,
     };
   });
 }

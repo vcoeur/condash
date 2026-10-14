@@ -156,6 +156,10 @@ export function TerminalColumn(props: TerminalColumnProps) {
   // title tooltip.
   const [hovered, setHovered] = createSignal<Tab | null>(null);
   const [hoverAt, setHoverAt] = createSignal<{ top: number; left: number } | null>(null);
+  // Live dictation partial from this column's voice controls — non-null
+  // exactly while a realtime stream is live. Rendered as the temporary
+  // caption strip under the tab row; never typed into the terminal.
+  const [voicePartial, setVoicePartial] = createSignal<string | null>(null);
   const hasSummary = (tab: Tab): boolean =>
     Boolean(tab.currentAction || (tab.contextLines && tab.contextLines.length > 0));
   const popoverRelevant = (tab: Tab): boolean =>
@@ -423,10 +427,18 @@ export function TerminalColumn(props: TerminalColumnProps) {
             <VoiceControls
               activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
               onNotice={props.onNotice}
+              onPartial={setVoicePartial}
+              isActiveColumn={props.isActiveColumn && !props.dashboardActive}
             />
           </Show>
         </div>
       </div>
+      <Show when={voicePartial() !== null}>
+        <div class="voice-caption" data-test-voice-caption>
+          <span class="voice-record-dot" aria-hidden="true" />
+          <span class="voice-caption-text">{voicePartial() ?? ''}</span>
+        </div>
+      </Show>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
       {/* Right-click tab menu. Portal'd to the body so it isn't clipped by the
        *  header bounds (same reason as the spawn dropdown). */}

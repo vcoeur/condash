@@ -147,6 +147,10 @@ export interface BootstrapData {
    *  default is off). The renderer hides the pane controls unless true;
    *  the Settings modal live-fires changes to this after a save. */
   voiceEnabled: boolean;
+  /** Push-to-talk chord (`voice.pptShortcut`). Unset → the
+   *  `Ctrl+Shift+Space` default; the empty string disables push-to-talk.
+   *  Live-fired by the Settings modal after a global save. */
+  voicePptShortcut?: string;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The

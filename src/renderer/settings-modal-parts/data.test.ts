@@ -461,3 +461,27 @@ describe('mergeRawConfig — rebasing a staged draft onto a file that moved', ()
     expect(mergeRawConfig(base, ours, theirs)).toEqual({ theme: 'mist', worktrees_path: '/wt' });
   });
 });
+
+describe('buildSavePayload — voice', () => {
+  it('keeps an empty pptShortcut (empty disables push-to-talk; unset means default)', () => {
+    // pruneEmpty strips '' leaves — a cleared shortcut must survive the save
+    // or the default chord would silently re-enable push-to-talk.
+    const payload = buildSavePayload({ voice: { enabled: true, pptShortcut: '' } });
+    expect(payload.voice).toEqual({ enabled: true, pptShortcut: '' });
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('writes no pptShortcut key when the field was never touched', () => {
+    const payload = buildSavePayload({ voice: { enabled: true, streaming: false } });
+    expect(payload.voice).toEqual({ enabled: true, streaming: false });
+    expect('pptShortcut' in (payload.voice ?? {})).toBe(false);
+  });
+
+  it('keeps contextBias lines verbatim through the save', () => {
+    const payload = buildSavePayload({
+      voice: { enabled: true, contextBias: ['condash', 'knoten'] },
+    });
+    expect(payload.voice).toEqual({ enabled: true, contextBias: ['condash', 'knoten'] });
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
+  });
+});

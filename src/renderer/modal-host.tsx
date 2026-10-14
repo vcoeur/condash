@@ -133,6 +133,9 @@ export interface ModalHostProps {
   /** Settings-modal callback: mirror a saved `voice.enabled` change into the
    *  running UI (the modal owns the write). */
   onChangeVoiceEnabled: (next: boolean) => void;
+  /** Settings-modal callback: mirror a saved `voice.pptShortcut` change
+   *  (verbatim — undefined → default chord, '' → disabled). */
+  onChangeVoicePptShortcut?: (next: string | undefined) => void;
   // --- New project modal ---
   newProjectOpen: UseModals['newProjectOpen'];
   setNewProjectOpen: UseModals['setNewProjectOpen'];
@@ -227,6 +230,7 @@ export function ModalHost(props: ModalHostProps) {
     uiFonts,
     handleUiFontsChange,
     onChangeVoiceEnabled,
+    onChangeVoicePptShortcut,
     newProjectOpen,
     setNewProjectOpen,
     reloadProjects,
@@ -443,6 +447,7 @@ export function ModalHost(props: ModalHostProps) {
           uiFonts={uiFonts()}
           onChangeUiFonts={handleUiFontsChange}
           onChangeVoiceEnabled={onChangeVoiceEnabled}
+          onChangeVoicePptShortcut={onChangeVoicePptShortcut}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>

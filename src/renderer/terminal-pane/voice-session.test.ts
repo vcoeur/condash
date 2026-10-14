@@ -17,7 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, createSignal } from 'solid-js';
-import type { VoiceAudioClip } from '@shared/types';
+import type { VoiceAudioClip, VoiceTranscribeResult } from '@shared/types';
 import type { VoiceSession } from './voice-session';
 
 interface FakeRecorder {
@@ -26,6 +26,7 @@ interface FakeRecorder {
   cancel: ReturnType<typeof vi.fn>;
   active: boolean;
   readonly recording: boolean;
+  capturedRate: number;
 }
 
 function makeFakeRecorder(): FakeRecorder {
@@ -44,6 +45,7 @@ function makeFakeRecorder(): FakeRecorder {
     get recording(): boolean {
       return rec.active;
     },
+    capturedRate: 16000,
   };
   return rec;
 }
@@ -286,5 +288,217 @@ describe('voice session lifecycle', () => {
     // B's disposal stops B's playback (same release contract as pane A's).
     disposeB();
     expect(h.audios[1].pausedCalls).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Streaming extensions (design note 04 §5, §10) — the same controller over
+// the realtime edge. The eight tests above are the batch contract; these pin
+// the streaming upgrade: partials update the caption signal, a stream commit
+// answers through the same notice branches, and every stream failure falls
+// back to the buffered-clip batch chain verbatim.
+// ---------------------------------------------------------------------------
+
+interface FakeStreamEdge {
+  start: ReturnType<typeof vi.fn>;
+  audio: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  cancel: ReturnType<typeof vi.fn>;
+  onPartial: ReturnType<typeof vi.fn>;
+  emitPartial: (msg: { sid: string; text: string }) => void;
+}
+
+function makeFakeStreamEdge(): FakeStreamEdge {
+  const callbacks: ((msg: { sid: string; text: string }) => void)[] = [];
+  let ownerId = '';
+  return {
+    start: vi.fn(async (_sid: string, owner: string) => {
+      ownerId = owner;
+      return { ok: true };
+    }),
+    audio: vi.fn(async () => undefined),
+    stop: vi.fn(async () => ({ inserted: true, provider: 'mistral', chars: 6 })),
+    cancel: vi.fn(async () => undefined),
+    onPartial: vi.fn((cb: (msg: { sid: string; text: string }) => void) => {
+      callbacks.push(cb);
+      return () => undefined;
+    }),
+    emitPartial: (msg) => {
+      for (const cb of callbacks) cb({ ...msg, ownerId } as typeof msg);
+    },
+  };
+}
+
+interface StreamHarness extends Omit<Harness, 'deps'> {
+  stream: FakeStreamEdge;
+  session: VoiceSession;
+}
+
+async function createStreamHarness(
+  overrides: {
+    startResult?: { ok: boolean; reason?: string };
+    stopResult?: VoiceTranscribeResult;
+    stopThrows?: boolean;
+  } = {},
+): Promise<StreamHarness> {
+  vi.resetModules();
+  const { createVoiceSession } = await import('./voice-session');
+  const recorder = makeFakeRecorder();
+  const notices: string[] = [];
+  const audios: FakeAudio[] = [];
+  const transcribe = vi.fn(async () => ({ inserted: true, chars: 5 }));
+  const speak = vi.fn(async () => ({ ok: true, mime: 'audio/mpeg', audioBase64: 'QQ==' }));
+  const stream = makeFakeStreamEdge();
+  if (overrides.startResult) stream.start.mockResolvedValue(overrides.startResult);
+  if (overrides.stopThrows) stream.stop.mockRejectedValue(new Error('socket exploded'));
+  else
+    stream.stop.mockResolvedValue(
+      overrides.stopResult ?? { inserted: true, provider: 'mistral', chars: 6 },
+    );
+  const [activeSid, setActiveSid] = createSignal<string | null>('a');
+  let session!: VoiceSession;
+  const dispose = createRoot((disposeRoot) => {
+    session = createVoiceSession({
+      activeSid,
+      onNotice: (message) => notices.push(message),
+      recorder,
+      transcribe,
+      speak,
+      createAudio: (src) => {
+        const audio = makeFakeAudio(src);
+        audios.push(audio);
+        return audio;
+      },
+      stream,
+    });
+    return disposeRoot;
+  });
+  return {
+    session,
+    recorder,
+    notices,
+    transcribe,
+    speak,
+    audios,
+    setActiveSid,
+    dispose,
+    stream,
+  };
+}
+
+describe('voice session streaming', () => {
+  it('streams while recording: partials update the caption signal and clear on stop', async () => {
+    const h = await createStreamHarness();
+    await h.session.toggleDictation();
+    expect(h.stream.start).toHaveBeenCalledWith('a', expect.any(String));
+    // The caption signal holds '' while the stream is live (strip mounted,
+    // nothing said yet).
+    expect(h.session.partial()).toBe('');
+    h.stream.emitPartial({ sid: 'a', text: 'hello worl' });
+    h.stream.emitPartial({ sid: 'a', text: 'hello world' });
+    expect(h.session.partial()).toBe('hello world');
+
+    await h.session.toggleDictation();
+    expect(h.stream.stop).toHaveBeenCalledTimes(1);
+    expect(h.session.partial()).toBeNull();
+    expect(h.notices).toEqual(['Dictated 6 characters into the tab.']);
+    h.dispose();
+  });
+
+  it('ignores partials for another session and after the stream ended', async () => {
+    const h = await createStreamHarness();
+    await h.session.toggleDictation();
+    h.stream.emitPartial({ sid: 'other', text: 'not mine' });
+    expect(h.session.partial()).toBe('');
+    await h.session.toggleDictation();
+    h.stream.emitPartial({ sid: 'a', text: 'late' });
+    expect(h.session.partial()).toBeNull();
+    h.dispose();
+  });
+
+  it('stays batch when main refuses the stream start, silently', async () => {
+    const h = await createStreamHarness({ startResult: { ok: false, reason: 'no-mistral-key' } });
+    await h.session.toggleDictation();
+    expect(h.session.recording()).toBe(true);
+    expect(h.session.partial()).toBeNull();
+    expect(h.notices).toEqual([]);
+    // Stop commits through the buffered-clip batch chain.
+    await h.session.toggleDictation();
+    expect(h.stream.stop).not.toHaveBeenCalled();
+    expect(h.transcribe).toHaveBeenCalledTimes(1);
+    h.dispose();
+  });
+
+  it('falls back to the buffered-clip batch chain when the stream stop reports the session gone', async () => {
+    const h = await createStreamHarness({ stopResult: { inserted: false, reason: 'no-session' } });
+    await h.session.toggleDictation();
+    h.stream.emitPartial({ sid: 'a', text: 'partial text' });
+    await h.session.toggleDictation();
+    expect(h.transcribe).toHaveBeenCalledTimes(1);
+    expect(h.transcribe).toHaveBeenCalledWith('a', {
+      data: 'a2xpcA==',
+      sampleRate: 16000,
+      format: 'wav',
+    });
+    expect(h.notices).toEqual(['Dictated 5 characters into the tab.']);
+    expect(h.session.partial()).toBeNull();
+    h.dispose();
+  });
+
+  it('does not duplicate a possibly committed stream when the stop reply throws', async () => {
+    const h = await createStreamHarness({ stopThrows: true });
+    await h.session.toggleDictation();
+    await h.session.toggleDictation();
+    expect(h.transcribe).not.toHaveBeenCalled();
+    expect(h.notices).toEqual(['socket exploded']);
+    h.dispose();
+  });
+
+  it('releases the stream on an activeSid null exactly like the recorder cancel', async () => {
+    const h = await createStreamHarness();
+    await h.session.toggleDictation();
+    expect(h.session.recording()).toBe(true);
+
+    h.setActiveSid(null);
+
+    expect(h.stream.cancel).toHaveBeenCalledTimes(1);
+    expect(h.recorder.cancel).toHaveBeenCalledTimes(1);
+    expect(h.session.partial()).toBeNull();
+    expect(h.notices).toHaveLength(1);
+    h.dispose();
+  });
+
+  it('releases the stream on disposal (column unmount, conception switch)', async () => {
+    const h = await createStreamHarness();
+    await h.session.toggleDictation();
+    h.dispose();
+    expect(h.stream.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sends stream chunks once the stream is no longer live', async () => {
+    // The recorder tap is gated on the caption signal at the controls layer;
+    // here we pin the session-side half: after a refused start the session
+    // never enters streaming state, so the stream edge stays untouched.
+    const h = await createStreamHarness({ startResult: { ok: false, reason: 'disabled' } });
+    await h.session.toggleDictation();
+    expect(h.stream.audio).not.toHaveBeenCalled();
+    h.dispose();
+  });
+
+  it('reports an accurate notice when the stream start rejects — not a mic error', async () => {
+    // NIT-4 (note 06): a voiceStreamStart IPC rejection (e.g. a corrupt
+    // conception config thrown while resolving the bias list) used to map
+    // through micErrorMessage and surface as "Could not open the
+    // microphone." while the mic was in fact open and recording on batch.
+    const h = await createStreamHarness();
+    h.stream.start.mockRejectedValueOnce(new Error('config parse failed'));
+    await h.session.toggleDictation();
+    expect(h.session.recording()).toBe(true);
+    expect(h.notices).toEqual(['Streaming unavailable — using batch transcription.']);
+    // The recording continues; the commit runs the buffered-clip batch chain.
+    await h.session.toggleDictation();
+    expect(h.stream.stop).not.toHaveBeenCalled();
+    expect(h.transcribe).toHaveBeenCalledTimes(1);
+    h.dispose();
   });
 });

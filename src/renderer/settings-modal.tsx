@@ -103,6 +103,10 @@ export function SettingsModal(props: {
    *  Dictate/Read controls follow the setting without a reload. Fired from the
    *  global-write callback, so it always carries the on-disk truth. */
   onChangeVoiceEnabled: (next: boolean) => void;
+  /** Mirror a saved `voice.pptShortcut` into the running UI so the
+   *  push-to-talk chord follows the setting without a reload. Verbatim:
+   *  undefined → default chord, '' → disabled. */
+  onChangeVoicePptShortcut?: (next: string | undefined) => void;
   onClose: () => void;
 }) {
   // Conception read path: `.condash/settings.json` (canonical) or a legacy
@@ -478,8 +482,10 @@ export function SettingsModal(props: {
               if (g.cardMinWidth) props.onChangeCardMinWidth(g.cardMinWidth);
               // Voice is a plain boolean mirror — fire it on every global write
               // (not only when the key is present) so an external edit that
-              // dropped the key also lands as off.
+              // dropped the key also lands as off. The PTT chord rides the
+              // same flush (verbatim — '' disables, undefined means default).
               props.onChangeVoiceEnabled(g.voice?.enabled === true);
+              props.onChangeVoicePptShortcut?.(g.voice?.pptShortcut);
               setGlobalDraft(null);
             },
           ),

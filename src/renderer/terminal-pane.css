@@ -172,6 +172,33 @@
   }
 }
 
+/* Live dictation caption — the visibly temporary strip under the tab row
+   showing the realtime partial while it forms. Dashed border + the recording
+   dot read as "temporary" at a glance; the text is italic and never typed
+   into the terminal (the commit on stop goes through the sanitised insert
+   path like batch dictation). */
+.voice-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.voice-caption-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .terminal-column.active::after {
   content: '';
   position: absolute;
