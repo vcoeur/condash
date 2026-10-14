@@ -59,12 +59,13 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             until clicked, and the tab keeps keyboard focus while you click them.
           </p>
           <p class="settings-hint">
-            <strong>Privacy:</strong> audio is sent to the speech provider only while a dictation is
-            active — streamed in small chunks to Mistral's realtime endpoint as you speak, when
-            streaming is enabled — and the microphone is released the moment you stop. Nothing is
-            sent outside an active dictation; no always-on capture exists; condash keeps no copy of
-            clips or audio; partial text is shown locally and never typed into the terminal until
-            you stop.
+            <strong>Privacy:</strong> capture requires an explicit dictation action. Streaming sends
+            PCM chunks to Mistral while you speak. Stop releases the microphone immediately, but
+            buffered uploads, bias repasses, and provider processing can continue afterward. There
+            is no always-on capture and condash does not persist clips or audio. Partials are local
+            display only; the final transcript is inserted after stop. Provider calls and
+            environment keys stay in main; manually entered Settings keys are displayed back by
+            Settings prefill.
           </p>
         </>
       }
@@ -194,9 +195,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             <small class="settings-field-hint">
               While recording, audio streams to Mistral's realtime endpoint and the forming
               transcript shows as a temporary caption under the tab strip; the final text is
-              inserted once, when you stop. Off restores batch-only dictation (the clip is
-              transcribed on stop). A stream failure always falls back to batch — this switch only
-              decides whether the stream is opened.
+              inserted once after stop. Off restores batch-only dictation. Startup failures keep the
+              buffered batch path; main handles mid-stream failures. A failed stop reply does not
+              launch another upload because main may already have inserted.
             </small>
           </div>
 
@@ -211,8 +212,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             <small class="settings-field-hint">
               One phrase per line — names, app handles, project slugs. Sent as bias hints on the
               transcription requests; the open conception's app handles are added automatically. A
-              non-empty list also re-checks a streamed dictation's final text against the batch
-              provider (adds ~1–2 s on stop); leave empty for the fast single pass.
+              non-empty effective list re-checks a streamed dictation's final text with the batch
+              provider, adding provider-dependent stop latency and potentially a second
+              transcription charge for the same audio. An empty user list does not disable repass
+              when automatic app seeding makes the effective list non-empty.
             </small>
           </label>
 

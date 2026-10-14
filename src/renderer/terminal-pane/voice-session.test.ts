@@ -310,8 +310,12 @@ interface FakeStreamEdge {
 
 function makeFakeStreamEdge(): FakeStreamEdge {
   const callbacks: ((msg: { sid: string; text: string }) => void)[] = [];
+  let ownerId = '';
   return {
-    start: vi.fn(async () => ({ ok: true })),
+    start: vi.fn(async (_sid: string, owner: string) => {
+      ownerId = owner;
+      return { ok: true };
+    }),
     audio: vi.fn(async () => undefined),
     stop: vi.fn(async () => ({ inserted: true, provider: 'mistral', chars: 6 })),
     cancel: vi.fn(async () => undefined),
@@ -320,7 +324,7 @@ function makeFakeStreamEdge(): FakeStreamEdge {
       return () => undefined;
     }),
     emitPartial: (msg) => {
-      for (const cb of callbacks) cb(msg);
+      for (const cb of callbacks) cb({ ...msg, ownerId } as typeof msg);
     },
   };
 }
@@ -345,7 +349,7 @@ async function createStreamHarness(
   const transcribe = vi.fn(async () => ({ inserted: true, chars: 5 }));
   const speak = vi.fn(async () => ({ ok: true, mime: 'audio/mpeg', audioBase64: 'QQ==' }));
   const stream = makeFakeStreamEdge();
-  stream.start.mockResolvedValue(overrides.startResult ?? { ok: true });
+  if (overrides.startResult) stream.start.mockResolvedValue(overrides.startResult);
   if (overrides.stopThrows) stream.stop.mockRejectedValue(new Error('socket exploded'));
   else
     stream.stop.mockResolvedValue(
@@ -386,7 +390,7 @@ describe('voice session streaming', () => {
   it('streams while recording: partials update the caption signal and clear on stop', async () => {
     const h = await createStreamHarness();
     await h.session.toggleDictation();
-    expect(h.stream.start).toHaveBeenCalledWith('a');
+    expect(h.stream.start).toHaveBeenCalledWith('a', expect.any(String));
     // The caption signal holds '' while the stream is live (strip mounted,
     // nothing said yet).
     expect(h.session.partial()).toBe('');
@@ -441,12 +445,12 @@ describe('voice session streaming', () => {
     h.dispose();
   });
 
-  it('falls back to the buffered-clip batch chain when the stream stop throws', async () => {
+  it('does not duplicate a possibly committed stream when the stop reply throws', async () => {
     const h = await createStreamHarness({ stopThrows: true });
     await h.session.toggleDictation();
     await h.session.toggleDictation();
-    expect(h.transcribe).toHaveBeenCalledTimes(1);
-    expect(h.notices).toEqual(['Dictated 5 characters into the tab.']);
+    expect(h.transcribe).not.toHaveBeenCalled();
+    expect(h.notices).toEqual(['socket exploded']);
     h.dispose();
   });
 

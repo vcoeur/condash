@@ -29,7 +29,8 @@ flowchart LR
 
 - **Recording** happens in the renderer (echo cancellation + noise suppression on); **provider calls happen only in the main process** — the renderer never talks to the network, and key values are used only in the main process (a key entered in Settings is displayed back by the Settings prefill, the same shape as the dashboard's `apiKey`).
 - **Streaming** (on by default): while recording, main opens one WebSocket to Mistral's realtime transcription endpoint and forwards the mic's PCM chunks as binary frames. The forming text comes back as accumulated partials and renders in a dashed live-caption strip under the tab strip — **local display only, never typed into the terminal**. On stop, the microphone is released first, then main finalises the stream and commits the final text once through the sanitised insert path.
-- **Batch fallback**: every stream refusal or failure — no Mistral key, `voice.streaming` off, a handshake error, a mid-stream drop — silently keeps the pre-existing behaviour: the clip is buffered whole and transcribed on stop (OpenRouter chat first, Mistral multipart fallback). A failed stream also falls back to the batch chain on the audio main already received.
+- **Batch fallback**: a stream refusal or startup failure — no Mistral key, `voice.streaming` off, a handshake error — keeps the buffered clip for transcription on stop (OpenRouter chat first, Mistral multipart fallback). A mid-stream failure falls back in main on the audio it already received. If the stop IPC reply itself fails, condash reports the error without a second upload: main may already have inserted the transcript.
+- Stream cancellation has one owner across stop and late startup replies. A failed cancellation delivery is retried once; if cleanup still cannot be confirmed, condash reports that failure and recommends restarting before further dictation rather than silently claiming the stream closed.
 - The transcript is sanitised before insertion: control characters (a stray Ctrl-C, EOF), carriage returns, and ANSI escape sequences are stripped, and the text is capped at 4000 characters. An empty transcript is a visible no-op notice, never a silent write of nothing.
 - The write goes through the same terminal-service path as typed input (`termWrite`), so multi-line transcripts submit per line, exactly as if typed.
 - Read-aloud reads the tab's **recent output** — the same recent-scrollback slice the Dashboard summarizer uses. It is not a parsed "final answer": on a full-screen TUI tab it reads whatever the cleaned buffer holds.
@@ -53,7 +54,7 @@ The words an ecosystem uses — app handles, project slugs, domain terms — are
 | Mistral multipart (batch fallback) | native repeatable `context_bias` form fields |
 | Mistral realtime (streaming) | none — bias is undocumented on the realtime endpoint |
 
-The realtime gap is handled at commit time (the **final-text rule**): with a non-empty bias list, a streamed dictation's final text is re-checked through the Mistral batch path **with `context_bias`** (falling back to OpenRouter's glossary, then to the raw realtime text), using the audio the stream already carried. That costs ~1–2 extra seconds on stop and bills the audio a second time — only when vocabulary is configured. Leave the list empty for the fast single-pass commit.
+The realtime gap is handled at commit time (the **final-text rule**): with a non-empty effective bias list, a streamed dictation's final text is re-checked through the Mistral batch path **with `context_bias`** (falling back to OpenRouter's glossary, then to the raw realtime text), using the audio the stream already carried. This adds provider work after stop and can incur a second transcription charge for the same audio; latency and pricing depend on the provider. An empty user-entered list does **not** disable this repass when automatic registry seeding makes the effective list non-empty. Only an empty effective list takes the single-transcription realtime path.
 
 The effective list also includes the open conception's `repositories[]` app identity — handles, names, and aliases are seeded automatically and silently, so `#knoten` and `alicepeintures` come out spelled correctly without configuring anything.
 
@@ -77,11 +78,11 @@ The OpenRouter TTS voice id carries the language in its prefix — `en_paul_*`, 
 
 ## Privacy
 
-> **Privacy:** audio is sent to the speech provider only while a dictation is active — streamed in small chunks to Mistral's realtime endpoint as you speak, when streaming is enabled — and the microphone is released the moment you stop. Nothing is sent outside an active dictation; no always-on capture exists; condash keeps no copy of clips or audio; partial text is shown locally and never typed into the terminal until you stop.
+> **Privacy:** capture begins only on an explicit dictation action. With streaming enabled, PCM chunks are sent to Mistral while you speak. Stop releases the microphone immediately, but buffered uploads, bias repasses, and provider processing can continue afterward to finish that dictation. There is no always-on capture; condash does not persist clips or audio. Partial text is displayed locally and never typed into the terminal; the final transcript is inserted only after stop.
 
-- Nothing records or sends unless voice is enabled in Settings *and* a control is active — clicking Dictate, or holding the push-to-talk chord.
+- Voice must be enabled in Settings and dictation explicitly started by clicking Dictate or holding the chord; a stopped dictation can finish transcription after the control is released.
 - The microphone is released on stop, on cancel, and the moment the tab's controls disappear (column switch, Dashboard band, tab close) — the session guarantees pinned by the lifecycle regression tests.
-- Key values are used only in the main process; they are never logged and never sent to the renderer.
+- Provider keys are used only in main for network calls and never logged. Environment keys stay in main; manually entered Settings keys have the existing Settings-prefill exception and are displayed back in the renderer.
 - Read-aloud sends the tab's recent output **text** to the TTS provider when you click Read. As with the Dashboard: leave it off for tabs that display credentials you don't want transmitted.
 - The mic permission handler is scoped to the app's own window contents — no embedded `<webview>` or other contents can open the microphone through condash. Every other permission class passes through untouched, keeping Electron's no-handler default (auto-approve) — denying them broke the Resources pane's clipboard read.
 

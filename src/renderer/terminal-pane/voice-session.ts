@@ -13,8 +13,8 @@
 // realtime stream when main accepts the stream start — chunks flow through
 // the recorder's per-chunk tap, accumulated partials ride back via
 // `onVoicePartial` and surface on `partial()` for the live-caption strip.
-// Streaming is an upgrade, never a requirement: every refusal or failure
-// leaves the buffered-clip batch chain as the commit path, and the mic is
+// Refused/failed startup retains the buffered batch path; an ambiguous stop
+// rejection is not retried because main may already have inserted. The mic is
 // ALWAYS released before the commit is awaited (the pre-existing guarantee).
 
 import { createEffect, createSignal, onCleanup } from 'solid-js';
@@ -40,10 +40,10 @@ export interface AudioLike {
  *  injected so tests fake it. Optional: when absent the session behaves
  *  exactly like the batch-only v4.131 controller. */
 export interface VoiceStreamEdge {
-  start(sid: string): Promise<{ ok: boolean; reason?: string; error?: string }>;
-  audio(chunk: { pcmBase64: string }): Promise<void>;
-  stop(): Promise<VoiceTranscribeResult>;
-  cancel(): Promise<void>;
+  start(sid: string, ownerId: string): Promise<{ ok: boolean; reason?: string; error?: string }>;
+  audio(chunk: { ownerId: string; pcmBase64: string }): Promise<void>;
+  stop(ownerId: string): Promise<VoiceTranscribeResult>;
+  cancel(ownerId: string): Promise<void>;
   onPartial(callback: (msg: VoicePartialMessage) => void): () => void;
 }
 
@@ -62,6 +62,7 @@ export interface VoiceSessionDeps {
 
 export interface VoiceSession {
   readonly recording: () => boolean;
+  readonly capturing: () => boolean;
   readonly transcribing: () => boolean;
   readonly speaking: () => boolean;
   readonly busy: () => boolean;
@@ -72,6 +73,7 @@ export interface VoiceSession {
   stopDictation(): Promise<void>;
   toggleDictation(): Promise<void>;
   readAloud(): Promise<void>;
+  handleAudio(ownerId: string, pcmBase64: string): void;
 }
 
 /** One shared playback element across every pane: starting a read stops the
@@ -90,30 +92,64 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   const [transcribing, setTranscribing] = createSignal(false);
   const [speaking, setSpeaking] = createSignal(false);
   const [partial, setPartial] = createSignal<string | null>(null);
+  const [capturing, setCapturing] = createSignal(false);
   const busy = (): boolean => transcribing() || speaking();
 
-  /** The tab the clip belongs to, captured at record start — a mid-recording
-   *  tab switch must not retarget the insert. */
-  let targetSid: string | null = null;
-  /** True while main holds an open realtime socket for this recording. */
-  let streamActive = false;
+  interface Attempt {
+    ownerId: string;
+    sid: string;
+    phase: 'microphone' | 'capture' | 'stopped' | 'cancelled';
+    stream: 'none' | 'pending' | 'ready' | 'batch';
+    cancellation?: Promise<void>;
+  }
+  let current: Attempt | null = null;
+  let latest: Attempt | null = null;
+  let disposed = false;
+  const owns = (attempt: Attempt): boolean => !disposed && current === attempt;
+  const visible = (attempt: Attempt): boolean => !disposed && latest === attempt;
+  const cancelStream = (attempt: Attempt): void => {
+    if (
+      attempt.cancellation ||
+      !deps.stream ||
+      (attempt.stream !== 'pending' && attempt.stream !== 'ready')
+    )
+      return;
+    const stream = deps.stream;
+    let requested: Promise<void>;
+    try {
+      requested = stream.cancel(attempt.ownerId);
+    } catch (error) {
+      requested = Promise.reject(error);
+    }
+    // One authority per utterance, including late start replies. Main retains
+    // bounded completed-owner evidence, so one retry is safe on ambiguous failure.
+    attempt.cancellation = requested
+      .catch(() => stream.cancel(attempt.ownerId))
+      .catch(() => {
+        if (visible(attempt))
+          deps.onNotice(
+            'Could not confirm streaming cancellation — restart the application before dictating again.',
+          );
+      });
+  };
 
   const cancelRecording = (): void => {
-    if (streamActive && deps.stream) {
-      streamActive = false;
-      void deps.stream.cancel();
-    }
-    deps.recorder.cancel();
+    const attempt = current;
+    if (!attempt) return;
+    attempt.phase = 'cancelled';
+    current = null;
+    deps.recorder.cancel(attempt.ownerId);
+    cancelStream(attempt);
     setPartial(null);
     setRecording(false);
-    targetSid = null;
+    setCapturing(false);
   };
 
   // The controls render only while activeSid is set, so capture must not
   // outlive it: nulling activeSid releases the mic in the same reactive
   // flush that hides the buttons.
   createEffect(() => {
-    if (deps.activeSid() === null && recording()) {
+    if (deps.activeSid() === null && capturing()) {
       cancelRecording();
       deps.onNotice('Recording cancelled — the tab is no longer active.');
     }
@@ -122,7 +158,6 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // Disposal can land while start() is still pending (mic prompt up); the
   // post-start guard below must then cancel even though activeSid still
   // holds, or the mic opens after cleanup with no controls left to stop it.
-  let disposed = false;
 
   // Column unmount / conception switch: same release contract, plus playback.
   onCleanup(() => {
@@ -135,7 +170,8 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // updates the signal, and the subscription dies with the controls.
   if (deps.stream) {
     const unsubscribe = deps.stream.onPartial((msg) => {
-      if (streamActive && msg.sid === targetSid) setPartial(msg.text);
+      if (current?.stream === 'ready' && msg.sid === current.sid && msg.ownerId === current.ownerId)
+        setPartial(msg.text);
     });
     onCleanup(unsubscribe);
   }
@@ -171,32 +207,41 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   };
 
   const startDictation = async (): Promise<void> => {
-    if (recording()) return;
+    if (disposed || current || speaking()) return;
     const sid = deps.activeSid();
+    if (sid === null) return;
+    const attempt: Attempt = {
+      ownerId: crypto.randomUUID(),
+      sid,
+      phase: 'microphone',
+      stream: 'none',
+    };
+    current = latest = attempt;
+    setCapturing(true);
+    setTranscribing(false);
     try {
       stopPlayback();
-      await deps.recorder.start();
+      await deps.recorder.start(attempt.ownerId);
       // The tab can go away while the mic prompt or graph setup was pending —
       // start() resolves after the effect above could see a recording, so
       // re-check before declaring one. After disposal no toast: the pane is
       // gone, and a cancelled notice would only confuse.
-      if (disposed || sid === null || deps.activeSid() === null) {
-        cancelRecording();
-        if (!disposed) {
-          deps.onNotice('Recording cancelled — the tab is no longer active.');
-        }
-        return;
-      }
-      targetSid = sid;
+      if (!owns(attempt)) return;
+      attempt.phase = 'capture';
       setRecording(true);
       // Stream upgrade: ask main to open the realtime socket. Every refusal
       // is silent — the buffered-clip batch chain stays the commit path and
       // the recording continues unchanged (§9.1).
       if (deps.stream) {
+        attempt.stream = 'pending';
         try {
-          const started = await deps.stream.start(sid);
-          if (started.ok && !disposed && deps.activeSid() !== null && recording()) {
-            streamActive = true;
+          const started = await deps.stream.start(sid, attempt.ownerId);
+          if (!owns(attempt)) {
+            if (started.ok) cancelStream(attempt);
+            return;
+          }
+          attempt.stream = started.ok ? 'ready' : 'batch';
+          if (started.ok) {
             setPartial('');
           }
         } catch {
@@ -204,37 +249,53 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           // mic is already open and the recording continues on the batch
           // chain, so the notice must say that, not "could not open the
           // microphone" (the outer catch is for recorder.start() errors).
-          deps.onNotice('Streaming unavailable — using batch transcription.');
+          if (owns(attempt)) {
+            cancelStream(attempt);
+            attempt.stream = 'batch';
+            deps.onNotice('Streaming unavailable — using batch transcription.');
+          }
         }
       }
     } catch (err) {
-      deps.onNotice(micErrorMessage(err));
+      if (owns(attempt)) {
+        cancelRecording();
+        deps.onNotice(micErrorMessage(err));
+      }
     }
   };
 
   const stopDictation = async (): Promise<void> => {
-    if (!recording()) return;
-    const sid = targetSid;
+    const attempt = current;
+    if (!attempt) return;
+    if (attempt.phase === 'microphone') {
+      cancelRecording();
+      return;
+    }
+    const sid = attempt.sid;
+    const wasStreaming = attempt.stream === 'ready';
+    attempt.phase = 'stopped';
+    current = null;
     setRecording(false);
+    setCapturing(false);
+    setPartial(null);
     setTranscribing(true);
-    const wasStreaming = streamActive;
-    streamActive = false;
     try {
       // Mic released FIRST — the commit, streaming or batch, never keeps the
       // microphone open.
-      const clip = await deps.recorder.stop();
-      targetSid = null;
+      const stopping = deps.recorder.stop(attempt.ownerId);
+      if (attempt.stream === 'pending') cancelStream(attempt);
+      const clip = await stopping;
       if (wasStreaming && deps.stream) {
-        setPartial(null);
-        try {
-          const result = await deps.stream.stop();
-          if (noticeResult(result, true)) return;
-        } catch {
-          // Transport-level failure — the buffered clip is the fallback.
+        // A rejected stop may already have committed in main. Only an explicit
+        // no-session response proves that the buffered fallback is safe.
+        const result = await deps.stream.stop(attempt.ownerId);
+        if (result.reason !== 'no-session') {
+          if (visible(attempt)) noticeResult(result, false);
+          return;
         }
       }
       if (!clip) {
-        deps.onNotice('No speech captured.');
+        if (visible(attempt)) deps.onNotice('No speech captured.');
         return;
       }
       if (!sid) {
@@ -242,16 +303,16 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         return;
       }
       const result: VoiceTranscribeResult = await deps.transcribe(sid, clip);
-      noticeResult(result, false);
+      if (visible(attempt)) noticeResult(result, false);
     } catch (err) {
-      deps.onNotice((err as Error).message);
+      if (visible(attempt)) deps.onNotice((err as Error).message);
     } finally {
-      setTranscribing(false);
+      if (visible(attempt)) setTranscribing(false);
     }
   };
 
   const toggleDictation = async (): Promise<void> => {
-    if (recording()) {
+    if (capturing()) {
       await stopDictation();
       return;
     }
@@ -268,7 +329,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     }
     // Recording and reading at once would interleave the mic with speaker
     // output even with echo cancellation — finish one first.
-    if (recording()) return;
+    if (capturing()) return;
     setSpeaking(true);
     try {
       stopPlayback();
@@ -296,6 +357,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
 
   return {
     recording,
+    capturing,
     transcribing,
     speaking,
     busy,
@@ -304,5 +366,14 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     stopDictation,
     toggleDictation,
     readAloud,
+    handleAudio: (ownerId, pcmBase64) => {
+      if (
+        current?.ownerId === ownerId &&
+        current.phase === 'capture' &&
+        (current.stream === 'pending' || current.stream === 'ready')
+      ) {
+        void deps.stream?.audio({ ownerId, pcmBase64 }).catch(() => undefined);
+      }
+    },
   };
 }

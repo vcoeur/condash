@@ -106,6 +106,7 @@ export interface VoiceSpeakResult {
  *  AudioContext's real rate, which some backends vary from the requested
  *  16 kHz) so main's reassembled repass WAV can carry an honest header. */
 export interface VoiceStreamStartRequest {
+  ownerId: string;
   sid: string;
   sampleRate: number;
 }
@@ -129,6 +130,7 @@ export interface VoiceStreamStartResult {
  *  — no WAV header; the realtime endpoint takes bare samples as binary
  *  frames. */
 export interface VoiceStreamChunk {
+  ownerId: string;
   pcmBase64: string;
 }
 
@@ -136,6 +138,7 @@ export interface VoiceStreamChunk {
  *  live (the whole text so far, not a delta — small payloads, no lost-update
  *  ordering, and the caption strip can remount losslessly). */
 export interface VoicePartialMessage {
+  ownerId: string;
   sid: string;
   text: string;
 }

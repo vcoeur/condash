@@ -55,12 +55,12 @@ export interface VoiceRecorder {
   /** Open the mic and start collecting samples. Throws MicUnavailableError
    *  (or a getUserMedia failure — see micErrorMessage) when the mic cannot
    *  be opened. */
-  start(): Promise<void>;
+  start(ownerId: string): Promise<void>;
   /** Stop capture and resolve to the recorded clip, or null when the clip
    *  is too short to carry speech. Always releases the mic. */
-  stop(): Promise<VoiceAudioClip | null>;
+  stop(ownerId: string): Promise<VoiceAudioClip | null>;
   /** Abort without producing a clip. Always releases the mic. */
-  cancel(): void;
+  cancel(ownerId: string): void;
   /** True between a resolved start() and stop()/cancel(). */
   readonly recording: boolean;
   /** The rate the current (or last) capture ran at — the AudioContext's
@@ -75,98 +75,120 @@ export interface VoiceRecorderOptions {
    *  s16le PCM (no WAV header), right after it joins the batch buffer. The
    *  batch fallback buffering below is untouched — the tap is an additive
    *  observer, so a stream that never consumes the chunks loses nothing. */
-  onChunk?: (pcmBase64: string) => void;
+  onChunk?: (ownerId: string, pcmBase64: string) => void;
 }
 
 export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRecorder {
-  let stream: MediaStream | null = null;
-  let context: AudioContext | null = null;
-  let processor: ScriptProcessorNode | null = null;
-  let source: MediaStreamAudioSourceNode | null = null;
-  let sink: GainNode | null = null;
-  let chunks: Float32Array[] = [];
-  let sampleCount = 0;
+  interface Capture {
+    ownerId: string;
+    cancelled: boolean;
+    active: boolean;
+    stream?: MediaStream;
+    context?: AudioContext;
+    processor?: ScriptProcessorNode;
+    source?: MediaStreamAudioSourceNode;
+    sink?: GainNode;
+    chunks: Float32Array[];
+    samples: number;
+    rate: number;
+  }
+  let current: Capture | null = null;
   let capturedRate = RECORD_SAMPLE_RATE;
-  let active = false;
 
-  function release(): void {
-    try {
-      processor?.disconnect();
-      source?.disconnect();
-      sink?.disconnect();
-    } catch {
-      /* nodes may already be torn down with the context */
+  function release(capture: Capture): void {
+    capture.cancelled = true;
+    capture.active = false;
+    if (current === capture) current = null;
+    if (capture.processor) capture.processor.onaudioprocess = null;
+    for (const node of [capture.processor, capture.source, capture.sink]) {
+      try {
+        node?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
     }
-    processor = null;
-    source = null;
-    sink = null;
-    stream?.getTracks().forEach((track) => track.stop());
-    stream = null;
-    void context?.close().catch(() => undefined);
-    context = null;
-    active = false;
+    capture.stream?.getTracks().forEach((track) => track.stop());
+    capture.stream = undefined;
+    void capture.context?.close().catch(() => undefined);
+    capture.context = undefined;
   }
 
   return {
     get recording(): boolean {
-      return active;
+      return current?.active === true;
     },
 
     get capturedRate(): number {
       return capturedRate;
     },
 
-    async start(): Promise<void> {
-      if (active) return;
+    async start(ownerId): Promise<void> {
+      if (current) return;
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new MicUnavailableError('This environment offers no microphone capture.');
       }
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          // Echo cancellation keeps dictation out of any speaker loopback;
-          // the brief calls for it explicitly.
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-        },
-      });
-      context = new AudioContext({ sampleRate: RECORD_SAMPLE_RATE });
-      // Some backends ignore the requested rate — the WAV header must carry
-      // the truth or players transcode wrong.
-      capturedRate = context.sampleRate;
-      source = context.createMediaStreamSource(stream);
-      processor = context.createScriptProcessor(BUFFER_SIZE, 1, 1);
-      chunks = [];
-      sampleCount = 0;
-      processor.onaudioprocess = (event) => {
-        if (!active) return;
-        const input = event.inputBuffer.getChannelData(0);
-        chunks.push(new Float32Array(input));
-        sampleCount += input.length;
-        if (options.onChunk) {
-          const pcm = float32ToInt16(input);
-          options.onChunk(
-            bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
-          );
-        }
+      const capture: Capture = {
+        ownerId,
+        cancelled: false,
+        active: false,
+        chunks: [],
+        samples: 0,
+        rate: RECORD_SAMPLE_RATE,
       };
-      sink = context.createGain();
-      sink.gain.value = 0; // silent sink: keeps the graph pumping without audio out
-      source.connect(processor);
-      processor.connect(sink);
-      sink.connect(context.destination);
-      active = true;
+      current = capture;
+      try {
+        capture.stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            // Echo cancellation keeps dictation out of any speaker loopback;
+            // the brief calls for it explicitly.
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        });
+        if (capture.cancelled || current !== capture) {
+          release(capture);
+          return;
+        }
+        const context = (capture.context = new AudioContext({ sampleRate: RECORD_SAMPLE_RATE }));
+        // Some backends ignore the requested rate — the WAV header must carry
+        // the truth or players transcode wrong.
+        capturedRate = capture.rate = context.sampleRate;
+        const source = (capture.source = context.createMediaStreamSource(capture.stream));
+        const processor = (capture.processor = context.createScriptProcessor(BUFFER_SIZE, 1, 1));
+        processor.onaudioprocess = (event) => {
+          if (!capture.active || capture.cancelled || current !== capture) return;
+          const input = event.inputBuffer.getChannelData(0);
+          capture.chunks.push(new Float32Array(input));
+          capture.samples += input.length;
+          if (options.onChunk) {
+            const pcm = float32ToInt16(input);
+            options.onChunk(
+              ownerId,
+              bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
+            );
+          }
+        };
+        const sink = (capture.sink = context.createGain());
+        sink.gain.value = 0; // silent sink: keeps the graph pumping without audio out
+        source.connect(processor);
+        processor.connect(sink);
+        sink.connect(context.destination);
+        capture.active = true;
+      } catch (error) {
+        const cancelled = capture.cancelled;
+        release(capture);
+        if (!cancelled) throw error;
+      }
     },
 
-    async stop(): Promise<VoiceAudioClip | null> {
-      if (!active) return null;
-      const rate = capturedRate;
-      const collected = chunks;
-      const samples = sampleCount;
-      release();
-      chunks = [];
-      sampleCount = 0;
+    async stop(ownerId): Promise<VoiceAudioClip | null> {
+      const capture = current;
+      if (!capture || capture.ownerId !== ownerId) return null;
+      const { rate, chunks: collected, samples } = capture;
+      release(capture);
+      capture.chunks = [];
       if (samples < (rate * MIN_CLIP_MS) / 1000) return null;
       const merged = new Float32Array(samples);
       let offset = 0;
@@ -178,10 +200,9 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
       return { data: bytesToBase64(wav), sampleRate: rate, format: 'wav' };
     },
 
-    cancel(): void {
-      release();
-      chunks = [];
-      sampleCount = 0;
+    cancel(ownerId): void {
+      if (current?.ownerId !== ownerId) return;
+      release(current);
     },
   };
 }

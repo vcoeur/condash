@@ -8,12 +8,13 @@
  * adapter surface, already covered by adapter.test.ts.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import {
   TARGET_STREAMING_DELAY_MS,
   beginVoiceStream,
-  cancelActiveVoiceStream,
+  cancelActiveVoiceStream as cancelOwned,
   getActiveVoiceStream,
-  takeActiveVoiceStream,
+  takeActiveVoiceStream as takeOwned,
 } from './stream';
 import type { RealtimeSocket, VoiceStreamSessionDeps } from './stream';
 import { insertTranscript } from './insert';
@@ -91,6 +92,7 @@ interface Harness {
 function makeDeps(overrides: Record<string, unknown> = {}): VoiceStreamSessionDeps {
   return {
     sid: 's1',
+    ownerId: randomUUID(),
     apiKey: 'mistral-secret-key-AAAA',
     contextBias: [] as string[],
     keys: { openrouter: undefined, mistral: 'mistral-secret-key-AAAA' },
@@ -110,6 +112,12 @@ function makeDeps(overrides: Record<string, unknown> = {}): VoiceStreamSessionDe
 }
 
 let harness!: Harness;
+
+const cancelActiveVoiceStream = () => {
+  const session = getActiveVoiceStream();
+  if (session) cancelOwned(session.ownerId);
+};
+const takeActiveVoiceStream = () => takeOwned(harness.deps.ownerId);
 
 async function makeHarness(overrides: Record<string, unknown> = {}): Promise<void> {
   // The single-active-slot is module state — clear it so every test starts

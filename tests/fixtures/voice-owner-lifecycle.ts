@@ -1,0 +1,783 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createRoot, createSignal } from 'solid-js';
+import { createVoiceRecorder } from '../../src/renderer/terminal-pane/voice-recorder';
+import { createVoiceSession } from '../../src/renderer/terminal-pane/voice-session';
+import { createGlobalKeyboard } from '../../src/renderer/global-keyboard';
+import { registerVoicePtt } from '../../src/renderer/terminal-pane/voice-ptt-registry';
+import {
+  beginVoiceStream,
+  cancelActiveVoiceStream,
+  getActiveVoiceStream,
+  takeActiveVoiceStream,
+  reserveVoiceStream,
+  ownsVoiceStream,
+  releaseVoiceStream,
+  MAX_PRESTART_CANCELLATIONS,
+} from '../../src/main/voice/stream';
+import { insertTranscript } from '../../src/main/voice/insert';
+import type { VoicePartialMessage } from '../../src/shared/types';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+class FakeSocket {
+  handlers: Record<string, ((...args: any[]) => void)[]> = {};
+  sent: (string | Buffer)[] = [];
+  closed = false;
+  on(event: string, callback: (...args: any[]) => void) {
+    (this.handlers[event] ??= []).push(callback);
+  }
+  send(data: string | Buffer) {
+    this.sent.push(data);
+  }
+  close() {
+    this.closed = true;
+  }
+  terminate() {
+    this.closed = true;
+  }
+  emit(event: string, ...args: unknown[]) {
+    for (const callback of this.handlers[event] ?? []) callback(...args);
+  }
+  text(text: string) {
+    this.emit(
+      'message',
+      Buffer.from(JSON.stringify({ type: 'transcription.text.delta', text })),
+      false,
+    );
+  }
+}
+
+class FakeNode {
+  disconnected = false;
+  gain = { value: 1 };
+  onaudioprocess: ((event: any) => void) | null = null;
+  connect() {}
+  disconnect() {
+    this.disconnected = true;
+  }
+}
+
+function mediaEdges() {
+  const acquisitions: ReturnType<typeof deferred<MediaStream>>[] = [];
+  const tracks: { stopped: number }[] = [];
+  const contexts: FakeContext[] = [];
+  let failGraph = false;
+  const saved = new Map<string, PropertyDescriptor | undefined>();
+  function install(name: string, value: unknown) {
+    saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+  class FakeContext {
+    sampleRate = 16000;
+    closed = false;
+    destination = {};
+    processor = new FakeNode();
+    source = new FakeNode();
+    sink = new FakeNode();
+    constructor() {
+      contexts.push(this);
+    }
+    createMediaStreamSource() {
+      return this.source;
+    }
+    createScriptProcessor() {
+      if (failGraph) throw new Error('graph setup failed');
+      return this.processor;
+    }
+    createGain() {
+      return this.sink;
+    }
+    close() {
+      this.closed = true;
+      return Promise.resolve();
+    }
+  }
+  install('navigator', {
+    mediaDevices: {
+      getUserMedia: () => {
+        const acquisition = deferred<MediaStream>();
+        acquisitions.push(acquisition);
+        return acquisition.promise;
+      },
+    },
+  });
+  install('AudioContext', FakeContext);
+  const listeners: Record<string, ((event: KeyboardEvent) => void)[]> = {};
+  install('document', {
+    addEventListener(type: string, listener: (event: KeyboardEvent) => void) {
+      (listeners[type] ??= []).push(listener);
+    },
+    removeEventListener(type: string, listener: (event: KeyboardEvent) => void) {
+      listeners[type] = listeners[type].filter((entry) => entry !== listener);
+    },
+  });
+  return {
+    acquisitions,
+    tracks,
+    contexts,
+    listeners,
+    failGraph: () => {
+      failGraph = true;
+    },
+    resolve(index: number) {
+      const track = { stopped: 0 };
+      tracks[index] = track;
+      acquisitions[index].resolve({
+        getTracks: () => [
+          {
+            stop: () => {
+              track.stopped++;
+            },
+          },
+        ],
+      } as unknown as MediaStream);
+    },
+    chunk(index: number) {
+      contexts[index].processor.onaudioprocess?.({
+        inputBuffer: { getChannelData: () => new Float32Array(4096).fill(0.25) },
+      });
+    },
+    restore() {
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    },
+  };
+}
+
+function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
+  const sockets: FakeSocket[] = [];
+  const owners: string[] = [];
+  const writes: { sid: string; text: string }[] = [];
+  const notices: string[] = [];
+  const callbacks: ((message: VoicePartialMessage) => void)[] = [];
+  const batchCalls: string[] = [];
+  const batchDone: ReturnType<typeof deferred<void>>[] = [];
+  let holdBatch = false;
+  let startReplyGate: ReturnType<typeof deferred<void>> | null = null;
+  let startOutcome: 'normal' | 'refused' | 'rejected' = 'normal';
+  let cancellationFailure: 'none' | 'before-delivery' | 'after-delivery' | 'always' = 'none';
+  const cancellations: string[] = [];
+  const [activeSid, setActiveSid] = createSignal<string | null>(sid);
+  const [activeColumn, setActiveColumn] = createSignal(true);
+  const recorder = createVoiceRecorder({
+    onChunk: (ownerId, pcm) => session.handleAudio(ownerId, pcm),
+  });
+  let session!: ReturnType<typeof createVoiceSession>;
+  let unregister!: () => void;
+  const dispose = createRoot((cleanup) => {
+    session = createVoiceSession({
+      activeSid,
+      recorder,
+      onNotice: (message) => notices.push(message),
+      transcribe: async (target) => {
+        assert.equal(recorder.recording, false, 'microphone released before batch provider work');
+        batchCalls.push(target);
+        if (holdBatch) {
+          const gate = deferred<void>();
+          batchDone.push(gate);
+          await gate.promise;
+        }
+        writes.push({ sid: target, text: 'batch transcript' });
+        return { inserted: true, chars: 16 };
+      },
+      speak: async () => ({ ok: false }),
+      createAudio: () => ({ pause() {}, play: async () => {}, onended: null }),
+      stream: {
+        start: async (target, ownerId) => {
+          owners.push(ownerId);
+          const replyGate = startReplyGate;
+          if (startOutcome === 'refused' || startOutcome === 'rejected') {
+            const admitted = reserveVoiceStream(ownerId);
+            assert.ok(admitted.ok);
+            releaseVoiceStream(admitted.reservation);
+            if (replyGate) await replyGate.promise;
+            if (startOutcome === 'rejected') throw new Error('start settings rejected');
+            return { ok: false, reason: 'error' };
+          }
+          const result = await beginVoiceStream({
+            ownerId,
+            sid: target,
+            apiKey: 'DUMMY',
+            keys: {},
+            contextBias: [],
+            createSocket: () => {
+              const socket = new FakeSocket();
+              sockets.push(socket);
+              return socket;
+            },
+            onPartial: (text) =>
+              callbacks.forEach((callback) => callback({ ownerId, sid: target, text })),
+            insert: (targetSid, text) =>
+              insertTranscript(targetSid, text, {
+                isLive: () => true,
+                write: (targetSid, text) => writes.push({ sid: targetSid, text }),
+              }),
+            batchTranscribers: {
+              normal: async () => {
+                throw new Error('unused');
+              },
+              biasFirst: async () => {
+                throw new Error('unused');
+              },
+            },
+            connectTimeoutMs: 1000,
+            finaliseTimeoutMs: 1,
+          });
+          if (replyGate) await replyGate.promise;
+          return result;
+        },
+        audio: async ({ ownerId, pcmBase64 }) =>
+          getActiveVoiceStream(ownerId)?.handleAudio(pcmBase64),
+        stop: async (ownerId) =>
+          takeActiveVoiceStream(ownerId)?.stop() ?? { inserted: false, reason: 'no-session' },
+        cancel: async (ownerId) => {
+          cancellations.push(ownerId);
+          const failure = cancellationFailure;
+          if (failure !== 'always') cancellationFailure = 'none';
+          if (failure === 'before-delivery' || failure === 'always')
+            throw new Error('cancel transport rejected');
+          cancelActiveVoiceStream(ownerId);
+          if (failure === 'after-delivery') throw new Error('cancel reply rejected');
+        },
+        onPartial: (callback) => {
+          callbacks.push(callback);
+          return () => {
+            callbacks.splice(callbacks.indexOf(callback), 1);
+          };
+        },
+      },
+    });
+    unregister = registerVoicePtt({
+      isActiveColumn: activeColumn,
+      isRecording: session.capturing,
+      begin: () => {
+        void session.startDictation();
+      },
+      end: () => {
+        void session.stopDictation();
+      },
+    });
+    return cleanup;
+  });
+  return {
+    session,
+    recorder,
+    sockets,
+    owners,
+    writes,
+    notices,
+    callbacks,
+    batchCalls,
+    cancellations,
+    delayReply: (outcome: typeof startOutcome = 'normal') => {
+      startOutcome = outcome;
+      startReplyGate = deferred<void>();
+      return () => startReplyGate!.resolve();
+    },
+    failCancellation: (failure: typeof cancellationFailure) => {
+      cancellationFailure = failure;
+    },
+    setActiveSid,
+    setActiveColumn,
+    holdBatch: () => {
+      holdBatch = true;
+    },
+    finishBatch: (index = 0) => batchDone[index].resolve(),
+    dispose: () => {
+      unregister();
+      dispose();
+    },
+  };
+}
+
+const flush = async () => {
+  for (let index = 0; index < 8; index++) await Promise.resolve();
+};
+
+export const cancellationAccountingScenarios = [
+  '300 delayed successful replies after stop',
+  '300 delayed successful replies after tab departure',
+  '300 delayed successful replies after disposal',
+  '300 delayed refused replies after stop',
+  '300 delayed rejected replies after stop',
+  '300 rejected starts while still recording',
+  'cancel rejection before delivery',
+  'cancel rejection after delivery',
+  'persistent cancellation rejection is reported',
+] as const;
+
+export async function exerciseCancellationAccounting(
+  name: (typeof cancellationAccountingScenarios)[number],
+): Promise<void> {
+  const media = mediaEdges();
+  const columns: ReturnType<typeof column>[] = [];
+  try {
+    const iterations = name.startsWith('300') ? 300 : 1;
+    for (let index = 0; index < iterations; index++) {
+      const current = column(media);
+      columns.push(current);
+      const outcome = name.includes('refused')
+        ? 'refused'
+        : name.includes('rejected')
+          ? 'rejected'
+          : 'normal';
+      const releaseReply = current.delayReply(outcome);
+      const starting = current.session.startDictation();
+      media.resolve(index);
+      await flush();
+      if (outcome === 'normal') {
+        current.sockets[0].emit('open');
+        await flush();
+        assert.equal(getActiveVoiceStream(current.owners[0])?.ownerId, current.owners[0]);
+      }
+      if (name.includes('before delivery')) current.failCancellation('before-delivery');
+      if (name.includes('after delivery')) current.failCancellation('after-delivery');
+      if (name.includes('persistent')) current.failCancellation('always');
+      media.chunk(index);
+      if (name.includes('still recording')) {
+        releaseReply();
+        await starting;
+      }
+      if (name.includes('tab departure')) current.setActiveSid(null);
+      else if (name.includes('disposal')) current.dispose();
+      else await current.session.stopDictation();
+      releaseReply();
+      await starting;
+      await flush();
+      const rejectedCancel = name.includes('cancel rejection') || name.includes('persistent');
+      assert.equal(
+        current.cancellations.length,
+        rejectedCancel ? 2 : 1,
+        'one owned cancellation; only a rejected delivery permits one bounded retry',
+      );
+      assert.equal(new Set(current.cancellations).size, 1);
+      assert.equal(current.recorder.recording, false);
+      assert.equal(current.session.recording(), false);
+      assert.equal(current.session.partial(), null);
+      if (name.includes('persistent')) {
+        assert.ok(
+          current.notices.some((notice) =>
+            notice.includes('Could not confirm streaming cancellation'),
+          ),
+        );
+        assert.ok(
+          getActiveVoiceStream(current.owners[0]),
+          'failed delivery is not disguised as successful cleanup',
+        );
+        cancelActiveVoiceStream(current.owners[0]);
+      } else {
+        assert.equal(getActiveVoiceStream(current.owners[0]), null);
+        if (outcome === 'normal') assert.equal(current.sockets[0].closed, true);
+      }
+      assert.equal(
+        current.writes.length,
+        name.includes('tab departure') || name.includes('disposal') ? 0 : 1,
+      );
+      current.dispose();
+    }
+    const next = column(media);
+    columns.push(next);
+    const starting = next.session.startDictation();
+    media.resolve(iterations);
+    await flush();
+    assert.equal(
+      next.sockets.length,
+      1,
+      'normal cancellations must not exhaust future realtime admission',
+    );
+    next.sockets[0].emit('open');
+    await starting;
+    assert.equal(next.session.partial(), '');
+    next.setActiveSid(null);
+    // Completed owners must not have used any unmatched-marker budget.
+    // Populate its full capacity and prove a fresh admission is still allowed.
+    const unmatched = Array.from({ length: MAX_PRESTART_CANCELLATIONS }, () => randomUUID());
+    for (const ownerId of unmatched) cancelActiveVoiceStream(ownerId);
+    const admitted = reserveVoiceStream(randomUUID());
+    assert.ok(admitted.ok, 'all 256 genuine unmatched markers still fit after ordinary lifecycles');
+    releaseVoiceStream(admitted.reservation);
+    for (const ownerId of unmatched) assert.equal(reserveVoiceStream(ownerId).ok, false);
+  } finally {
+    for (const current of columns) current.dispose();
+    assert.ok(media.tracks.every((track) => track.stopped === 1));
+    assert.ok(media.contexts.every((context) => context.closed));
+    media.restore();
+  }
+}
+
+export const lifecycleScenarios = [
+  'early PTT release',
+  'early PTT rejection',
+  'click stops pending mic',
+  'pending mic tab departure',
+  'pending mic disposal',
+  'inverse mic resolution and old callback',
+  'recorder setup failure cleanup',
+  'pending stream stop',
+  'pending stream tab departure',
+  'pending stream disposal',
+  'late stream success',
+  'late stream refusal',
+  'late stream rejection',
+  'same-column adversarial restart',
+  'cross-column adversarial restart',
+  'old authorized batch completes after restart',
+  'old fallback finally leaves newer transcription alone',
+  'old processor callback after active restart',
+  'cancel before reservation',
+  'cancel during reserved settings wait',
+  'bounded fail-closed cancellation admission',
+] as const;
+
+export async function exerciseVoiceLifecycle(
+  name: (typeof lifecycleScenarios)[number],
+): Promise<void> {
+  const media = mediaEdges();
+  const columns: ReturnType<typeof column>[] = [];
+  const makeColumn = (sid?: string) => {
+    const created = column(media, sid);
+    columns.push(created);
+    return created;
+  };
+  try {
+    if (name === 'cancel before reservation') {
+      const owner = randomUUID();
+      cancelActiveVoiceStream(owner);
+      const rejected = reserveVoiceStream(owner);
+      assert.equal(rejected.ok, false);
+      const next = reserveVoiceStream(randomUUID());
+      assert.equal(next.ok, true);
+      if (next.ok) releaseVoiceStream(next.reservation);
+      return;
+    }
+    if (name === 'cancel during reserved settings wait') {
+      const admitted = reserveVoiceStream(randomUUID());
+      assert.ok(admitted.ok);
+      cancelActiveVoiceStream(admitted.reservation.ownerId);
+      const next = reserveVoiceStream(randomUUID());
+      assert.ok(next.ok);
+      assert.equal(ownsVoiceStream(admitted.reservation), false);
+      releaseVoiceStream(admitted.reservation);
+      assert.equal(ownsVoiceStream(next.reservation), true);
+      releaseVoiceStream(next.reservation);
+      return;
+    }
+    if (name === 'bounded fail-closed cancellation admission') {
+      const owners = Array.from({ length: MAX_PRESTART_CANCELLATIONS + 1 }, () => randomUUID());
+      for (const owner of owners) cancelActiveVoiceStream(owner);
+      for (const owner of owners) assert.equal(reserveVoiceStream(owner).ok, false);
+      assert.equal(
+        reserveVoiceStream(randomUUID()).ok,
+        false,
+        'overflow must never reopen admission',
+      );
+      return;
+    }
+    const first = makeColumn();
+    if (name.startsWith('early PTT')) {
+      const keyboardDispose = createRoot((cleanup) => {
+        createGlobalKeyboard({
+          layout: () => ({ terminal: false }) as any,
+          terminalPrefs: () => ({}),
+          getTerminalHandle: () => null,
+          toggleTerminal() {},
+          bridge: {} as any,
+          setSearchModalOpen() {},
+          setShortcutsOpen() {},
+        });
+        return cleanup;
+      });
+      const dispatch = (type: string, held: boolean) =>
+        media.listeners[type].forEach((listener) =>
+          listener({
+            key: ' ',
+            ctrlKey: held,
+            shiftKey: held,
+            altKey: false,
+            metaKey: false,
+            target: null,
+            preventDefault() {},
+            stopPropagation() {},
+          } as unknown as KeyboardEvent),
+        );
+      try {
+        dispatch('keydown', true);
+        assert.equal(first.session.capturing(), true);
+        first.setActiveColumn(false);
+        const second = makeColumn('second-tab');
+        dispatch('keydown', true);
+        assert.equal(
+          media.acquisitions.length,
+          1,
+          'cross-column repeat cannot acquire another mic',
+        );
+        dispatch('keyup', false);
+        assert.equal(first.session.capturing(), false);
+        if (name.endsWith('rejection')) media.acquisitions[0].reject(new Error('denied'));
+        else media.resolve(0);
+        await flush();
+        assert.equal(first.session.recording(), false);
+        assert.equal(second.session.capturing(), false);
+        assert.equal(first.owners.length, 0);
+        assert.equal(first.notices.length, 0);
+        assert.equal(first.writes.length, 0);
+        if (media.tracks[0]) assert.equal(media.tracks[0].stopped, 1);
+      } finally {
+        keyboardDispose();
+      }
+      return;
+    }
+    const starting = first.session.startDictation();
+    assert.equal(media.acquisitions.length, 1);
+    void first.session.startDictation();
+    assert.equal(media.acquisitions.length, 1, 'no duplicate acquisition');
+    if (name === 'recorder setup failure cleanup') {
+      media.failGraph();
+      media.resolve(0);
+      await starting;
+      assert.equal(first.session.recording(), false);
+      assert.equal(first.session.capturing(), false);
+      assert.equal(first.notices.length, 1);
+      assert.equal(first.owners.length, 0);
+      assert.equal(media.tracks[0].stopped, 1);
+      assert.equal(media.contexts[0].closed, true);
+      return;
+    }
+    if (
+      name === 'click stops pending mic' ||
+      name === 'pending mic tab departure' ||
+      name === 'pending mic disposal'
+    ) {
+      if (name.includes('click')) await first.session.toggleDictation();
+      else if (name.includes('departure')) first.setActiveSid(null);
+      else first.dispose();
+      media.resolve(0);
+      await starting;
+      assert.equal(media.tracks[0].stopped, 1);
+      assert.equal(media.contexts.length, 0);
+      assert.equal(first.session.capturing(), false);
+      assert.equal(first.owners.length, 0);
+      assert.equal(first.writes.length, 0);
+      return;
+    }
+    if (name === 'inverse mic resolution and old callback') {
+      await first.session.stopDictation();
+      const nextStart = first.session.startDictation();
+      media.resolve(1);
+      await flush();
+      first.sockets[0].emit('open');
+      await nextStart;
+      media.resolve(0);
+      await starting;
+      assert.equal(media.tracks[0].stopped, 1);
+      assert.equal(media.tracks[1].stopped, 0);
+      assert.equal(media.contexts.length, 1);
+      assert.equal(first.session.recording(), true);
+      media.chunk(0);
+      assert.equal(first.sockets[0].sent.filter(Buffer.isBuffer).length, 1);
+      first.setActiveSid(null);
+      assert.equal(media.tracks[1].stopped, 1);
+      assert.equal(media.contexts[0].closed, true);
+      return;
+    }
+    if (name.startsWith('late stream')) {
+      const outcome = deferred<{ ok: boolean }>();
+      // Fake IPC completion, retaining the real session and recorder lifecycle.
+      first.dispose();
+      let session!: ReturnType<typeof createVoiceSession>;
+      const recorder = createVoiceRecorder();
+      const notices: string[] = [];
+      const cancelled: string[] = [];
+      const dispose = createRoot((cleanup) => {
+        session = createVoiceSession({
+          activeSid: () => 'target-tab',
+          recorder,
+          onNotice: (text) => notices.push(text),
+          transcribe: async () => ({ inserted: true }),
+          speak: async () => ({ ok: false }),
+          createAudio: () => ({}) as any,
+          stream: {
+            start: async () => outcome.promise,
+            audio: async () => {},
+            stop: async () => ({ inserted: false }),
+            cancel: async (ownerId) => {
+              cancelled.push(ownerId);
+            },
+            onPartial: () => () => {},
+          },
+        });
+        return cleanup;
+      });
+      try {
+        media.resolve(0);
+        await starting;
+        const late = session.startDictation();
+        media.resolve(1);
+        await flush();
+        await session.stopDictation();
+        const count = notices.length;
+        if (name.endsWith('rejection')) outcome.reject(new Error('late rejection'));
+        else outcome.resolve({ ok: name.endsWith('success') });
+        await late;
+        assert.equal(session.recording(), false);
+        assert.equal(notices.length, count);
+        assert.ok(cancelled.length >= 1);
+        assert.equal(new Set(cancelled).size, 1);
+        assert.equal(media.tracks[1].stopped, 1);
+      } finally {
+        dispose();
+      }
+      return;
+    }
+    media.resolve(0);
+    await flush();
+    const oldOwner = first.owners[0];
+    const oldSocket = first.sockets[0];
+    assert.ok(oldOwner);
+    assert.ok(oldSocket);
+    media.chunk(0);
+    const oldCallback = media.contexts[0].processor.onaudioprocess!;
+    if (
+      name === 'old authorized batch completes after restart' ||
+      name === 'old fallback finally leaves newer transcription alone'
+    ) {
+      first.holdBatch();
+      const stopping = first.session.stopDictation();
+      await flush();
+      assert.deepEqual(first.batchCalls, ['target-tab']);
+      const nextStart = first.session.startDictation();
+      media.resolve(1);
+      await flush();
+      if (name === 'old fallback finally leaves newer transcription alone') {
+        media.chunk(1);
+        const nextStop = first.session.stopDictation();
+        await flush();
+        assert.equal(first.session.transcribing(), true);
+        first.finishBatch(0);
+        await stopping;
+        await starting;
+        assert.equal(
+          first.session.transcribing(),
+          true,
+          'old finally cannot clear new provider work',
+        );
+        assert.equal(first.notices.length, 0);
+        first.finishBatch(1);
+        await nextStop;
+        await nextStart;
+        assert.equal(first.writes.length, 2);
+        assert.equal(first.notices.length, 1);
+        return;
+      }
+      first.sockets[1].emit('open');
+      await nextStart;
+      first.finishBatch();
+      await stopping;
+      await starting;
+      assert.equal(first.session.recording(), true);
+      assert.equal(first.session.transcribing(), false);
+      assert.deepEqual(first.writes, [{ sid: 'target-tab', text: 'batch transcript' }]);
+      assert.equal(first.notices.length, 0);
+      return;
+    }
+    if (name === 'old processor callback after active restart') {
+      oldSocket.emit('open');
+      await starting;
+      first.setActiveSid(null);
+      first.setActiveSid('target-tab');
+      const nextStart = first.session.startDictation();
+      media.resolve(1);
+      await flush();
+      const nextSocket = first.sockets[1];
+      nextSocket.emit('open');
+      await nextStart;
+      oldCallback({ inputBuffer: { getChannelData: () => new Float32Array(4096) } });
+      assert.equal(nextSocket.sent.filter(Buffer.isBuffer).length, 0);
+      media.chunk(1);
+      assert.equal(nextSocket.sent.filter(Buffer.isBuffer).length, 1);
+      assert.equal(media.tracks[1].stopped, 0);
+      assert.equal(first.session.recording(), true);
+      return;
+    }
+    if (name.startsWith('pending stream')) {
+      if (name.endsWith('stop')) await first.session.stopDictation();
+      else if (name.endsWith('departure')) first.setActiveSid(null);
+      else first.dispose();
+      assert.equal(media.tracks[0].stopped, 1);
+      assert.equal(oldSocket.closed, true);
+      assert.equal(getActiveVoiceStream(oldOwner), null);
+      oldSocket.emit('open');
+      oldSocket.text('stale');
+      oldSocket.emit('error', new Error('late'));
+      oldSocket.emit('close', 1005, Buffer.alloc(0));
+      await starting;
+      assert.equal(
+        oldSocket.sent.length,
+        0,
+        'terminal cancellation sends no late configuration/audio',
+      );
+      assert.equal(first.writes.length, name.endsWith('stop') ? 1 : 0);
+      assert.equal(first.session.recording(), false);
+      assert.equal(first.session.partial(), null);
+      return;
+    }
+    assert.ok(name.includes('adversarial restart'));
+    first.setActiveSid(null);
+    const next = name.startsWith('same') ? first : makeColumn('new-column-tab');
+    next.setActiveSid('target-tab');
+    const nextStart = next.session.startDictation();
+    media.resolve(1);
+    await flush();
+    const newSocket = next.sockets.at(-1)!;
+    const newOwner = next.owners.at(-1)!;
+    assert.notEqual(newOwner, oldOwner);
+    newSocket.emit('open');
+    await nextStart;
+    oldSocket.emit('open');
+    oldSocket.text('late old caption');
+    oldSocket.emit('error', new Error('late error'));
+    oldSocket.emit('close', 1005, Buffer.alloc(0));
+    oldCallback({ inputBuffer: { getChannelData: () => new Float32Array(4096) } });
+    first.session.handleAudio(oldOwner, 'AAAA');
+    next.callbacks.forEach((callback) =>
+      callback({ ownerId: oldOwner, sid: 'target-tab', text: 'old same-tab caption' }),
+    );
+    cancelActiveVoiceStream(oldOwner);
+    assert.equal(takeActiveVoiceStream(oldOwner), null);
+    await starting;
+    assert.equal(getActiveVoiceStream(newOwner)?.ownerId, newOwner);
+    assert.equal(newSocket.closed, false);
+    assert.equal(newSocket.sent.filter(Buffer.isBuffer).length, 0);
+    assert.equal(next.session.partial(), '');
+    assert.equal(next.session.recording(), true);
+    media.chunk(1);
+    assert.equal(newSocket.sent.filter(Buffer.isBuffer).length, 1);
+    newSocket.text('clean\u0000 final');
+    await next.session.stopDictation();
+    await next.session.stopDictation();
+    assert.deepEqual(next.writes, [{ sid: 'target-tab', text: 'clean final' }]);
+    assert.equal(next.batchCalls.length, 0);
+  } finally {
+    for (const entry of columns) entry.dispose();
+    assert.ok(
+      media.tracks.every((track) => track.stopped === 1),
+      'every acquired track released exactly once',
+    );
+    assert.ok(
+      media.contexts.every((context) => context.closed),
+      'every constructed graph released',
+    );
+    media.restore();
+  }
+}

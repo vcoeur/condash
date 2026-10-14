@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os';
 import { bootApp } from './fixtures/electron-app';
 
 /**
- * Focus preservation + UI surfaces of the voice controls (§6.2 of the
- * realtime-STT design, project 2026-10-12-condash-voice-tests).
+ * Focus preservation and UI surfaces of the terminal voice controls.
  *
  * The defect pinned here: the Dictate/Read buttons live in the column
  * header, and a button click's default pointerdown behaviour moves focus off

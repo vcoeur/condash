@@ -130,8 +130,8 @@ const api: CondashApi = {
   voiceSpeak: (id) => ipcRenderer.invoke('voiceSpeak', id),
   voiceStreamStart: (request) => ipcRenderer.invoke('voiceStreamStart', request),
   voiceStreamAudio: (chunk) => ipcRenderer.invoke('voiceStreamAudio', chunk),
-  voiceStreamStop: () => ipcRenderer.invoke('voiceStreamStop'),
-  voiceStreamCancel: () => ipcRenderer.invoke('voiceStreamCancel'),
+  voiceStreamStop: (ownerId) => ipcRenderer.invoke('voiceStreamStop', ownerId),
+  voiceStreamCancel: (ownerId) => ipcRenderer.invoke('voiceStreamCancel', ownerId),
   onVoicePartial: (callback) => {
     const handler = (_: unknown, msg: VoicePartialMessage): void => callback(msg);
     ipcRenderer.on(EVENT_CHANNELS.voicePartial, handler);

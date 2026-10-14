@@ -8,8 +8,8 @@ export interface VoicePttEntry {
   /** This column is the app's active terminal column (the PTT keydown
    *  starts HERE, not in whichever column happens to be recording). */
   isActiveColumn(): boolean;
-  /** This column's session is currently recording (the keyup commits the
-   *  one recording that is live, whichever column started it). */
+  /** Pending microphone acquisition or recording: keyup ends the owner
+   *  even before capture becomes ready, whichever column started it. */
   isRecording(): boolean;
   begin(): void;
   end(): void;

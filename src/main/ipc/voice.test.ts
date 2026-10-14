@@ -37,6 +37,9 @@ vi.mock('../voice/stream', () => ({
   getActiveVoiceStream: () => null,
   takeActiveVoiceStream: () => null,
   cancelActiveVoiceStream: vi.fn(),
+  reserveVoiceStream: (ownerId: string) => ({ ok: true, reservation: { ownerId } }),
+  ownsVoiceStream: () => true,
+  releaseVoiceStream: vi.fn(),
 }));
 
 // `../terminals` drags in node-pty; the handlers only need these three edges.
@@ -59,7 +62,7 @@ const trustedEvent = {
 const CLIP = { data: 'a2xpcA==', sampleRate: 16000, format: 'wav' as const };
 
 /** The voiceStreamStart payload: target tab + the captured sample rate. */
-const START_REQUEST = { sid: 's1', sampleRate: 16000 };
+const START_REQUEST = { sid: 's1', sampleRate: 16000, ownerId: 'test-owner' };
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -237,13 +240,13 @@ describe('voice realtime stream gating', () => {
   it('voiceStreamAudio is a no-op when no stream is live', async () => {
     await writeSettings({ voice: { enabled: true } });
     await expect(
-      handlers.voiceStreamAudio(trustedEvent, { pcmBase64: 'AAAA' }),
+      handlers.voiceStreamAudio(trustedEvent, { ownerId: 'test-owner', pcmBase64: 'AAAA' }),
     ).resolves.toBeUndefined();
   });
 
   it('voiceStreamStop answers no-session when no stream is live', async () => {
     await writeSettings({ voice: { enabled: true } });
-    await expect(handlers.voiceStreamStop(trustedEvent)).resolves.toEqual({
+    await expect(handlers.voiceStreamStop(trustedEvent, 'test-owner')).resolves.toEqual({
       inserted: false,
       reason: 'no-session',
     });
@@ -251,7 +254,7 @@ describe('voice realtime stream gating', () => {
 
   it('voiceStreamStop answers disabled (and kills the stream) when the gate is off', async () => {
     await writeSettings({});
-    await expect(handlers.voiceStreamStop(trustedEvent)).resolves.toEqual({
+    await expect(handlers.voiceStreamStop(trustedEvent, 'test-owner')).resolves.toEqual({
       inserted: false,
       reason: 'disabled',
     });
@@ -259,6 +262,6 @@ describe('voice realtime stream gating', () => {
 
   it('voiceStreamCancel resolves without a session', async () => {
     await writeSettings({});
-    await expect(handlers.voiceStreamCancel(trustedEvent)).resolves.toBeUndefined();
+    await expect(handlers.voiceStreamCancel(trustedEvent, 'test-owner')).resolves.toBeUndefined();
   });
 });

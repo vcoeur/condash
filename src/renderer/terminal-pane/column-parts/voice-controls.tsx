@@ -49,11 +49,7 @@ export function VoiceControls(props: VoiceControlsProps) {
     // A refused or dead stream no-ops in main; fire-and-forget either way:
     // a dropped chunk only thins the partial view, the buffered clip keeps
     // everything.
-    onChunk: (pcmBase64) => {
-      if (session.recording()) {
-        void window.condash.voiceStreamAudio({ pcmBase64 }).catch(() => undefined);
-      }
-    },
+    onChunk: (ownerId, pcmBase64) => session.handleAudio(ownerId, pcmBase64),
   });
   const session = createVoiceSession({
     activeSid: () => props.activeSid,
@@ -63,10 +59,11 @@ export function VoiceControls(props: VoiceControlsProps) {
       // The start labels the session with the rate the mic actually
       // captured at, so main's reassembled repass WAV header is honest
       // (same semantics as the recorder's own clip).
-      start: (sid) => window.condash.voiceStreamStart({ sid, sampleRate: recorder.capturedRate }),
+      start: (sid, ownerId) =>
+        window.condash.voiceStreamStart({ sid, ownerId, sampleRate: recorder.capturedRate }),
       audio: (chunk) => window.condash.voiceStreamAudio(chunk),
-      stop: () => window.condash.voiceStreamStop(),
-      cancel: () => window.condash.voiceStreamCancel(),
+      stop: (ownerId) => window.condash.voiceStreamStop(ownerId),
+      cancel: (ownerId) => window.condash.voiceStreamCancel(ownerId),
       onPartial: (callback) => window.condash.onVoicePartial(callback),
     },
     transcribe: (sid, clip) => window.condash.voiceTranscribe(sid, clip),
@@ -83,7 +80,7 @@ export function VoiceControls(props: VoiceControlsProps) {
   onMount(() => {
     const unregister = registerVoicePtt({
       isActiveColumn: () => props.isActiveColumn === true && props.activeSid !== null,
-      isRecording: () => session.recording(),
+      isRecording: () => session.capturing(),
       begin: () => void session.startDictation(),
       end: () => void session.stopDictation(),
     });
@@ -122,7 +119,7 @@ export function VoiceControls(props: VoiceControlsProps) {
         type="button"
         class="terminal-header-action"
         data-label="read-aloud"
-        disabled={session.recording() || session.transcribing()}
+        disabled={session.capturing() || session.transcribing()}
         onPointerDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();

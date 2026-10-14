@@ -20,6 +20,9 @@ import {
   createRealtimeSocket,
   getActiveVoiceStream,
   takeActiveVoiceStream,
+  reserveVoiceStream,
+  ownsVoiceStream,
+  releaseVoiceStream,
 } from '../voice/stream';
 import type { VoiceAudioClipLike } from '../voice/stream';
 import { getEffectiveConceptionConfig } from '../effective-config';
@@ -69,7 +72,10 @@ function requireAudioClip(channel: string, value: unknown): VoiceAudioClip {
 
 /** Structural validation of a streamed PCM chunk. Throws the uniform
  *  `<channel>: expected …` shape on a malformed payload. */
-function requireStreamChunk(channel: string, value: unknown): { pcmBase64: string } {
+function requireStreamChunk(
+  channel: string,
+  value: unknown,
+): { ownerId: string; pcmBase64: string } {
   const record = requireRecord(channel, value);
   const pcmBase64 = record.pcmBase64;
   if (typeof pcmBase64 !== 'string' || pcmBase64.length === 0) {
@@ -78,7 +84,14 @@ function requireStreamChunk(channel: string, value: unknown): { pcmBase64: strin
   if (pcmBase64.length > MAX_STREAM_CHUNK_BASE64_CHARS) {
     throw new Error(`${channel}: chunk too large`);
   }
-  return { pcmBase64 };
+  return { ownerId: requireOwnerId(channel, record.ownerId), pcmBase64 };
+}
+
+function requireOwnerId(channel: string, value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
+    throw new Error(`${channel}: expected an opaque ownerId (1–128 characters)`);
+  }
+  return value;
 }
 
 /** True when `sid` names a session that can still accept input (unknown ids
@@ -183,39 +196,67 @@ export function registerVoiceIpc(): void {
     if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
       throw new Error('voiceStreamStart: expected a positive sampleRate');
     }
-    const { voice: prefs } = await readSettings();
-    if (prefs?.enabled !== true || prefs.streaming === false) {
-      return { ok: false, reason: 'disabled' } satisfies VoiceStreamStartResult;
-    }
-    const keys = resolveVoiceKeys(prefs);
-    if (!keys.mistral) {
-      return { ok: false, reason: 'no-mistral-key' } satisfies VoiceStreamStartResult;
-    }
-    const contextBias = await effectiveContextBias(prefs);
-    const sender = event.sender;
-    const batchTranscribers = {
-      normal: (clip: VoiceAudioClipLike) =>
-        transcribeClip(clip, keys, prefs, undefined, contextBias),
-      biasFirst: (clip: VoiceAudioClipLike) =>
-        transcribeClipBiasFirst(clip, keys, prefs, undefined, contextBias),
-    };
-    const started = await beginVoiceStream({
-      sid,
-      sampleRate,
-      apiKey: keys.mistral,
-      contextBias,
-      keys,
-      prefs,
-      createSocket: createRealtimeSocket,
-      onPartial: (text) => {
-        safeSend(sender, EVENT_CHANNELS.voicePartial, { sid, text } satisfies VoicePartialMessage);
-      },
-      insert: (insertSid, text) =>
-        insertTranscript(insertSid, text, { isLive: sessionIsLive, write: writeTerminal }),
-      batchTranscribers,
+    const ownerId = requireOwnerId('voiceStreamStart', record.ownerId);
+    const admission = reserveVoiceStream(ownerId);
+    if (!admission.ok) return admission satisfies VoiceStreamStartResult;
+    const reservation = admission.reservation;
+    let accepted = false;
+    const cancelled = (): VoiceStreamStartResult => ({
+      ok: false,
+      reason: 'error',
+      error: 'Realtime recording cancelled.',
     });
-    if (started.ok) return { ok: true } satisfies VoiceStreamStartResult;
-    return started satisfies VoiceStreamStartResult;
+    try {
+      const { voice: prefs } = await readSettings();
+      if (!ownsVoiceStream(reservation)) return cancelled();
+      if (prefs?.enabled !== true || prefs.streaming === false) {
+        return { ok: false, reason: 'disabled' } satisfies VoiceStreamStartResult;
+      }
+      const keys = resolveVoiceKeys(prefs);
+      if (!keys.mistral) {
+        return { ok: false, reason: 'no-mistral-key' } satisfies VoiceStreamStartResult;
+      }
+      const contextBias = await effectiveContextBias(prefs);
+      if (!ownsVoiceStream(reservation)) return cancelled();
+      const sender = event.sender;
+      const batchTranscribers = {
+        normal: (clip: VoiceAudioClipLike) =>
+          transcribeClip(clip, keys, prefs, undefined, contextBias),
+        biasFirst: (clip: VoiceAudioClipLike) =>
+          transcribeClipBiasFirst(clip, keys, prefs, undefined, contextBias),
+      };
+      const started = await beginVoiceStream(
+        {
+          ownerId,
+          sid,
+          sampleRate,
+          apiKey: keys.mistral,
+          contextBias,
+          keys,
+          prefs,
+          createSocket: createRealtimeSocket,
+          onPartial: (text) => {
+            safeSend(sender, EVENT_CHANNELS.voicePartial, {
+              ownerId,
+              sid,
+              text,
+            } satisfies VoicePartialMessage);
+          },
+          insert: (insertSid, text) =>
+            insertTranscript(insertSid, text, { isLive: sessionIsLive, write: writeTerminal }),
+          batchTranscribers,
+        },
+        reservation,
+      );
+      if (!ownsVoiceStream(reservation)) return cancelled();
+      if (started.ok) {
+        accepted = true;
+        return { ok: true } satisfies VoiceStreamStartResult;
+      }
+      return started satisfies VoiceStreamStartResult;
+    } finally {
+      if (!accepted) releaseVoiceStream(reservation);
+    }
   });
 
   ipcMain.handle('voiceStreamAudio', async (event, chunk: unknown) => {
@@ -225,20 +266,21 @@ export function registerVoiceIpc(): void {
     if (prefs?.enabled !== true) {
       // The feature was switched off mid-recording — tear the socket down so
       // no audio keeps flowing after the gate would have refused it.
-      cancelActiveVoiceStream();
+      cancelActiveVoiceStream(payload.ownerId);
       return;
     }
-    getActiveVoiceStream()?.handleAudio(payload.pcmBase64);
+    getActiveVoiceStream(payload.ownerId)?.handleAudio(payload.pcmBase64);
   });
 
-  ipcMain.handle('voiceStreamStop', async (event) => {
+  ipcMain.handle('voiceStreamStop', async (event, requestOwner: unknown) => {
     requireMainWindowSender(event);
+    const ownerId = requireOwnerId('voiceStreamStop', requestOwner);
     const { voice: prefs } = await readSettings();
     if (prefs?.enabled !== true) {
-      cancelActiveVoiceStream();
+      cancelActiveVoiceStream(ownerId);
       return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
     }
-    const session = takeActiveVoiceStream();
+    const session = takeActiveVoiceStream(ownerId);
     if (!session) {
       // The stream already died (or never started) — the renderer answers
       // with its buffered-clip batch chain (§9.3).
@@ -247,8 +289,8 @@ export function registerVoiceIpc(): void {
     return session.stop();
   });
 
-  ipcMain.handle('voiceStreamCancel', async (event) => {
+  ipcMain.handle('voiceStreamCancel', async (event, requestOwner: unknown) => {
     requireMainWindowSender(event);
-    cancelActiveVoiceStream();
+    cancelActiveVoiceStream(requireOwnerId('voiceStreamCancel', requestOwner));
   });
 }

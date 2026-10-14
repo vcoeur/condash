@@ -38,8 +38,8 @@ describe('resolveContextBias', () => {
   });
 
   it('derives the handle from the path when the row carries neither handle nor name', () => {
-    const bias = resolveContextBias([], [{ path: '~/src/vcoeur/PaintingManager' }]);
-    expect(bias).toEqual(['paintingmanager']);
+    const bias = resolveContextBias([], [{ path: '/workspace/example/ExampleApp' }]);
+    expect(bias).toEqual(['exampleapp']);
   });
 
   it('caps at 100 entries with user phrases taking priority', () => {

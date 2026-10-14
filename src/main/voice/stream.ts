@@ -89,6 +89,7 @@ export interface VoiceAudioClipLike {
 }
 
 export interface VoiceStreamSessionDeps {
+  ownerId: string;
   sid: string;
   /** The rate the renderer's mic actually captured at (Hz) — the reassembled
    *  repass clip labels its WAV header with this instead of assuming the
@@ -112,6 +113,7 @@ export interface VoiceStreamSessionDeps {
 }
 
 export interface VoiceStreamSession {
+  readonly ownerId: string;
   readonly sid: string;
   /** Forward one base64 PCM chunk to the socket (buffered until open). */
   handleAudio(pcmBase64: string): void;
@@ -130,6 +132,7 @@ const enum SocketState {
 }
 
 class VoiceStreamSessionImpl implements VoiceStreamSession {
+  readonly ownerId: string;
   readonly sid: string;
 
   private readonly socket: RealtimeSocket;
@@ -142,6 +145,8 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
   private pending: Buffer[] = [];
   private finished = false;
   private committed = false;
+  private cancelled = false;
+  private rejectOpen: ((message: string) => void) | null = null;
   private finaliseWaiters: (() => void)[] = [];
 
   /** Resolves once the socket is open (or rejects on error/close/timeout) —
@@ -150,8 +155,13 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
 
   constructor(private readonly deps: VoiceStreamSessionDeps) {
     this.sid = deps.sid;
+    this.ownerId = deps.ownerId;
     this.socket = deps.createSocket(REALTIME_WS_URL, { Authorization: `Bearer ${deps.apiKey}` });
     this.socket.on('open', () => {
+      if (this.cancelled || this.state !== SocketState.Connecting) {
+        this.socket.terminate();
+        return;
+      }
       this.state = SocketState.Open;
       // The documented latency knob, in its raw-WS form (verified live —
       // `session.updated` echoes the value).
@@ -165,13 +175,15 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
       this.pending = [];
     });
     this.socket.on('message', (data, isBinary) => {
-      if (isBinary) return;
+      if (isBinary || this.cancelled || this.state === SocketState.Closed) return;
       this.handleEvent(data.toString('utf8'));
     });
     this.socket.on('error', (err) => {
+      if (this.cancelled) return;
       this.fail(redact(err.message, deps.keys));
     });
     this.socket.on('close', () => {
+      if (this.cancelled) return;
       if (this.state !== SocketState.Finalising) this.state = SocketState.Closed;
       // A close before `input_audio.end` is a mid-stream failure; the stop
       // path decides what the commit does with it.
@@ -196,15 +208,18 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
       const bad = (message: string): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         reject(new Error(message));
       };
       const timer = setTimeout(
         () => bad('Realtime connection timed out.'),
         this.deps.connectTimeoutMs ?? CONNECT_TIMEOUT_MS,
       );
+      this.rejectOpen = bad;
       this.socket.on('open', () => {
         clearTimeout(timer);
-        ok();
+        if (this.cancelled) bad('Realtime recording cancelled.');
+        else ok();
       });
       this.socket.on('error', () => {
         clearTimeout(timer);
@@ -287,7 +302,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
   }
 
   async stop(): Promise<VoiceTranscribeResult> {
-    if (this.committed) {
+    if (this.committed || this.cancelled) {
       // A second stop on an already-finalised session must not re-insert.
       return { inserted: false, reason: 'no-session' };
     }
@@ -295,6 +310,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
     this.finished = true;
     const outcome = await this.finalise();
     this.teardown();
+    if (this.cancelled) return { inserted: false, reason: 'no-session' };
     return this.commit(outcome);
   }
 
@@ -346,6 +362,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
           : this.deps.batchTranscribers.normal;
         try {
           const transcript = await chain(clip);
+          if (this.cancelled) return { inserted: false, reason: 'no-session' };
           return toTranscribeResult(
             this.deps.insert(this.deps.sid, transcript.text),
             transcript.provider,
@@ -375,8 +392,14 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
   }
 
   cancel(): void {
+    this.cancelled = true;
     this.finished = true;
+    this.rejectOpen?.('Realtime recording cancelled.');
+    this.settleFinalise();
+    this.pcm = [];
+    this.pcmBytes = 0;
     this.teardown();
+    this.socket.terminate();
   }
 }
 
@@ -403,7 +426,66 @@ function redact(text: string, keys: ResolvedVoiceKeys): string {
 // The single-active-session holder (design §3: one stream at a time).
 // ---------------------------------------------------------------------------
 
-let active: VoiceStreamSessionImpl | null = null;
+export interface VoiceStreamReservation {
+  readonly ownerId: string;
+  cancelled: boolean;
+  session: VoiceStreamSessionImpl | null;
+}
+
+let active: VoiceStreamReservation | null = null;
+const cancelledBeforeStart = new Set<string>();
+export const MAX_PRESTART_CANCELLATIONS = 256;
+const finishedOwners = new Set<string>();
+const MAX_FINISHED_OWNERS = 256;
+let admissionClosed = false;
+
+// These are proofs of consumed one-shot starts, not cancellation protection.
+// Eviction can only lose duplicate suppression; pending cancel markers never evict.
+function rememberFinishedOwner(ownerId: string): void {
+  if (finishedOwners.has(ownerId)) return;
+  if (finishedOwners.size === MAX_FINISHED_OWNERS) {
+    finishedOwners.delete(finishedOwners.values().next().value!);
+  }
+  finishedOwners.add(ownerId);
+}
+
+/** Reserve before settings/config awaits. Overflow closes admission for this
+ *  process lifetime: no cancellation protection is ever evicted or timed out. */
+export function reserveVoiceStream(
+  ownerId: string,
+):
+  | { ok: true; reservation: VoiceStreamReservation }
+  | { ok: false; reason: 'already-active' | 'error'; error?: string } {
+  if (cancelledBeforeStart.delete(ownerId)) {
+    rememberFinishedOwner(ownerId);
+    return { ok: false, reason: 'error', error: 'Realtime recording cancelled.' };
+  }
+  if (finishedOwners.has(ownerId)) {
+    return { ok: false, reason: 'error', error: 'Realtime recording already finished.' };
+  }
+  if (admissionClosed)
+    return {
+      ok: false,
+      reason: 'error',
+      error: 'Realtime admission closed; restart the application.',
+    };
+  if (active) {
+    rememberFinishedOwner(ownerId);
+    return { ok: false, reason: 'already-active' };
+  }
+  const reservation: VoiceStreamReservation = { ownerId, cancelled: false, session: null };
+  active = reservation;
+  return { ok: true, reservation };
+}
+
+export function ownsVoiceStream(reservation: VoiceStreamReservation): boolean {
+  return active === reservation && !reservation.cancelled;
+}
+
+export function releaseVoiceStream(reservation: VoiceStreamReservation): void {
+  rememberFinishedOwner(reservation.ownerId);
+  if (active === reservation) active = null;
+}
 
 /**
  * Open the one realtime session. Reserves the active slot synchronously so
@@ -411,41 +493,70 @@ let active: VoiceStreamSessionImpl | null = null;
  * the (bounded) socket upgrade before answering ok. A failed start cleans
  * the slot up.
  */
-export async function beginVoiceStream(deps: VoiceStreamSessionDeps): Promise<
+export async function beginVoiceStream(
+  deps: VoiceStreamSessionDeps,
+  reserved?: VoiceStreamReservation,
+): Promise<
   | {
       ok: true;
       session: VoiceStreamSessionImpl;
     }
   | { ok: false; reason: 'already-active' | 'error'; error?: string }
 > {
-  if (active !== null) {
-    return { ok: false, reason: 'already-active' };
+  const admission = reserved
+    ? { ok: true as const, reservation: reserved }
+    : reserveVoiceStream(deps.ownerId);
+  if (!admission.ok) return admission;
+  const reservation = admission.reservation;
+  if (!ownsVoiceStream(reservation) || reservation.ownerId !== deps.ownerId) {
+    return { ok: false, reason: 'error', error: 'Realtime recording cancelled.' };
   }
-  const session = new VoiceStreamSessionImpl(deps);
-  active = session;
+  let session: VoiceStreamSessionImpl | null = null;
   try {
+    session = new VoiceStreamSessionImpl(deps);
+    reservation.session = session;
     await session.opened;
+    if (!ownsVoiceStream(reservation)) {
+      session.cancel();
+      return { ok: false, reason: 'error', error: 'Realtime recording cancelled.' };
+    }
     return { ok: true, session };
   } catch (err) {
-    active = null;
-    session.cancel();
+    releaseVoiceStream(reservation);
+    session?.cancel();
     return { ok: false, reason: 'error', error: (err as Error).message };
   }
 }
 
 /** The active stream's audio tap, or null. */
-export function getActiveVoiceStream(): VoiceStreamSession | null {
-  return active;
+export function getActiveVoiceStream(ownerId?: string): VoiceStreamSession | null {
+  return active && (ownerId === undefined || active.ownerId === ownerId) ? active.session : null;
 }
 
 /** Take the active stream out of the slot for a finalising stop. */
-export function takeActiveVoiceStream(): VoiceStreamSession | null {
-  const session = active;
+export function takeActiveVoiceStream(ownerId: string): VoiceStreamSession | null {
+  if (active?.ownerId !== ownerId) return null;
+  const session = active.session;
+  rememberFinishedOwner(ownerId);
+  active.cancelled = true;
   active = null;
   return session;
 }
 
 /** Abort the active stream (no commit). */
-export function cancelActiveVoiceStream(): void {
-  takeActiveVoiceStream()?.cancel();
+export function cancelActiveVoiceStream(ownerId: string): void {
+  if (active?.ownerId === ownerId) {
+    const reservation = active;
+    reservation.cancelled = true;
+    rememberFinishedOwner(ownerId);
+    active = null;
+    reservation.session?.cancel();
+    return;
+  }
+  if (finishedOwners.has(ownerId) || cancelledBeforeStart.has(ownerId) || admissionClosed) return;
+  if (cancelledBeforeStart.size === MAX_PRESTART_CANCELLATIONS) {
+    admissionClosed = true;
+    return;
+  }
+  cancelledBeforeStart.add(ownerId);
 }

@@ -411,9 +411,9 @@ export interface CondashApi {
    * `voice.contextBias` is configured). Returns the same result union so
    * the pane's notice handling is unchanged.
    */
-  voiceStreamStop(): Promise<VoiceTranscribeResult>;
+  voiceStreamStop(ownerId: string): Promise<VoiceTranscribeResult>;
   /** Abort the active stream: close the socket, commit nothing. */
-  voiceStreamCancel(): Promise<void>;
+  voiceStreamCancel(ownerId: string): Promise<void>;
   /** Subscribe to accumulated partial transcripts pushed while a stream is
    *  live. Returns an unsubscribe function. */
   onVoicePartial(callback: (msg: VoicePartialMessage) => void): () => void;
