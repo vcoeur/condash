@@ -120,11 +120,25 @@ function mediaEdges() {
       listeners[type] = listeners[type].filter((entry) => entry !== listener);
     },
   });
+  const windowListeners: Record<string, (() => void)[]> = {};
+  install('window', {
+    addEventListener(type: string, listener: () => void) {
+      (windowListeners[type] ??= []).push(listener);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      windowListeners[type] = windowListeners[type].filter((entry) => entry !== listener);
+    },
+  });
   return {
     acquisitions,
     tracks,
     contexts,
     listeners,
+    blur: () => windowListeners.blur?.forEach((listener) => listener()),
+    hide: () => {
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      listeners.visibilitychange?.forEach((listener) => listener({} as KeyboardEvent));
+    },
     failGraph: () => {
       failGraph = true;
     },
@@ -164,6 +178,7 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
   const batchCalls: string[] = [];
   const batchDone: ReturnType<typeof deferred<void>>[] = [];
   let holdBatch = false;
+  let duringBatch = () => {};
   let startReplyGate: ReturnType<typeof deferred<void>> | null = null;
   let startOutcome: 'normal' | 'refused' | 'rejected' = 'normal';
   let cancellationFailure: 'none' | 'before-delivery' | 'after-delivery' | 'always' = 'none';
@@ -183,6 +198,7 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
       transcribe: async (target) => {
         assert.equal(recorder.recording, false, 'microphone released before batch provider work');
         batchCalls.push(target);
+        duringBatch();
         if (holdBatch) {
           const gate = deferred<void>();
           batchDone.push(gate);
@@ -261,12 +277,7 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
     unregister = registerVoicePtt({
       isActiveColumn: activeColumn,
       isRecording: session.capturing,
-      begin: () => {
-        void session.startDictation();
-      },
-      end: () => {
-        void session.stopDictation();
-      },
+      acquire: session.acquireDictation,
     });
     return cleanup;
   });
@@ -294,6 +305,9 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
       holdBatch = true;
     },
     finishBatch: (index = 0) => batchDone[index].resolve(),
+    onBatch: (callback: () => void) => {
+      duringBatch = callback;
+    },
     dispose: () => {
       unregister();
       dispose();
@@ -304,6 +318,246 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
 const flush = async () => {
   for (let index = 0; index < 8; index++) await Promise.resolve();
 };
+
+export const triggerOwnershipScenarios = [
+  'unpaired Space during click recording',
+  'unpaired letter during click recording',
+  'unpaired Space during pending click',
+  'paired pending microphone release',
+  'paired established release after modifiers',
+  'chord over parked click recording',
+  'held repeats across active column change',
+  'repeat without physical press',
+  'old click-stopped lease then same-column restart',
+  'old tab-cancelled lease then same-column restart',
+  'old pending lease then inverse microphone restart',
+  'old disposed lease then cross-column restart',
+  'shortcut changed while held',
+  'shortcut disabled while held',
+  'blur cancels held recording without commit',
+  'blur cancels held pending microphone',
+  'hidden document cancels held recording',
+  'cleanup cancels held recording without commit',
+  'blur leaves unrelated click recording alone',
+  'cleanup leaves unrelated click recording alone',
+  'blur leaves replacement recording alone',
+  'cleanup leaves replacement recording alone',
+  'duplicate and reentrant keyup commits once',
+] as const;
+
+export async function exerciseTriggerOwnership(
+  name: (typeof triggerOwnershipScenarios)[number],
+): Promise<void> {
+  const media = mediaEdges();
+  const columns: ReturnType<typeof column>[] = [];
+  const makeColumn = (sid = 'trigger-tab') => {
+    const created = column(media, sid);
+    columns.push(created);
+    return created;
+  };
+  let shortcut = name.includes('letter') ? 'Ctrl+Shift+D' : undefined;
+  const baseKey = name.includes('letter') ? 'd' : ' ';
+  const keyboardDispose = createRoot((cleanup) => {
+    createGlobalKeyboard({
+      layout: () => ({ terminal: false }) as any,
+      terminalPrefs: () => ({}),
+      getTerminalHandle: () => null,
+      toggleTerminal() {},
+      bridge: {} as any,
+      setSearchModalOpen() {},
+      setShortcutsOpen() {},
+      voicePptShortcut: () => shortcut,
+    });
+    return cleanup;
+  });
+  const dispatch = (type: string, chord = false, repeat = false, key = baseKey) => {
+    let prevented = 0;
+    let stopped = 0;
+    const event = {
+      key,
+      ctrlKey: chord,
+      shiftKey: chord,
+      altKey: false,
+      metaKey: false,
+      repeat,
+      target: null,
+      preventDefault: () => prevented++,
+      stopPropagation: () => stopped++,
+    } as unknown as KeyboardEvent;
+    for (const listener of media.listeners[type] ?? []) listener(event);
+    return { prevented, stopped };
+  };
+  const down = () => dispatch('keydown', true);
+  const up = () => dispatch('keyup');
+  const capture = async (entry: ReturnType<typeof column>, index: number) => {
+    media.resolve(index);
+    await flush();
+    media.chunk(media.contexts.length - 1);
+    assert.equal(entry.session.recording(), true);
+  };
+  try {
+    const first = makeColumn();
+    if (name.startsWith('unpaired') || name.includes('unrelated click')) {
+      void first.session.startDictation();
+      if (!name.includes('pending')) await capture(first, 0);
+      if (name.startsWith('unpaired')) {
+        assert.deepEqual(dispatch('keydown'), { prevented: 0, stopped: 0 });
+        assert.deepEqual(up(), { prevented: 0, stopped: 0 });
+      } else if (name.startsWith('blur')) media.blur();
+      else keyboardDispose();
+      assert.equal(first.session.capturing(), true);
+      assert.equal(first.batchCalls.length, 0);
+      if (name.includes('pending')) {
+        assert.equal(media.acquisitions.length, 1);
+        await capture(first, 0);
+      }
+      assert.equal(media.tracks[0].stopped, 0);
+      await first.session.toggleDictation();
+      assert.equal(first.session.capturing(), false);
+      assert.equal(first.writes.length, 1);
+      return;
+    }
+    if (name === 'repeat without physical press') {
+      dispatch('keydown', true, true);
+      assert.equal(media.acquisitions.length, 0);
+      assert.deepEqual(up(), { prevented: 0, stopped: 0 });
+      return;
+    }
+    if (name === 'chord over parked click recording') {
+      void first.session.startDictation();
+      await capture(first, 0);
+      first.setActiveColumn(false);
+      const second = makeColumn('idle-active-column');
+      down();
+      dispatch('keydown', true, true);
+      assert.equal(media.acquisitions.length, 1);
+      assert.equal(second.session.capturing(), false);
+      up();
+      await flush();
+      assert.equal(first.session.capturing(), false);
+      assert.deepEqual(first.writes, [{ sid: 'trigger-tab', text: 'batch transcript' }]);
+      return;
+    }
+    assert.deepEqual(down(), { prevented: 1, stopped: 1 });
+    assert.equal(first.session.capturing(), true);
+    const pending = name.includes('pending') || name.includes('inverse microphone');
+    if (!pending) await capture(first, 0);
+    if (name === 'paired established release after modifiers') {
+      first.sockets[0].emit('open');
+      await flush();
+      first.sockets[0].text('stream transcript');
+    }
+    if (name === 'held repeats across active column change') {
+      dispatch('keydown', true, true);
+      first.setActiveColumn(false);
+      const second = makeColumn('next-active');
+      dispatch('keydown', true, true);
+      dispatch('keydown', true); // Even duplicate non-repeat delivery cannot rebind.
+      assert.equal(media.acquisitions.length, 1);
+      up();
+      await flush();
+      assert.equal(first.session.capturing(), false);
+      assert.equal(second.session.capturing(), false);
+      assert.equal(first.writes.length, 1);
+      return;
+    }
+    if (name.startsWith('old ') || name.includes('replacement recording')) {
+      if (name.includes('disposed')) first.dispose();
+      else if (name.includes('tab-cancelled')) {
+        first.setActiveSid(null);
+        first.setActiveSid('trigger-tab');
+      } else await first.session.toggleDictation();
+      const priorWrites = first.writes.length;
+      const next = name.includes('cross-column') ? makeColumn('next-column') : first;
+      void next.session.startDictation();
+      await capture(next, 1);
+      const nextOwner = next.owners.at(-1)!;
+      if (pending) {
+        media.resolve(0);
+        await flush();
+        assert.equal(media.tracks[0].stopped, 1);
+      }
+      dispatch('keydown', true, true);
+      assert.equal(media.acquisitions.length, 2, 'repeat never reacquires or rebinds');
+      if (name.startsWith('blur')) media.blur();
+      else if (name.startsWith('cleanup')) keyboardDispose();
+      else assert.deepEqual(up(), { prevented: 1, stopped: 1 });
+      await flush();
+      assert.equal(next.session.recording(), true);
+      assert.equal(media.tracks[1].stopped, 0);
+      assert.equal(getActiveVoiceStream(nextOwner)?.ownerId, nextOwner);
+      assert.equal(first.writes.length, priorWrites);
+      assert.deepEqual(up(), { prevented: 0, stopped: 0 });
+      return;
+    }
+    if (name.includes('while held')) {
+      shortcut = name.includes('disabled') ? '' : 'Ctrl+Shift+D';
+      assert.deepEqual(dispatch('keyup', false, false, 'd'), { prevented: 0, stopped: 0 });
+      assert.equal(first.session.capturing(), true);
+      dispatch('keydown', true, true);
+      dispatch('keydown', true, false, 'd');
+      assert.equal(media.acquisitions.length, 1);
+    }
+    if (name.startsWith('blur') || name.startsWith('hidden') || name.startsWith('cleanup')) {
+      if (name.startsWith('blur')) media.blur();
+      else if (name.startsWith('hidden')) media.hide();
+      else keyboardDispose();
+      assert.equal(first.session.capturing(), false);
+      if (pending) {
+        media.resolve(0);
+        await flush();
+      }
+      assert.equal(first.writes.length, 0, 'focus loss/cleanup never authorizes a commit');
+      assert.equal(first.batchCalls.length, 0);
+      assert.equal(media.tracks[0].stopped, 1);
+      assert.deepEqual(up(), { prevented: 0, stopped: 0 });
+      if (name.startsWith('blur')) {
+        down();
+        assert.equal(media.acquisitions.length, 2, 'blur clears the held-key latch');
+      }
+      return;
+    }
+    if (name.includes('reentrant')) first.onBatch(() => up());
+    // Modifier releases are not the captured base release and cannot end capture.
+    dispatch('keyup', false, false, 'Control');
+    dispatch('keyup', false, false, 'Shift');
+    assert.equal(first.session.capturing(), true);
+    assert.deepEqual(up(), { prevented: 1, stopped: 1 });
+    assert.deepEqual(up(), { prevented: 0, stopped: 0 });
+    if (name === 'paired established release after modifiers') {
+      first.sockets[0].emit(
+        'message',
+        Buffer.from(JSON.stringify({ type: 'transcription.done', text: 'stream transcript' })),
+        false,
+      );
+    }
+    if (pending) media.resolve(0);
+    await flush();
+    assert.equal(first.session.capturing(), false);
+    assert.equal(media.tracks[0].stopped, 1);
+    assert.equal(first.writes.length, pending ? 0 : 1);
+    assert.equal(
+      first.batchCalls.length,
+      pending || name === 'paired established release after modifiers' ? 0 : 1,
+    );
+    if (pending) assert.equal(first.owners.length, 0);
+    if (name.includes('while held')) {
+      dispatch('keydown', true, false, 'd');
+      assert.equal(media.acquisitions.length, name.includes('disabled') ? 1 : 2);
+    }
+  } finally {
+    keyboardDispose();
+    for (const entry of columns) entry.dispose();
+    // Resolve late permission replies after cancellation to exercise resource fencing.
+    for (let index = 0; index < media.acquisitions.length; index++) {
+      if (!media.tracks[index]) media.resolve(index);
+    }
+    await flush();
+    assert.ok(media.tracks.every((track) => track.stopped === 1));
+    assert.ok(media.contexts.every((context) => context.closed));
+    media.restore();
+  }
+}
 
 export const cancellationAccountingScenarios = [
   '300 delayed successful replies after stop',

@@ -60,6 +60,11 @@ export interface VoiceSessionDeps {
   stream?: VoiceStreamEdge;
 }
 
+export interface VoiceDictationLease {
+  release(): void;
+  cancel(): void;
+}
+
 export interface VoiceSession {
   readonly recording: () => boolean;
   readonly capturing: () => boolean;
@@ -72,6 +77,7 @@ export interface VoiceSession {
   startDictation(): Promise<void>;
   stopDictation(): Promise<void>;
   toggleDictation(): Promise<void>;
+  acquireDictation(): VoiceDictationLease | null;
   readAloud(): Promise<void>;
   handleAudio(ownerId: string, pcmBase64: string): void;
 }
@@ -133,9 +139,8 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       });
   };
 
-  const cancelRecording = (): void => {
-    const attempt = current;
-    if (!attempt) return;
+  const cancelRecording = (attempt = current): void => {
+    if (!attempt || current !== attempt) return;
     attempt.phase = 'cancelled';
     current = null;
     deps.recorder.cancel(attempt.ownerId);
@@ -264,9 +269,8 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     }
   };
 
-  const stopDictation = async (): Promise<void> => {
-    const attempt = current;
-    if (!attempt) return;
+  const stopDictation = async (attempt = current): Promise<void> => {
+    if (!attempt || !owns(attempt)) return;
     if (attempt.phase === 'microphone') {
       cancelRecording();
       return;
@@ -319,6 +323,22 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     await startDictation();
   };
 
+  const acquireDictation = (): VoiceDictationLease | null => {
+    if (!current) void startDictation();
+    const attempt = current;
+    if (!attempt || disposed) return null;
+    // A gesture can end only the attempt it acquired, never a later click restart.
+    let consumed = false;
+    const consume = (commit: boolean): void => {
+      if (consumed) return;
+      consumed = true;
+      if (!owns(attempt)) return;
+      if (commit) void stopDictation(attempt);
+      else cancelRecording(attempt);
+    };
+    return { release: () => consume(true), cancel: () => consume(false) };
+  };
+
   const readAloud = async (): Promise<void> => {
     const sid = deps.activeSid();
     if (!sid) return;
@@ -365,6 +385,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     startDictation,
     stopDictation,
     toggleDictation,
+    acquireDictation,
     readAloud,
     handleAudio: (ownerId, pcmBase64) => {
       if (

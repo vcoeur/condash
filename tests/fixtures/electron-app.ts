@@ -89,6 +89,8 @@ export async function bootApp(
      *  `CONDASH_USER_*` overrides that point the global Skills scope at a
      *  fixture instead of the real `~/.config/agents` etc. */
     env?: Record<string, string>;
+    /** Initial Electron process arguments, also applied on restart. */
+    electronArgs?: string[];
     /** Runs on a live main context while Playwright's app-ready release is
      *  held and no window exists. IPC gates are staged before registration;
      *  boot resumes only after the callback finishes, counting every boot read. */
@@ -174,7 +176,12 @@ export async function bootApp(
   if (options.beforeFirstWindow) await writeFile(bootstrapPath, bootHandshakeBootstrap, 'utf8');
   const launch = async (): Promise<{ app: ElectronApplication; window: Page }> => {
     const app = await electron.launch({
-      args: [...(options.beforeFirstWindow ? ['-r', bootstrapPath] : []), '.', '--no-sandbox'],
+      args: [
+        ...(options.electronArgs ?? []),
+        ...(options.beforeFirstWindow ? ['-r', bootstrapPath] : []),
+        '.',
+        '--no-sandbox',
+      ],
       cwd: repoRoot,
       env: Object.fromEntries(
         Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),

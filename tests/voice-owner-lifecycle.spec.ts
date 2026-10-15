@@ -25,6 +25,11 @@ test('built Electron exercises pending owner lifecycle with fake media/socket ed
       const loader = process.getBuiltinModule('module').createRequire(path);
       const harness = loader(path);
       const completed: string[] = [];
+      const triggers: string[] = [];
+      for (const scenario of harness.triggerOwnershipScenarios) {
+        await harness.exerciseTriggerOwnership(scenario);
+        triggers.push(scenario);
+      }
       for (const scenario of harness.cancellationAccountingScenarios) {
         await harness.exerciseCancellationAccounting(scenario);
       }
@@ -32,10 +37,11 @@ test('built Electron exercises pending owner lifecycle with fake media/socket ed
         await harness.exerciseVoiceLifecycle(scenario);
         completed.push(scenario);
       }
-      return completed;
+      return { completed, triggers };
     }, bundle);
-    expect(completed).toHaveLength(21);
-    expect(completed.at(-1)).toBe('bounded fail-closed cancellation admission');
+    expect(completed.triggers).toHaveLength(23);
+    expect(completed.completed).toHaveLength(21);
+    expect(completed.completed.at(-1)).toBe('bounded fail-closed cancellation admission');
   } finally {
     await booted.cleanup();
   }

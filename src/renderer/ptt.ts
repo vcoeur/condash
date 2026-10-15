@@ -6,9 +6,9 @@
 //     already recording: holding the chord fires auto-repeat keydowns, and
 //     the recording guard absorbs them (the keydown match itself ignores
 //     `event.repeat` on purpose, keeping the helper honest to the guard).
-//   - keyup of the chord's BASE key alone COMMITS — modifiers are ignored,
-//     so releasing Ctrl before Space still commits. Auto-repeat never fires
-//     keyup, so no guard is needed here.
+//   - keyup of a matched gesture's BASE key consumes its captured attempt
+//     lease — modifiers are ignored, so releasing Ctrl before Space works.
+//     Matching a base key alone never grants release authority.
 //
 // An empty `pptShortcut` parses to no shortcut at all (`parseShortcut('')`
 // is null), which is the documented disable — both helpers answer false and
@@ -39,9 +39,7 @@ export function pttStartMatches(
   return matchesShortcut(event, shortcut);
 }
 
-/** True when this keyup should COMMIT the active push-to-talk: the released
- *  base key equals the chord's base key, modifiers whatever they are
- *  (releasing Ctrl first must not strand the recording). */
+/** Match a held gesture's base-key snapshot; the caller must own its lease. */
 export function pttCommitMatches(event: KeyboardEvent, shortcut: Shortcut | null): boolean {
   if (!shortcut) return false;
   return canonicalKey(event.key) === shortcut.key;

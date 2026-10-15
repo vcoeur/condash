@@ -13,7 +13,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'solid-js';
 import type { LayoutState } from '@shared/types';
 import type { TerminalBridge } from './terminal-bridge';
-import { registerVoicePtt } from './terminal-pane/voice-ptt-registry';
+import { registerVoicePtt as registerEntry } from './terminal-pane/voice-ptt-registry';
+
+function registerVoicePtt(entry: {
+  isActiveColumn(): boolean;
+  isRecording(): boolean;
+  begin(): void;
+  end(): void;
+}) {
+  return registerEntry({
+    isActiveColumn: entry.isActiveColumn,
+    isRecording: entry.isRecording,
+    acquire: () => {
+      if (!entry.isRecording()) entry.begin();
+      return { release: entry.end, cancel: vi.fn() };
+    },
+  });
+}
 
 interface FakeEvent extends KeyboardEvent {
   preventDefault: ReturnType<typeof vi.fn>;
@@ -55,12 +71,14 @@ type Listener = (event: KeyboardEvent) => void;
 async function createKeyboardHarness(voicePptShortcut?: string): Promise<KeyboardHarness> {
   const keydown: Listener[] = [];
   const keyup: Listener[] = [];
+  const visibility: Listener[] = [];
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   vi.stubGlobal('document', {
     addEventListener: (type: string, listener: Listener) => {
-      (type === 'keydown' ? keydown : keyup).push(listener);
+      (type === 'keydown' ? keydown : type === 'keyup' ? keyup : visibility).push(listener);
     },
     removeEventListener: (type: string, listener: Listener) => {
-      const list = type === 'keydown' ? keydown : keyup;
+      const list = type === 'keydown' ? keydown : type === 'keyup' ? keyup : visibility;
       const i = list.indexOf(listener);
       if (i >= 0) list.splice(i, 1);
     },
@@ -115,9 +133,7 @@ describe('global keyboard PTT wiring', () => {
   });
 
   it('absorbs held-chord auto-repeat keydowns while a recording is live (MINOR-1)', async () => {
-    // The fix under test: begin is refused (already recording), but the
-    // keydown must still never reach the focused xterm. Reverting the
-    // global-keyboard.ts absorb branch turns this RED.
+    // Only the initial physical press acquires; repeats use the held gesture.
     const h = await createKeyboardHarness();
     const unregister = registerVoicePtt({
       isActiveColumn: () => true,
@@ -125,6 +141,7 @@ describe('global keyboard PTT wiring', () => {
       begin: vi.fn(),
       end: vi.fn(),
     });
+    h.dispatchDown(keyEvent(CHORD));
     const repeat = keyEvent({ ...CHORD, repeat: true });
     h.dispatchDown(repeat);
     expect(repeat.preventDefault).toHaveBeenCalledTimes(1);
@@ -135,11 +152,7 @@ describe('global keyboard PTT wiring', () => {
 
   it('absorbs a chord press over a click-started recording in another column', async () => {
     const h = await createKeyboardHarness();
-    // A recording parked in a NON-active column makes pttEndTarget() the
-    // parked entry, so the absorb branch fires before begin is even
-    // consulted — the chord starts no second recording in the idle active
-    // column. (NIT-6: pre-fix this took the active column's begin branch;
-    // the begin-not-called assertion below is RED on that revert.)
+    // Acquisition prefers existing capture over an idle active column.
     const beginB = vi.fn();
     const unregisterA = registerVoicePtt({
       isActiveColumn: () => false,
@@ -165,12 +178,7 @@ describe('global keyboard PTT wiring', () => {
 
   it('commits the parked recording on the chord keyup while the active column is idle', async () => {
     const h = await createKeyboardHarness();
-    // Full chord cycle over a recording parked in a non-active column: the
-    // absorbed keydown starts nothing, and the keyup reaches the parked
-    // column's session through the registry — pttEndTarget() ignores which
-    // column is active (design §7: one recording state machine, two
-    // triggers). (NIT-6 follow-up: pre-fix the keydown began the active
-    // column, so the begin-not-called assertion is RED on that revert.)
+    // The matched press captures the parked column's lease; keyup never rescans.
     const endA = vi.fn();
     const beginB = vi.fn();
     const unregisterA = registerVoicePtt({
@@ -214,7 +222,7 @@ describe('global keyboard PTT wiring', () => {
     h.dispose();
   });
 
-  it('commits the live recording on the base-key keyup and absorbs the event', async () => {
+  it('leaves an unpaired base-key keyup and click recording untouched', async () => {
     const h = await createKeyboardHarness();
     const end = vi.fn();
     const unregister = registerVoicePtt({
@@ -225,9 +233,9 @@ describe('global keyboard PTT wiring', () => {
     });
     const event = keyEvent({ key: ' ' });
     h.dispatchUp(event);
-    expect(event.preventDefault).toHaveBeenCalledTimes(1);
-    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
-    expect(end).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(end).not.toHaveBeenCalled();
     unregister();
     h.dispose();
   });
@@ -254,5 +262,33 @@ describe('global keyboard PTT wiring', () => {
     h.dispose();
     expect(h.keydown).toHaveLength(0);
     expect(h.keyup).toHaveLength(0);
+  });
+
+  it('does not acquire a capture from an orphaned auto-repeat', async () => {
+    const h = await createKeyboardHarness();
+    const acquire = vi.fn();
+    const unregister = registerEntry({
+      isActiveColumn: () => true,
+      isRecording: () => true,
+      acquire,
+    });
+    h.dispatchDown(keyEvent({ ...CHORD, repeat: true }));
+    expect(acquire).not.toHaveBeenCalled();
+    const up = keyEvent({ key: ' ' });
+    h.dispatchUp(up);
+    expect(up.preventDefault).not.toHaveBeenCalled();
+    unregister();
+    h.dispose();
+  });
+
+  it('leaves the default chord untouched when voice controls are absent', async () => {
+    const h = await createKeyboardHarness();
+    const down = keyEvent(CHORD);
+    h.dispatchDown(down);
+    const up = keyEvent({ key: ' ' });
+    h.dispatchUp(up);
+    expect(down.preventDefault).not.toHaveBeenCalled();
+    expect(up.preventDefault).not.toHaveBeenCalled();
+    h.dispose();
   });
 });
