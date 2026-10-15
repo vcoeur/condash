@@ -73,6 +73,10 @@ export function VoiceControls(props: VoiceControlsProps) {
 
   createEffect(() => props.onPartial?.(session.partial()));
 
+  /** A read is in flight while synthesis is pending or audio is playing: the
+   *  button stays "Stop" through both so a click never looks dead. */
+  const readInFlight = (): boolean => session.synthesizing() || session.speaking();
+
   // Push-to-talk: register this column with the global registry for the
   // lifetime of the controls. The chord only engages when this is the active
   // column with a live tab — pressing it over the Dashboard band must not
@@ -124,9 +128,18 @@ export function VoiceControls(props: VoiceControlsProps) {
           e.stopPropagation();
           void session.readAloud();
         }}
-        title="Read this tab's recent output aloud (on-demand; sends the text to the TTS provider)"
+        title={
+          session.synthesizing()
+            ? 'Synthesizing… click to stop'
+            : session.speaking()
+              ? 'Stop reading aloud'
+              : "Read this tab's recent output aloud (on-demand; sends the text to the TTS provider)"
+        }
       >
-        {session.speaking() ? 'Stop' : 'Read'}
+        <Show when={session.synthesizing()}>
+          <span class="voice-read-spinner" aria-hidden="true" />
+        </Show>
+        {readInFlight() ? 'Stop' : 'Read'}
       </button>
     </Show>
   );

@@ -172,6 +172,26 @@
   }
 }
 
+/* Read-aloud synthesis: a small spinner so a click never looks dead during
+   the TTS provider round-trip (the button reads "Stop" for the whole read). */
+.voice-read-spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: voice-read-spin 0.7s linear infinite;
+}
+
+@keyframes voice-read-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Live dictation caption — the visibly temporary strip under the tab row
    showing the realtime partial while it forms. Dashed border + the recording
    dot read as "temporary" at a glance; the text is italic and never typed

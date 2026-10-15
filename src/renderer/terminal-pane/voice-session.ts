@@ -69,7 +69,13 @@ export interface VoiceSession {
   readonly recording: () => boolean;
   readonly capturing: () => boolean;
   readonly transcribing: () => boolean;
+  /** True while audio is playing. */
   readonly speaking: () => boolean;
+  /** True while a read-aloud synthesis is in flight and no audio is playing
+   *  yet. Distinct from `speaking`: the Read button stays "Stop" and shows a
+   *  busy indicator through both, and a stop during this window cancels the
+   *  pending read rather than starting one. */
+  readonly synthesizing: () => boolean;
   readonly busy: () => boolean;
   /** Accumulated realtime partial for the live-caption strip, or null when
    *  no stream is active. Never written to the PTY. */
@@ -97,9 +103,10 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   const [recording, setRecording] = createSignal(false);
   const [transcribing, setTranscribing] = createSignal(false);
   const [speaking, setSpeaking] = createSignal(false);
+  const [synthesizing, setSynthesizing] = createSignal(false);
   const [partial, setPartial] = createSignal<string | null>(null);
   const [capturing, setCapturing] = createSignal(false);
-  const busy = (): boolean => transcribing() || speaking();
+  const busy = (): boolean => transcribing() || speaking() || synthesizing();
 
   interface Attempt {
     ownerId: string;
@@ -111,6 +118,10 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   let current: Attempt | null = null;
   let latest: Attempt | null = null;
   let disposed = false;
+  // Read-aloud attempt token: bumped when a stop, a superseding read or
+  // disposal invalidates an in-flight synthesis, so its late result is
+  // dropped instead of creating or playing audio the user cancelled.
+  let readAttempt = 0;
   const owns = (attempt: Attempt): boolean => !disposed && current === attempt;
   const visible = (attempt: Attempt): boolean => !disposed && latest === attempt;
   const cancelStream = (attempt: Attempt): void => {
@@ -158,6 +169,14 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       cancelRecording();
       deps.onNotice('Recording cancelled — the tab is no longer active.');
     }
+    // A read still synthesizing (no audio yet) is the same case: its Stop
+    // control just hid, and nothing the user asked for is audible. Cancel it
+    // silently — audio already playing is left alone, since that read was
+    // requested and is audible.
+    if (deps.activeSid() === null && synthesizing()) {
+      readAttempt += 1;
+      setSynthesizing(false);
+    }
   });
 
   // Disposal can land while start() is still pending (mic prompt up); the
@@ -167,8 +186,11 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // Column unmount / conception switch: same release contract, plus playback.
   onCleanup(() => {
     disposed = true;
+    readAttempt += 1;
     cancelRecording();
     stopPlayback();
+    setSynthesizing(false);
+    setSpeaking(false);
   });
 
   // Live partials for the caption strip: only the recording's own session
@@ -212,7 +234,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   };
 
   const startDictation = async (): Promise<void> => {
-    if (disposed || current || speaking()) return;
+    if (disposed || current || speaking() || synthesizing()) return;
     const sid = deps.activeSid();
     if (sid === null) return;
     const attempt: Attempt = {
@@ -342,19 +364,29 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   const readAloud = async (): Promise<void> => {
     const sid = deps.activeSid();
     if (!sid) return;
-    if (speaking()) {
+    // A read is already in flight — synthesizing or playing. This click is
+    // Stop: invalidate the attempt so a pending synthesis result can neither
+    // create nor play audio after the cancel.
+    if (synthesizing() || speaking()) {
+      readAttempt += 1;
       stopPlayback();
+      setSynthesizing(false);
       setSpeaking(false);
       return;
     }
     // Recording and reading at once would interleave the mic with speaker
     // output even with echo cancellation — finish one first.
     if (capturing()) return;
-    setSpeaking(true);
+    const attempt = ++readAttempt;
+    setSynthesizing(true);
     try {
       stopPlayback();
       const result: VoiceSpeakResult = await deps.speak(sid);
+      // A stop, a superseding read or disposal since the request went out
+      // owns the state now; drop the late result without touching audio.
+      if (attempt !== readAttempt || disposed) return;
       if (!result.ok || !result.audioBase64) {
+        setSynthesizing(false);
         deps.onNotice(result.error ?? 'Read-aloud failed.');
         return;
       }
@@ -368,8 +400,14 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           setSpeaking(false);
         }
       };
+      setSynthesizing(false);
+      setSpeaking(true);
       await audio.play();
     } catch (err) {
+      // A stale rejection (the read was cancelled) reports nothing; only the
+      // live attempt resets state and surfaces its error.
+      if (attempt !== readAttempt || disposed) return;
+      setSynthesizing(false);
       setSpeaking(false);
       deps.onNotice(`Read-aloud failed: ${(err as Error).message}`);
     }
@@ -380,6 +418,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     capturing,
     transcribing,
     speaking,
+    synthesizing,
     busy,
     partial,
     startDictation,
