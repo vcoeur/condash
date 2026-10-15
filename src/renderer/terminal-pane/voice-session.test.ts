@@ -17,7 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, createSignal } from 'solid-js';
-import type { VoiceAudioClip, VoiceTranscribeResult } from '@shared/types';
+import type { VoiceAudioClip, VoiceSpeakResult, VoiceTranscribeResult } from '@shared/types';
 import type { VoiceSession } from './voice-session';
 
 interface FakeRecorder {
@@ -288,6 +288,121 @@ describe('voice session lifecycle', () => {
     // B's disposal stops B's playback (same release contract as pane A's).
     disposeB();
     expect(h.audios[1].pausedCalls).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Read-aloud control (the click looked dead: `speaking` went true for the
+  // whole provider round-trip, Stop could not cancel the pending synthesis,
+  // and a late result played anyway). The attempt token drops a cancelled
+  // result; `synthesizing` is the in-flight signal the button binds to.
+  // -------------------------------------------------------------------------
+
+  it('drops a late synthesis result after Stop — the cancelled read never creates audio', async () => {
+    let releaseSpeak!: (value: VoiceSpeakResult) => void;
+    h.speak.mockImplementationOnce(
+      () =>
+        new Promise<VoiceSpeakResult>((resolve) => {
+          releaseSpeak = resolve;
+        }),
+    );
+
+    const reading = h.session.readAloud();
+    expect(h.session.synthesizing()).toBe(true);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.session.busy()).toBe(true);
+
+    // A click while synthesis is in flight is Stop, not a second read.
+    await h.session.readAloud();
+    expect(h.session.synthesizing()).toBe(false);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.session.busy()).toBe(false);
+
+    releaseSpeak({ ok: true, mime: 'audio/mpeg', audioBase64: 'QQ==' });
+    await reading;
+
+    expect(h.speak).toHaveBeenCalledTimes(1);
+    expect(h.audios).toHaveLength(0);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.notices).toHaveLength(0);
+  });
+
+  it('drops a late synthesis result after disposal', async () => {
+    let releaseSpeak!: (value: VoiceSpeakResult) => void;
+    h.speak.mockImplementationOnce(
+      () =>
+        new Promise<VoiceSpeakResult>((resolve) => {
+          releaseSpeak = resolve;
+        }),
+    );
+
+    const reading = h.session.readAloud();
+    expect(h.session.synthesizing()).toBe(true);
+
+    h.dispose();
+    expect(h.session.synthesizing()).toBe(false);
+    expect(h.session.speaking()).toBe(false);
+
+    releaseSpeak({ ok: true, mime: 'audio/mpeg', audioBase64: 'QQ==' });
+    await reading;
+
+    expect(h.audios).toHaveLength(0);
+  });
+
+  it('resets synthesizing and speaking and notices when synthesis reports ok:false', async () => {
+    h.speak.mockResolvedValueOnce({ ok: false, error: 'No recent output in this tab.' });
+
+    await h.session.readAloud();
+
+    expect(h.session.synthesizing()).toBe(false);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.session.busy()).toBe(false);
+    expect(h.audios).toHaveLength(0);
+    expect(h.notices).toEqual(['No recent output in this tab.']);
+  });
+
+  it('resets synthesizing and speaking and notices when synthesis throws', async () => {
+    h.speak.mockRejectedValueOnce(new Error('socket exploded'));
+
+    await h.session.readAloud();
+
+    expect(h.session.synthesizing()).toBe(false);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.session.busy()).toBe(false);
+    expect(h.audios).toHaveLength(0);
+    expect(h.notices).toEqual(['Read-aloud failed: socket exploded']);
+  });
+
+  it('does not start a read while dictation is capturing (mutual exclusion)', async () => {
+    await h.session.toggleDictation();
+    expect(h.session.recording()).toBe(true);
+
+    await h.session.readAloud();
+
+    expect(h.speak).not.toHaveBeenCalled();
+    expect(h.session.synthesizing()).toBe(false);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.audios).toHaveLength(0);
+  });
+
+  it('does not start dictation while a read is synthesizing (mutual exclusion)', async () => {
+    let releaseSpeak!: (value: VoiceSpeakResult) => void;
+    h.speak.mockImplementationOnce(
+      () =>
+        new Promise<VoiceSpeakResult>((resolve) => {
+          releaseSpeak = resolve;
+        }),
+    );
+
+    const reading = h.session.readAloud();
+    expect(h.session.synthesizing()).toBe(true);
+
+    await h.session.startDictation();
+
+    expect(h.recorder.start).not.toHaveBeenCalled();
+    expect(h.session.recording()).toBe(false);
+
+    releaseSpeak({ ok: false, error: 'cancelled' });
+    await reading;
   });
 });
 

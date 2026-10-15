@@ -7,7 +7,7 @@ Push-to-talk dictation and on-demand read-aloud for terminal tabs.
 With voice enabled, two controls live in each tab strip's header, beside Find and Save, and appear once the tab has a live session:
 
 - **Dictate** — click to start recording; a pulsing dot marks the recording state. With streaming on (the default), the words appear as a temporary caption under the tab strip while you speak; click again to stop and the final text is inserted into the tab it was recorded in, exactly as typed keystrokes would be. The OS microphone prompt fires once, on first use. If the tab's controls disappear mid-recording — you switch column, open the Dashboard band, or close the tab — the recording is cancelled and the microphone released immediately.
-- **Read** — click to have the tab's recent output read aloud; click again (or start a new read) to stop. It never speaks unprompted.
+- **Read** — click to have the tab's recent output read aloud. The button reads "Stop" for the whole read and shows a spinner while the text-to-speech provider is still synthesizing; click it at any point to stop. Stopping during synthesis cancels the pending read, so no audio plays. It never speaks unprompted.
 
 You never need the mouse: hold the **push-to-talk chord** (`Ctrl+Shift+Space` by default) to record, release to insert — see [Push-to-talk](#push-to-talk) below.
 
