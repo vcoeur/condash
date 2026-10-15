@@ -81,8 +81,7 @@ export function VoiceControls(props: VoiceControlsProps) {
     const unregister = registerVoicePtt({
       isActiveColumn: () => props.isActiveColumn === true && props.activeSid !== null,
       isRecording: () => session.capturing(),
-      begin: () => void session.startDictation(),
-      end: () => void session.stopDictation(),
+      acquire: session.acquireDictation,
     });
     onCleanup(unregister);
   });

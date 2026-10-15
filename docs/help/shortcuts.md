@@ -37,6 +37,11 @@ configurable in the **Terminal** section of **File → Settings**. The
 push-to-talk chord is configurable in **Settings → Voice** (an empty field
 disables it).
 
+Push-to-talk release acts only on the recording acquired by its matched keydown;
+ordinary Space typing never stops click dictation. Repeats or an old release cannot
+stop a newer recording. A held gesture keeps its original base key through shortcut
+changes; leaving the window cancels that held recording without inserting text.
+
 ## Project cards
 
 | Shortcut | Action |

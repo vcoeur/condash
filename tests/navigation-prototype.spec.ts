@@ -286,6 +286,7 @@ test('Logs replaces the previous conception’s sessions while selected', async 
   test.setTimeout(90_000);
   const secondConception = await mkdtemp(join(tmpdir(), 'condash-test-second-conception-'));
   const booted = await bootApp({
+    globalConfig: { terminal: { logging: { retentionDays: 0 } } },
     prepare: async (firstConception) => {
       await mkdir(join(firstConception, '.condash', 'logs', '2026', '09', '29'), {
         recursive: true,

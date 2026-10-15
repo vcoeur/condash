@@ -4,15 +4,15 @@
 // keyboard handler asks the registry which entry to drive — no session is
 // hoisted or refactored across columns.
 
+import type { VoiceDictationLease } from './voice-session';
+
 export interface VoicePttEntry {
   /** This column is the app's active terminal column (the PTT keydown
    *  starts HERE, not in whichever column happens to be recording). */
   isActiveColumn(): boolean;
-  /** Pending microphone acquisition or recording: keyup ends the owner
-   *  even before capture becomes ready, whichever column started it. */
+  /** Pending microphone acquisition or recording, preferred at gesture acquisition. */
   isRecording(): boolean;
-  begin(): void;
-  end(): void;
+  acquire(): VoiceDictationLease | null;
 }
 
 const entries = new Set<VoicePttEntry>();
@@ -23,24 +23,13 @@ export function registerVoicePtt(entry: VoicePttEntry): () => void {
   return () => entries.delete(entry);
 }
 
-/** The column PTT should start in: the active column, provided it is not
- *  already recording (the recording guard lives in the session; a held key
- *  auto-repeating must not retoggle it). */
-export function pttBeginTarget(): VoicePttEntry | null {
+/** Acquire an existing capture before starting the active column, once per gesture. */
+export function acquireVoicePtt(): VoiceDictationLease | null {
   for (const entry of entries) {
-    if (entry.isActiveColumn()) {
-      return entry.isRecording() ? null : entry;
-    }
+    if (entry.isRecording()) return entry.acquire();
   }
-  return null;
-}
-
-/** The column whose recording a keyup commits — any live recording wins,
- *  regardless of which column started it (one recording state machine, two
- *  triggers). */
-export function pttEndTarget(): VoicePttEntry | null {
   for (const entry of entries) {
-    if (entry.isRecording()) return entry;
+    if (entry.isActiveColumn()) return entry.acquire();
   }
   return null;
 }

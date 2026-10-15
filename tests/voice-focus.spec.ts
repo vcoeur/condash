@@ -50,17 +50,30 @@ async function bootVoiceApp() {
   // A path that does not exist: key resolution finds nothing, so a stop can
   // never reach a provider — the error toast at the end proves the flow ran.
   const noKeysEnv = join(tmpdir(), 'condash-voice-focus-no-keys.env');
-  return bootApp({
+  const booted = await bootApp({
     globalConfig: { layout: { projects: true, terminal: true }, voice: { enabled: true } },
-    env: { CONDASH_AGENTS_ENV: noKeysEnv },
-    beforeFirstWindow: async (app) => {
-      // Fake mic + auto-granted permission, staged before the window exists.
-      await app.evaluate(({ app: electronApp }) => {
-        electronApp.commandLine.appendSwitch('use-fake-device-for-media-stream');
-        electronApp.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-      });
+    env: {
+      CONDASH_AGENTS_ENV: noKeysEnv,
+      PULSE_SERVER: 'unix:/tmp/condash-voice-focus-no-pulse-socket',
+      PIPEWIRE_REMOTE: 'condash-voice-focus-no-pipewire-socket',
     },
+    electronArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
   });
+  try {
+    const audioInputs = await booted.window.evaluate(async () =>
+      (await navigator.mediaDevices.enumerateDevices())
+        .filter((device) => device.kind === 'audioinput')
+        .map((device) => device.label),
+    );
+    expect(audioInputs).toContain('Fake Default Audio Input');
+    expect(
+      audioInputs.every((label) => /^Fake (Default Audio Input|Audio Input \d+)$/.test(label)),
+    ).toBe(true);
+    return booted;
+  } catch (error) {
+    await booted.cleanup();
+    throw error;
+  }
 }
 
 test('clicking Dictate keeps keyboard focus in the terminal', async () => {
@@ -91,6 +104,7 @@ test('clicking Dictate keeps keyboard focus in the terminal', async () => {
     // Typed input still lands in the terminal while recording.
     await booted.window.keyboard.type('echo kept-focus');
     await expect.poll(() => booted.window.evaluate(focusInTerminal), { timeout: 5_000 }).toBe(true);
+    await expect(DICTATE).toHaveClass(/recording/);
 
     // Click again to stop: recording ends (the no-key adapter error surfaces
     // as a toast; the assertion below pins the non-network outcome loosely —
@@ -142,6 +156,42 @@ test('the push-to-talk chord starts and commits dictation from the keyboard', as
     // the adapter error toast — the no-network outcome this spec pins.
     await expect(booted.window.locator('.toast').first()).toBeVisible({ timeout: 15_000 });
     // No stale caption strip survives the commit.
+    await expectNoCaptionStrip(booted.window);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('releasing an old held chord cannot stop a new click recording', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootVoiceApp();
+  const DICTATE = booted.window.locator('[data-label="dictate"]');
+  try {
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "VOICE-LEASE\\n"; sleep 60' }),
+    );
+    await expect(DICTATE).toBeVisible();
+    await booted.window.locator('.terminal-host').click();
+    await booted.window.keyboard.down('Control');
+    await booted.window.keyboard.down('Shift');
+    await booted.window.keyboard.down('Space');
+    await expect(DICTATE).toHaveClass(/recording/);
+
+    await DICTATE.click();
+    await expect(DICTATE).not.toHaveClass(/recording/);
+    await expect(DICTATE).toBeEnabled();
+    await DICTATE.click();
+    await expect(DICTATE).toHaveClass(/recording/);
+    await booted.window.keyboard.down('Space');
+    await booted.window.keyboard.up('Shift');
+    await booted.window.keyboard.up('Control');
+    await booted.window.keyboard.up('Space');
+    await expect(DICTATE).toHaveClass(/recording/);
+    await expectNoCaptionStrip(booted.window);
+    expect(await booted.window.evaluate(focusInTerminal)).toBe(true);
+
+    await DICTATE.click();
+    await expect(DICTATE).not.toHaveClass(/recording/);
     await expectNoCaptionStrip(booted.window);
   } finally {
     await booted.cleanup();

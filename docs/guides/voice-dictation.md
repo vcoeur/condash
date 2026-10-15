@@ -39,9 +39,10 @@ flowchart LR
 
 Hold **`Ctrl+Shift+Space`** (default) to record; release to insert — one recording state machine, two triggers, and the chord never hijacks anything outside the app (it is an in-app capture listener, not a system-wide shortcut: condash unfocused means the chord is free).
 
-- The chord **starts on the keydown** (with a live tab in the active column) and **commits on the keyup of the base key alone** — releasing Ctrl and Shift before Space still commits.
-- Holding fires auto-repeat keydowns; the recording guard absorbs them.
-- Set the field to **empty** in Settings → Voice to disable push-to-talk entirely; any `parseShortcut`-grammar chord works (`Ctrl+Shift+D`, `F2`, …).
+- A matched chord **starts on keydown** (with a live tab in the active column), or acquires an existing click recording without restarting it. Only that paired gesture **commits on keyup of its base key** — releasing Ctrl and Shift before Space still commits. Ordinary Space/letter typing never stops a click recording.
+- Holding absorbs auto-repeat without acquiring another recording. The release belongs to the exact attempt captured on keydown: changing columns, cancelling or clicking stop and starting again cannot make an old release stop the new attempt.
+- Set the field to **empty** in Settings → Voice to disable new push-to-talk gestures; any `parseShortcut`-grammar chord works (`Ctrl+Shift+D`, `F2`, …). An already-held gesture retains its original base key through shortcut changes, including empty-disable.
+- Losing window focus, hiding the document or removing the keyboard listener cancels only the held gesture's recording without inserting text. Unrelated click recordings are unaffected. Release during pending microphone permission cancels that attempt and releases any late-acquired resources.
 - It fires inside the xterm like screenshot-paste, so the chord never types into the shell; and clicking Dictate keeps keyboard focus in the terminal.
 
 ## Context bias

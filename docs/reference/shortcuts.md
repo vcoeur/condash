@@ -141,6 +141,10 @@ When `terminal.screenshot_paste_shortcut` fires:
 
 See [using the embedded terminal](../guides/terminal.md#screenshot-paste).
 
+### Push-to-talk
+
+With Voice enabled, `Ctrl+Shift+Space` holds to dictate (`voice.pptShortcut`, configurable in Settings → Voice; empty disables new gestures). Matched keydown acquires the current recording or starts the active column; only its paired base-key release commits that exact attempt, regardless of modifier release order. Ordinary Space/letter typing does not stop click dictation. Repeats and stale releases never acquire or stop a replacement recording. Shortcut changes preserve the held gesture's original base key until release; window focus loss cancels only that held attempt without insertion. See [voice dictation](../guides/voice-dictation.md#push-to-talk).
+
 ## Embedded terminal — xterm-level
 
 These live inside xterm's `attachCustomKeyEventHandler` and only fire while a terminal tab has focus. Not configurable — they match GNOME Terminal / Ghostty conventions.

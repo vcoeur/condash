@@ -4,7 +4,9 @@ import type { LayoutState, TerminalPrefs } from '@shared/types';
 import type { TerminalPaneHandle } from './terminal-pane';
 import type { TerminalBridge } from './terminal-bridge';
 import { matchesShortcut, parseShortcut } from './keymap';
-import { pttBeginTarget, pttEndTarget } from './terminal-pane/voice-ptt-registry';
+import { acquireVoicePtt } from './terminal-pane/voice-ptt-registry';
+import type { VoiceDictationLease } from './terminal-pane/voice-session';
+import type { Shortcut } from './keymap';
 import { pttCommitMatches, resolvePttShortcut } from './ptt';
 
 export interface GlobalKeyboardDeps {
@@ -42,7 +44,21 @@ export interface GlobalKeyboardDeps {
  * still bubble normally to descendants when no shortcut matches.
  */
 export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
+  let held: { chord: Shortcut; lease: VoiceDictationLease | null } | null = null;
+  const cancelHeld = (): void => {
+    const gesture = held;
+    held = null;
+    gesture?.lease?.cancel();
+  };
+  const handleVisibility = (): void => {
+    if (document.hidden) cancelHeld();
+  };
   const handleGlobalKeyDown = (event: KeyboardEvent): void => {
+    if (held && pttCommitMatches(event, held.chord)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const target = event.target as HTMLElement | null;
     const insideEditable = !!target?.closest(
       '.xterm-host, input, textarea, .cm-editor, [contenteditable=true]',
@@ -74,31 +90,22 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
       }
     }
 
-    // Push-to-talk wins inside the xterm too — dictation exists so the user
-    // never touches the mouse, and the focused surface during dictation is
-    // the terminal. Keydown starts (active column, when idle); while ANY
-    // recording is live the handler absorbs the chord's keydown (held-key
-    // auto-repeat, a chord press over a click-recording, or a recording
-    // parked in a non-active column) so it never reaches the xterm. The
-    // matching keyup below commits, ignoring modifier order.
+    // Only a matched physical press acquires release authority. Repeats cannot
+    // rebind a held gesture after its recording has ended or its column changed.
     const pttChord = resolvePttShortcut(deps.voicePptShortcut?.());
     if (pttChord && matchesShortcut(event, pttChord)) {
-      // One recording state machine (design §7): while any recording is
-      // live — in the active column or parked in a non-active one — the
-      // keydown is a no-op on the recording and is absorbed, or auto-repeat
-      // (and a plain chord press) would reach the focused xterm's textarea
-      // (Ctrl+Space garbage into the very shell the transcript is about to
-      // be committed to). The chord's keyup commits the live recording.
-      if (pttEndTarget()) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
+      if (!held && !event.repeat) {
+        const gesture = { chord: pttChord, lease: null as VoiceDictationLease | null };
+        held = gesture;
+        const lease = acquireVoicePtt();
+        if (held === gesture) {
+          if (lease) gesture.lease = lease;
+          else held = null;
+        } else lease?.cancel();
       }
-      const target = pttBeginTarget();
-      if (target) {
+      if (held) {
         event.preventDefault();
         event.stopPropagation();
-        target.begin();
         return;
       }
     }
@@ -143,25 +150,28 @@ export function createGlobalKeyboard(deps: GlobalKeyboardDeps): void {
     }
   };
 
-  // Push-to-talk commit: keyup of the chord's base key, modifiers ignored
-  // (releasing Ctrl before Space must still commit). Only engages while a
-  // recording is live — an ordinary Space keyup is untouched.
+  // Release uses the matched press's shortcut snapshot and attempt capability;
+  // ordinary typing has neither and must never discover a click recording here.
   const handleGlobalKeyUp = (event: KeyboardEvent): void => {
-    const chord = resolvePttShortcut(deps.voicePptShortcut?.());
-    if (!chord || !pttCommitMatches(event, chord)) return;
-    const target = pttEndTarget();
-    if (!target) return;
+    const gesture = held;
+    if (!gesture || !pttCommitMatches(event, gesture.chord)) return;
+    held = null;
     event.preventDefault();
     event.stopPropagation();
-    target.end();
+    gesture.lease?.release();
   };
 
   onMount(() => {
     document.addEventListener('keydown', handleGlobalKeyDown, true);
     document.addEventListener('keyup', handleGlobalKeyUp, true);
+    window.addEventListener('blur', cancelHeld);
+    document.addEventListener('visibilitychange', handleVisibility);
   });
   onCleanup(() => {
     document.removeEventListener('keydown', handleGlobalKeyDown, true);
     document.removeEventListener('keyup', handleGlobalKeyUp, true);
+    window.removeEventListener('blur', cancelHeld);
+    document.removeEventListener('visibilitychange', handleVisibility);
+    cancelHeld();
   });
 }
