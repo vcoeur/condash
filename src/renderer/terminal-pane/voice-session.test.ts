@@ -404,6 +404,31 @@ describe('voice session lifecycle', () => {
     releaseSpeak({ ok: false, error: 'cancelled' });
     await reading;
   });
+
+  it('cancels a read that is still synthesizing when the tab is no longer active', async () => {
+    let releaseSpeak!: (value: VoiceSpeakResult) => void;
+    h.speak.mockImplementationOnce(
+      () =>
+        new Promise<VoiceSpeakResult>((resolve) => {
+          releaseSpeak = resolve;
+        }),
+    );
+
+    const reading = h.session.readAloud();
+    expect(h.session.synthesizing()).toBe(true);
+
+    // Column switch / Dashboard band hides the Read/Stop control; the pending
+    // synthesis must not play into a pane that can no longer stop it. No toast.
+    h.setActiveSid(null);
+    expect(h.session.synthesizing()).toBe(false);
+
+    releaseSpeak({ ok: true, mime: 'audio/mpeg', audioBase64: 'QQ==' });
+    await reading;
+
+    expect(h.audios).toHaveLength(0);
+    expect(h.session.speaking()).toBe(false);
+    expect(h.notices).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

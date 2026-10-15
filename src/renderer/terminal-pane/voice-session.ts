@@ -169,6 +169,14 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       cancelRecording();
       deps.onNotice('Recording cancelled — the tab is no longer active.');
     }
+    // A read still synthesizing (no audio yet) is the same case: its Stop
+    // control just hid, and nothing the user asked for is audible. Cancel it
+    // silently — audio already playing is left alone, since that read was
+    // requested and is audible.
+    if (deps.activeSid() === null && synthesizing()) {
+      readAttempt += 1;
+      setSynthesizing(false);
+    }
   });
 
   // Disposal can land while start() is still pending (mic prompt up); the
