@@ -1,25 +1,14 @@
-/**
- * Voice section of the Settings modal — a personal (per-machine) setting.
- *
- * Configures push-to-talk dictation + on-demand readback for terminal panes.
- * Voice is **default-off**: a single master switch gates the whole feature;
- * the provider fields only render while it is on. The provider API keys are
- * secrets: they live in the global `settings.json` only, never a tree's
- * settings file. By default keys are read read-only from
- * `~/.config/agents/.env` (`OPENROUTER_API_KEY` / `MISTRAL_API_KEY`); the
- * fields here are the manual fallback for machines without that file.
- */
-
-import { Show, type JSX } from 'solid-js';
-import type { VoicePrefs } from '@shared/types';
+import { createEffect, For, Show, type JSX } from 'solid-js';
+import type { VoiceKeyStatus, VoicePrefs } from '@shared/types';
 import { type RawConfig } from './data';
 import { SectionShell } from './section-shell';
+import { createVoiceKeyStatus } from './voice-key-status';
 
 interface VoiceSectionProps {
-  /** Draft-aware getter for the global file. */
   parsed: () => RawConfig;
-  /** Stage a mutation to the global draft. */
   patch: (mutator: (config: RawConfig) => void) => Promise<void>;
+  active: boolean;
+  savedRevision: number;
 }
 
 export function VoiceSection(props: VoiceSectionProps): JSX.Element {
@@ -28,20 +17,29 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
     props.patch((config) => {
       config.voice = { ...config.voice, ...partial };
     });
-  /** One phrase per line in the textarea ↔ `contextBias` array. Blank lines
-   *  never enter the draft (they'd waste the 100-entry budget), and the cap
-   *  is enforced here: extra lines beyond 100 are ignored, so the counter
-   *  cannot pass 100 and the save cannot be rejected. Trim/dedup at use time
-   *  stays the resolver's job (main-side, seeded with app handles). */
   const biasLines = (): string[] => voice().contextBias ?? [];
   const updateBias = (text: string): Promise<void> =>
     update({
       contextBias: text
         .split('\n')
         .map((line) => line.trim())
-        .filter((line) => line.length > 0)
+        .filter(Boolean)
         .slice(0, 100),
     });
+  const keys = createVoiceKeyStatus(() => window.condash.voiceCredentialStatus());
+  let lastSavedRevision = -1;
+  createEffect(() => {
+    const saved = props.savedRevision;
+    const active = props.active;
+    if (saved !== lastSavedRevision || active) void keys.refresh();
+    lastSavedRevision = saved;
+  });
+  const keyDescription = (status: VoiceKeyStatus): string =>
+    status.present
+      ? `Key ${status.source === 'agents-env' ? 'found in the shared API-key file' : 'entered in Settings'} — not tested with provider`
+      : 'No API key found';
+  const sttModel = () => voice().sttModel?.trim() || 'mistralai/voxtral-small-24b-2507';
+  const ttsModel = () => voice().ttsModel?.trim() || 'mistralai/voxtral-mini-tts-2603';
 
   return (
     <SectionShell
@@ -49,25 +47,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
       title="Voice"
       scope="global"
       hint={
-        <>
-          <p class="settings-hint">
-            Push-to-talk dictation and on-demand readback for terminal tabs. Off by default — until
-            you enable it below, tabs show no voice controls and nothing records or speaks. When
-            enabled, the Dictate control in a tab strip records only while toggled on, then inserts
-            the transcript as typed input; with streaming on, the words appear as a temporary
-            caption while you speak; the Read control speaks the tab's recent output. Both stay idle
-            until clicked, and the tab keeps keyboard focus while you click them.
-          </p>
-          <p class="settings-hint">
-            <strong>Privacy:</strong> capture requires an explicit dictation action. Streaming sends
-            PCM chunks to Mistral while you speak. Stop releases the microphone immediately, but
-            buffered uploads, bias repasses, and provider processing can continue afterward. There
-            is no always-on capture and condash does not persist clips or audio. Partials are local
-            display only; the final transcript is inserted after stop. Provider calls and
-            environment keys stay in main; manually entered Settings keys are displayed back by
-            Settings prefill.
-          </p>
-        </>
+        <p class="settings-hint">
+          Dictate inserts speech into a terminal tab after Stop. Read speaks recent tab output. Both
+          are idle until requested.
+        </p>
       }
     >
       <div class="settings-grid">
@@ -78,193 +61,246 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               checked={voice().enabled ?? false}
               onChange={(e) => void update({ enabled: e.currentTarget.checked })}
             />
-            <span>Enable voice dictation</span>
+            <span>Enable voice controls (Dictate and Read)</span>
           </label>
           <small class="settings-field-hint">
-            Adds the Dictate and Read controls to terminal tab strips. Recorded clips and read-aloud
-            text are sent to the configured speech provider (keys below, or your{' '}
-            <code>~/.config/agents/.env</code> entries). Off by default.
+            Off by default. When off, neither control captures audio or contacts a provider.
           </small>
         </div>
-
-        <Show when={voice().enabled}>
-          <div class="settings-field-span">
-            <small class="settings-field-hint">
-              <Show
-                when={voice().streaming ?? true}
-                fallback={
-                  <>
-                    Routing with streaming off: your clip → OpenRouter (transcription model) →
-                    fallback Mistral batch. Read aloud → OpenRouter (speech model), Mistral fallback
-                    (needs the Mistral voice id below).
-                  </>
-                }
-              >
-                Routing with streaming on: your voice → Mistral realtime (live caption) → on
-                release, the vocabulary below routes a Mistral batch re-check → fallback OpenRouter
-                (transcription model) → fallback the stream's own text. Read aloud → OpenRouter
-                (speech model), Mistral fallback (needs the Mistral voice id below).
-              </Show>
-            </small>
-          </div>
-
-          <label>
-            <span>OpenRouter API key</span>
-            <input
-              type="password"
-              autocomplete="off"
-              placeholder="sk-or-…"
-              value={voice().openrouterApiKey ?? ''}
-              onChange={(e) =>
-                void update({ openrouterApiKey: e.currentTarget.value.trim() || undefined })
-              }
-            />
-            <small class="settings-field-hint">
-              Feeds batch dictation, the streaming fallback, and read-aloud. Stored in this
-              machine's <code>settings.json</code> only. Leave blank to fall back to the{' '}
-              <code>OPENROUTER_API_KEY</code> entry in <code>~/.config/agents/.env</code>.
-            </small>
-          </label>
-          <label>
-            <span>Mistral API key</span>
-            <input
-              type="password"
-              autocomplete="off"
-              placeholder="…"
-              value={voice().mistralApiKey ?? ''}
-              onChange={(e) =>
-                void update({ mistralApiKey: e.currentTarget.value.trim() || undefined })
-              }
-            />
-            <small class="settings-field-hint">
-              Powers the live stream while streaming is on (a key is required to stream) and the
-              first leg of the streamed-stop bias re-check; otherwise the batch fallback when
-              OpenRouter is unkeyed or fails. Leave blank to fall back to the{' '}
-              <code>MISTRAL_API_KEY</code> entry in <code>~/.config/agents/.env</code>.
-            </small>
-          </label>
-
-          <label>
-            <span>Transcription model</span>
-            <input
-              type="text"
-              placeholder="mistralai/voxtral-small-24b-2507"
-              value={voice().sttModel ?? ''}
-              onChange={(e) => void update({ sttModel: e.currentTarget.value.trim() || undefined })}
-            />
-            <small class="settings-field-hint">
-              The OpenRouter transcription model, used on batch calls only. While streaming is on,
-              batch is the fallback path — the live stream and the first re-check leg use Mistral's
-              fixed models. With streaming off this is the primary dictation model. Default{' '}
-              <code>mistralai/voxtral-small-24b-2507</code>; the Mistral batch fallback always uses{' '}
-              <code>voxtral-mini-latest</code>.
-            </small>
-          </label>
-          <label>
-            <span>Speech model</span>
-            <input
-              type="text"
-              placeholder="mistralai/voxtral-mini-tts-2603"
-              value={voice().ttsModel ?? ''}
-              onChange={(e) => void update({ ttsModel: e.currentTarget.value.trim() || undefined })}
-            />
-            <small class="settings-field-hint">
-              The read-aloud model, sent to whichever TTS provider answers — OpenRouter first,
-              Mistral fallback (which additionally needs a Mistral voice id below). Default{' '}
-              <code>mistralai/voxtral-mini-tts-2603</code>; use a model id the provider lists.
-            </small>
-          </label>
-          <label>
-            <span>Speech voice</span>
-            <input
-              type="text"
-              placeholder="en_paul_neutral"
-              value={voice().ttsVoice ?? ''}
-              onChange={(e) => void update({ ttsVoice: e.currentTarget.value.trim() || undefined })}
-            />
-            <small class="settings-field-hint">
-              The voice id sent to the OpenRouter speech endpoint — model-specific (Voxtral personas
-              look like <code>en_paul_neutral</code>; other speech models take their own ids).
-              Default <code>en_paul_neutral</code>.
-            </small>
-          </label>
-          <label>
-            <span>Mistral voice id (fallback)</span>
-            <input
-              type="text"
-              placeholder="(unset — fallback skipped)"
-              value={voice().mistralVoiceId ?? ''}
-              onChange={(e) =>
-                void update({ mistralVoiceId: e.currentTarget.value.trim() || undefined })
-              }
-            />
-            <small class="settings-field-hint">
-              <Show when={!voice().mistralVoiceId}>
-                Optional. Without an id the Mistral TTS fallback is skipped (its API has no
-                anonymous preset voice) and read-aloud relies on OpenRouter alone.
-              </Show>
-              <Show when={voice().mistralVoiceId}>
-                Used only by the Mistral fallback — a preset or saved voice id from Mistral's
-                text-to-speech API.
-              </Show>
-            </small>
-          </label>
-
-          <div class="settings-field-span">
-            <label class="settings-checkbox">
-              <input
-                type="checkbox"
-                checked={voice().streaming ?? true}
-                onChange={(e) => void update({ streaming: e.currentTarget.checked })}
-              />
-              <span>Stream dictation live (partial text while speaking)</span>
-            </label>
-            <small class="settings-field-hint">
-              While recording, audio streams to Mistral's realtime transcription endpoint (
-              <code>voxtral-mini-transcribe-realtime-2602</code> — fixed, not a setting) and the
-              forming transcript shows as a temporary caption under the tab strip, about a second
-              behind your voice (provider-side delay, fixed). The final text is inserted once after
-              stop. Off restores batch-only dictation. Startup failures keep the buffered batch
-              path; main handles mid-stream failures. A failed stop reply does not launch another
-              upload because main may already have inserted.
-            </small>
-          </div>
-
-          <label class="settings-field-span">
-            <span>Context bias — vocabulary to spell exactly ({biasLines().length}/100)</span>
-            <textarea
-              rows={4}
-              placeholder={'condash\nknoten\nvcoeur'}
-              value={biasLines().join('\n')}
-              onChange={(e) => void updateBias(e.currentTarget.value)}
-            />
-            <small class="settings-field-hint">
-              One phrase per line — names, app handles, project slugs. The open conception's app
-              handles are added automatically. A non-empty effective list routes a streamed stop
-              through a re-check whose provider order is fixed: Mistral batch with these phrases as
-              native bias fields first, OpenRouter with the transcription model (prompt glossary)
-              second, the raw stream text last — adding provider-dependent stop latency and
-              potentially a second transcription charge for the same audio. An empty user list does
-              not disable the re-check when automatic app seeding makes the effective list
-              non-empty.
-            </small>
-          </label>
-
-          <label>
-            <span>Push-to-talk shortcut</span>
-            <input
-              type="text"
-              placeholder="Ctrl+Shift+Space"
-              value={voice().pptShortcut ?? ''}
-              onChange={(e) => void update({ pptShortcut: e.currentTarget.value.trim() })}
-            />
-            <small class="settings-field-hint">
-              Hold to dictate, release to insert (no mouse needed). Default{' '}
-              <code>Ctrl+Shift+Space</code>; empty disables push-to-talk.
-            </small>
-          </label>
-        </Show>
       </div>
+
+      <Show when={voice().enabled}>
+        <fieldset class="settings-launcher-fieldset" aria-label="Dictation">
+          <legend>Dictation</legend>
+          <p class="settings-hint" data-test-dictation-route>
+            <strong>Draft route if saved:</strong>{' '}
+            <Show
+              when={voice().streaming ?? true}
+              fallback={
+                <>
+                  Clip after Stop → OpenRouter ({sttModel()}) → Mistral batch fallback. No live
+                  captions.
+                </>
+              }
+            >
+              Mistral realtime while speaking. With effective vocabulary, Stop → Mistral batch →
+              OpenRouter ({sttModel()}) → realtime text as last resort. Without vocabulary: realtime
+              text; on stream failure, OpenRouter → Mistral batch → realtime text.
+            </Show>{' '}
+            Only keyed providers are attempted. Unavailable streaming keeps recording for batch
+            transcription after Stop. This is a draft preview, not a saved setup or an actual
+            action.
+          </p>
+          <div class="settings-grid">
+            <div class="settings-field-span">
+              <label class="settings-checkbox">
+                <input
+                  type="checkbox"
+                  checked={voice().streaming ?? true}
+                  onChange={(e) => void update({ streaming: e.currentTarget.checked })}
+                />
+                <span>Stream dictation live (partial text while speaking)</span>
+              </label>
+              <small class="settings-field-hint">
+                Requires a Mistral key. Fixed realtime model:{' '}
+                <code>voxtral-mini-transcribe-realtime-2602</code>; fixed provider delay target:
+                1000 ms (not end-to-end latency).
+              </small>
+            </div>
+            <label class="settings-field-span">
+              <span>OpenRouter transcription model (batch only)</span>
+              <input
+                type="text"
+                placeholder="mistralai/voxtral-small-24b-2507"
+                value={voice().sttModel ?? ''}
+                onInput={(e) =>
+                  void update({ sttModel: e.currentTarget.value.trim() || undefined })
+                }
+              />
+              <small class="settings-field-hint">
+                Audio-input chat model, not the live model. Mistral batch always uses{' '}
+                <code>voxtral-mini-latest</code>.
+              </small>
+            </label>
+            <label class="settings-field-span">
+              <span>Context bias — vocabulary ({biasLines().length}/100)</span>
+              <textarea
+                rows={4}
+                placeholder={'condash\nknoten\nvcoeur'}
+                value={biasLines().join('\n')}
+                onChange={(e) => void updateBias(e.currentTarget.value)}
+              />
+              <small class="settings-field-hint">
+                One phrase per line. App handles/names/aliases are added automatically: an empty
+                field need not mean empty effective vocabulary.{' '}
+                <Show
+                  when={voice().streaming ?? true}
+                  fallback={
+                    <>
+                      Batch-only dictation uses OpenRouter glossary → Mistral native batch bias,
+                      with no realtime last resort.
+                    </>
+                  }
+                >
+                  For an established live stream, effective vocabulary selects a Stop re-check:
+                  Mistral native batch bias → OpenRouter glossary → realtime text. This can add a
+                  second charge and stop latency. Refused or pending stream startup instead uses
+                  OpenRouter → Mistral batch, with no realtime last resort.
+                </Show>{' '}
+                The mechanisms do not promise equivalent accuracy.
+              </small>
+            </label>
+            <label>
+              <span>Push-to-talk shortcut</span>
+              <input
+                type="text"
+                placeholder="Ctrl+Shift+Space"
+                value={voice().pptShortcut ?? ''}
+                onChange={(e) => void update({ pptShortcut: e.currentTarget.value.trim() })}
+              />
+              <small class="settings-field-hint">
+                Hold to record, release to insert. Default Ctrl+Shift+Space; empty disables the
+                shortcut.
+              </small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-launcher-fieldset" aria-label="Credentials">
+          <legend>Credentials</legend>
+          <p class="settings-hint">
+            Saved key sources only; unsaved keys below do not change this snapshot. The shared
+            API-key file wins over the manual Settings field. Default file:{' '}
+            <code>~/.config/agents/.env</code> (CONDASH_AGENTS_ENV may override it). Finding a key
+            does not test it with the provider; no provider request is made.
+          </p>
+          <div class="voice-key-snapshot" role="status" data-test-voice-keys>
+            <Show
+              when={keys.snapshot().phase === 'checked'}
+              fallback={
+                <p>
+                  {keys.snapshot().phase === 'pending'
+                    ? 'Refreshing — key sources not checked; any previous snapshot is stale.'
+                    : keys.snapshot().phase === 'error'
+                      ? 'Refresh failed — key sources not checked; any previous snapshot is stale.'
+                      : 'Key sources not checked.'}
+                </p>
+              }
+            >
+              {(() => {
+                const snapshot = keys.snapshot();
+                if (snapshot.phase !== 'checked') return null;
+                return (
+                  <>
+                    <p>Last checked saved key sources at {snapshot.checkedAt}</p>
+                    <For each={['openrouter', 'mistral'] as const}>
+                      {(provider) => (
+                        <p>
+                          {provider === 'openrouter' ? 'OpenRouter' : 'Mistral'}:{' '}
+                          {keyDescription(snapshot.keys[provider])}
+                        </p>
+                      )}
+                    </For>
+                  </>
+                );
+              })()}
+            </Show>
+          </div>
+          <button type="button" class="btn" onClick={() => void keys.refresh()}>
+            Refresh saved key sources
+          </button>
+          <div class="settings-grid">
+            <label>
+              <span>OpenRouter API key</span>
+              <input
+                type="password"
+                autocomplete="off"
+                placeholder="sk-or-…"
+                value={voice().openrouterApiKey ?? ''}
+                onChange={(e) =>
+                  void update({ openrouterApiKey: e.currentTarget.value.trim() || undefined })
+                }
+              />
+            </label>
+            <label>
+              <span>Mistral API key</span>
+              <input
+                type="password"
+                autocomplete="off"
+                placeholder="…"
+                value={voice().mistralApiKey ?? ''}
+                onChange={(e) =>
+                  void update({ mistralApiKey: e.currentTarget.value.trim() || undefined })
+                }
+              />
+            </label>
+          </div>
+          <small class="settings-field-hint">
+            Manual keys are stored in this machine's settings.json and prefilled here. Environment
+            key values stay in main.
+          </small>
+        </fieldset>
+
+        <fieldset class="settings-launcher-fieldset" aria-label="Read aloud">
+          <legend>Read aloud</legend>
+          <p class="settings-hint" data-test-read-route>
+            <strong>Draft route if saved:</strong> OpenRouter speech → Mistral fallback (requires
+            both a Mistral key and voice id). Both use {ttsModel()}. This preview does not validate
+            the model, voice or credentials.
+          </p>
+          <div class="settings-grid">
+            <label>
+              <span>Speech model</span>
+              <input
+                type="text"
+                placeholder="mistralai/voxtral-mini-tts-2603"
+                value={voice().ttsModel ?? ''}
+                onInput={(e) =>
+                  void update({ ttsModel: e.currentTarget.value.trim() || undefined })
+                }
+              />
+              <small class="settings-field-hint">Model id passed to both speech providers.</small>
+            </label>
+            <label>
+              <span>Speech voice</span>
+              <input
+                type="text"
+                placeholder="en_paul_neutral"
+                value={voice().ttsVoice ?? ''}
+                onInput={(e) =>
+                  void update({ ttsVoice: e.currentTarget.value.trim() || undefined })
+                }
+              />
+              <small class="settings-field-hint">
+                OpenRouter voice: {voice().ttsVoice?.trim() || 'en_paul_neutral'}. Voice ids are
+                model-specific.
+              </small>
+            </label>
+            <label>
+              <span>Mistral voice id (fallback)</span>
+              <input
+                type="text"
+                placeholder="(unset — fallback skipped)"
+                value={voice().mistralVoiceId ?? ''}
+                onInput={(e) =>
+                  void update({ mistralVoiceId: e.currentTarget.value.trim() || undefined })
+                }
+              />
+              <small class="settings-field-hint">
+                {voice().mistralVoiceId?.trim()
+                  ? 'Voice id configured in this draft; a Mistral key is also required.'
+                  : 'Unset in this draft — Mistral speech fallback skipped.'}
+              </small>
+            </label>
+          </div>
+        </fieldset>
+        <p class="settings-hint">
+          Privacy: streaming sends audio while speaking; batch uploads/correction can continue after
+          Stop releases the mic. No always-on capture or persisted audio. Captions are display-only;
+          final text is inserted once after Stop. Actual action stages appear by Dictate, not in
+          this Settings preview.
+        </p>
+      </Show>
     </SectionShell>
   );
 }

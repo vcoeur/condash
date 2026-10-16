@@ -126,6 +126,7 @@ export function SettingsModal(props: {
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
+  const [voiceSavedRevision, setVoiceSavedRevision] = createSignal(0);
 
   // Two-layer draft model.
   //
@@ -474,6 +475,7 @@ export function SettingsModal(props: {
             (text, next) => window.condash.writeGlobalSettings(text, next),
             (written) => {
               mutateGlobalContent(written);
+              setVoiceSavedRevision((revision) => revision + 1);
               // Live-fire theme + card-min-width once the global file changed,
               // so the rest of the app picks up the new CSS variables.
               const g = parseRawConfig(written);
@@ -515,6 +517,7 @@ export function SettingsModal(props: {
         );
       }
       await Promise.all(tasks);
+      if (!gd) setVoiceSavedRevision((revision) => revision + 1);
       setSavedAt(Date.now());
       scheduleSavedAtClear();
     } catch (err) {
@@ -954,7 +957,12 @@ export function SettingsModal(props: {
 
               <DashboardSection parsed={globalParsed} patch={patchSettings} />
 
-              <VoiceSection parsed={globalParsed} patch={patchSettings} />
+              <VoiceSection
+                parsed={globalParsed}
+                patch={patchSettings}
+                active={section() === 'voice'}
+                savedRevision={voiceSavedRevision()}
+              />
 
               <SyncSection parsed={globalParsed} patch={patchSettings} />
 

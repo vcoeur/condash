@@ -62,7 +62,7 @@ test('voice is inert until enabled in Settings, then live after a save', async (
     // Scoped by label text: the Voice section now carries a second checkbox
     // (streaming, hidden while voice is off) behind the same class.
     const enable = voice
-      .locator('label.settings-checkbox', { hasText: 'Enable voice dictation' })
+      .locator('label.settings-checkbox', { hasText: 'Enable voice controls (Dictate and Read)' })
       .locator('input');
     await expect(enable).toBeVisible();
     await expect(enable).not.toBeChecked();
@@ -96,7 +96,7 @@ test('voice is inert until enabled in Settings, then live after a save', async (
     const voiceAgain = booted.window.locator('#settings-section-voice');
     await voiceAgain.scrollIntoViewIfNeeded();
     await voiceAgain
-      .locator('label.settings-checkbox', { hasText: 'Enable voice dictation' })
+      .locator('label.settings-checkbox', { hasText: 'Enable voice controls (Dictate and Read)' })
       .locator('input')
       .uncheck();
     await booted.window.locator('button.settings-save').click();

@@ -19,6 +19,73 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, createSignal } from 'solid-js';
 import type { VoiceAudioClip, VoiceSpeakResult, VoiceTranscribeResult } from '@shared/types';
 import type { VoiceSession } from './voice-session';
+import { dictationReportText, type VoiceDictationReport } from './voice-session';
+
+describe('plain-language dictation report', () => {
+  const base: VoiceDictationReport = {
+    sid: 'test',
+    capture: 'stopped',
+    captions: 'live',
+    producer: 'mistral-batch',
+    insertion: 'inserted',
+  };
+  it.each([
+    [
+      {},
+      'Text inserted into the tab. Live captions were shown; Mistral transcribed the final recording.',
+    ],
+    [{ producer: 'openrouter-batch' }, 'OpenRouter transcribed the final recording.'],
+    [{ producer: 'mistral-realtime' }, 'Mistral realtime text was used for the final transcript.'],
+    [
+      { capture: 'starting', captions: 'pending', producer: 'pending', insertion: 'pending' },
+      'Starting the microphone. Live captions have not appeared yet.',
+    ],
+    [
+      { capture: 'recording', producer: 'pending', insertion: 'pending' },
+      'Recording — live captions are visible.',
+    ],
+    [
+      { capture: 'recording', captions: 'unavailable', producer: 'pending', insertion: 'pending' },
+      'Recording — recording continues; transcription follows Stop. Live captions were unavailable;',
+    ],
+    [
+      { capture: 'recording', captions: 'interrupted', producer: 'pending', insertion: 'pending' },
+      'Live captions were shown, then interrupted;',
+    ],
+    [
+      { capture: 'recording', captions: 'off', producer: 'pending', insertion: 'pending' },
+      'Live captions were off;',
+    ],
+    [
+      { capture: 'recording', captions: 'pending', producer: 'pending', insertion: 'pending' },
+      'Live captions have not appeared yet.',
+    ],
+    [
+      { captions: 'not-observed', insertion: 'pending', producer: 'pending' },
+      'Recording stopped. Preparing the final transcript. No live captions were observed; The final transcript is pending.',
+    ],
+    [
+      { capture: 'cancelled', insertion: 'none', producer: 'none' },
+      'Recording cancelled. Nothing inserted.',
+    ],
+    [
+      { capture: 'failed', insertion: 'none', producer: 'none' },
+      'Recording failed. Nothing inserted.',
+    ],
+    [{ insertion: 'none', producer: 'none' }, 'Recording stopped. Nothing inserted.'],
+    [
+      { insertion: 'unknown', producer: 'unknown', reason: 'Safe error detail' },
+      'Insertion unconfirmed. Live captions were shown; The final transcript source is unknown. — Safe error detail',
+    ],
+  ] as [Partial<VoiceDictationReport>, string][])(
+    'preserves observed facts for %j',
+    (patch, expected) => {
+      const text = dictationReportText({ ...base, ...patch });
+      expect(text).toContain(expected);
+      if (patch.insertion === 'unknown') expect(text).not.toMatch(/Nothing inserted|retry/i);
+    },
+  );
+});
 
 interface FakeRecorder {
   start: ReturnType<typeof vi.fn>;
@@ -527,6 +594,84 @@ async function createStreamHarness(
 }
 
 describe('voice session streaming', () => {
+  it('reports live captions independently from a batch final producer', async () => {
+    const h = await createStreamHarness({
+      stopResult: { inserted: true, provider: 'mistral', producer: 'mistral-batch', chars: 8 },
+    });
+    await h.session.startDictation();
+    expect(h.session.report()).toMatchObject({
+      capture: 'recording',
+      captions: 'pending',
+      producer: 'pending',
+    });
+    h.stream.emitPartial({ sid: 'a', text: 'live text' });
+    await h.session.stopDictation();
+    expect(h.session.report()).toMatchObject({
+      capture: 'stopped',
+      captions: 'live',
+      producer: 'mistral-batch',
+      insertion: 'inserted',
+    });
+    expect(h.transcribe).not.toHaveBeenCalled();
+    h.dispose();
+  });
+
+  it('never infers realtime from provider alone or live captions from start success', async () => {
+    const h = await createStreamHarness();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    expect(h.session.report()).toMatchObject({
+      captions: 'not-observed',
+      producer: 'unknown',
+      insertion: 'inserted',
+    });
+    h.dispose();
+  });
+
+  it('reports interrupted captions on owned failure events and ignores foreign/stale events', async () => {
+    const h = await createStreamHarness();
+    await h.session.startDictation();
+    const ownerId = h.stream.start.mock.calls[0][1];
+    const receive = h.stream.onPartial.mock.calls[0][0];
+    receive({ ownerId: 'foreign', sid: 'a', text: '', unavailable: true });
+    expect(h.session.report()?.captions).toBe('pending');
+    h.stream.emitPartial({ sid: 'a', text: 'words' });
+    receive({ ownerId, sid: 'a', text: '', unavailable: true });
+    expect(h.session.report()?.captions).toBe('interrupted');
+    await h.session.stopDictation();
+    await h.session.startDictation();
+    receive({ ownerId, sid: 'a', text: 'old', unavailable: true });
+    expect(h.session.report()).toMatchObject({ captions: 'pending', producer: 'pending' });
+    h.dispose();
+  });
+
+  it('keeps unknown insertion after rejected Stop, and rejects a stale prior result', async () => {
+    const h = await createStreamHarness({ stopThrows: true });
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    expect(h.session.report()).toMatchObject({ producer: 'unknown', insertion: 'unknown' });
+    expect(h.transcribe).not.toHaveBeenCalled();
+    let resolve!: (result: VoiceTranscribeResult) => void;
+    h.stream.stop.mockImplementationOnce(
+      () =>
+        new Promise<VoiceTranscribeResult>((done) => {
+          resolve = done;
+        }),
+    );
+    await h.session.startDictation();
+    const stopping = h.session.stopDictation();
+    await Promise.resolve();
+    await h.session.startDictation();
+    resolve({ inserted: true, producer: 'openrouter-batch', chars: 4 });
+    await stopping;
+    expect(h.session.report()).toMatchObject({
+      capture: 'recording',
+      producer: 'pending',
+      insertion: 'pending',
+    });
+    h.dispose();
+  });
+
   it('streams while recording: partials update the caption signal and clear on stop', async () => {
     const h = await createStreamHarness();
     await h.session.toggleDictation();
@@ -556,12 +701,14 @@ describe('voice session streaming', () => {
     h.dispose();
   });
 
-  it('stays batch when main refuses the stream start, silently', async () => {
+  it('keeps recording and reports unavailable captions when main refuses the stream start', async () => {
     const h = await createStreamHarness({ startResult: { ok: false, reason: 'no-mistral-key' } });
     await h.session.toggleDictation();
     expect(h.session.recording()).toBe(true);
     expect(h.session.partial()).toBeNull();
-    expect(h.notices).toEqual([]);
+    expect(h.notices).toEqual([
+      'Live captions unavailable — recording continues for transcription after Stop.',
+    ]);
     // Stop commits through the buffered-clip batch chain.
     await h.session.toggleDictation();
     expect(h.stream.stop).not.toHaveBeenCalled();
@@ -634,7 +781,9 @@ describe('voice session streaming', () => {
     h.stream.start.mockRejectedValueOnce(new Error('config parse failed'));
     await h.session.toggleDictation();
     expect(h.session.recording()).toBe(true);
-    expect(h.notices).toEqual(['Streaming unavailable — using batch transcription.']);
+    expect(h.notices).toEqual([
+      'Live captions unavailable — recording continues for transcription after Stop.',
+    ]);
     // The recording continues; the commit runs the buffered-clip batch chain.
     await h.session.toggleDictation();
     expect(h.stream.stop).not.toHaveBeenCalled();

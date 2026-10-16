@@ -160,6 +160,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
   // exactly while a realtime stream is live. Rendered as the temporary
   // caption strip under the tab row; never typed into the terminal.
   const [voicePartial, setVoicePartial] = createSignal<string | null>(null);
+  const [voiceReport, setVoiceReport] = createSignal<{ sid: string; text: string } | null>(null);
   const hasSummary = (tab: Tab): boolean =>
     Boolean(tab.currentAction || (tab.contextLines && tab.contextLines.length > 0));
   const popoverRelevant = (tab: Tab): boolean =>
@@ -428,6 +429,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
               activeSid={props.isActiveColumn && !props.dashboardActive ? props.activeId : null}
               onNotice={props.onNotice}
               onPartial={setVoicePartial}
+              onReport={setVoiceReport}
               isActiveColumn={props.isActiveColumn && !props.dashboardActive}
             />
           </Show>
@@ -452,6 +454,18 @@ export function TerminalColumn(props: TerminalColumnProps) {
           >
             {voicePartial() ?? ''}
           </span>
+        </div>
+      </Show>
+      <Show
+        when={
+          props.voiceEnabled &&
+          props.isActiveColumn &&
+          !props.dashboardActive &&
+          voiceReport()?.sid === props.activeId
+        }
+      >
+        <div class="voice-action-status" role="status" data-test-voice-status>
+          {voiceReport()?.text}
         </div>
       </Show>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />

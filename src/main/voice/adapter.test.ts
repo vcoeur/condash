@@ -56,7 +56,11 @@ describe('transcribeClip', () => {
         return Promise.resolve(jsonRes({ choices: [{ message: { content: 'hello world' } }] }));
       },
     });
-    expect(result).toEqual({ text: 'hello world', provider: 'openrouter' });
+    expect(result).toEqual({
+      text: 'hello world',
+      provider: 'openrouter',
+      producer: 'openrouter-batch',
+    });
     expect(calls).toHaveLength(1);
   });
 
@@ -72,7 +76,11 @@ describe('transcribeClip', () => {
         return Promise.resolve(jsonRes({ text: 'from mistral' }));
       },
     });
-    expect(result).toEqual({ text: 'from mistral', provider: 'mistral' });
+    expect(result).toEqual({
+      text: 'from mistral',
+      provider: 'mistral',
+      producer: 'mistral-batch',
+    });
     expect(seen).toHaveLength(2);
   });
 
@@ -293,7 +301,7 @@ describe('transcribeClipBiasFirst', () => {
       },
       ['condash'],
     );
-    expect(result).toEqual({ text: 'bias-first', provider: 'mistral' });
+    expect(result).toEqual({ text: 'bias-first', provider: 'mistral', producer: 'mistral-batch' });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toContain('api.mistral.ai');
   });
@@ -311,6 +319,10 @@ describe('transcribeClipBiasFirst', () => {
       },
       ['condash'],
     );
-    expect(result).toEqual({ text: 'from openrouter', provider: 'openrouter' });
+    expect(result).toEqual({
+      text: 'from openrouter',
+      provider: 'openrouter',
+      producer: 'openrouter-batch',
+    });
   });
 });
