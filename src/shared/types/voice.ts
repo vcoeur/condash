@@ -2,9 +2,21 @@
 // on-demand TTS readback of recent pane output. The audio crosses the IPC
 // boundary base64-encoded; the provider calls run only in the main process.
 
-/** Which STT/TTS provider answered a request. Order of preference is
- *  OpenRouter first, Mistral as fallback (both keyed independently). */
+/** Provider identity alone does not distinguish realtime from batch text. */
 export type VoiceProvider = 'openrouter' | 'mistral';
+
+/** Presence is not validation. This metadata never contains key material. */
+export interface VoiceKeyStatus {
+  present: boolean;
+  source: 'agents-env' | 'settings' | 'none';
+}
+
+export interface VoiceCredentialStatus {
+  openrouter: VoiceKeyStatus;
+  mistral: VoiceKeyStatus;
+}
+
+export type VoiceTranscriptProducer = 'openrouter-batch' | 'mistral-batch' | 'mistral-realtime';
 
 /** Per-machine voice preferences — the global `voice` settings key. Provider
  *  API keys are secrets and live only in the per-machine `settings.json`;
@@ -17,11 +29,9 @@ export interface VoicePrefs {
    *  provider or opening the microphone. Off by default — clips leave the
    *  machine only after an explicit opt-in in Settings → Voice. */
   enabled?: boolean;
-  /** OpenRouter API key. Blank/unset → read `OPENROUTER_API_KEY` from
-   *  `~/.config/agents/.env`. Never logged. */
+  /** Manual OpenRouter key fallback. The agents-env entry wins when present. */
   openrouterApiKey?: string;
-  /** Mistral API key. Blank/unset → read `MISTRAL_API_KEY` from
-   *  `~/.config/agents/.env`. Never logged. */
+  /** Manual Mistral key fallback. The agents-env entry wins when present. */
   mistralApiKey?: string;
   /** OpenRouter model used for transcription (audio-in, text-out chat
    *  completion). Default `mistralai/voxtral-small-24b-2507`. */
@@ -74,6 +84,8 @@ export interface VoiceTranscribeResult {
   /** Which provider produced the transcript (absent when nothing was
    *  transcribed). */
   provider?: VoiceProvider;
+  /** Origin of the final text, independent of whether live captions appeared. */
+  producer?: VoiceTranscriptProducer;
   /** Characters actually written to the PTY (absent when nothing was
    *  written). */
   chars?: number;
@@ -113,8 +125,8 @@ export interface VoiceStreamStartRequest {
 
 /** Result of opening a realtime transcription stream. A refusal is always a
  *  typed `ok: false` — the renderer treats every reason as "stay on the
- *  batch path" (streaming is an upgrade, not a requirement), so the strings
- *  only need to be diagnosable, never actionable in the UI. */
+ *  batch path" (streaming is an upgrade, not a requirement), with an explicit
+ *  unavailable-caption notice unless streaming itself is disabled. */
 export interface VoiceStreamStartResult {
   ok: boolean;
   /** `disabled` — voice (or `voice.streaming`) is off; `no-mistral-key` —
@@ -141,4 +153,6 @@ export interface VoicePartialMessage {
   ownerId: string;
   sid: string;
   text: string;
+  /** The stream failed during capture. Text may already have been displayed. */
+  unavailable?: boolean;
 }

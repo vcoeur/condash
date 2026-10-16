@@ -127,6 +127,7 @@ const api: CondashApi = {
   },
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
   voiceTranscribe: (id, clip) => ipcRenderer.invoke('voiceTranscribe', id, clip),
+  voiceCredentialStatus: () => ipcRenderer.invoke('voiceCredentialStatus'),
   voiceSpeak: (id) => ipcRenderer.invoke('voiceSpeak', id),
   voiceStreamStart: (request) => ipcRenderer.invoke('voiceStreamStart', request),
   voiceStreamAudio: (chunk) => ipcRenderer.invoke('voiceStreamAudio', chunk),

@@ -10,7 +10,7 @@ import type {
   VoiceTranscribeResult,
 } from '../../shared/types';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
-import { resolveVoiceKeys } from '../voice/keys';
+import { resolveVoiceKeys, voiceCredentialStatus } from '../voice/keys';
 import { speakText, transcribeClip, transcribeClipBiasFirst } from '../voice/adapter';
 import { insertTranscript } from '../voice/insert';
 import { resolveContextBias } from '../voice/resolve-context-bias';
@@ -121,6 +121,16 @@ async function effectiveContextBias(prefs: VoicePrefs | undefined): Promise<stri
  *  validation still runs first so the trust boundary keeps its uniform
  *  `<channel>: expected …` shape. */
 export function registerVoiceIpc(): void {
+  ipcMain.handle('voiceCredentialStatus', async (event) => {
+    requireMainWindowSender(event);
+    try {
+      const { voice } = await readSettings();
+      return voiceCredentialStatus(voice);
+    } catch {
+      throw new Error('Could not read saved voice credential status.');
+    }
+  });
+
   ipcMain.handle('voiceTranscribe', async (event, id: unknown, clip: unknown) => {
     requireMainWindowSender(event);
     const sid = requireNonEmptyString('voiceTranscribe', id);
@@ -144,9 +154,18 @@ export function registerVoiceIpc(): void {
       write: writeTerminal,
     });
     if (outcome.inserted) {
-      return { inserted: true, provider: transcript.provider, chars: outcome.chars };
+      return {
+        inserted: true,
+        provider: transcript.provider,
+        producer: transcript.producer,
+        chars: outcome.chars,
+      };
     }
-    return { inserted: false, reason: outcome.reason } satisfies VoiceTranscribeResult;
+    return {
+      inserted: false,
+      reason: outcome.reason,
+      producer: transcript.producer,
+    } satisfies VoiceTranscribeResult;
   });
 
   ipcMain.handle('voiceSpeak', async (event, id: unknown) => {
@@ -240,6 +259,14 @@ export function registerVoiceIpc(): void {
               ownerId,
               sid,
               text,
+            } satisfies VoicePartialMessage);
+          },
+          onUnavailable: () => {
+            safeSend(sender, EVENT_CHANNELS.voicePartial, {
+              ownerId,
+              sid,
+              text: '',
+              unavailable: true,
             } satisfies VoicePartialMessage);
           },
           insert: (insertSid, text) =>

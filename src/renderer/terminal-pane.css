@@ -212,6 +212,16 @@
   flex-shrink: 0;
 }
 
+.voice-action-status {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .voice-caption-text {
   flex: 1;
   min-width: 0;

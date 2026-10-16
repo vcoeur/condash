@@ -2,7 +2,7 @@
 
 Push-to-talk dictation and on-demand read-aloud for terminal tabs.
 
-**Enable it first** — voice is off by default. Open **Settings → Voice** (under *Personal · this machine*), tick **Enable voice dictation**, and save; the Dictate/Read controls appear in terminal tab strips immediately, no restart needed. Until then no tab shows voice controls and nothing records, transmits, or speaks.
+**Enable it first** — voice is off by default. Open **Settings → Voice** (under *Personal · this machine*), tick **Enable voice controls (Dictate and Read)**, and save; the Dictate/Read controls appear in terminal tab strips immediately, no restart needed. Until then no tab shows voice controls and nothing records, transmits, or speaks.
 
 With voice enabled, two controls live in each tab strip's header, beside Find and Save, and appear once the tab has a live session:
 
@@ -19,6 +19,37 @@ the pane is resized; earlier words remain available by scrolling back. A short n
 utterance starts at one row, and the caption disappears when dictation ends. Wrapping
 is display-only: it does not insert line breaks into the terminal or change when the
 final transcript is committed.
+
+The session-only report beside the caption separates **Capture**, **Captions**, **Final
+transcript**, and insertion. Live captions can end with **Mistral batch** or **OpenRouter
+batch** final text; **Mistral realtime text** means the stream's text was selected instead.
+Successful startup alone is not proof of delivered captions: until words arrive, the report
+says pending, then not observed if recording ends without them. A later stream failure
+reports live, then unavailable. A refused realtime start explicitly says recording continues
+for transcription after Stop. A lost Stop reply reports final origin unknown and insertion
+unconfirmed: text may already have been inserted, so no duplicate upload is attempted.
+This report belongs to the action's original tab, resets for a new action and is not saved
+as history or shown as current Settings readiness.
+
+## Reading Voice settings
+
+The shared switch gates three visual groups: **Dictation**, **Credentials**, and **Read
+aloud**. All ten existing preferences keep their keys, values and defaults. The OpenRouter
+transcription field is explicitly **batch only**; the fixed realtime and Mistral batch
+models are route facts, not extra settings.
+
+**Draft route if saved** follows the controls immediately, before Save. It describes route
+order, not the saved setup, a validated provider, or the last action. The Credentials group
+separately shows **last checked saved key sources**: a key found in the shared API-key file,
+a key entered in Settings, or no API key found. The shared file wins over the manual field;
+its default is `~/.config/agents/.env`, which `CONDASH_AGENTS_ENV` may override. An unsaved
+manual key does not change that snapshot. Sources refresh when
+Settings opens, on entering Voice, after a successful global save, or with **Refresh saved
+key sources**. While refreshing or after a failed refresh, the old snapshot is not presented
+as current. A failed status read rejects with a fixed safe message at the main-process
+boundary, not filesystem details or a fabricated missing-key result. **Not tested with provider** means this read makes no provider request and
+returns no environment values, prefixes, hashes or paths. Manual Settings keys retain their
+existing password-field prefill.
 
 ## How it works
 
@@ -64,11 +95,15 @@ The words an ecosystem uses — app handles, project slugs, domain terms — are
 
 The realtime gap is handled at commit time (the **final-text rule**): with a non-empty effective bias list, a streamed dictation's final text is re-checked through the Mistral batch path **with `context_bias`** (falling back to OpenRouter's glossary, then to the raw realtime text), using the audio the stream already carried. This adds provider work after stop and can incur a second transcription charge for the same audio; latency and pricing depend on the provider. An empty user-entered list does **not** disable this repass when automatic registry seeding makes the effective list non-empty. Only an empty effective list takes the single-transcription realtime path.
 
+That correction order applies to an **established live stream**. Batch-only dictation,
+including refused or still-pending stream startup, keeps OpenRouter first and Mistral
+batch fallback even with effective vocabulary; it has no realtime-text last resort.
+
 The effective list also includes the open conception's `repositories[]` app identity — handles, names, and aliases are seeded automatically and silently, so `#knoten` and `alicepeintures` come out spelled correctly without configuring anything.
 
 ## Providers and keys
 
-OpenRouter is the first provider; Mistral is the fallback when OpenRouter has no key or fails. Endpoints and models (verified 2026-10-11):
+Buffered batch dictation and read-aloud try OpenRouter first, then Mistral when OpenRouter has no key or fails. Live captions use direct Mistral realtime; vocabulary-enabled streamed Stop correction tries Mistral batch first, then OpenRouter, then realtime text. Endpoints and models (verified 2026-10-11):
 
 | | Transcription | Speech |
 |---|---|---|
@@ -78,7 +113,7 @@ OpenRouter is the first provider; Mistral is the fallback when OpenRouter has no
 Keys resolve in this order:
 
 1. `~/.config/agents/.env` (read-only) — `OPENROUTER_API_KEY` and `MISTRAL_API_KEY`. This is the default source; nothing to configure.
-2. **Settings → Voice** (under *Personal · this machine*) — the manual fallback for machines without the env file. Keys are stored in the per-machine `settings.json` only, never in a tree's settings file, and are never logged; they are used only in the main process for provider calls (a settings-entered key is displayed back by this Settings prefill).
+2. **Settings → Voice → Credentials** (under *Personal · this machine*) — the manual fallback when that provider's env entry is absent. An env entry wins even when a manual key is filled. Keys are stored in the per-machine `settings.json` only, never in a tree's settings file, and are never logged; they are used only in the main process for provider calls (a settings-entered key is displayed back by this Settings prefill).
 
 The Mistral TTS fallback additionally needs a **Mistral voice id** (`voice.mistralVoiceId`): Mistral's speech API has no anonymous preset voice. Without one the fallback is skipped with a clear message and read-aloud relies on OpenRouter alone. Transcription and OpenRouter speech work with just the env file.
 
@@ -100,11 +135,11 @@ Voice is **off by default**; the master switch is the first field in the section
 
 | Setting | Default | Meaning |
 |---|---|---|
-| Enable voice dictation | off | Master switch. With it off, tab strips show no voice controls and the handlers refuse work with a typed disabled notice. |
+| Enable voice controls (Dictate and Read) | off | Shared master switch. With it off, tab strips show no voice controls and the handlers refuse work with a typed disabled notice. |
 | Stream dictation live | on | Realtime partials in the caption strip while speaking. Off restores batch-only dictation (transcribed on stop); a stream failure always falls back to batch regardless. Hidden while voice is disabled. |
 | OpenRouter API key | — (env file) | Manual key when the env file is missing the entry. Hidden while voice is disabled. |
 | Mistral API key | — (env file) | Fallback provider key (and the realtime streaming provider). Hidden while voice is disabled. |
-| Transcription model | `mistralai/voxtral-small-24b-2507` | OpenRouter audio-input model. Hidden while voice is disabled. |
+| OpenRouter transcription model (batch only) | `mistralai/voxtral-small-24b-2507` | OpenRouter audio-input chat model; does not select realtime or Mistral batch models. Hidden while voice is disabled. |
 | Speech model | `mistralai/voxtral-mini-tts-2603` | TTS model on both providers. Hidden while voice is disabled. |
 | Speech voice | `en_paul_neutral` | Voxtral voice id (language prefix: `en_paul_*` / `gb_jane_*` / `fr_marie_*`). Hidden while voice is disabled. |
 | Mistral voice id | — | Enables the Mistral TTS fallback; unset skips it. Hidden while voice is disabled. |

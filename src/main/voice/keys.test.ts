@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OPENROUTER_ENV_KEY, parseEnvFile, readAgentEnvKey, resolveVoiceKeys } from './keys';
+import {
+  OPENROUTER_ENV_KEY,
+  parseEnvFile,
+  readAgentEnvKey,
+  resolveVoiceKeys,
+  voiceCredentialStatus,
+} from './keys';
 
 const SETTINGS_PREFS = {
   openrouterApiKey: 'settings-openrouter',
@@ -57,6 +63,21 @@ describe('readAgentEnvKey', () => {
 });
 
 describe('resolveVoiceKeys', () => {
+  it('describes quoted/blank env entries with the same precedence and no key material', () => {
+    const path = envFile('OPENROUTER_API_KEY=" env-secret "\nMISTRAL_API_KEY="  "\n');
+    expect(resolveVoiceKeys(SETTINGS_PREFS, path)).toEqual({
+      openrouter: 'env-secret',
+      mistral: 'settings-mistral',
+    });
+    expect(voiceCredentialStatus(SETTINGS_PREFS, path)).toEqual({
+      openrouter: { present: true, source: 'agents-env' },
+      mistral: { present: true, source: 'settings' },
+    });
+    expect(voiceCredentialStatus(undefined, dir)).toEqual({
+      openrouter: { present: false, source: 'none' },
+      mistral: { present: false, source: 'none' },
+    });
+  });
   it('prefers the env file over the settings fallback', () => {
     const path = envFile('OPENROUTER_API_KEY=env-or\nMISTRAL_API_KEY=env-mi');
     expect(resolveVoiceKeys(SETTINGS_PREFS, path)).toEqual({

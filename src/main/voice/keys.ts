@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { VoicePrefs } from '../../shared/types';
+import type { VoiceCredentialStatus, VoiceKeyStatus, VoicePrefs } from '../../shared/types';
 
 /** Env-var names looked up in the agents env file. */
 export const OPENROUTER_ENV_KEY = 'OPENROUTER_API_KEY';
@@ -85,5 +85,21 @@ export function resolveVoiceKeys(
   return {
     openrouter: readAgentEnvKey(OPENROUTER_ENV_KEY, path) ?? prefs?.openrouterApiKey ?? undefined,
     mistral: readAgentEnvKey(MISTRAL_ENV_KEY, path) ?? prefs?.mistralApiKey ?? undefined,
+  };
+}
+
+/** Describe the same resolution as provider calls, without exposing secrets. */
+export function voiceCredentialStatus(
+  prefs: VoicePrefs | undefined,
+  path: string = agentsEnvPath(),
+): VoiceCredentialStatus {
+  const describe = (envName: string, manual: string | undefined): VoiceKeyStatus => {
+    if (readAgentEnvKey(envName, path)) return { present: true, source: 'agents-env' };
+    if (manual) return { present: true, source: 'settings' };
+    return { present: false, source: 'none' };
+  };
+  return {
+    openrouter: describe(OPENROUTER_ENV_KEY, prefs?.openrouterApiKey),
+    mistral: describe(MISTRAL_ENV_KEY, prefs?.mistralApiKey),
   };
 }

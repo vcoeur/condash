@@ -167,12 +167,29 @@ Provider order is OpenRouter first, Mistral as fallback, keyed independently —
 
 Edit it in **Settings → Voice** (under **Personal · this machine**). It is a personal/per-machine setting written to `settings.json`; it is **not** a conception key.
 
+The shared **Enable voice controls (Dictate and Read)** switch sits above Dictation,
+Credentials and Read aloud. **Draft route if saved** previews draft controls immediately,
+not saved readiness or an actual session. Credentials separately show last-checked saved
+key presence and source (`agents-env`, `settings`, `none`), never validity. Env entries take
+precedence over manual settings. This metadata-only read makes no provider request and
+returns no key material or env path; existing manual-key prefill is unchanged. Refresh is
+explicit and on modal/section open or a successful global save; pending/error marks previous
+readings stale/not checked. Unsaved keys never enter the saved snapshot. No new config key
+or migration is involved.
+
+Actual action reports live by Dictate, session-only: capture and observed captions are
+separate from the final producer (Mistral batch, OpenRouter batch, Mistral realtime text,
+none or unknown). Normal live captions can have a batch final. Refused realtime continues
+recording with a notice that transcription follows Stop. A rejected Stop reply leaves
+insertion unconfirmed, since main may already have written; it never triggers a duplicate
+upload. The report is not persisted or inferred from draft controls/key presence.
+
 | Key                 | Type   | Default                          | Meaning                                                                                                                                                                        |
 | ------------------- | ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `enabled`           | boolean | `false`                          | Master switch. Off by default: no Dictate/Read controls in tab strips, and the voice handlers refuse work with a typed disabled result — no provider call, no microphone. Enable in **Settings → Voice**; the change applies to the running app as soon as the Settings save lands.                                                        |
 | `streaming`         | boolean | `true`                          | Realtime streaming dictation (Mistral realtime WebSocket) while recording, with live partials in the caption strip. `false` restores batch-only behaviour (the clip is transcribed on stop). A stream failure always falls back to batch regardless — this key only decides whether the socket opens.                                                     |
-| `openrouterApiKey`  | string | —                                | OpenRouter API key. **Global file only.** When unset, falls back to the `OPENROUTER_API_KEY` entry in `~/.config/agents/.env` (read-only).                                       |
-| `mistralApiKey`     | string | —                                | Mistral API key — the batch fallback provider and the realtime streaming provider. Falls back to the `MISTRAL_API_KEY` entry in `~/.config/agents/.env`.                                              |
+| `openrouterApiKey`  | string | —                                | OpenRouter manual key fallback. **Global file only.** The `OPENROUTER_API_KEY` entry in `~/.config/agents/.env` (read-only) takes precedence when present.                                       |
+| `mistralApiKey`     | string | —                                | Mistral manual key fallback for realtime and batch. The `MISTRAL_API_KEY` env-file entry takes precedence when present.                                              |
 | `sttModel`          | string | `mistralai/voxtral-small-24b-2507` | OpenRouter transcription model (audio-in chat completion). The Mistral transcription fallback always uses `voxtral-mini-latest`.                                                  |
 | `ttsModel`          | string | `mistralai/voxtral-mini-tts-2603` | Text-to-speech model on both providers.                                                                                                                                        |
 | `ttsVoice`          | string | `en_paul_neutral`                | OpenRouter TTS voice id. Voxtral encodes language + persona + emotion in the id — `en_paul_*`, `gb_jane_*`, `fr_marie_*`.                                                          |

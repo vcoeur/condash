@@ -135,10 +135,15 @@ describe('voice IPC default-off gating', () => {
 
   it('voiceTranscribe runs the normal path when enabled is true', async () => {
     await writeSettings({ voice: { enabled: true } });
-    transcribeClip.mockResolvedValue({ text: 'hello', provider: 'openrouter' });
+    transcribeClip.mockResolvedValue({
+      text: 'hello',
+      provider: 'openrouter',
+      producer: 'openrouter-batch',
+    });
     await expect(handlers.voiceTranscribe(trustedEvent, 's1', CLIP)).resolves.toEqual({
       inserted: true,
       provider: 'openrouter',
+      producer: 'openrouter-batch',
       chars: 5,
     });
     expect(transcribeClip).toHaveBeenCalledTimes(1);
@@ -169,6 +174,88 @@ describe('voice IPC default-off gating', () => {
     const result = (await handlers.voiceSpeak(trustedEvent, 's1')) as { ok: boolean };
     expect(result.ok).toBe(true);
     expect(speakText).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('saved voice credential metadata', () => {
+  it('sanitises path-bearing settings read failures at the handler boundary without fabricating missing keys', async () => {
+    const sensitivePath = '/synthetic/sensitive-status-sentinel/settings.json';
+    const readError = Object.assign(
+      new Error(`EACCES: permission denied, stat '${sensitivePath}' key-sensitive-sentinel`),
+      { code: 'EACCES', path: sensitivePath },
+    );
+    const stat = vi.spyOn(fs, 'stat').mockRejectedValue(readError);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network forbidden'));
+    try {
+      const result = handlers.voiceCredentialStatus(trustedEvent);
+      await expect(result).rejects.toEqual(
+        new Error('Could not read saved voice credential status.'),
+      );
+      await expect(result).rejects.not.toHaveProperty('cause');
+      await expect(result).rejects.not.toHaveProperty('path');
+      expect(await result.catch(String)).not.toMatch(
+        /sensitive-status-sentinel|key-sensitive-sentinel|EACCES/,
+      );
+      expect(stat).toHaveBeenCalledWith(settingsPathValue);
+      await expect(handlers.voiceCredentialStatus({ sender: null })).rejects.toThrow(
+        'not an app window',
+      );
+      expect(stat).toHaveBeenCalledTimes(1);
+      expect(transcribeClip).not.toHaveBeenCalled();
+      expect(speakText).not.toHaveBeenCalled();
+      expect(beginVoiceStream).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      stat.mockRestore();
+      fetch.mockRestore();
+    }
+  });
+
+  it('reads last-saved settings, never draft arguments, and returns only presence/source without network', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('Network forbidden'));
+    try {
+      await writeSettings({ voice: { openrouterApiKey: 'saved-secret' } });
+      await fs.writeFile(
+        process.env.CONDASH_AGENTS_ENV!,
+        'OPENROUTER_API_KEY=env-secret\nMISTRAL_API_KEY=env-mistral\n',
+      );
+      const snapshot = await handlers.voiceCredentialStatus(trustedEvent, {
+        mistralApiKey: 'unsaved-secret',
+      });
+      expect(snapshot).toEqual({
+        openrouter: { present: true, source: 'agents-env' },
+        mistral: { present: true, source: 'agents-env' },
+      });
+      await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, '');
+      expect(
+        await handlers.voiceCredentialStatus(trustedEvent, { mistralApiKey: 'unsaved-secret' }),
+      ).toEqual({
+        openrouter: { present: true, source: 'settings' },
+        mistral: { present: false, source: 'none' },
+      });
+      await writeSettings({ voice: { mistralApiKey: 'new-saved-secret' } });
+      const { invalidateSettingsMemo } = await import('../settings');
+      invalidateSettingsMemo();
+      expect(await handlers.voiceCredentialStatus(trustedEvent)).toEqual({
+        openrouter: { present: false, source: 'none' },
+        mistral: { present: true, source: 'settings' },
+      });
+      expect(JSON.stringify(snapshot)).not.toMatch(/secret|env-mistral|\.env|prefix|hash|value/);
+      expect(transcribeClip).not.toHaveBeenCalled();
+      expect(speakText).not.toHaveBeenCalled();
+      expect(beginVoiceStream).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects an untrusted sender before reading status', async () => {
+    await expect(handlers.voiceCredentialStatus({ sender: null })).rejects.toThrow(
+      'not an app window',
+    );
   });
 });
 

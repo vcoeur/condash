@@ -7,8 +7,7 @@
 // With streaming accepted by main, the recording rides the realtime socket:
 // chunks flow through the recorder's per-chunk tap and the accumulated
 // partial is pushed up to the column's live-caption strip via `onPartial`.
-// A stream refusal or failure changes nothing visible here — the buffered
-// clip batch chain commits on stop exactly as before.
+// Refusals report unavailable captions while the buffered clip keeps recording.
 //
 // The column gates mounting this component on `voice.enabled` (Settings →
 // Voice, default off): with the feature off the controls never render, and
@@ -22,7 +21,7 @@
 
 import { createEffect, onCleanup, onMount, Show } from 'solid-js';
 import { createVoiceRecorder } from '../voice-recorder';
-import { createVoiceSession } from '../voice-session';
+import { createVoiceSession, dictationReportText } from '../voice-session';
 import { registerVoicePtt } from '../voice-ptt-registry';
 
 export interface VoiceControlsProps {
@@ -36,6 +35,7 @@ export interface VoiceControlsProps {
   /** Live-caption feed: the accumulated streaming partial, or null when no
    *  stream is live. The column renders it under the tab row. */
   onPartial?: (text: string | null) => void;
+  onReport?: (report: { sid: string; text: string } | null) => void;
   /** True when this column is the app's active terminal column — the
    *  push-to-talk chord starts dictation here. */
   isActiveColumn?: boolean;
@@ -72,6 +72,11 @@ export function VoiceControls(props: VoiceControlsProps) {
   });
 
   createEffect(() => props.onPartial?.(session.partial()));
+  createEffect(() => {
+    const report = session.report();
+    props.onReport?.(report ? { sid: report.sid, text: dictationReportText(report) } : null);
+  });
+  onCleanup(() => props.onReport?.(null));
 
   /** A read is in flight while synthesis is pending or audio is playing: the
    *  button stays "Stop" through both so a click never looks dead. */

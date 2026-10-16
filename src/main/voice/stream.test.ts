@@ -129,10 +129,12 @@ async function makeHarness(overrides: Record<string, unknown> = {}): Promise<voi
   const batchNormal = vi.fn(async () => ({
     text: 'batch normal text',
     provider: 'openrouter' as const,
+    producer: 'openrouter-batch' as const,
   }));
   const batchBiasFirst = vi.fn(async () => ({
     text: 'bias first text',
     provider: 'mistral' as const,
+    producer: 'mistral-batch' as const,
   }));
   const deps = makeDeps({
     createSocket: () => {
@@ -149,6 +151,22 @@ async function makeHarness(overrides: Record<string, unknown> = {}): Promise<voi
 }
 
 describe('voice stream session', () => {
+  it('publishes a caption failure once without changing the commit chain', async () => {
+    const unavailable = vi.fn();
+    await makeHarness({ onUnavailable: unavailable });
+    const starting = harness.start();
+    const socket = harness.sockets[0];
+    socket.emitOpen();
+    await starting;
+    getActiveVoiceStream()!.handleAudio(Buffer.alloc(3200).toString('base64'));
+    socket.emitText({ type: 'transcription.text.delta', text: 'live words' });
+    socket.emitError(new Error('failure'));
+    socket.emitClose();
+    expect(unavailable).toHaveBeenCalledTimes(1);
+    expect((await takeActiveVoiceStream()!.stop()).producer).toBe('openrouter-batch');
+    expect(harness.batchNormal).toHaveBeenCalledTimes(1);
+    expect(harness.writes).toHaveLength(1);
+  });
   it('opens with the model query and the Authorization header, and configures the delay knob', async () => {
     await makeHarness();
     const starting = harness.start();
@@ -233,6 +251,7 @@ describe('voice stream session', () => {
     expect(result).toEqual({
       inserted: true,
       provider: 'mistral',
+      producer: 'mistral-realtime',
       chars: 'run condash status'.length,
     });
   });
@@ -246,7 +265,12 @@ describe('voice stream session', () => {
     socket.emitText({ type: 'transcription.text.delta', text: 'partial only' });
     const session = takeActiveVoiceStream()!;
     const result = await session.stop();
-    expect(result).toEqual({ inserted: true, provider: 'mistral', chars: 'partial only'.length });
+    expect(result).toEqual({
+      inserted: true,
+      provider: 'mistral',
+      producer: 'mistral-realtime',
+      chars: 'partial only'.length,
+    });
     expect(harness.writes).toHaveLength(1);
   });
 
@@ -299,7 +323,7 @@ describe('voice stream session', () => {
     const session = getActiveVoiceStream()!;
     session.handleAudio(Buffer.alloc(1600 * 2).toString('base64')); // 100 ms of PCM
     socket.emitText({ type: 'transcription.done', text: 'stream text' });
-    await takeActiveVoiceStream()!.stop();
+    expect((await takeActiveVoiceStream()!.stop()).producer).toBe('mistral-batch');
     expect(harness.batchBiasFirst).toHaveBeenCalledTimes(1);
     const clip = harness.batchBiasFirst.mock.calls[0][0];
     expect(clip.format).toBe('wav');

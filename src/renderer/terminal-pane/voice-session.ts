@@ -23,6 +23,7 @@ import type {
   VoicePartialMessage,
   VoiceSpeakResult,
   VoiceTranscribeResult,
+  VoiceTranscriptProducer,
 } from '@shared/types';
 import { micErrorMessage } from './voice-recorder';
 import type { VoiceRecorder } from './voice-recorder';
@@ -80,12 +81,69 @@ export interface VoiceSession {
   /** Accumulated realtime partial for the live-caption strip, or null when
    *  no stream is active. Never written to the PTY. */
   readonly partial: () => string | null;
+  readonly report: () => VoiceDictationReport | null;
   startDictation(): Promise<void>;
   stopDictation(): Promise<void>;
   toggleDictation(): Promise<void>;
   acquireDictation(): VoiceDictationLease | null;
   readAloud(): Promise<void>;
   handleAudio(ownerId: string, pcmBase64: string): void;
+}
+
+export interface VoiceDictationReport {
+  sid: string;
+  capture: 'starting' | 'recording' | 'stopped' | 'cancelled' | 'failed';
+  captions: 'pending' | 'live' | 'unavailable' | 'interrupted' | 'off' | 'not-observed';
+  producer: VoiceTranscriptProducer | 'pending' | 'none' | 'unknown';
+  insertion: 'pending' | 'inserted' | 'none' | 'unknown';
+  reason?: string;
+}
+
+export function dictationReportText(report: VoiceDictationReport): string {
+  const producers = {
+    'mistral-batch': 'Mistral transcribed the final recording.',
+    'openrouter-batch': 'OpenRouter transcribed the final recording.',
+    'mistral-realtime': 'Mistral realtime text was used for the final transcript.',
+    pending: 'The final transcript is pending.',
+    none: 'No final transcript was produced.',
+    unknown: 'The final transcript source is unknown.',
+  };
+  const captions = {
+    pending: 'Live captions have not appeared yet.',
+    live: 'Live captions were shown;',
+    unavailable: 'Live captions were unavailable;',
+    interrupted: 'Live captions were shown, then interrupted;',
+    off: 'Live captions were off;',
+    'not-observed': 'No live captions were observed;',
+  };
+  const outcome =
+    report.insertion === 'unknown'
+      ? 'Insertion unconfirmed.'
+      : report.capture === 'starting'
+        ? 'Starting the microphone.'
+        : report.capture === 'recording'
+          ? 'Recording — ' +
+            (report.captions === 'live'
+              ? 'live captions are visible.'
+              : report.captions === 'unavailable' || report.captions === 'interrupted'
+                ? 'recording continues; transcription follows Stop.'
+                : 'transcription follows Stop.')
+          : report.insertion === 'inserted'
+            ? 'Text inserted into the tab.'
+            : report.capture === 'cancelled'
+              ? 'Recording cancelled. Nothing inserted.'
+              : report.capture === 'failed'
+                ? 'Recording failed. Nothing inserted.'
+                : report.insertion === 'none'
+                  ? 'Recording stopped. Nothing inserted.'
+                  : 'Recording stopped. Preparing the final transcript.';
+  const detail =
+    report.capture === 'recording' || report.capture === 'starting'
+      ? report.captions === 'live'
+        ? ''
+        : ` ${captions[report.captions]}`
+      : ` ${captions[report.captions]} ${producers[report.producer]}`;
+  return `${outcome}${detail}${report.reason ? ` — ${report.reason}` : ''}`;
 }
 
 /** One shared playback element across every pane: starting a read stops the
@@ -106,6 +164,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   const [synthesizing, setSynthesizing] = createSignal(false);
   const [partial, setPartial] = createSignal<string | null>(null);
   const [capturing, setCapturing] = createSignal(false);
+  const [report, setReport] = createSignal<VoiceDictationReport | null>(null);
   const busy = (): boolean => transcribing() || speaking() || synthesizing();
 
   interface Attempt {
@@ -114,6 +173,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     phase: 'microphone' | 'capture' | 'stopped' | 'cancelled';
     stream: 'none' | 'pending' | 'ready' | 'batch';
     cancellation?: Promise<void>;
+    report: VoiceDictationReport;
   }
   let current: Attempt | null = null;
   let latest: Attempt | null = null;
@@ -124,6 +184,19 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   let readAttempt = 0;
   const owns = (attempt: Attempt): boolean => !disposed && current === attempt;
   const visible = (attempt: Attempt): boolean => !disposed && latest === attempt;
+  const reportAttempt = (attempt: Attempt, patch: Partial<VoiceDictationReport>): void => {
+    attempt.report = { ...attempt.report, ...patch };
+    if (visible(attempt)) setReport(attempt.report);
+  };
+  const unavailable = (attempt: Attempt): void => {
+    reportAttempt(attempt, {
+      captions:
+        attempt.report.captions === 'live' || attempt.report.captions === 'interrupted'
+          ? 'interrupted'
+          : 'unavailable',
+    });
+    deps.onNotice('Live captions unavailable — recording continues for transcription after Stop.');
+  };
   const cancelStream = (attempt: Attempt): void => {
     if (
       attempt.cancellation ||
@@ -159,6 +232,12 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     setPartial(null);
     setRecording(false);
     setCapturing(false);
+    reportAttempt(attempt, {
+      capture: 'cancelled',
+      producer: 'none',
+      insertion: 'none',
+      captions: attempt.report.captions === 'pending' ? 'not-observed' : attempt.report.captions,
+    });
   };
 
   // The controls render only while activeSid is set, so capture must not
@@ -197,8 +276,23 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // updates the signal, and the subscription dies with the controls.
   if (deps.stream) {
     const unsubscribe = deps.stream.onPartial((msg) => {
-      if (current?.stream === 'ready' && msg.sid === current.sid && msg.ownerId === current.ownerId)
-        setPartial(msg.text);
+      if (
+        current &&
+        (current.stream === 'ready' || current.stream === 'pending') &&
+        msg.sid === current.sid &&
+        msg.ownerId === current.ownerId
+      ) {
+        if (msg.unavailable) unavailable(current);
+        else if (current.stream === 'ready') {
+          setPartial(msg.text);
+          if (
+            msg.text &&
+            current.report.captions !== 'interrupted' &&
+            current.report.captions !== 'unavailable'
+          )
+            reportAttempt(current, { captions: 'live' });
+        }
+      }
     });
     onCleanup(unsubscribe);
   }
@@ -242,8 +336,16 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       sid,
       phase: 'microphone',
       stream: 'none',
+      report: {
+        sid,
+        capture: 'starting',
+        captions: deps.stream ? 'pending' : 'off',
+        producer: 'pending',
+        insertion: 'pending',
+      },
     };
     current = latest = attempt;
+    setReport(attempt.report);
     setCapturing(true);
     setTranscribing(false);
     try {
@@ -256,9 +358,8 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       if (!owns(attempt)) return;
       attempt.phase = 'capture';
       setRecording(true);
-      // Stream upgrade: ask main to open the realtime socket. Every refusal
-      // is silent — the buffered-clip batch chain stays the commit path and
-      // the recording continues unchanged (§9.1).
+      reportAttempt(attempt, { capture: 'recording' });
+      // A refusal changes reporting only; recording and the commit path stay intact.
       if (deps.stream) {
         attempt.stream = 'pending';
         try {
@@ -270,7 +371,8 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           attempt.stream = started.ok ? 'ready' : 'batch';
           if (started.ok) {
             setPartial('');
-          }
+          } else if (started.reason === 'disabled') reportAttempt(attempt, { captions: 'off' });
+          else unavailable(attempt);
         } catch {
           // A stream-start IPC rejection is not a microphone failure — the
           // mic is already open and the recording continues on the batch
@@ -279,13 +381,19 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           if (owns(attempt)) {
             cancelStream(attempt);
             attempt.stream = 'batch';
-            deps.onNotice('Streaming unavailable — using batch transcription.');
+            unavailable(attempt);
           }
         }
       }
     } catch (err) {
       if (owns(attempt)) {
         cancelRecording();
+        reportAttempt(attempt, {
+          capture: 'failed',
+          producer: 'none',
+          insertion: 'none',
+          reason: micErrorMessage(err),
+        });
         deps.onNotice(micErrorMessage(err));
       }
     }
@@ -305,6 +413,17 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     setCapturing(false);
     setPartial(null);
     setTranscribing(true);
+    reportAttempt(attempt, {
+      capture: 'stopped',
+      captions: attempt.report.captions === 'pending' ? 'not-observed' : attempt.report.captions,
+    });
+    const reportResult = (result: VoiceTranscribeResult): void => {
+      reportAttempt(attempt, {
+        producer: result.producer ?? (result.inserted ? 'unknown' : 'none'),
+        insertion: result.inserted ? 'inserted' : 'none',
+        reason: result.reason,
+      });
+    };
     try {
       // Mic released FIRST — the commit, streaming or batch, never keeps the
       // microphone open.
@@ -316,11 +435,17 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         // no-session response proves that the buffered fallback is safe.
         const result = await deps.stream.stop(attempt.ownerId);
         if (result.reason !== 'no-session') {
+          reportResult(result);
           if (visible(attempt)) noticeResult(result, false);
           return;
         }
       }
       if (!clip) {
+        reportAttempt(attempt, {
+          producer: 'none',
+          insertion: 'none',
+          reason: 'No speech captured.',
+        });
         if (visible(attempt)) deps.onNotice('No speech captured.');
         return;
       }
@@ -329,8 +454,14 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         return;
       }
       const result: VoiceTranscribeResult = await deps.transcribe(sid, clip);
+      reportResult(result);
       if (visible(attempt)) noticeResult(result, false);
     } catch (err) {
+      reportAttempt(attempt, {
+        producer: 'unknown',
+        insertion: 'unknown',
+        reason: (err as Error).message,
+      });
       if (visible(attempt)) deps.onNotice((err as Error).message);
     } finally {
       if (visible(attempt)) setTranscribing(false);
@@ -421,6 +552,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     synthesizing,
     busy,
     partial,
+    report,
     startDictation,
     stopDictation,
     toggleDictation,

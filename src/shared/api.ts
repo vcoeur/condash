@@ -51,6 +51,7 @@ import type {
   TreeExpansionPrefs,
   TreeRoot,
   VoiceAudioClip,
+  VoiceCredentialStatus,
   VoicePartialMessage,
   VoiceSpeakResult,
   VoiceStreamChunk,
@@ -393,6 +394,9 @@ export interface CondashApi {
    * pane can show a notice instead of writing nothing silently.
    */
   voiceTranscribe(id: string, clip: VoiceAudioClip): Promise<VoiceTranscribeResult>;
+  /** Resolve key presence/source from last-saved settings in main, without
+   *  validation, provider requests or returning key material. Takes no draft. */
+  voiceCredentialStatus(): Promise<VoiceCredentialStatus>;
   /**
    * Open the realtime dictation stream for session `id` (one WebSocket in
    * main, Mistral realtime, Authorization header set there — the key never
@@ -408,8 +412,8 @@ export interface CondashApi {
    * Finalise the active stream: stop sending audio, wait bounded for the
    * provider's final text, and commit once through the same insert path as
    * `voiceTranscribe` (with a bias-corrected batch repass first when
-   * `voice.contextBias` is configured). Returns the same result union so
-   * the pane's notice handling is unchanged.
+   * effective vocabulary is present). Reports the final text's producer
+   * independently of the captions displayed during capture.
    */
   voiceStreamStop(ownerId: string): Promise<VoiceTranscribeResult>;
   /** Abort the active stream: close the socket, commit nothing. */

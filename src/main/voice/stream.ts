@@ -28,7 +28,12 @@
 // accepts — with the realtime text as the last-resort fallback.
 
 import WebSocket from 'ws';
-import type { VoicePrefs, VoiceProvider, VoiceTranscribeResult } from '../../shared/types';
+import type {
+  VoicePrefs,
+  VoiceProvider,
+  VoiceTranscribeResult,
+  VoiceTranscriptProducer,
+} from '../../shared/types';
 import { encodeWav, RECORD_SAMPLE_RATE } from '../../shared/voice-capture';
 import type { InsertOutcome } from './insert';
 import type { ResolvedVoiceKeys } from './keys';
@@ -105,6 +110,7 @@ export interface VoiceStreamSessionDeps {
   createSocket: RealtimeSocketFactory;
   /** Push the accumulated partial text (already the whole text so far). */
   onPartial: (text: string) => void;
+  onUnavailable?: () => void;
   /** The unchanged PTY-insert path (sanitise + liveness + single write). */
   insert(sid: string, text: string): InsertOutcome;
   batchTranscribers: BatchTranscribers;
@@ -188,7 +194,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
       // A close before `input_audio.end` is a mid-stream failure; the stop
       // path decides what the commit does with it.
       if (!this.failed && this.finalText === null && this.state !== SocketState.Finalising) {
-        this.failed = 'Realtime connection closed early.';
+        this.fail('Realtime connection closed early.');
       }
       this.settleFinalise();
     });
@@ -298,6 +304,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
   private fail(message: string): void {
     if (this.failed) return;
     this.failed = message;
+    if (!this.finished) this.deps.onUnavailable?.();
     this.settleFinalise();
   }
 
@@ -366,6 +373,7 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
           return toTranscribeResult(
             this.deps.insert(this.deps.sid, transcript.text),
             transcript.provider,
+            transcript.producer,
           );
         } catch {
           // Both batch providers failed — the realtime text is the last
@@ -373,7 +381,11 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
         }
       }
     }
-    return toTranscribeResult(this.deps.insert(this.deps.sid, streamText), 'mistral');
+    return toTranscribeResult(
+      this.deps.insert(this.deps.sid, streamText),
+      'mistral',
+      'mistral-realtime',
+    );
   }
 
   private reassembledClip(): VoiceAudioClipLike | null {
@@ -407,11 +419,16 @@ class VoiceStreamSessionImpl implements VoiceStreamSession {
 function toTranscribeResult(
   outcome: InsertOutcome,
   provider: VoiceProvider,
+  producer: VoiceTranscriptProducer,
 ): VoiceTranscribeResult {
   if (outcome.inserted) {
-    return { inserted: true, provider, chars: outcome.chars };
+    return { inserted: true, provider, producer, chars: outcome.chars };
   }
-  return { inserted: false, reason: outcome.reason };
+  return {
+    inserted: false,
+    reason: outcome.reason,
+    producer: outcome.reason === 'empty-transcript' ? undefined : producer,
+  };
 }
 
 function redact(text: string, keys: ResolvedVoiceKeys): string {

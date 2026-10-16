@@ -28,7 +28,12 @@
 // bridge and the main process calls out. All error text passes through
 // `redactKeys` so no key material can leak into a message the renderer shows.
 
-import type { VoiceAudioClip, VoicePrefs, VoiceProvider } from '../../shared/types';
+import type {
+  VoiceAudioClip,
+  VoicePrefs,
+  VoiceProvider,
+  VoiceTranscriptProducer,
+} from '../../shared/types';
 import type { ResolvedVoiceKeys } from './keys';
 import { MAX_CONTEXT_BIAS } from './resolve-context-bias';
 
@@ -70,6 +75,7 @@ export interface AdapterDeps {
 export interface TranscribeSuccess {
   text: string;
   provider: VoiceProvider;
+  producer: VoiceTranscriptProducer;
 }
 
 /**
@@ -242,7 +248,7 @@ async function openrouterTranscribe(
   if (body.error) throw new Error(body.error.message || 'provider error');
   const text = body.choices?.[0]?.message?.content ?? '';
   if (!text.trim()) throw new Error('empty transcript from provider');
-  return { text, provider: 'openrouter' };
+  return { text, provider: 'openrouter', producer: 'openrouter-batch' };
 }
 
 async function openrouterSpeak(
@@ -300,7 +306,7 @@ async function mistralTranscribe(
   if (body.message && !body.text) throw new Error(body.message);
   const text = body.text ?? '';
   if (!text.trim()) throw new Error('empty transcript from provider');
-  return { text, provider: 'mistral' };
+  return { text, provider: 'mistral', producer: 'mistral-batch' };
 }
 
 async function mistralSpeak(
