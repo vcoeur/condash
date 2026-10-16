@@ -88,6 +88,26 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
         </div>
 
         <Show when={voice().enabled}>
+          <div class="settings-field-span">
+            <small class="settings-field-hint">
+              <Show
+                when={voice().streaming ?? true}
+                fallback={
+                  <>
+                    Routing with streaming off: your clip → OpenRouter (transcription model) →
+                    fallback Mistral batch. Read aloud → OpenRouter (speech model), Mistral fallback
+                    (needs the Mistral voice id below).
+                  </>
+                }
+              >
+                Routing with streaming on: your voice → Mistral realtime (live caption) → on
+                release, the vocabulary below routes a Mistral batch re-check → fallback OpenRouter
+                (transcription model) → fallback the stream's own text. Read aloud → OpenRouter
+                (speech model), Mistral fallback (needs the Mistral voice id below).
+              </Show>
+            </small>
+          </div>
+
           <label>
             <span>OpenRouter API key</span>
             <input
@@ -100,8 +120,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               }
             />
             <small class="settings-field-hint">
-              Stored in this machine's <code>settings.json</code> only. Leave blank to fall back to
-              the <code>OPENROUTER_API_KEY</code> entry in <code>~/.config/agents/.env</code>.
+              Feeds batch dictation, the streaming fallback, and read-aloud. Stored in this
+              machine's <code>settings.json</code> only. Leave blank to fall back to the{' '}
+              <code>OPENROUTER_API_KEY</code> entry in <code>~/.config/agents/.env</code>.
             </small>
           </label>
           <label>
@@ -116,7 +137,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               }
             />
             <small class="settings-field-hint">
-              Fallback provider when OpenRouter is unkeyed or fails. Leave blank to fall back to the{' '}
+              Powers the live stream while streaming is on (a key is required to stream) and the
+              first leg of the streamed-stop bias re-check; otherwise the batch fallback when
+              OpenRouter is unkeyed or fails. Leave blank to fall back to the{' '}
               <code>MISTRAL_API_KEY</code> entry in <code>~/.config/agents/.env</code>.
             </small>
           </label>
@@ -130,8 +153,11 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               onChange={(e) => void update({ sttModel: e.currentTarget.value.trim() || undefined })}
             />
             <small class="settings-field-hint">
-              OpenRouter audio-input model. Default <code>mistralai/voxtral-small-24b-2507</code>;
-              the Mistral fallback always uses <code>voxtral-mini-latest</code>.
+              The OpenRouter transcription model, used on batch calls only. While streaming is on,
+              batch is the fallback path — the live stream and the first re-check leg use Mistral's
+              fixed models. With streaming off this is the primary dictation model. Default{' '}
+              <code>mistralai/voxtral-small-24b-2507</code>; the Mistral batch fallback always uses{' '}
+              <code>voxtral-mini-latest</code>.
             </small>
           </label>
           <label>
@@ -143,8 +169,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               onChange={(e) => void update({ ttsModel: e.currentTarget.value.trim() || undefined })}
             />
             <small class="settings-field-hint">
-              Text-to-speech model on both providers. Default{' '}
-              <code>mistralai/voxtral-mini-tts-2603</code>.
+              The read-aloud model, sent to whichever TTS provider answers — OpenRouter first,
+              Mistral fallback (which additionally needs a Mistral voice id below). Default{' '}
+              <code>mistralai/voxtral-mini-tts-2603</code>; use a model id the provider lists.
             </small>
           </label>
           <label>
@@ -156,9 +183,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               onChange={(e) => void update({ ttsVoice: e.currentTarget.value.trim() || undefined })}
             />
             <small class="settings-field-hint">
-              Voxtral voice id — the prefix carries the language (<code>en_paul_*</code>,{' '}
-              <code>gb_jane_*</code>, <code>fr_marie_*</code>). Default <code>en_paul_neutral</code>
-              .
+              The voice id sent to the OpenRouter speech endpoint — model-specific (Voxtral personas
+              look like <code>en_paul_neutral</code>; other speech models take their own ids).
+              Default <code>en_paul_neutral</code>.
             </small>
           </label>
           <label>
@@ -193,11 +220,13 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               <span>Stream dictation live (partial text while speaking)</span>
             </label>
             <small class="settings-field-hint">
-              While recording, audio streams to Mistral's realtime endpoint and the forming
-              transcript shows as a temporary caption under the tab strip; the final text is
-              inserted once after stop. Off restores batch-only dictation. Startup failures keep the
-              buffered batch path; main handles mid-stream failures. A failed stop reply does not
-              launch another upload because main may already have inserted.
+              While recording, audio streams to Mistral's realtime transcription endpoint (
+              <code>voxtral-mini-transcribe-realtime-2602</code> — fixed, not a setting) and the
+              forming transcript shows as a temporary caption under the tab strip, about a second
+              behind your voice (provider-side delay, fixed). The final text is inserted once after
+              stop. Off restores batch-only dictation. Startup failures keep the buffered batch
+              path; main handles mid-stream failures. A failed stop reply does not launch another
+              upload because main may already have inserted.
             </small>
           </div>
 
@@ -210,12 +239,14 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               onChange={(e) => void updateBias(e.currentTarget.value)}
             />
             <small class="settings-field-hint">
-              One phrase per line — names, app handles, project slugs. Sent as bias hints on the
-              transcription requests; the open conception's app handles are added automatically. A
-              non-empty effective list re-checks a streamed dictation's final text with the batch
-              provider, adding provider-dependent stop latency and potentially a second
-              transcription charge for the same audio. An empty user list does not disable repass
-              when automatic app seeding makes the effective list non-empty.
+              One phrase per line — names, app handles, project slugs. The open conception's app
+              handles are added automatically. A non-empty effective list routes a streamed stop
+              through a re-check whose provider order is fixed: Mistral batch with these phrases as
+              native bias fields first, OpenRouter with the transcription model (prompt glossary)
+              second, the raw stream text last — adding provider-dependent stop latency and
+              potentially a second transcription charge for the same audio. An empty user list does
+              not disable the re-check when automatic app seeding makes the effective list
+              non-empty.
             </small>
           </label>
 
