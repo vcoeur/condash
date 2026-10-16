@@ -213,10 +213,13 @@
 }
 
 .voice-caption-text {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  flex: 1;
   min-width: 0;
+  line-height: 1.5;
+  max-height: 4.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .terminal-column.active::after {
