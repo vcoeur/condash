@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -85,6 +86,24 @@ describe('readResourcesTree', () => {
     const loop = a?.children?.find((c: ResourceNode) => c.name === 'loop');
     expect(loop?.kind).toBe('directory');
     expect(loop?.children).toEqual([]);
+  });
+
+  it('skips a FIFO instead of rejecting the whole tree', async () => {
+    mkdirSync(join(tmp, 'resources'));
+    mkdirSync(join(tmp, 'resources', 'sub'));
+    writeFileSync(join(tmp, 'resources', 'sub', 'note.md'), '# note');
+    execFileSync('mkfifo', [join(tmp, 'resources', 'sub', 'transcript')]);
+    const tree = (await readResourcesTree(tmp))!;
+    const sub = (tree.children ?? []).find((c) => c.name === 'sub');
+    expect(sub?.children?.map((c) => c.name)).toEqual(['note.md']);
+  });
+
+  it('drops a broken symlink instead of rejecting the whole tree', async () => {
+    mkdirSync(join(tmp, 'resources'));
+    writeFileSync(join(tmp, 'resources', 'note.md'), '# note');
+    symlinkSync(join(tmp, 'resources', 'gone'), join(tmp, 'resources', 'dangling'));
+    const tree = (await readResourcesTree(tmp))!;
+    expect((tree.children ?? []).map((c) => c.name)).toEqual(['note.md']);
   });
 });
 
