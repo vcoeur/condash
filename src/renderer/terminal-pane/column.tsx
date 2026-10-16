@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent, TermDeath } from '@shared/types';
 import { isAbnormalDeath } from '@shared/term-death-shape';
@@ -436,7 +436,22 @@ export function TerminalColumn(props: TerminalColumnProps) {
       <Show when={voicePartial() !== null}>
         <div class="voice-caption" data-test-voice-caption>
           <span class="voice-record-dot" aria-hidden="true" />
-          <span class="voice-caption-text">{voicePartial() ?? ''}</span>
+          <span
+            class="voice-caption-text"
+            ref={(element) => {
+              const followTail = () => (element.scrollTop = element.scrollHeight);
+              createEffect(() => {
+                voicePartial();
+                queueMicrotask(followTail);
+              });
+              // Pane resizing can rewrap a capped caption without a new partial.
+              const resizeObserver = new ResizeObserver(followTail);
+              resizeObserver.observe(element);
+              onCleanup(() => resizeObserver.disconnect());
+            }}
+          >
+            {voicePartial() ?? ''}
+          </span>
         </div>
       </Show>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />

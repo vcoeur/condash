@@ -13,6 +13,13 @@ You never need the mouse: hold the **push-to-talk chord** (`Ctrl+Shift+Space` by
 
 Both stay idle until clicked or chord-held. Nothing records unless Dictate is toggled on — and nothing is reachable at all while voice is disabled in Settings.
 
+The live caption wraps across up to three visible rows, including long unbroken words.
+Longer utterances scroll automatically to the newest words as partials arrive and when
+the pane is resized; earlier words remain available by scrolling back. A short new
+utterance starts at one row, and the caption disappears when dictation ends. Wrapping
+is display-only: it does not insert line breaks into the terminal or change when the
+final transcript is committed.
+
 ## How it works
 
 ```mermaid
