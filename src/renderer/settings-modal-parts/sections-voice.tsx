@@ -101,7 +101,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 }
               >
                 Routing with streaming on: your voice → Mistral realtime (live caption) → on
-                release, a Mistral batch re-check with the vocabulary below → fallback OpenRouter
+                release, the vocabulary below routes a Mistral batch re-check → fallback OpenRouter
                 (transcription model) → fallback the stream's own text. Read aloud → OpenRouter
                 (speech model), Mistral fallback (needs the Mistral voice id below).
               </Show>
@@ -171,7 +171,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             <small class="settings-field-hint">
               The read-aloud model, sent to whichever TTS provider answers — OpenRouter first,
               Mistral fallback (which additionally needs a Mistral voice id below). Default{' '}
-              <code>mistralai/voxtral-mini-tts-2603</code>; use an id the provider lists.
+              <code>mistralai/voxtral-mini-tts-2603</code>; use a model id the provider lists.
             </small>
           </label>
           <label>
