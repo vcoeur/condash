@@ -81,16 +81,32 @@ async function walk(
   nextVisited.add(canonical);
 
   const entries = await fs.readdir(absPath, { withFileTypes: true });
-  // Skip dot-files; everything else (any extension) is included.
-  const accepted = entries.filter((e) => !HIDDEN_PREFIX.test(e.name));
-
-  const children = await Promise.all(
-    accepted.map(async (entry) => {
-      const childAbs = join(absPath, entry.name);
-      const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
-      return walk(childAbs, childRel, entry.name, nextVisited);
-    }),
+  // Skip dot-files; everything else (any extension) is included. Dirents that
+  // are neither file, directory nor symlink (FIFO, socket, device) are dropped:
+  // readdir-ing one throws ENOTDIR, which rejected the whole walk and blanked
+  // the pane (resources/local/ accumulates FIFOs from test runs). Symlinks
+  // stay so link→file/dir keep resolving below.
+  const accepted = entries.filter(
+    (e) => !HIDDEN_PREFIX.test(e.name) && (e.isFile() || e.isDirectory() || e.isSymbolicLink()),
   );
+
+  const children = (
+    await Promise.all(
+      accepted.map(async (entry) => {
+        const childAbs = join(absPath, entry.name);
+        const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
+        try {
+          return await walk(childAbs, childRel, entry.name, nextVisited);
+        } catch (err) {
+          // One unreadable child (broken symlink, raced delete, EACCES dir)
+          // drops alone instead of rejecting the whole tree; the warn keeps a
+          // dropped subtree diagnosable.
+          console.warn('[resources] skipping unreadable entry:', childAbs, err);
+          return null;
+        }
+      }),
+    )
+  ).filter((child): child is ResourceNode => child !== null);
 
   children.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
