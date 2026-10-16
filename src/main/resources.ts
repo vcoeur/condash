@@ -97,9 +97,11 @@ async function walk(
         const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
         try {
           return await walk(childAbs, childRel, entry.name, nextVisited);
-        } catch {
+        } catch (err) {
           // One unreadable child (broken symlink, raced delete, EACCES dir)
-          // drops alone instead of rejecting the whole tree.
+          // drops alone instead of rejecting the whole tree; the warn keeps a
+          // dropped subtree diagnosable.
+          console.warn('[resources] skipping unreadable entry:', childAbs, err);
           return null;
         }
       }),
