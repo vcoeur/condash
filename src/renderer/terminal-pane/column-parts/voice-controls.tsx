@@ -4,9 +4,8 @@
 // button (on-demand TTS of the tab's recent output — never automatic). Both
 // act on the column's active tab.
 //
-// With streaming accepted by main, the recording rides the realtime socket:
-// chunks flow through the recorder's per-chunk tap and the accumulated
-// partial is pushed up to the column's live-caption strip via `onPartial`.
+// Main consumes PCM for periodic native OpenRouter WAV requests; accumulated
+// provisional text returns through onPartial without entering the terminal.
 // Refusals report unavailable captions while the buffered clip keeps recording.
 //
 // The column gates mounting this component on `voice.enabled` (Settings →
@@ -43,12 +42,8 @@ export interface VoiceControlsProps {
 
 export function VoiceControls(props: VoiceControlsProps) {
   const recorder = createVoiceRecorder({
-    // Realtime tap: while the recording is live — not only once a partial
-    // exists — so chunks captured during the stream-start round-trip (the
-    // utterance's leading edge) reach the stream and the bias repass too.
-    // A refused or dead stream no-ops in main; fire-and-forget either way:
-    // a dropped chunk only thins the partial view, the buffered clip keeps
-    // everything.
+    // Session ownership buffers the leading edge during start, then delivers
+    // PCM in order; a delivery failure cannot silently finalize a prefix.
     onChunk: (ownerId, pcmBase64) => session.handleAudio(ownerId, pcmBase64),
   });
   const session = createVoiceSession({
@@ -57,7 +52,7 @@ export function VoiceControls(props: VoiceControlsProps) {
     recorder,
     stream: {
       // The start labels the session with the rate the mic actually
-      // captured at, so main's reassembled repass WAV header is honest
+      // captured at, so preview and final WAV headers are honest
       // (same semantics as the recorder's own clip).
       start: (sid, ownerId) =>
         window.condash.voiceStreamStart({ sid, ownerId, sampleRate: recorder.capturedRate }),
@@ -66,7 +61,7 @@ export function VoiceControls(props: VoiceControlsProps) {
       cancel: (ownerId) => window.condash.voiceStreamCancel(ownerId),
       onPartial: (callback) => window.condash.onVoicePartial(callback),
     },
-    transcribe: (sid, clip) => window.condash.voiceTranscribe(sid, clip),
+    transcribe: (sid, clip, ownerId) => window.condash.voiceTranscribe(sid, clip, ownerId),
     speak: (sid) => window.condash.voiceSpeak(sid),
     createAudio: (src) => new Audio(src),
   });

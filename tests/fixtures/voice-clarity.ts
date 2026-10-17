@@ -1,7 +1,6 @@
 import { ipcMain } from 'electron';
 import { registerVoiceIpc } from '../../src/main/ipc/voice';
 import { fixture } from './voice-clarity-edges';
-
 export { fixture };
 
 export function install() {
@@ -17,19 +16,30 @@ export function install() {
     ipcMain.removeHandler(channel);
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    const model =
-      init?.body instanceof FormData
-        ? String(init.body.get('model'))
-        : JSON.parse(String(init?.body)).model;
-    fixture.requests.push({ url, model });
+    if (url !== 'https://openrouter.ai/api/v1/audio/transcriptions')
+      throw new Error('Unexpected provider endpoint (network forbidden)');
+    const body = JSON.parse(String(init?.body));
+    const wav = Buffer.from(body.input_audio.data, 'base64');
+    const request = {
+      url,
+      model: body.model,
+      rate: wav.readUInt32LE(24),
+      samples: wav.readUInt32LE(40) / 2,
+      hints: body.provider?.options?.mistral?.context_bias ?? [],
+      aborted: false,
+    };
+    fixture.requests.push(request);
+    init?.signal?.addEventListener('abort', () => {
+      request.aborted = true;
+    });
     if (fixture.mode === 'failed') throw new Error('Synthetic provider failure');
-    if (url === 'https://api.mistral.ai/v1/audio/transcriptions')
-      return new Response(JSON.stringify({ text: 'Synthetic corrected final' }));
-    if (url === 'https://openrouter.ai/api/v1/chat/completions')
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'Synthetic batch final' } }] }),
-      );
-    throw new Error('Unexpected provider endpoint');
+    if (fixture.mode === 'hold')
+      await new Promise<void>((resolve) => fixture.releases.push(resolve));
+    return new Response(
+      JSON.stringify({
+        text: fixture.finalizing ? 'Synthetic corrected final' : 'Synthetic live caption',
+      }),
+    );
   };
   registerVoiceIpc();
   const handlers = (
@@ -38,9 +48,16 @@ export function install() {
   const stop = handlers.get('voiceStreamStop')!;
   ipcMain.removeHandler('voiceStreamStop');
   ipcMain.handle('voiceStreamStop', async (...args) => {
+    fixture.finalizing = true;
     const result = await stop(...args);
     if (fixture.mode === 'unknown') throw new Error('Synthetic lost Stop reply');
     return result;
+  });
+  const start = handlers.get('voiceStreamStart')!;
+  ipcMain.removeHandler('voiceStreamStart');
+  ipcMain.handle('voiceStreamStart', async (...args) => {
+    fixture.finalizing = false;
+    return start(...args);
   });
   const status = handlers.get('voiceCredentialStatus')!;
   ipcMain.removeHandler('voiceCredentialStatus');

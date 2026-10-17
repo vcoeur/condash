@@ -100,6 +100,8 @@ make deadcode      # knip — dead files / deps / duplicate exports
 
   Voice trigger regressions exercise the actual keyboard handler, registry, session and recorder with fake media/socket edges, both in unit tests and a built Electron campaign. A matched keydown captures an attempt-bound release/cancel capability; unpaired keyup never scans for a recording. Keep literal Space-containing focus typing, paired chord-over-click behavior, stale held-owner/restart isolation, shortcut snapshots and scoped focus/disposal cancellation covered without provider calls.
 
+  Voice preview completion assertions wait for the actual queued request or expected caption/error callback. A caption is published before the promise's `.finally` pumps queued audio, so a fixed microtask flush is not a completion barrier.
+
 For a feature that touches the dashboard's behaviour, prefer Playwright. The e2e suite seeds a temporary conception tree, exercises the feature, and asserts on real DOM + real file writes.
 
 Driving the real Electron app means the suite opens an on-screen window unless it runs against a virtual display. On Linux, `make test` wraps the suite in `xvfb-run` when it's installed, so the window never appears or steals focus — the same thing CI does. `make test-headless` forces that wrap (and errors if `xvfb-run` is missing); `make test-visible` runs with the window visible when you want to watch a run. On macOS/Windows (no `xvfb`), `make test` runs visibly.

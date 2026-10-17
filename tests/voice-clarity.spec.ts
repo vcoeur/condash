@@ -48,10 +48,10 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
     const vocabulary = section.locator('label', { hasText: 'Context bias — vocabulary' });
     await expect(vocabulary.locator('textarea')).toHaveValue('ExampleProject');
     await expect(vocabulary).toContainText(
-      'For an established live stream, effective vocabulary selects a Stop re-check: Mistral native batch bias → OpenRouter glossary → realtime text.',
+      'Sent through OpenRouter provider.options.mistral.context_bias on captions and final.',
     );
     await expect(vocabulary).toContainText(
-      'Refused or pending stream startup instead uses OpenRouter → Mistral batch, with no realtime last resort.',
+      'Other upstream providers may ignore these Mistral-specific hints.',
     );
     for (const group of ['Dictation', 'Credentials', 'Read aloud'])
       await expect(section.getByRole('group', { name: group, exact: true })).toHaveCount(1);
@@ -68,7 +68,7 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
     const original = (await keys.locator('p').allTextContents()).slice(1);
     await section.getByLabel('OpenRouter API key', { exact: true }).fill('synthetic-draft-key');
     await section
-      .getByRole('textbox', { name: /^OpenRouter transcription model \(batch only\)/ })
+      .getByRole('textbox', { name: /^OpenRouter native transcription model/ })
       .fill('draft/audio-chat');
     await expect(section.locator('[data-test-dictation-route]')).toContainText('draft/audio-chat');
     await expect
@@ -81,12 +81,10 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
         ),
       )
       .toBe('openai/gpt-audio-mini');
-    await section
-      .getByLabel('Stream dictation live (partial text while speaking)', { exact: true })
-      .uncheck();
+    await section.getByLabel('Periodic captions while recording', { exact: true }).uncheck();
     await expect(section.locator('[data-test-dictation-route]')).toContainText('No live captions');
     await expect(vocabulary).toContainText(
-      'Batch-only dictation uses OpenRouter glossary → Mistral native batch bias, with no realtime last resort.',
+      'The full final audio pass can change segment boundaries and words; accuracy is not guaranteed.',
     );
     await expect(vocabulary).not.toContainText('selects a Stop re-check');
     await expect(vocabulary.locator('textarea')).toHaveValue('ExampleProject');
@@ -110,18 +108,16 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
       'synthetic-draft-key',
     );
     await expect(
-      section.getByRole('textbox', { name: /^OpenRouter transcription model \(batch only\)/ }),
+      section.getByRole('textbox', { name: /^OpenRouter native transcription model/ }),
     ).toHaveValue('draft/audio-chat');
     await page.setViewportSize({ width: 1200, height: 1800 });
     await section.scrollIntoViewIfNeeded();
     await section.screenshot({ path: evidencePath(testInfo, 'voice-settings-grouped.png') });
-    await section
-      .getByLabel('Stream dictation live (partial text while speaking)', { exact: true })
-      .check();
+    await section.getByLabel('Periodic captions while recording', { exact: true }).check();
     await expect(section.locator('[data-test-dictation-route]')).toContainText(
-      'Mistral realtime while speaking',
+      'Periodic captions while recording → OpenRouter (draft/audio-chat)',
     );
-    await expect(vocabulary).toContainText('For an established live stream');
+    await expect(vocabulary).toContainText('provider.options.mistral.context_bias');
     await expect(vocabulary).not.toContainText('Batch-only dictation uses');
     await section.screenshot({ path: evidencePath(testInfo, 'voice-settings-streaming.png') });
     await section
@@ -172,7 +168,7 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
   }
 });
 
-test('real voice handlers report live captions plus batch final, refused stream, and unknown insertion', async ({}, testInfo) => {
+test('native OpenRouter captions precede Stop; final, failure, cancellation and model ownership stay explicit', async ({}, testInfo) => {
   test.setTimeout(90_000);
   const directory = await mkdtemp(join(tmpdir(), 'condash-clarity-action-'));
   const envFile = join(directory, 'agents.env');
@@ -192,7 +188,7 @@ test('real voice handlers report live captions plus batch final, refused stream,
       {
         name: 'voice-edges',
         setup(build) {
-          build.onResolve({ filter: /^(ws|\.\.\/terminals)$/ }, () => ({
+          build.onResolve({ filter: /^\.\.\/terminals$/ }, () => ({
             path: resolve('tests/fixtures/voice-clarity-edges.ts'),
           }));
         },
@@ -202,7 +198,11 @@ test('real voice handlers report live captions plus batch final, refused stream,
   const booted = await bootApp({
     globalConfig: {
       layout: { projects: true, terminal: true },
-      voice: { enabled: true, contextBias: ['ExampleProject'] },
+      voice: {
+        enabled: true,
+        sttModel: 'mistralai/voxtral-mini-transcribe',
+        contextBias: ['ExampleProject'],
+      },
     },
     env: {
       CONDASH_AGENTS_ENV: envFile,
@@ -222,7 +222,7 @@ test('real voice handlers report live captions plus batch final, refused stream,
       (_electron, { path, value }) => {
         const harness = process.getBuiltinModule('module').createRequire(path)(path);
         harness.fixture.mode = value;
-        harness.fixture.chunks = 0;
+        harness.fixture.finalizing = false;
       },
       { path: bundle, value },
     );
@@ -236,6 +236,16 @@ test('real voice handlers report live captions plus batch final, refused stream,
     expect(
       devices.every((label) => /^Fake (Default Audio Input|Audio Input \d+)$/.test(label)),
     ).toBe(true);
+    // Browser-only capture override: exercise a real non-16-kHz synthetic graph,
+    // without editing application config or making native devices available.
+    await page.evaluate(() => {
+      const NativeAudioContext = window.AudioContext;
+      window.AudioContext = class extends NativeAudioContext {
+        constructor() {
+          super({ sampleRate: 48000 });
+        }
+      };
+    });
     const session = await page.evaluate(() =>
       window.condash.termSpawn({ side: 'my', command: 'sleep 600' }),
     );
@@ -251,22 +261,43 @@ test('real voice handlers report live captions plus batch final, refused stream,
     const report = page.locator('[data-test-voice-status]');
     await dictate.click();
     await expect(page.locator('.voice-caption-text')).toHaveText('Synthetic live caption');
-    await expect(report).toContainText('Recording — live captions are visible.');
+    await expect(report).toContainText(
+      'Recording — periodic OpenRouter captions are provisional; final text follows Stop.',
+    );
     await captureVoiceDetail(page, testInfo, 'voice-live-recording-detail.png');
+    expect((await state()).writes).toHaveLength(0);
+    await page.evaluate(async () => {
+      const saved = await window.condash.getGlobalSettingsRaw();
+      const next = JSON.parse(saved);
+      next.voice.sttModel = 'old/saved-chat-id';
+      next.voice.contextBias = ['ChangedAfterStart'];
+      await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
+    });
     await dictate.click();
     await expect(report).toContainText(
-      'Text inserted into the tab. Live captions were shown; Mistral transcribed the final recording.',
+      'Text inserted into the tab. Periodic captions were shown; OpenRouter native STT transcribed the full final recording.',
     );
     expect((await state()).writes).toEqual([
       { sid: session.id, text: 'Synthetic corrected final' },
     ]);
-    expect((await state()).requests).toEqual([
-      { url: 'https://api.mistral.ai/v1/audio/transcriptions', model: 'voxtral-mini-latest' },
-    ]);
+    const firstRequests = (await state()).requests;
+    expect(firstRequests.length).toBeGreaterThanOrEqual(2);
+    for (const request of firstRequests) {
+      expect(request.url).toBe('https://openrouter.ai/api/v1/audio/transcriptions');
+      expect(request.model).toBe('mistralai/voxtral-mini-transcribe');
+      expect(request.hints).toContain('ExampleProject');
+      expect(request.rate).toBe(48000);
+    }
     await captureVoiceDetail(page, testInfo, 'voice-final-result-detail.png');
     await captureVoiceDetail(page, testInfo, 'voice-live-batch-final.png');
+    await page.evaluate(async () => {
+      const saved = await window.condash.getGlobalSettingsRaw();
+      const next = JSON.parse(saved);
+      next.voice.sttModel = 'mistralai/voxtral-mini-transcribe';
+      await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
+    });
 
-    await writeFile(envFile, 'OPENROUTER_API_KEY=synthetic-openrouter\n');
+    await writeFile(envFile, 'MISTRAL_API_KEY=synthetic-read-aloud-only\n');
     await mode('live');
     await dictate.click();
     await expect(report).toContainText(
@@ -279,12 +310,11 @@ test('real voice handlers report live captions plus batch final, refused stream,
     await page
       .locator('.terminal-column')
       .screenshot({ path: evidencePath(testInfo, 'voice-unavailable-recording.png') });
-    await expect.poll(async () => (await state()).chunks).toBe(0);
+    const beforeMissingKey = (await state()).requests.length;
     await dictate.click();
-    await expect(report).toContainText(
-      'Text inserted into the tab. Live captions were unavailable; OpenRouter transcribed the final recording.',
-    );
-    expect((await state()).writes).toHaveLength(2);
+    await expect(report).toContainText('OpenRouter API key required for dictation');
+    expect((await state()).writes).toHaveLength(1);
+    expect((await state()).requests).toHaveLength(beforeMissingKey);
 
     await writeFile(
       envFile,
@@ -296,8 +326,7 @@ test('real voice handlers report live captions plus batch final, refused stream,
     await dictate.click();
     await expect(report).toContainText('Insertion unconfirmed.');
     await expect(report).toContainText('The final transcript source is unknown.');
-    expect((await state()).writes).toHaveLength(3); // Main inserted before the reply was lost.
-    expect((await state()).requests).toHaveLength(3); // No duplicate upload.
+    expect((await state()).writes).toHaveLength(2); // Main inserted before the reply was lost.
     await page
       .locator('.terminal-column')
       .screenshot({ path: evidencePath(testInfo, 'voice-unknown-insertion.png') });
@@ -305,22 +334,72 @@ test('real voice handlers report live captions plus batch final, refused stream,
     await writeFile(envFile, 'OPENROUTER_API_KEY=synthetic-openrouter\n');
     await mode('failed');
     await dictate.click();
-    await expect(report).toContainText(
-      'Recording — recording continues; transcription follows Stop.',
-    );
-    await page.waitForTimeout(500);
-    await expect.poll(async () => (await state()).sockets).toBe(2);
+    await expect(report).toContainText('Live captions were unavailable;');
     await page.waitForFunction(
       () =>
         document.querySelector('[data-label="dictate"]')?.getAttribute('aria-pressed') === 'true',
     );
     await dictate.click();
-    await expect(report).toContainText('Insertion unconfirmed.');
+    await expect(report).toContainText('Nothing inserted.');
     await expect(report).toContainText('Synthetic provider failure');
-    expect((await state()).writes).toHaveLength(3);
+    expect((await state()).writes).toHaveLength(2);
     await page
       .locator('.terminal-column')
       .screenshot({ path: evidencePath(testInfo, 'voice-failed-final.png') });
+
+    await mode('hold');
+    const beforeCancel = (await state()).requests.length;
+    await page.keyboard.down('Control');
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state()).requests.length).toBe(beforeCancel + 1);
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await expect(page.locator('.voice-caption-text')).toHaveCount(0);
+    await expect.poll(async () => (await state()).requests.at(-1)?.aborted).toBe(true);
+    await app.evaluate((_electron, path) => {
+      const harness = process.getBuiltinModule('module').createRequire(path)(path);
+      for (const release of harness.fixture.releases.splice(0)) release();
+    }, bundle);
+    await page.keyboard.up('Space');
+    await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
+    await expect(report).toContainText('Recording cancelled. Nothing inserted.');
+    expect((await state()).writes).toHaveLength(2);
+    expect((await state()).requests).toHaveLength(beforeCancel + 1);
+    await expect(page.locator('.voice-caption-text')).toHaveCount(0);
+
+    await mode('live');
+    await page.evaluate(async () => {
+      const saved = await window.condash.getGlobalSettingsRaw();
+      const next = JSON.parse(saved);
+      next.voice.sttModel = 'old/saved-chat-id';
+      await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
+    });
+    const selected = await page.evaluate(async (sid) => {
+      await window.condash.voiceStreamStart({
+        ownerId: 'exact-existing-model',
+        sid,
+        sampleRate: 48000,
+      });
+      await window.condash.voiceStreamAudio({ ownerId: 'exact-existing-model', pcmBase64: 'AAA=' });
+      return window.condash.voiceStreamStop('exact-existing-model');
+    }, session.id);
+    expect(selected.inserted).toBe(true);
+    expect((await state()).requests.at(-1)?.model).toBe('old/saved-chat-id');
+    await page.evaluate(async () => {
+      const saved = await window.condash.getGlobalSettingsRaw();
+      const next = JSON.parse(saved);
+      next.voice.enabled = false;
+      await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
+    });
+    const beforeDisabled = (await state()).requests.length;
+    expect(
+      await page.evaluate(
+        (sid) => window.condash.voiceStreamStart({ ownerId: 'disabled', sid, sampleRate: 48000 }),
+        session.id,
+      ),
+    ).toEqual({ ok: false, reason: 'disabled' });
+    expect((await state()).requests).toHaveLength(beforeDisabled);
   } finally {
     await booted.cleanup();
   }

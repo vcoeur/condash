@@ -26,23 +26,25 @@ describe('plain-language dictation report', () => {
     sid: 'test',
     capture: 'stopped',
     captions: 'live',
-    producer: 'mistral-batch',
+    producer: 'openrouter-native',
     insertion: 'inserted',
   };
   it.each([
     [
       {},
-      'Text inserted into the tab. Live captions were shown; Mistral transcribed the final recording.',
+      'Text inserted into the tab. Periodic captions were shown; OpenRouter native STT transcribed the full final recording.',
     ],
-    [{ producer: 'openrouter-batch' }, 'OpenRouter transcribed the final recording.'],
-    [{ producer: 'mistral-realtime' }, 'Mistral realtime text was used for the final transcript.'],
+    [
+      { producer: 'openrouter-native' },
+      'OpenRouter native STT transcribed the full final recording.',
+    ],
     [
       { capture: 'starting', captions: 'pending', producer: 'pending', insertion: 'pending' },
       'Starting the microphone. Live captions have not appeared yet.',
     ],
     [
       { capture: 'recording', producer: 'pending', insertion: 'pending' },
-      'Recording — live captions are visible.',
+      'Recording — periodic OpenRouter captions are provisional; final text follows Stop.',
     ],
     [
       { capture: 'recording', captions: 'unavailable', producer: 'pending', insertion: 'pending' },
@@ -75,7 +77,7 @@ describe('plain-language dictation report', () => {
     [{ insertion: 'none', producer: 'none' }, 'Recording stopped. Nothing inserted.'],
     [
       { insertion: 'unknown', producer: 'unknown', reason: 'Safe error detail' },
-      'Insertion unconfirmed. Live captions were shown; The final transcript source is unknown. — Safe error detail',
+      'Insertion unconfirmed. Periodic captions were shown; The final transcript source is unknown. — Safe error detail',
     ],
   ] as [Partial<VoiceDictationReport>, string][])(
     'preserves observed facts for %j',
@@ -596,7 +598,12 @@ async function createStreamHarness(
 describe('voice session streaming', () => {
   it('reports live captions independently from a batch final producer', async () => {
     const h = await createStreamHarness({
-      stopResult: { inserted: true, provider: 'mistral', producer: 'mistral-batch', chars: 8 },
+      stopResult: {
+        inserted: true,
+        provider: 'openrouter',
+        producer: 'openrouter-native',
+        chars: 8,
+      },
     });
     await h.session.startDictation();
     expect(h.session.report()).toMatchObject({
@@ -609,7 +616,7 @@ describe('voice session streaming', () => {
     expect(h.session.report()).toMatchObject({
       capture: 'stopped',
       captions: 'live',
-      producer: 'mistral-batch',
+      producer: 'openrouter-native',
       insertion: 'inserted',
     });
     expect(h.transcribe).not.toHaveBeenCalled();
@@ -661,8 +668,9 @@ describe('voice session streaming', () => {
     await h.session.startDictation();
     const stopping = h.session.stopDictation();
     await Promise.resolve();
+    await Promise.resolve();
     await h.session.startDictation();
-    resolve({ inserted: true, producer: 'openrouter-batch', chars: 4 });
+    resolve({ inserted: true, producer: 'openrouter-native', chars: 4 });
     await stopping;
     expect(h.session.report()).toMatchObject({
       capture: 'recording',
@@ -702,7 +710,9 @@ describe('voice session streaming', () => {
   });
 
   it('keeps recording and reports unavailable captions when main refuses the stream start', async () => {
-    const h = await createStreamHarness({ startResult: { ok: false, reason: 'no-mistral-key' } });
+    const h = await createStreamHarness({
+      startResult: { ok: false, reason: 'no-openrouter-key' },
+    });
     await h.session.toggleDictation();
     expect(h.session.recording()).toBe(true);
     expect(h.session.partial()).toBeNull();
@@ -716,18 +726,13 @@ describe('voice session streaming', () => {
     h.dispose();
   });
 
-  it('falls back to the buffered-clip batch chain when the stream stop reports the session gone', async () => {
+  it('does not retarget or re-upload an accepted session after it is gone', async () => {
     const h = await createStreamHarness({ stopResult: { inserted: false, reason: 'no-session' } });
     await h.session.toggleDictation();
     h.stream.emitPartial({ sid: 'a', text: 'partial text' });
     await h.session.toggleDictation();
-    expect(h.transcribe).toHaveBeenCalledTimes(1);
-    expect(h.transcribe).toHaveBeenCalledWith('a', {
-      data: 'a2xpcA==',
-      sampleRate: 16000,
-      format: 'wav',
-    });
-    expect(h.notices).toEqual(['Dictated 5 characters into the tab.']);
+    expect(h.transcribe).not.toHaveBeenCalled();
+    expect(h.notices).toEqual(['That tab is gone — nothing was typed.']);
     expect(h.session.partial()).toBeNull();
     h.dispose();
   });

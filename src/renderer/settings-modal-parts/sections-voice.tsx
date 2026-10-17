@@ -38,7 +38,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
     status.present
       ? `Key ${status.source === 'agents-env' ? 'found in the shared API-key file' : 'entered in Settings'} — not tested with provider`
       : 'No API key found';
-  const sttModel = () => voice().sttModel?.trim() || 'mistralai/voxtral-small-24b-2507';
+  const sttModel = () => voice().sttModel?.trim() || 'mistralai/voxtral-mini-transcribe';
   const ttsModel = () => voice().ttsModel?.trim() || 'mistralai/voxtral-mini-tts-2603';
 
   return (
@@ -77,19 +77,14 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
             <Show
               when={voice().streaming ?? true}
               fallback={
-                <>
-                  Clip after Stop → OpenRouter ({sttModel()}) → Mistral batch fallback. No live
-                  captions.
-                </>
+                <>No live captions. Full recording after Stop → OpenRouter ({sttModel()}).</>
               }
             >
-              Mistral realtime while speaking. With effective vocabulary, Stop → Mistral batch →
-              OpenRouter ({sttModel()}) → realtime text as last resort. Without vocabulary: realtime
-              text; on stream failure, OpenRouter → Mistral batch → realtime text.
+              Periodic captions while recording → OpenRouter ({sttModel()}). Stop → full recording
+              with vocabulary hints → the same model ({sttModel()}). Final text may revise captions.
             </Show>{' '}
-            Only keyed providers are attempted. Unavailable streaming keeps recording for batch
-            transcription after Stop. This is a draft preview, not a saved setup or an actual
-            action.
+            OpenRouter key required. No direct Mistral dictation or alternate model fallback. This
+            is a draft preview, not a saved setup or an actual action.
           </p>
           <div class="settings-grid">
             <div class="settings-field-span">
@@ -99,27 +94,27 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                   checked={voice().streaming ?? true}
                   onChange={(e) => void update({ streaming: e.currentTarget.checked })}
                 />
-                <span>Stream dictation live (partial text while speaking)</span>
+                <span>Periodic captions while recording</span>
               </label>
               <small class="settings-field-hint">
-                Requires a Mistral key. Fixed realtime model:{' '}
-                <code>voxtral-mini-transcribe-realtime-2602</code>; fixed provider delay target:
-                1000 ms (not end-to-end latency).
+                Short non-overlapping WAV requests every two audio seconds, coalesced up to eight
+                seconds when busy. Not a realtime socket or a latency guarantee. If captions fall
+                behind or fail, they visibly stop; the full recording still transcribes after Stop.
               </small>
             </div>
             <label class="settings-field-span">
-              <span>OpenRouter transcription model (batch only)</span>
+              <span>OpenRouter native transcription model (captions and final)</span>
               <input
                 type="text"
-                placeholder="mistralai/voxtral-small-24b-2507"
+                placeholder="mistralai/voxtral-mini-transcribe"
                 value={voice().sttModel ?? ''}
                 onInput={(e) =>
                   void update({ sttModel: e.currentTarget.value.trim() || undefined })
                 }
               />
               <small class="settings-field-hint">
-                Audio-input chat model, not the live model. Mistral batch always uses{' '}
-                <code>voxtral-mini-latest</code>.
+                Native STT model id, not a chat model. Existing saved ids are honored unchanged;
+                unsupported ids report an error rather than silently switching models.
               </small>
             </label>
             <label class="settings-field-span">
@@ -132,22 +127,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               />
               <small class="settings-field-hint">
                 One phrase per line. App handles/names/aliases are added automatically: an empty
-                field need not mean empty effective vocabulary.{' '}
-                <Show
-                  when={voice().streaming ?? true}
-                  fallback={
-                    <>
-                      Batch-only dictation uses OpenRouter glossary → Mistral native batch bias,
-                      with no realtime last resort.
-                    </>
-                  }
-                >
-                  For an established live stream, effective vocabulary selects a Stop re-check:
-                  Mistral native batch bias → OpenRouter glossary → realtime text. This can add a
-                  second charge and stop latency. Refused or pending stream startup instead uses
-                  OpenRouter → Mistral batch, with no realtime last resort.
-                </Show>{' '}
-                The mechanisms do not promise equivalent accuracy.
+                field need not mean empty effective vocabulary. Sent through OpenRouter
+                provider.options.mistral.context_bias on captions and final. Other upstream
+                providers may ignore these Mistral-specific hints. The full final audio pass can
+                change segment boundaries and words; accuracy is not guaranteed.
               </small>
             </label>
             <label>
@@ -223,7 +206,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               />
             </label>
             <label>
-              <span>Mistral API key</span>
+              <span>Mistral API key (read-aloud fallback only)</span>
               <input
                 type="password"
                 autocomplete="off"
@@ -295,10 +278,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
           </div>
         </fieldset>
         <p class="settings-hint">
-          Privacy: streaming sends audio while speaking; batch uploads/correction can continue after
-          Stop releases the mic. No always-on capture or persisted audio. Captions are display-only;
-          final text is inserted once after Stop. Actual action stages appear by Dictate, not in
-          this Settings preview.
+          Privacy: periodic caption requests send audio while speaking; final transcription
+          continues after Stop releases the mic. No always-on capture or persisted audio. Captions
+          are display-only; final text is inserted once after Stop. Actual action stages appear by
+          Dictate, not in this Settings preview.
         </p>
       </Show>
     </SectionShell>

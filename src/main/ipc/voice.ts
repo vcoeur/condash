@@ -11,20 +11,19 @@ import type {
 } from '../../shared/types';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
 import { resolveVoiceKeys, voiceCredentialStatus } from '../voice/keys';
-import { speakText, transcribeClip, transcribeClipBiasFirst } from '../voice/adapter';
+import { speakText, transcribeClip } from '../voice/adapter';
 import { insertTranscript } from '../voice/insert';
 import { resolveContextBias } from '../voice/resolve-context-bias';
 import {
   beginVoiceStream,
   cancelActiveVoiceStream,
-  createRealtimeSocket,
   getActiveVoiceStream,
   takeActiveVoiceStream,
   reserveVoiceStream,
   ownsVoiceStream,
   releaseVoiceStream,
 } from '../voice/stream';
-import type { VoiceAudioClipLike } from '../voice/stream';
+import { MAX_RECORDING_BYTES } from '../voice/stream-session';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { safeSend } from '../safe-send';
 import {
@@ -37,7 +36,7 @@ import {
 /** Base64 length cap on an uploaded clip (~20 MB of WAV ≈ 10 min of 16 kHz
  *  mono — far past any push-to-talk utterance; the bound exists so a wedged
  *  renderer cannot OOM main with one IPC payload). */
-const MAX_CLIP_BASE64_CHARS = 20_000_000;
+const MAX_CLIP_BASE64_CHARS = Math.ceil(MAX_RECORDING_BYTES / 3) * 4;
 
 /** Base64 length cap on one streamed PCM chunk. The renderer sends ~256 ms
  *  frames (~11 KB base64); the bound keeps a wedged renderer from shipping
@@ -61,8 +60,13 @@ function requireAudioClip(channel: string, value: unknown): VoiceAudioClip {
     throw new Error(`${channel}: clip too large`);
   }
   const sampleRate = record.sampleRate;
-  if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
-    throw new Error(`${channel}: expected a positive sampleRate`);
+  if (
+    typeof sampleRate !== 'number' ||
+    !Number.isInteger(sampleRate) ||
+    sampleRate < 8000 ||
+    sampleRate > 192000
+  ) {
+    throw new Error(`${channel}: expected a positive sampleRate (integer 8000–192000 Hz)`);
   }
   if (record.format !== 'wav') {
     throw new Error(`${channel}: expected format 'wav'`);
@@ -113,6 +117,20 @@ async function effectiveContextBias(prefs: VoicePrefs | undefined): Promise<stri
   );
 }
 
+async function dictationSnapshot() {
+  const { voice } = await readSettings();
+  const prefs = voice ? { ...voice, contextBias: voice.contextBias?.slice() } : undefined;
+  if (prefs?.enabled !== true)
+    return {
+      prefs,
+      keys: { openrouter: undefined, mistral: undefined },
+      contextBias: [] as string[],
+    };
+  const keys = resolveVoiceKeys(prefs);
+  const contextBias = keys.openrouter ? await effectiveContextBias(prefs) : [];
+  return { prefs, keys, contextBias };
+}
+
 /** Wire the voice dictation + readback handlers. Called once from main entry.
  *
  *  Both handlers are gated on `voice.enabled` (default off): when the feature
@@ -121,6 +139,9 @@ async function effectiveContextBias(prefs: VoicePrefs | undefined): Promise<stri
  *  validation still runs first so the trust boundary keeps its uniform
  *  `<channel>: expected …` shape. */
 export function registerVoiceIpc(): void {
+  // A Stop before start's reply still uses the original snapshot for its
+  // buffered clip. Retain only bounded, one-use fallback evidence, not audio.
+  const snapshots = new Map<string, { sid: string; value: ReturnType<typeof dictationSnapshot> }>();
   ipcMain.handle('voiceCredentialStatus', async (event) => {
     requireMainWindowSender(event);
     try {
@@ -131,42 +152,51 @@ export function registerVoiceIpc(): void {
     }
   });
 
-  ipcMain.handle('voiceTranscribe', async (event, id: unknown, clip: unknown) => {
-    requireMainWindowSender(event);
-    const sid = requireNonEmptyString('voiceTranscribe', id);
-    const audio = requireAudioClip('voiceTranscribe', clip);
-    const { voice: prefs } = await readSettings();
-    if (prefs?.enabled !== true) {
-      return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
-    }
-    const keys = resolveVoiceKeys(prefs);
-    // Adapter errors are pre-redacted; let them reject so the renderer toast
-    // shows the reason instead of a silent no-op.
-    const transcript = await transcribeClip(
-      audio,
-      keys,
-      prefs,
-      undefined,
-      await effectiveContextBias(prefs),
-    );
-    const outcome = insertTranscript(sid, transcript.text, {
-      isLive: sessionIsLive,
-      write: writeTerminal,
-    });
-    if (outcome.inserted) {
+  ipcMain.handle(
+    'voiceTranscribe',
+    async (event, id: unknown, clip: unknown, requestOwner?: unknown) => {
+      requireMainWindowSender(event);
+      const sid = requireNonEmptyString('voiceTranscribe', id);
+      const audio = requireAudioClip('voiceTranscribe', clip);
+      const ownerId =
+        requestOwner === undefined ? undefined : requireOwnerId('voiceTranscribe', requestOwner);
+      const captured = ownerId === undefined ? undefined : snapshots.get(ownerId);
+      if (ownerId !== undefined) snapshots.delete(ownerId);
+      if (ownerId !== undefined && (!captured || captured.sid !== sid))
+        return {
+          inserted: false,
+          reason: 'error',
+          error: 'Dictation start snapshot unavailable — nothing inserted. Start a new recording.',
+        } satisfies VoiceTranscribeResult;
+      const { voice: current } = await readSettings();
+      if (current?.enabled !== true) {
+        return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
+      }
+      const { prefs, keys, contextBias } = await (captured?.value ?? dictationSnapshot());
+      if (prefs?.enabled !== true)
+        return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
+      // Adapter errors are pre-redacted; let them reject so the renderer toast
+      // shows the reason instead of a silent no-op.
+      const transcript = await transcribeClip(audio, keys, prefs, undefined, contextBias);
+      const outcome = insertTranscript(sid, transcript.text, {
+        isLive: sessionIsLive,
+        write: writeTerminal,
+      });
+      if (outcome.inserted) {
+        return {
+          inserted: true,
+          provider: transcript.provider,
+          producer: transcript.producer,
+          chars: outcome.chars,
+        };
+      }
       return {
-        inserted: true,
-        provider: transcript.provider,
+        inserted: false,
+        reason: outcome.reason,
         producer: transcript.producer,
-        chars: outcome.chars,
-      };
-    }
-    return {
-      inserted: false,
-      reason: outcome.reason,
-      producer: transcript.producer,
-    } satisfies VoiceTranscribeResult;
-  });
+      } satisfies VoiceTranscribeResult;
+    },
+  );
 
   ipcMain.handle('voiceSpeak', async (event, id: unknown) => {
     requireMainWindowSender(event);
@@ -202,58 +232,58 @@ export function registerVoiceIpc(): void {
     }
   });
 
-  // --- Realtime dictation stream -----------------------------------------
-  // Same gates and validation-first shape as the batch handlers: a stream
-  // start that hits a disabled feature or a missing Mistral key answers a
-  // typed refusal and the renderer stays on the batch path (design §9.1).
+  // The owner-bound PCM transport supports periodic captions and final WAVs,
+  // not a provider WebSocket. Credentials/model/vocabulary are frozen at start.
 
   ipcMain.handle('voiceStreamStart', async (event, request: unknown) => {
     requireMainWindowSender(event);
     const record = requireRecord('voiceStreamStart', request);
     const sid = requireNonEmptyString('voiceStreamStart', record.sid);
     const sampleRate = record.sampleRate;
-    if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
-      throw new Error('voiceStreamStart: expected a positive sampleRate');
+    if (
+      typeof sampleRate !== 'number' ||
+      !Number.isInteger(sampleRate) ||
+      sampleRate < 8000 ||
+      sampleRate > 192000
+    ) {
+      throw new Error('voiceStreamStart: expected a positive sampleRate (integer 8000–192000 Hz)');
     }
     const ownerId = requireOwnerId('voiceStreamStart', record.ownerId);
     const admission = reserveVoiceStream(ownerId);
     if (!admission.ok) return admission satisfies VoiceStreamStartResult;
     const reservation = admission.reservation;
+    const snapshot = dictationSnapshot();
+    if (snapshots.size === 256) snapshots.delete(snapshots.keys().next().value!);
+    snapshots.set(ownerId, { sid, value: snapshot });
+    void snapshot.catch(() => undefined);
     let accepted = false;
     const cancelled = (): VoiceStreamStartResult => ({
       ok: false,
       reason: 'error',
-      error: 'Realtime recording cancelled.',
+      error: 'Dictation recording cancelled.',
     });
     try {
-      const { voice: prefs } = await readSettings();
+      const { prefs, keys, contextBias } = await snapshot;
       if (!ownsVoiceStream(reservation)) return cancelled();
-      if (prefs?.enabled !== true || prefs.streaming === false) {
+      if (prefs?.enabled !== true) {
         return { ok: false, reason: 'disabled' } satisfies VoiceStreamStartResult;
       }
-      const keys = resolveVoiceKeys(prefs);
-      if (!keys.mistral) {
-        return { ok: false, reason: 'no-mistral-key' } satisfies VoiceStreamStartResult;
+      if (!keys.openrouter) {
+        return {
+          ok: false,
+          reason: 'no-openrouter-key',
+          error: 'OpenRouter API key required for dictation; Mistral keys are read-aloud only.',
+        } satisfies VoiceStreamStartResult;
       }
-      const contextBias = await effectiveContextBias(prefs);
       if (!ownsVoiceStream(reservation)) return cancelled();
       const sender = event.sender;
-      const batchTranscribers = {
-        normal: (clip: VoiceAudioClipLike) =>
-          transcribeClip(clip, keys, prefs, undefined, contextBias),
-        biasFirst: (clip: VoiceAudioClipLike) =>
-          transcribeClipBiasFirst(clip, keys, prefs, undefined, contextBias),
-      };
       const started = await beginVoiceStream(
         {
           ownerId,
           sid,
           sampleRate,
-          apiKey: keys.mistral,
-          contextBias,
-          keys,
-          prefs,
-          createSocket: createRealtimeSocket,
+          previews: prefs.streaming !== false,
+          transcribe: (clip, signal) => transcribeClip(clip, keys, prefs, { signal }, contextBias),
           onPartial: (text) => {
             safeSend(sender, EVENT_CHANNELS.voicePartial, {
               ownerId,
@@ -261,24 +291,24 @@ export function registerVoiceIpc(): void {
               text,
             } satisfies VoicePartialMessage);
           },
-          onUnavailable: () => {
+          onUnavailable: (reason) => {
             safeSend(sender, EVENT_CHANNELS.voicePartial, {
               ownerId,
               sid,
               text: '',
               unavailable: true,
+              reason,
             } satisfies VoicePartialMessage);
           },
           insert: (insertSid, text) =>
             insertTranscript(insertSid, text, { isLive: sessionIsLive, write: writeTerminal }),
-          batchTranscribers,
         },
         reservation,
       );
       if (!ownsVoiceStream(reservation)) return cancelled();
       if (started.ok) {
         accepted = true;
-        return { ok: true } satisfies VoiceStreamStartResult;
+        return { ok: true, captions: prefs.streaming !== false } satisfies VoiceStreamStartResult;
       }
       return started satisfies VoiceStreamStartResult;
     } finally {
@@ -289,6 +319,7 @@ export function registerVoiceIpc(): void {
   ipcMain.handle('voiceStreamAudio', async (event, chunk: unknown) => {
     requireMainWindowSender(event);
     const payload = requireStreamChunk('voiceStreamAudio', chunk);
+    const session = getActiveVoiceStream(payload.ownerId);
     const { voice: prefs } = await readSettings();
     if (prefs?.enabled !== true) {
       // The feature was switched off mid-recording — tear the socket down so
@@ -296,18 +327,21 @@ export function registerVoiceIpc(): void {
       cancelActiveVoiceStream(payload.ownerId);
       return;
     }
-    getActiveVoiceStream(payload.ownerId)?.handleAudio(payload.pcmBase64);
+    if (session && session === getActiveVoiceStream(payload.ownerId))
+      session.handleAudio(payload.pcmBase64);
   });
 
   ipcMain.handle('voiceStreamStop', async (event, requestOwner: unknown) => {
     requireMainWindowSender(event);
     const ownerId = requireOwnerId('voiceStreamStop', requestOwner);
+    snapshots.delete(ownerId);
+    const owned = getActiveVoiceStream(ownerId);
     const { voice: prefs } = await readSettings();
     if (prefs?.enabled !== true) {
       cancelActiveVoiceStream(ownerId);
       return { inserted: false, reason: 'disabled' } satisfies VoiceTranscribeResult;
     }
-    const session = takeActiveVoiceStream(ownerId);
+    const session = owned === getActiveVoiceStream(ownerId) ? takeActiveVoiceStream(ownerId) : null;
     if (!session) {
       // The stream already died (or never started) — the renderer answers
       // with its buffered-clip batch chain (§9.3).

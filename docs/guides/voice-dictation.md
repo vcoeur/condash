@@ -1,147 +1,130 @@
 # Voice dictation and readback
 
-Push-to-talk dictation and on-demand read-aloud for terminal tabs.
+Push-to-talk dictation and on-demand read-aloud for terminal tabs. Voice is off by
+default: enable **Settings → Voice → Enable voice controls (Dictate and Read)** and
+save. The controls appear immediately on live terminal tabs. Nothing records or
+speaks until you explicitly use a control.
 
-**Enable it first** — voice is off by default. Open **Settings → Voice** (under *Personal · this machine*), tick **Enable voice controls (Dictate and Read)**, and save; the Dictate/Read controls appear in terminal tab strips immediately, no restart needed. Until then no tab shows voice controls and nothing records, transmits, or speaks.
+## Dictate
 
-With voice enabled, two controls live in each tab strip's header, beside Find and Save, and appear once the tab has a live session:
+- Click **Dictate** to start recording, then click **Stop** to finish. Alternatively,
+  hold **Ctrl+Shift+Space** and release to finish. Edit the chord in Settings; an
+  empty shortcut disables new push-to-talk gestures.
+- The microphone is released before final transcription starts. Only the final
+  transcript is inserted into the tab captured at recording start; captions never
+  enter the terminal. Control characters are stripped and insertion is capped at
+  4,000 characters. Dictation does not press Enter or execute the text.
+- Hiding the controls, closing the tab or leaving its surface cancels capture.
+  Blur/hidden-document cancellation applies to the held push-to-talk attempt, not
+  an unrelated click-started recording. All captured microphone tracks are released.
+- The caption strip wraps, grows to at most three rows, and follows the newest
+  words. This display wrapping does not insert line breaks into the terminal.
 
-- **Dictate** — click to start recording; a pulsing dot marks the recording state. With streaming on (the default), the words appear as a temporary caption under the tab strip while you speak; click again to stop and the final text is inserted into the tab it was recorded in, exactly as typed keystrokes would be. The OS microphone prompt fires once, on first use. If the tab's controls disappear mid-recording — you switch column, open the Dashboard band, or close the tab — the recording is cancelled and the microphone released immediately.
-- **Read** — click to have the tab's recent output read aloud. The button reads "Stop" for the whole read and shows a spinner while the text-to-speech provider is still synthesizing; click it at any point to stop. Stopping during synthesis cancels the pending read, so no audio plays. It never speaks unprompted.
+## One OpenRouter model for captions and final text
 
-You never need the mouse: hold the **push-to-talk chord** (`Ctrl+Shift+Space` by default) to record, release to insert — see [Push-to-talk](#push-to-talk) below.
+Dictation requires an **OpenRouter key**, even if a Mistral key is available.
+Both provisional captions and the final recording use the exact selected
+**OpenRouter native transcription model**. The default is
+`mistralai/voxtral-mini-transcribe`. Choose a native STT model, not an audio-input
+chat model: existing saved ids are honored unchanged, so a legacy chat id may
+return an error. Condash never silently changes that id or tries direct Mistral
+dictation or another model when a request fails.
 
-Both stay idle until clicked or chord-held. Nothing records unless Dictate is toggled on — and nothing is reachable at all while voice is disabled in Settings.
+With **Periodic captions while recording** on (the default), main transcribes
+short, contiguous, non-overlapping WAVs while you speak. A request starts after
+two audio seconds; there is at most one preview request in flight per recording.
+Audio arriving while busy coalesces into the next contiguous window, up to eight
+seconds. If it exceeds that bound, or a preview fails, captions visibly become
+unavailable/interrupted and no further preview requests are admitted. The complete
+recording remains available for the final pass. This is periodic transcription,
+**not a native realtime WebSocket or an end-to-end latency guarantee**.
 
-The live caption wraps across up to three visible rows, including long unbroken words.
-Longer utterances scroll automatically to the newest words as partials arrive and when
-the pane is resized; earlier words remain available by scrolling back. A short new
-utterance starts at one row, and the caption disappears when dictation ends. Wrapping
-is display-only: it does not insert line breaks into the terminal or change when the
-final transcript is committed.
+Stop aborts outstanding preview work and sends **one complete recording** to the
+same selected model, with the same vocabulary. Final text can revise words and
+segment boundaries throughout the provisional captions; it is not guaranteed to
+change only a few words. Turning captions off disables short requests, not final
+transcription. Each captured sample is uploaded at most once for previews and
+once for final: at most twice the captured audio, not repeated cumulative prefixes.
+Both paths are bounded to a 20 MB WAV; overflow fails explicitly instead of
+presenting a transcribed prefix as the full recording.
 
-The session-only report beside the caption separates **Capture**, **Captions**, **Final
-transcript**, and insertion. Live captions can end with **Mistral batch** or **OpenRouter
-batch** final text; **Mistral realtime text** means the stream's text was selected instead.
-Successful startup alone is not proof of delivered captions: until words arrive, the report
-says pending, then not observed if recording ends without them. A later stream failure
-reports live, then unavailable. A refused realtime start explicitly says recording continues
-for transcription after Stop. A lost Stop reply reports final origin unknown and insertion
-unconfirmed: text may already have been inserted, so no duplicate upload is attempted.
-This report belongs to the action's original tab, resets for a new action and is not saved
-as history or shown as current Settings readiness.
+Network calls run only in main:
 
-## Reading Voice settings
-
-The shared switch gates three visual groups: **Dictation**, **Credentials**, and **Read
-aloud**. All ten existing preferences keep their keys, values and defaults. The OpenRouter
-transcription field is explicitly **batch only**; the fixed realtime and Mistral batch
-models are route facts, not extra settings.
-
-**Draft route if saved** follows the controls immediately, before Save. It describes route
-order, not the saved setup, a validated provider, or the last action. The Credentials group
-separately shows **last checked saved key sources**: a key found in the shared API-key file,
-a key entered in Settings, or no API key found. The shared file wins over the manual field;
-its default is `~/.config/agents/.env`, which `CONDASH_AGENTS_ENV` may override. An unsaved
-manual key does not change that snapshot. Sources refresh when
-Settings opens, on entering Voice, after a successful global save, or with **Refresh saved
-key sources**. While refreshing or after a failed refresh, the old snapshot is not presented
-as current. A failed status read rejects with a fixed safe message at the main-process
-boundary, not filesystem details or a fabricated missing-key result. **Not tested with provider** means this read makes no provider request and
-returns no environment values, prefixes, hashes or paths. Manual Settings keys retain their
-existing password-field prefill.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["Mic capture<br/>(renderer, 16 kHz mono PCM)"] -->|"typed IPC<br/>base64 clip (batch)<br/>/ PCM chunks (stream)"| B["Main process:<br/>STT adapter"]
-    B -->|"transcript<br/>(sanitised, capped)"| C["PTY write path<br/>(same as typed input)"]
-    B -->|"accumulated partial<br/>(push channel)"| D["Live caption strip<br/>(local display only)"]
-    E["Recent pane output<br/>(main-side slice)"] --> F["Main process:<br/>TTS adapter"]
-    F -->|"base64 MP3"| G["Pane plays it<br/>(data: URL)"]
-    B -.->|"streaming WebSocket<br/>Mistral realtime"| H["Mistral realtime"]
-    B -.->|"HTTPS batch"| I["OpenRouter / Mistral"]
-    F -.->|"HTTPS"| I
+```text
+POST https://openrouter.ai/api/v1/audio/transcriptions
+{ "model": "mistralai/voxtral-mini-transcribe",
+  "input_audio": { "data": "<base64 WAV>", "format": "wav" } }
+→ { "text": "..." }
 ```
 
-- **Recording** happens in the renderer (echo cancellation + noise suppression on); **provider calls happen only in the main process** — the renderer never talks to the network, and key values are used only in the main process (a key entered in Settings is displayed back by the Settings prefill, the same shape as the dashboard's `apiKey`).
-- **Streaming** (on by default): while recording, main opens one WebSocket to Mistral's realtime transcription endpoint and forwards the mic's PCM chunks as binary frames. The forming text comes back as accumulated partials and renders in a dashed live-caption strip under the tab strip — **local display only, never typed into the terminal**. On stop, the microphone is released first, then main finalises the stream and commits the final text once through the sanitised insert path.
-- **Batch fallback**: a stream refusal or startup failure — no Mistral key, `voice.streaming` off, a handshake error — keeps the buffered clip for transcription on stop (OpenRouter chat first, Mistral multipart fallback). A mid-stream failure falls back in main on the audio it already received. If the stop IPC reply itself fails, condash reports the error without a second upload: main may already have inserted the transcript.
-- Stream cancellation has one owner across stop and late startup replies. A failed cancellation delivery is retried once; if cleanup still cannot be confirmed, condash reports that failure and recommends restarting before further dictation rather than silently claiming the stream closed.
-- The transcript is sanitised before insertion: control characters (a stray Ctrl-C, EOF), carriage returns, and ANSI escape sequences are stripped, and the text is capped at 4000 characters. An empty transcript is a visible no-op notice, never a silent write of nothing.
-- The write goes through the same terminal-service path as typed input (`termWrite`), so multi-line transcripts submit per line, exactly as if typed.
-- Read-aloud reads the tab's **recent output** — the same recent-scrollback slice the Dashboard summarizer uses. It is not a parsed "final answer": on a full-screen TUI tab it reads whatever the cleaned buffer holds.
+The recorder requests mono PCM16 at 16 kHz; WAV headers carry the actual capture
+rate if the audio backend supplies another rate. Cancellation aborts requests and
+late results cannot update captions or insert text. A known final failure reports
+that nothing was inserted. If a Stop IPC reply is lost, insertion is **unconfirmed**:
+main may already have inserted, so Condash never retries that upload automatically.
 
-## Push-to-talk
+## Vocabulary hints
 
-Hold **`Ctrl+Shift+Space`** (default) to record; release to insert — one recording state machine, two triggers, and the chord never hijacks anything outside the app (it is an in-app capture listener, not a system-wide shortcut: condash unfocused means the chord is free).
+**Context bias — vocabulary** takes one word or phrase per line, up to 100.
+Registered app handles, names and aliases are automatically merged with that list;
+an empty field does not necessarily mean no effective vocabulary. The effective
+list is snapshotted with the model and credentials when the session starts.
+If Stop beats the start reply, its buffered-clip upload consumes the same
+owner-bound snapshot once rather than reading a newly selected model. Main
+retains at most 256 such snapshots (no audio); missing or evicted evidence gives
+an explicit error and requires a new recording, never a silent model switch.
 
-- A matched chord **starts on keydown** (with a live tab in the active column), or acquires an existing click recording without restarting it. Only that paired gesture **commits on keyup of its base key** — releasing Ctrl and Shift before Space still commits. Ordinary Space/letter typing never stops a click recording.
-- Holding absorbs auto-repeat without acquiring another recording. The release belongs to the exact attempt captured on keydown: changing columns, cancelling or clicking stop and starting again cannot make an old release stop the new attempt.
-- Set the field to **empty** in Settings → Voice to disable new push-to-talk gestures; any `parseShortcut`-grammar chord works (`Ctrl+Shift+D`, `F2`, …). An already-held gesture retains its original base key through shortcut changes, including empty-disable.
-- Losing window focus, hiding the document or removing the keyboard listener cancels only the held gesture's recording without inserting text. Unrelated click recordings are unaffected. Release during pending microphone permission cancels that attempt and releases any late-acquired resources.
-- It fires inside the xterm like screenshot-paste, so the chord never types into the shell; and clicking Dictate keeps keyboard focus in the terminal.
+Hints travel through OpenRouter's documented provider-specific options mechanism:
+`provider.options.mistral.context_bias`, an array of phrases. The default model's
+upstream provider tag is `mistral`; this does **not** require a separate Mistral key
+or direct-provider call. Other upstream providers may ignore Mistral-specific
+hints. Vocabulary improves neither spelling nor quality by guarantee; actual
+provider forwarding/effectiveness and quality/latency require a real test.
 
-## Context bias
+Contract references checked 2026-10-16: [OpenRouter STT](https://openrouter.ai/docs/guides/overview/multimodal/stt),
+[model endpoints](https://openrouter.ai/api/v1/models/mistralai/voxtral-mini-transcribe/endpoints),
+and [Mistral context bias field](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
+The Mistral documentation establishes the field shape, not a separate connection.
 
-The words an ecosystem uses — app handles, project slugs, domain terms — are exactly what speech models misspell. **Settings → Voice → Context bias** takes one phrase per line (up to 100, the provider cap) and applies it on every documented surface:
+## Keys and settings
 
-| Path | Mechanism |
-|---|---|
-| OpenRouter chat (batch primary) | a glossary sentence in the transcription prompt |
-| Mistral multipart (batch fallback) | native repeatable `context_bias` form fields |
-| Mistral realtime (streaming) | none — bias is undocumented on the realtime endpoint |
+The shared API-key file is read-only, by default `~/.config/agents/.env`;
+`CONDASH_AGENTS_ENV` overrides that path. `OPENROUTER_API_KEY` is required for
+dictation. `MISTRAL_API_KEY` is used only by the existing read-aloud fallback.
+An env-file entry wins over its manual **Settings → Voice** field.
 
-The realtime gap is handled at commit time (the **final-text rule**): with a non-empty effective bias list, a streamed dictation's final text is re-checked through the Mistral batch path **with `context_bias`** (falling back to OpenRouter's glossary, then to the raw realtime text), using the audio the stream already carried. This adds provider work after stop and can incur a second transcription charge for the same audio; latency and pricing depend on the provider. An empty user-entered list does **not** disable this repass when automatic registry seeding makes the effective list non-empty. Only an empty effective list takes the single-transcription realtime path.
+The section groups Dictation, Credentials and Read aloud under the shared enable
+switch, retaining the same ten preferences. **Draft route if saved** reacts to
+draft controls; it does not describe a saved/validated setup or actual action.
+Saved key-source status shows only presence and source, never validity, and makes
+no provider request. Open/Save/Refresh refresh that snapshot; pending/error marks
+the previous reading stale. Draft keys do not affect it. Manually entered keys
+are stored in machine-local settings and prefilled in the password fields; env
+key values stay in main. See [the full key reference](../reference/config.md#voice).
 
-That correction order applies to an **established live stream**. Batch-only dictation,
-including refused or still-pending stream startup, keeps OpenRouter first and Mistral
-batch fallback even with effective vocabulary; it has no realtime-text last resort.
+The session-only report beside Dictate distinguishes recording, observed caption
+delivery, OpenRouter native final text and insertion. Successful session start
+alone is not evidence that any caption was delivered. Preview failure keeps the
+recording for Stop; provider failures are not silently routed elsewhere.
 
-The effective list also includes the open conception's `repositories[]` app identity — handles, names, and aliases are seeded automatically and silently, so `#knoten` and `alicepeintures` come out spelled correctly without configuring anything.
+## Read aloud (unchanged)
 
-## Providers and keys
+**Read** synthesizes the tab's recent output, not a parsed final answer. It stays
+**Stop** while synthesizing and playing; Stop cancels a pending synthesis or
+playback. It never speaks unprompted. The route remains OpenRouter `/audio/speech`
+first, then Mistral `/v1/audio/speech` only with both a Mistral key and
+`voice.mistralVoiceId`. Default model `mistralai/voxtral-mini-tts-2603`, OpenRouter
+voice `en_paul_neutral`, output MP3. Select a language/persona-compatible voice
+for your chosen speech model.
 
-Buffered batch dictation and read-aloud try OpenRouter first, then Mistral when OpenRouter has no key or fails. Live captions use direct Mistral realtime; vocabulary-enabled streamed Stop correction tries Mistral batch first, then OpenRouter, then realtime text. Endpoints and models (verified 2026-10-11):
+## Privacy and limitations
 
-| | Transcription | Speech |
-|---|---|---|
-| OpenRouter | `POST /api/v1/chat/completions` with an `input_audio` part, model `mistralai/voxtral-small-24b-2507` | `POST /api/v1/audio/speech`, model `mistralai/voxtral-mini-tts-2603`, voice `en_paul_neutral`, `response_format: mp3` |
-| Mistral | `POST /v1/audio/transcriptions` (multipart), model `voxtral-mini-latest` | `POST /v1/audio/speech`, model `voxtral-mini-tts-2603`, `voice_id` required |
+Enabled, explicitly started capture only; no always-on listening or persisted
+audio. Caption WAVs leave the machine while recording; final upload/provider
+processing continues after Stop releases the microphone. Preview plus final work
+can be billed separately. Condash makes no measured accuracy, latency or price
+parity claim. Do not dictate sensitive audio or read aloud tabs containing secrets.
 
-Keys resolve in this order:
-
-1. `~/.config/agents/.env` (read-only) — `OPENROUTER_API_KEY` and `MISTRAL_API_KEY`. This is the default source; nothing to configure.
-2. **Settings → Voice → Credentials** (under *Personal · this machine*) — the manual fallback when that provider's env entry is absent. An env entry wins even when a manual key is filled. Keys are stored in the per-machine `settings.json` only, never in a tree's settings file, and are never logged; they are used only in the main process for provider calls (a settings-entered key is displayed back by this Settings prefill).
-
-The Mistral TTS fallback additionally needs a **Mistral voice id** (`voice.mistralVoiceId`): Mistral's speech API has no anonymous preset voice. Without one the fallback is skipped with a clear message and read-aloud relies on OpenRouter alone. Transcription and OpenRouter speech work with just the env file.
-
-The OpenRouter TTS voice id carries the language in its prefix — `en_paul_*`, `gb_jane_*`, `fr_marie_*` — pick another under Settings → Voice if you dictate in French (`fr_marie_neutral`).
-
-## Privacy
-
-> **Privacy:** capture begins only on an explicit dictation action. With streaming enabled, PCM chunks are sent to Mistral while you speak. Stop releases the microphone immediately, but buffered uploads, bias repasses, and provider processing can continue afterward to finish that dictation. There is no always-on capture; condash does not persist clips or audio. Partial text is displayed locally and never typed into the terminal; the final transcript is inserted only after stop.
-
-- Voice must be enabled in Settings and dictation explicitly started by clicking Dictate or holding the chord; a stopped dictation can finish transcription after the control is released.
-- The microphone is released on stop, on cancel, and the moment the tab's controls disappear (column switch, Dashboard band, tab close) — the session guarantees pinned by the lifecycle regression tests.
-- Provider keys are used only in main for network calls and never logged. Environment keys stay in main; manually entered Settings keys have the existing Settings-prefill exception and are displayed back in the renderer.
-- Read-aloud sends the tab's recent output **text** to the TTS provider when you click Read. As with the Dashboard: leave it off for tabs that display credentials you don't want transmitted.
-- The mic permission handler is scoped to the app's own window contents — no embedded `<webview>` or other contents can open the microphone through condash. Every other permission class passes through untouched, keeping Electron's no-handler default (auto-approve) — denying them broke the Resources pane's clipboard read.
-
-## Settings reference
-
-Voice is **off by default**; the master switch is the first field in the section. Every field is optional; the full per-key reference lives in [Config files → Voice](../reference/config.md#voice).
-
-| Setting | Default | Meaning |
-|---|---|---|
-| Enable voice controls (Dictate and Read) | off | Shared master switch. With it off, tab strips show no voice controls and the handlers refuse work with a typed disabled notice. |
-| Stream dictation live | on | Realtime partials in the caption strip while speaking. Off restores batch-only dictation (transcribed on stop); a stream failure always falls back to batch regardless. Hidden while voice is disabled. |
-| OpenRouter API key | — (env file) | Manual key when the env file is missing the entry. Hidden while voice is disabled. |
-| Mistral API key | — (env file) | Fallback provider key (and the realtime streaming provider). Hidden while voice is disabled. |
-| OpenRouter transcription model (batch only) | `mistralai/voxtral-small-24b-2507` | OpenRouter audio-input chat model; does not select realtime or Mistral batch models. Hidden while voice is disabled. |
-| Speech model | `mistralai/voxtral-mini-tts-2603` | TTS model on both providers. Hidden while voice is disabled. |
-| Speech voice | `en_paul_neutral` | Voxtral voice id (language prefix: `en_paul_*` / `gb_jane_*` / `fr_marie_*`). Hidden while voice is disabled. |
-| Mistral voice id | — | Enables the Mistral TTS fallback; unset skips it. Hidden while voice is disabled. |
-| Context bias | — (empty) | One phrase per line, up to 100. Vocabulary spelled exactly on the batch surfaces; non-empty routes a streamed stop through a bias-corrected batch repass. The conception's app handles are added automatically. Hidden while voice is disabled. |
-| Push-to-talk shortcut | `Ctrl+Shift+Space` | Hold-to-dictate chord. Empty disables push-to-talk. Hidden while voice is disabled. |
+Synthetic tests exercise caption-before-Stop, final insertion, owner cancellation,
+provider failure and honest non-16-kHz WAV headers without real keys or a native
+microphone. They do not establish real provider quality or throughput.

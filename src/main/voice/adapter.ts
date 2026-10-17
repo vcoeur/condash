@@ -1,18 +1,7 @@
-// STT/TTS provider adapter for voice dictation + readback.
-//
-// One interface, two providers, OpenRouter first with Mistral as fallback.
-// Every endpoint/model below was verified against the live provider docs and
-// catalogues on 2026-10-11:
-//
-//   STT  OpenRouter  POST {OPENROUTER_BASE}/chat/completions — audio rides an
-//                    `input_audio` content part ({data: base64, format}), the
-//                    transcript comes back in choices[0].message.content.
-//                    Model `mistralai/voxtral-small-24b-2507` (audio-in,
-//                    text-out; the mini transcribe variant is not on
-//                    OpenRouter's chat API).
-//   STT  Mistral     POST {MISTRAL_BASE}/audio/transcriptions — multipart
-//                    `model` + `file`, whisper-compatible; reply `{text}`.
-//                    Model `voxtral-mini-latest` (Voxtral Mini Transcribe 2).
+// Dictation uses OpenRouter native audio/transcriptions only (JSON WAV → text).
+// The selected native STT model is never substituted. Read-aloud retains its
+// OpenRouter-first/Mistral-fallback contract. Native STT and provider.options
+// verified against OpenRouter's multimodal/stt documentation, 2026-10-16.
 //   TTS  OpenRouter  POST {OPENROUTER_BASE}/audio/speech — OpenAI-compatible
 //                    speech endpoint; `response_format` defaults to pcm so
 //                    `mp3` is requested explicitly; the reply is RAW audio
@@ -40,27 +29,12 @@ import { MAX_CONTEXT_BIAS } from './resolve-context-bias';
 export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 export const MISTRAL_BASE = 'https://api.mistral.ai/v1';
 
-/** OpenRouter audio-in chat model (transcription). */
-export const DEFAULT_STT_MODEL = 'mistralai/voxtral-small-24b-2507';
+/** OpenRouter native transcription model. */
+export const DEFAULT_STT_MODEL = 'mistralai/voxtral-mini-transcribe';
 /** OpenRouter speech model. */
 export const DEFAULT_TTS_MODEL = 'mistralai/voxtral-mini-tts-2603';
 /** OpenRouter TTS persona voice (Voxtral `en_paul_*` family, neutral). */
 export const DEFAULT_TTS_VOICE = 'en_paul_neutral';
-
-/** Mistral's transcription-only model id (Voxtral Mini Transcribe 2). */
-export const MISTRAL_STT_MODEL = 'voxtral-mini-latest';
-
-/** Instruction sent alongside the audio on the OpenRouter chat path. */
-const STT_PROMPT =
-  'Transcribe this audio exactly as spoken. Output only the transcript text, nothing else.';
-
-/** The OpenRouter chat path has no bias parameter — the prompt glossary is
- *  the portable mechanism (design note 04 §8). Appended only when the
- *  effective list is non-empty. */
-function sttPrompt(contextBias: readonly string[]): string {
-  if (contextBias.length === 0) return STT_PROMPT;
-  return `${STT_PROMPT} Glossary of proper nouns to spell exactly: ${contextBias.join(', ')}.`;
-}
 
 /** Seconds before an outbound provider call gives up; the pane button must
  *  never spin forever on a hung request. */
@@ -70,6 +44,7 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export interface AdapterDeps {
   fetch?: FetchLike;
+  signal?: AbortSignal;
 }
 
 export interface TranscribeSuccess {
@@ -79,11 +54,9 @@ export interface TranscribeSuccess {
 }
 
 /**
- * Transcribe one clip: OpenRouter first, Mistral when OpenRouter is unkeyed
- * or fails. `contextBias` rides both paths where the providers accept it —
- * the prompt glossary on OpenRouter, repeatable `context_bias` form fields
- * on Mistral's multipart endpoint. Throws a redacted, user-displayable error
- * when nothing answers.
+ * Transcribe one WAV with the selected OpenRouter native model. Vocabulary
+ * uses documented provider.options.mistral.context_bias, not an ignored prompt.
+ * Missing credentials or provider errors never select another provider/model.
  */
 export async function transcribeClip(
   clip: VoiceAudioClip,
@@ -92,68 +65,25 @@ export async function transcribeClip(
   deps?: AdapterDeps,
   contextBias: readonly string[] = [],
 ): Promise<TranscribeSuccess> {
-  return runTranscribeChain(clip, keys, prefs, deps, contextBias, [
-    'openrouter',
-    'mistral',
-  ] as const);
-}
-
-/**
- * The streaming stop repass (design note 04 §8): Mistral's documented native
- * `context_bias` first, OpenRouter's prompt glossary second. Same redaction
- * and aggregation contract as `transcribeClip`.
- */
-export async function transcribeClipBiasFirst(
-  clip: VoiceAudioClip,
-  keys: ResolvedVoiceKeys,
-  prefs?: VoicePrefs,
-  deps?: AdapterDeps,
-  contextBias: readonly string[] = [],
-): Promise<TranscribeSuccess> {
-  return runTranscribeChain(clip, keys, prefs, deps, contextBias, [
-    'mistral',
-    'openrouter',
-  ] as const);
-}
-
-async function runTranscribeChain(
-  clip: VoiceAudioClip,
-  keys: ResolvedVoiceKeys,
-  prefs: VoicePrefs | undefined,
-  deps: AdapterDeps | undefined,
-  contextBias: readonly string[],
-  order: readonly ('openrouter' | 'mistral')[],
-): Promise<TranscribeSuccess> {
-  const doFetch = deps?.fetch ?? globalThis.fetch.bind(globalThis);
-  const runners: Record<'openrouter' | 'mistral', (() => Promise<TranscribeSuccess>) | undefined> =
-    {
-      openrouter: keys.openrouter
-        ? () => openrouterTranscribe(clip, keys.openrouter!, prefs, doFetch, contextBias)
-        : undefined,
-      mistral: keys.mistral
-        ? () => mistralTranscribe(clip, keys.mistral!, doFetch, contextBias)
-        : undefined,
-    };
-  const attempts = order
-    .map((provider) => ({ provider, run: runners[provider] }))
-    .filter((a): a is { provider: VoiceProvider; run: () => Promise<TranscribeSuccess> } =>
-      Boolean(a.run),
-    );
-  if (attempts.length === 0) {
+  if (!keys.openrouter) {
     throw new Error(
-      'No speech-to-text API key available — set OPENROUTER_API_KEY in ~/.config/agents/.env ' +
-        'or add one under Settings → Voice.',
+      'OpenRouter API key required for dictation — set OPENROUTER_API_KEY or Settings → Voice. Mistral keys are read-aloud only.',
     );
   }
-  const failures: string[] = [];
-  for (const attempt of attempts) {
-    try {
-      return await attempt.run();
-    } catch (err) {
-      failures.push(`${attempt.provider}: ${redactKeys((err as Error).message, keys)}`);
-    }
+  try {
+    return await openrouterTranscribe(
+      clip,
+      keys.openrouter,
+      prefs,
+      deps?.fetch ?? globalThis.fetch.bind(globalThis),
+      contextBias,
+      deps?.signal,
+    );
+  } catch (error) {
+    throw new Error(
+      `OpenRouter transcription failed (${prefs?.sttModel?.trim() || DEFAULT_STT_MODEL}) — ${redactKeys((error as Error).message, keys)}`,
+    );
   }
-  throw new Error(`Speech-to-text failed — ${failures.join('; ')}`);
 }
 
 export interface SpeakSuccess {
@@ -221,34 +151,36 @@ async function openrouterTranscribe(
   prefs: VoicePrefs | undefined,
   doFetch: FetchLike,
   contextBias: readonly string[] = [],
+  signal?: AbortSignal,
 ): Promise<TranscribeSuccess> {
   const model = prefs?.sttModel?.trim() || DEFAULT_STT_MODEL;
-  const res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
+  const res = await doFetch(`${OPENROUTER_BASE}/audio/transcriptions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: sttPrompt(contextBias) },
-            { type: 'input_audio', input_audio: { data: clip.data, format: clip.format } },
-          ],
-        },
-      ],
+      input_audio: { data: clip.data, format: clip.format },
+      ...(contextBias.length
+        ? {
+            provider: {
+              options: { mistral: { context_bias: contextBias.slice(0, MAX_CONTEXT_BIAS) } },
+            },
+          }
+        : {}),
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+      : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    text?: string;
     error?: { message?: string };
   };
   if (body.error) throw new Error(body.error.message || 'provider error');
-  const text = body.choices?.[0]?.message?.content ?? '';
-  if (!text.trim()) throw new Error('empty transcript from provider');
-  return { text, provider: 'openrouter', producer: 'openrouter-batch' };
+  if (typeof body.text !== 'string')
+    throw new Error('invalid native transcription response (expected text)');
+  return { text: body.text, provider: 'openrouter', producer: 'openrouter-native' };
 }
 
 async function openrouterSpeak(
@@ -279,35 +211,6 @@ async function openrouterSpeak(
 // ---------------------------------------------------------------------------
 // Mistral
 // ---------------------------------------------------------------------------
-
-async function mistralTranscribe(
-  clip: VoiceAudioClip,
-  apiKey: string,
-  doFetch: FetchLike,
-  contextBias: readonly string[] = [],
-): Promise<TranscribeSuccess> {
-  const form = new FormData();
-  form.set('model', MISTRAL_STT_MODEL);
-  // `context_bias` is a repeatable form field (up to 100 phrases) on this
-  // endpoint — one field per phrase, not a joined list (design note 04 §2.3).
-  // Capped here too: the resolver, schema and Settings UI already enforce
-  // MAX_CONTEXT_BIAS, so this is defence-in-depth at the emission itself.
-  for (const phrase of contextBias.slice(0, MAX_CONTEXT_BIAS)) form.append('context_bias', phrase);
-  const bytes = base64ToBytes(clip.data);
-  form.set('file', new Blob([bytes], { type: 'audio/wav' }), 'clip.wav');
-  const res = await doFetch(`${MISTRAL_BASE}/audio/transcriptions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = (await res.json()) as { text?: string; message?: string };
-  if (body.message && !body.text) throw new Error(body.message);
-  const text = body.text ?? '';
-  if (!text.trim()) throw new Error('empty transcript from provider');
-  return { text, provider: 'mistral', producer: 'mistral-batch' };
-}
 
 async function mistralSpeak(
   text: string,

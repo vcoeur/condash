@@ -16,6 +16,7 @@ import {
   MAX_PRESTART_CANCELLATIONS,
 } from '../../src/main/voice/stream';
 import { insertTranscript } from '../../src/main/voice/insert';
+import { transcribeClip } from '../../src/main/voice/adapter';
 import type { VoicePartialMessage } from '../../src/shared/types';
 
 function deferred<T>() {
@@ -28,10 +29,16 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+// An explicitly delayed IPC setup reply and fake native transcription fetch.
+// The historical scenario driver uses emit('open') to release that setup gate;
+// no socket is constructed by the production dictation code.
 class FakeSocket {
   handlers: Record<string, ((...args: any[]) => void)[]> = {};
   sent: (string | Buffer)[] = [];
   closed = false;
+  caption = 'stream transcript';
+  readonly ready = deferred<void>();
+  onCaption = (_text: string) => {};
   on(event: string, callback: (...args: any[]) => void) {
     (this.handlers[event] ??= []).push(callback);
   }
@@ -45,9 +52,16 @@ class FakeSocket {
     this.closed = true;
   }
   emit(event: string, ...args: unknown[]) {
+    if (event === 'open') this.ready.resolve();
+    if (event === 'message') {
+      const message = JSON.parse(String(args[0]));
+      if (message.text) this.caption = message.text;
+    }
     for (const callback of this.handlers[event] ?? []) callback(...args);
   }
   text(text: string) {
+    this.caption = text;
+    this.onCaption(text);
     this.emit(
       'message',
       Buffer.from(JSON.stringify({ type: 'transcription.text.delta', text })),
@@ -221,40 +235,45 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
             if (startOutcome === 'rejected') throw new Error('start settings rejected');
             return { ok: false, reason: 'error' };
           }
-          const result = await beginVoiceStream({
-            ownerId,
-            sid: target,
-            apiKey: 'DUMMY',
-            keys: {},
-            contextBias: [],
-            createSocket: () => {
-              const socket = new FakeSocket();
-              sockets.push(socket);
-              return socket;
+          const socket = new FakeSocket();
+          sockets.push(socket);
+          const admitted = reserveVoiceStream(ownerId);
+          if (!admitted.ok) return admitted;
+          const result = await beginVoiceStream(
+            {
+              ownerId,
+              sid: target,
+              transcribe: (clip, signal) =>
+                transcribeClip(clip, { openrouter: 'DUMMY' }, undefined, {
+                  signal,
+                  fetch: async (url) => {
+                    assert.equal(url, 'https://openrouter.ai/api/v1/audio/transcriptions');
+                    return new Response(JSON.stringify({ text: socket.caption }));
+                  },
+                }),
+              onPartial: (text) =>
+                callbacks.forEach((callback) => callback({ ownerId, sid: target, text })),
+              insert: (targetSid, text) =>
+                insertTranscript(targetSid, text, {
+                  isLive: () => true,
+                  write: (targetSid, text) => writes.push({ sid: targetSid, text }),
+                }),
             },
-            onPartial: (text) =>
-              callbacks.forEach((callback) => callback({ ownerId, sid: target, text })),
-            insert: (targetSid, text) =>
-              insertTranscript(targetSid, text, {
-                isLive: () => true,
-                write: (targetSid, text) => writes.push({ sid: targetSid, text }),
-              }),
-            batchTranscribers: {
-              normal: async () => {
-                throw new Error('unused');
-              },
-              biasFirst: async () => {
-                throw new Error('unused');
-              },
-            },
-            connectTimeoutMs: 1000,
-            finaliseTimeoutMs: 1,
-          });
+            admitted.reservation,
+          );
+          socket.onCaption = (text) => {
+            if (getActiveVoiceStream(ownerId))
+              callbacks.forEach((callback) => callback({ ownerId, sid: target, text }));
+          };
+          await socket.ready.promise;
           if (replyGate) await replyGate.promise;
           return result;
         },
-        audio: async ({ ownerId, pcmBase64 }) =>
-          getActiveVoiceStream(ownerId)?.handleAudio(pcmBase64),
+        audio: async ({ ownerId, pcmBase64 }) => {
+          const socket = sockets[owners.indexOf(ownerId)];
+          if (getActiveVoiceStream(ownerId)) socket?.sent.push(Buffer.from(pcmBase64, 'base64'));
+          getActiveVoiceStream(ownerId)?.handleAudio(pcmBase64);
+        },
         stop: async (ownerId) =>
           takeActiveVoiceStream(ownerId)?.stop() ?? { inserted: false, reason: 'no-session' },
         cancel: async (ownerId) => {
@@ -264,6 +283,11 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
           if (failure === 'before-delivery' || failure === 'always')
             throw new Error('cancel transport rejected');
           cancelActiveVoiceStream(ownerId);
+          const socket = sockets[owners.indexOf(ownerId)];
+          if (socket) {
+            socket.closed = true;
+            socket.ready.resolve();
+          }
           if (failure === 'after-delivery') throw new Error('cancel reply rejected');
         },
         onPartial: (callback) => {
@@ -316,7 +340,7 @@ function column(media: ReturnType<typeof mediaEdges>, sid = 'target-tab') {
 }
 
 const flush = async () => {
-  for (let index = 0; index < 8; index++) await Promise.resolve();
+  for (let index = 0; index < 24; index++) await Promise.resolve();
 };
 
 export const triggerOwnershipScenarios = [
@@ -839,6 +863,7 @@ export async function exerciseVoiceLifecycle(
       assert.equal(media.contexts.length, 1);
       assert.equal(first.session.recording(), true);
       media.chunk(0);
+      await flush();
       assert.equal(first.sockets[0].sent.filter(Buffer.isBuffer).length, 1);
       first.setActiveSid(null);
       assert.equal(media.tracks[1].stopped, 1);
@@ -959,6 +984,7 @@ export async function exerciseVoiceLifecycle(
       oldCallback({ inputBuffer: { getChannelData: () => new Float32Array(4096) } });
       assert.equal(nextSocket.sent.filter(Buffer.isBuffer).length, 0);
       media.chunk(1);
+      await flush();
       assert.equal(nextSocket.sent.filter(Buffer.isBuffer).length, 1);
       assert.equal(media.tracks[1].stopped, 0);
       assert.equal(first.session.recording(), true);
@@ -1016,6 +1042,7 @@ export async function exerciseVoiceLifecycle(
     assert.equal(next.session.partial(), '');
     assert.equal(next.session.recording(), true);
     media.chunk(1);
+    await flush();
     assert.equal(newSocket.sent.filter(Buffer.isBuffer).length, 1);
     newSocket.text('clean\u0000 final');
     await next.session.stopDictation();
