@@ -10,6 +10,9 @@ export const fixture = {
     hints: string[];
     aborted: boolean;
   }[],
+  endpoints: [] as string[],
+  speechRequests: [] as { model: string; voice: string; input: string; response_format: string }[],
+  speechStatus: 200,
   statusReads: 0,
   finalizing: false,
   releases: [] as (() => void)[],

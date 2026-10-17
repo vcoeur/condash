@@ -123,7 +123,7 @@ async function dictationSnapshot() {
   if (prefs?.enabled !== true)
     return {
       prefs,
-      keys: { openrouter: undefined, mistral: undefined },
+      keys: { openrouter: undefined },
       contextBias: [] as string[],
     };
   const keys = resolveVoiceKeys(prefs);
@@ -272,7 +272,7 @@ export function registerVoiceIpc(): void {
         return {
           ok: false,
           reason: 'no-openrouter-key',
-          error: 'OpenRouter API key required for dictation; Mistral keys are read-aloud only.',
+          error: 'OpenRouter API key required for dictation. Voice uses OpenRouter only.',
         } satisfies VoiceStreamStartResult;
       }
       if (!ownsVoiceStream(reservation)) return cancelled();

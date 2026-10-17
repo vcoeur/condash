@@ -5,6 +5,11 @@ default: enable **Settings → Voice → Enable voice controls (Dictate and Read
 save. The controls appear immediately on live terminal tabs. Nothing records or
 speaks until you explicitly use a control.
 
+**OpenRouter only:** Dictate and Read share one OpenRouter API key. Missing keys
+and provider errors never switch to a direct provider, another model or another
+voice. A `mistralai/` model id names a model accessed through OpenRouter; it does
+not require Mistral credentials.
+
 ## Dictate
 
 - Click **Dictate** to start recording, then click **Stop** to finish. Alternatively,
@@ -89,17 +94,20 @@ The Mistral documentation establishes the field shape, not a separate connection
 ## Keys and settings
 
 The shared API-key file is read-only, by default `~/.config/agents/.env`;
-`CONDASH_AGENTS_ENV` overrides that path. `OPENROUTER_API_KEY` is required for
-dictation. `MISTRAL_API_KEY` is used only by the existing read-aloud fallback.
-An env-file entry wins over its manual **Settings → Voice** field.
+`CONDASH_AGENTS_ENV` overrides that path. `OPENROUTER_API_KEY` is the only key
+resolved for Dictate and Read. Its env-file entry wins over the manual
+**Settings → Voice → OpenRouter API key** field. `MISTRAL_API_KEY` is ignored by
+Voice. Legacy saved `mistralApiKey` and `mistralVoiceId` values remain accepted
+but deprecated and ignored; Condash does not migrate or delete them.
 
 The section groups Dictation, Credentials and Read aloud under the shared enable
-switch, retaining the same ten preferences. **Draft route if saved** reacts to
+switch, with eight active preferences and no Mistral key/voice controls.
+**Draft route if saved** reacts to
 draft controls; it does not describe a saved/validated setup or actual action.
 Saved key-source status shows only presence and source, never validity, and makes
 no provider request. Open/Save/Refresh refresh that snapshot; pending/error marks
 the previous reading stale. Draft keys do not affect it. Manually entered keys
-are stored in machine-local settings and prefilled in the password fields; env
+are stored in machine-local settings and the OpenRouter key is prefilled in its password field; env
 key values stay in main. See [the full key reference](../reference/config.md#voice).
 
 The session-only report beside Dictate distinguishes recording, observed caption
@@ -107,15 +115,16 @@ delivery, OpenRouter native final text and insertion. Successful session start
 alone is not evidence that any caption was delivered. Preview failure keeps the
 recording for Stop; provider failures are not silently routed elsewhere.
 
-## Read aloud (unchanged)
+## Read aloud
 
 **Read** synthesizes the tab's recent output, not a parsed final answer. It stays
 **Stop** while synthesizing and playing; Stop cancels a pending synthesis or
-playback. It never speaks unprompted. The route remains OpenRouter `/audio/speech`
-first, then Mistral `/v1/audio/speech` only with both a Mistral key and
-`voice.mistralVoiceId`. Default model `mistralai/voxtral-mini-tts-2603`, OpenRouter
+playback. It never speaks unprompted. The route is OpenRouter `/audio/speech`
+only, with no fallback even when legacy Mistral credentials are saved.
+Default model `mistralai/voxtral-mini-tts-2603`, OpenRouter
 voice `en_paul_neutral`, output MP3. Select a language/persona-compatible voice
-for your chosen speech model.
+for your chosen speech model. The exact selected model and voice are sent to
+OpenRouter; rejection reports an error rather than substituting another choice.
 
 ## Privacy and limitations
 

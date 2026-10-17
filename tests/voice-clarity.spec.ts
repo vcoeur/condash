@@ -30,7 +30,7 @@ async function captureVoiceDetail(page: Page, testInfo: TestInfo, name: string) 
   });
 }
 
-test('grouped Voice keeps ten fields and separates draft routes from real saved key sources', async ({}, testInfo) => {
+test('grouped Voice is OpenRouter-only and separates draft routes from real saved key sources', async ({}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), 'condash-clarity-settings-'));
   const envFile = join(directory, 'agents.env');
   await writeFile(envFile, 'MISTRAL_API_KEY=synthetic-env-key\n');
@@ -55,12 +55,17 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
     );
     for (const group of ['Dictation', 'Credentials', 'Read aloud'])
       await expect(section.getByRole('group', { name: group, exact: true })).toHaveCount(1);
-    await expect(section.locator('input, textarea')).toHaveCount(10);
+    await expect(section.locator('input, textarea')).toHaveCount(8);
+    await expect(section.locator('input[type="password"]')).toHaveCount(1);
+    await expect(section.getByLabel(/Mistral API key|Mistral voice id/)).toHaveCount(0);
+    await expect(section).toContainText(
+      'OpenRouter only — Dictate and Read share one OpenRouter API key',
+    );
+    await expect(section).toContainText('no Mistral credentials are needed');
+    await expect(vocabulary).toContainText('No Mistral credentials are needed.');
     await expect(section.getByText('Enable voice controls (Dictate and Read)')).toBeVisible();
     const keys = section.locator('[data-test-voice-keys]');
-    await expect(keys).toContainText(
-      'Mistral: Key found in the shared API-key file — not tested with provider',
-    );
+    await expect(keys).not.toContainText('Mistral:');
     await expect(keys).toContainText('OpenRouter: No API key found');
     await expect(section.getByRole('group', { name: 'Credentials', exact: true })).toContainText(
       'Default file: ~/.config/agents/.env (CONDASH_AGENTS_ENV may override it)',
@@ -89,7 +94,12 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
     await expect(vocabulary).not.toContainText('selects a Stop re-check');
     await expect(vocabulary.locator('textarea')).toHaveValue('ExampleProject');
     await section.getByRole('textbox', { name: /^Speech model/ }).fill('draft/speech');
-    await expect(section.locator('[data-test-read-route]')).toContainText('Both use draft/speech');
+    await expect(section.locator('[data-test-read-route]')).toContainText(
+      'OpenRouter only → speech (draft/speech)',
+    );
+    await expect(section.locator('[data-test-read-route]')).toContainText(
+      'No alternate provider, model or voice fallback',
+    );
     await section.getByRole('button', { name: 'Refresh saved key sources' }).click();
     await expect(keys).toContainText('OpenRouter: No API key found');
     await page.locator('.settings-save').click();
@@ -103,7 +113,7 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
     await expect(keys).toContainText(
       'OpenRouter: Key found in the shared API-key file — not tested with provider',
     );
-    await expect(keys).toContainText('Mistral: No API key found');
+    await expect(keys).not.toContainText('Mistral:');
     await expect(section.getByLabel('OpenRouter API key', { exact: true })).toHaveValue(
       'synthetic-draft-key',
     );
@@ -124,6 +134,7 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
       .getByRole('group', { name: 'Credentials', exact: true })
       .screenshot({ path: evidencePath(testInfo, 'voice-key-source-detail.png') });
     const status = await page.evaluate(() => window.condash.voiceCredentialStatus());
+    expect(status).toEqual({ openrouter: { present: true, source: 'agents-env' } });
     expect(JSON.stringify(status)).not.toMatch(/synthetic|\.env|key-|prefix|hash/);
 
     // Delay actual handler results, rather than replacing status with canned UI data.
@@ -168,15 +179,8 @@ test('grouped Voice keeps ten fields and separates draft routes from real saved 
   }
 });
 
-test('native OpenRouter captions precede Stop; final, failure, cancellation and model ownership stay explicit', async ({}, testInfo) => {
-  test.setTimeout(90_000);
-  const directory = await mkdtemp(join(tmpdir(), 'condash-clarity-action-'));
-  const envFile = join(directory, 'agents.env');
+async function buildVoiceFixture(directory: string) {
   const bundle = join(directory, 'voice.cjs');
-  await writeFile(
-    envFile,
-    'MISTRAL_API_KEY=synthetic-mistral\nOPENROUTER_API_KEY=synthetic-openrouter\n',
-  );
   await build({
     entryPoints: [resolve('tests/fixtures/voice-clarity.ts')],
     outfile: bundle,
@@ -195,6 +199,129 @@ test('native OpenRouter captions precede Stop; final, failure, cancellation and 
       },
     ],
   });
+  return bundle;
+}
+
+test('Read uses only OpenRouter with exact model and voice; legacy credentials stay inert and preserved', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'condash-openrouter-read-'));
+  const envFile = join(directory, 'agents.env');
+  await writeFile(
+    envFile,
+    'OPENROUTER_API_KEY=synthetic-openrouter\nMISTRAL_API_KEY=synthetic-mistral-env\n',
+  );
+  const bundle = await buildVoiceFixture(directory);
+  const voice = {
+    enabled: true,
+    sttModel: 'old/saved-chat-id',
+    ttsModel: 'mistralai/voxtral-mini-tts-2603',
+    ttsVoice: 'fr_marie_neutral',
+    mistralApiKey: 'synthetic-legacy-secret',
+    mistralVoiceId: 'synthetic-legacy-voice',
+  };
+  const booted = await bootApp({ globalConfig: { voice }, env: { CONDASH_AGENTS_ENV: envFile } });
+  const { app, window: page } = booted;
+  try {
+    await app.evaluate((_electron, path) => {
+      const harness = process.getBuiltinModule('module').createRequire(path)(path);
+      harness.fixture.sid = 'synthetic-tab';
+      harness.install();
+    }, bundle);
+    const read = () => page.evaluate(() => window.condash.voiceSpeak('synthetic-tab'));
+    const state = () =>
+      app.evaluate(
+        (_electron, path) => process.getBuiltinModule('module').createRequire(path)(path).fixture,
+        bundle,
+      );
+    expect(await read()).toEqual({
+      ok: true,
+      provider: 'openrouter',
+      mime: 'audio/mpeg',
+      audioBase64: 'AQI=',
+    });
+    expect((await state()).speechRequests).toEqual([
+      {
+        model: voice.ttsModel,
+        voice: voice.ttsVoice,
+        input: 'Synthetic recent output',
+        response_format: 'mp3',
+      },
+    ]);
+    for (const status of [401, 500]) {
+      await app.evaluate(
+        (_electron, { path, status }) => {
+          process.getBuiltinModule('module').createRequire(path)(path).fixture.speechStatus =
+            status;
+        },
+        { path: bundle, status },
+      );
+      expect(await read()).toEqual({
+        ok: false,
+        error: `OpenRouter speech failed (${voice.ttsModel}) — HTTP ${status}`,
+      });
+    }
+    await app.evaluate((_electron, path) => {
+      process.getBuiltinModule('module').createRequire(path)(path).fixture.mode = 'failed';
+    }, bundle);
+    const failed = await read();
+    expect(failed.ok).toBe(false);
+    expect(failed.error).toContain('Synthetic provider failure *** ***');
+    expect(failed.error).not.toMatch(/synthetic-openrouter|synthetic-legacy-secret/);
+    expect((await state()).endpoints).toEqual(
+      Array(4).fill('https://openrouter.ai/api/v1/audio/speech'),
+    );
+
+    await writeFile(envFile, 'MISTRAL_API_KEY=synthetic-mistral-env\n');
+    const beforeMissingKey = (await state()).endpoints.length;
+    expect(await read()).toEqual({
+      ok: false,
+      error:
+        'OpenRouter API key required for read aloud — set OPENROUTER_API_KEY or Settings → Voice. Voice uses OpenRouter only.',
+    });
+    await expect(
+      page.evaluate(() =>
+        window.condash.voiceTranscribe('synthetic-tab', {
+          data: 'AAA=',
+          format: 'wav',
+          sampleRate: 16000,
+        }),
+      ),
+    ).rejects.toThrow('OpenRouter API key required for dictation');
+    expect((await state()).endpoints).toHaveLength(beforeMissingKey);
+    expect(await page.evaluate(() => window.condash.voiceCredentialStatus())).toEqual({
+      openrouter: { present: false, source: 'none' },
+    });
+
+    await sendMenu(app, 'open-settings');
+    await openVoice(page);
+    const section = page.locator('#settings-section-voice');
+    await expect(section.getByLabel(/Mistral API key|Mistral voice id/)).toHaveCount(0);
+    await expect(section.locator('input[type="password"]')).toHaveCount(1);
+    await section.getByLabel('Periodic captions while recording', { exact: true }).uncheck();
+    await page.locator('.settings-save').click();
+    await expect(page.locator('.settings-save')).toBeDisabled();
+    const saved = await page.evaluate(
+      async () => JSON.parse(await window.condash.getGlobalSettingsRaw()).voice,
+    );
+    expect(saved).toEqual({ ...voice, streaming: false });
+    expect(await read()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('OpenRouter API key required'),
+    });
+    expect((await state()).endpoints).toHaveLength(beforeMissingKey);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+test('native OpenRouter captions precede Stop; final, failure, cancellation and model ownership stay explicit', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const directory = await mkdtemp(join(tmpdir(), 'condash-clarity-action-'));
+  const envFile = join(directory, 'agents.env');
+  const bundle = await buildVoiceFixture(directory);
+  await writeFile(
+    envFile,
+    'MISTRAL_API_KEY=synthetic-mistral\nOPENROUTER_API_KEY=synthetic-openrouter\n',
+  );
   const booted = await bootApp({
     globalConfig: {
       layout: { projects: true, terminal: true },
@@ -297,7 +424,7 @@ test('native OpenRouter captions precede Stop; final, failure, cancellation and 
       await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
     });
 
-    await writeFile(envFile, 'MISTRAL_API_KEY=synthetic-read-aloud-only\n');
+    await writeFile(envFile, 'MISTRAL_API_KEY=synthetic-ignored-key\n');
     await mode('live');
     await dictate.click();
     await expect(report).toContainText(

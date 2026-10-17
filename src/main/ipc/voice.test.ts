@@ -224,21 +224,18 @@ describe('saved voice credential metadata', () => {
       });
       expect(snapshot).toEqual({
         openrouter: { present: true, source: 'agents-env' },
-        mistral: { present: true, source: 'agents-env' },
       });
       await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, '');
       expect(
         await handlers.voiceCredentialStatus(trustedEvent, { mistralApiKey: 'unsaved-secret' }),
       ).toEqual({
         openrouter: { present: true, source: 'settings' },
-        mistral: { present: false, source: 'none' },
       });
       await writeSettings({ voice: { mistralApiKey: 'new-saved-secret' } });
       const { invalidateSettingsMemo } = await import('../settings');
       invalidateSettingsMemo();
       expect(await handlers.voiceCredentialStatus(trustedEvent)).toEqual({
         openrouter: { present: false, source: 'none' },
-        mistral: { present: true, source: 'settings' },
       });
       expect(JSON.stringify(snapshot)).not.toMatch(/secret|env-mistral|\.env|prefix|hash|value/);
       expect(transcribeClip).not.toHaveBeenCalled();
@@ -278,11 +275,19 @@ describe('voice realtime stream gating', () => {
   });
 
   it('voiceStreamStart requires an OpenRouter key, not a Mistral key', async () => {
-    await writeSettings({ voice: { enabled: true, streaming: true } });
+    await writeSettings({
+      voice: {
+        enabled: true,
+        streaming: true,
+        mistralApiKey: 'ignored',
+        mistralVoiceId: 'ignored-voice',
+      },
+    });
+    await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, 'MISTRAL_API_KEY=ignored-env-key\n');
     await expect(handlers.voiceStreamStart(trustedEvent, START_REQUEST)).resolves.toEqual({
       ok: false,
       reason: 'no-openrouter-key',
-      error: 'OpenRouter API key required for dictation; Mistral keys are read-aloud only.',
+      error: 'OpenRouter API key required for dictation. Voice uses OpenRouter only.',
     });
     expect(beginVoiceStream).not.toHaveBeenCalled();
   });
@@ -291,7 +296,7 @@ describe('voice realtime stream gating', () => {
     await writeSettings({ voice: { enabled: true, streaming: true } });
     await fs.writeFile(join(tmpdir(), 'noop'), '');
     beginVoiceStream.mockResolvedValue({ ok: true });
-    // A Mistral key must resolve — seed the agents env file the handlers read.
+    // Seed only the synthetic OpenRouter key the handlers read.
     await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, 'OPENROUTER_API_KEY=stream-test-key\n');
     await expect(handlers.voiceStreamStart(trustedEvent, START_REQUEST)).resolves.toEqual({
       ok: true,

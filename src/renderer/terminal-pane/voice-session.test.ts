@@ -526,7 +526,7 @@ function makeFakeStreamEdge(): FakeStreamEdge {
       return { ok: true };
     }),
     audio: vi.fn(async () => undefined),
-    stop: vi.fn(async () => ({ inserted: true, provider: 'mistral', chars: 6 })),
+    stop: vi.fn(async () => ({ inserted: true, provider: 'openrouter', chars: 6 })),
     cancel: vi.fn(async () => undefined),
     onPartial: vi.fn((cb: (msg: { sid: string; text: string }) => void) => {
       callbacks.push(cb);
@@ -562,7 +562,7 @@ async function createStreamHarness(
   if (overrides.stopThrows) stream.stop.mockRejectedValue(new Error('socket exploded'));
   else
     stream.stop.mockResolvedValue(
-      overrides.stopResult ?? { inserted: true, provider: 'mistral', chars: 6 },
+      overrides.stopResult ?? { inserted: true, provider: 'openrouter', chars: 6 },
     );
   const [activeSid, setActiveSid] = createSignal<string | null>('a');
   let session!: VoiceSession;
