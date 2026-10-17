@@ -67,41 +67,40 @@ describe('resolveVoiceKeys', () => {
     const path = envFile('OPENROUTER_API_KEY=" env-secret "\nMISTRAL_API_KEY="  "\n');
     expect(resolveVoiceKeys(SETTINGS_PREFS, path)).toEqual({
       openrouter: 'env-secret',
-      mistral: 'settings-mistral',
     });
     expect(voiceCredentialStatus(SETTINGS_PREFS, path)).toEqual({
       openrouter: { present: true, source: 'agents-env' },
-      mistral: { present: true, source: 'settings' },
     });
     expect(voiceCredentialStatus(undefined, dir)).toEqual({
       openrouter: { present: false, source: 'none' },
-      mistral: { present: false, source: 'none' },
     });
   });
   it('prefers the env file over the settings fallback', () => {
     const path = envFile('OPENROUTER_API_KEY=env-or\nMISTRAL_API_KEY=env-mi');
     expect(resolveVoiceKeys(SETTINGS_PREFS, path)).toEqual({
       openrouter: 'env-or',
-      mistral: 'env-mi',
     });
   });
 
-  it('falls back to the settings value when the env key is missing', () => {
-    const path = envFile('OPENROUTER_API_KEY=env-or');
+  it('ignores legacy Mistral env and saved credentials when OpenRouter is missing', () => {
+    const path = envFile('MISTRAL_API_KEY=env-mi');
+    const legacyPrefs = { mistralApiKey: 'settings-mi', mistralVoiceId: 'legacy-voice' };
+    expect(resolveVoiceKeys(legacyPrefs, path)).toEqual({ openrouter: undefined });
+    expect(voiceCredentialStatus(legacyPrefs, path)).toEqual({
+      openrouter: { present: false, source: 'none' },
+    });
     expect(resolveVoiceKeys(SETTINGS_PREFS, path)).toEqual({
-      openrouter: 'env-or',
-      mistral: 'settings-mistral',
+      openrouter: 'settings-openrouter',
     });
   });
 
-  it('falls back to settings for both when the file is missing', () => {
+  it('falls back to the OpenRouter setting when the file is missing', () => {
     expect(resolveVoiceKeys(SETTINGS_PREFS, join(tmpdir(), 'definitely-absent.env'))).toEqual({
       openrouter: 'settings-openrouter',
-      mistral: 'settings-mistral',
     });
   });
 
-  it('returns an empty pair when nothing is configured anywhere', () => {
+  it('returns no OpenRouter key when nothing is configured anywhere', () => {
     expect(resolveVoiceKeys(undefined, join(tmpdir(), 'absent.env'))).toEqual({});
   });
 });

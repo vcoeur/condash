@@ -3,7 +3,7 @@
 // boundary base64-encoded; the provider calls run only in the main process.
 
 /** Provider identity alone does not distinguish realtime from batch text. */
-export type VoiceProvider = 'openrouter' | 'mistral';
+export type VoiceProvider = 'openrouter';
 
 /** Presence is not validation. This metadata never contains key material. */
 export interface VoiceKeyStatus {
@@ -13,7 +13,6 @@ export interface VoiceKeyStatus {
 
 export interface VoiceCredentialStatus {
   openrouter: VoiceKeyStatus;
-  mistral: VoiceKeyStatus;
 }
 
 export type VoiceTranscriptProducer = 'openrouter-native';
@@ -31,7 +30,7 @@ export interface VoicePrefs {
   enabled?: boolean;
   /** Manual OpenRouter key fallback. The agents-env entry wins when present. */
   openrouterApiKey?: string;
-  /** Read-aloud fallback only; never used for dictation. Env entry wins. */
+  /** @deprecated Ignored; accepted only to preserve legacy settings. */
   mistralApiKey?: string;
   /** Native OpenRouter STT model for both captions and final WAV.
    * Default `mistralai/voxtral-mini-transcribe`; existing ids are not migrated. */
@@ -43,9 +42,7 @@ export interface VoicePrefs {
    *  emotion in the id, e.g. `en_paul_neutral`, `fr_marie_neutral`).
    *  Default `en_paul_neutral`. */
   ttsVoice?: string;
-  /** Mistral voice id used only by the Mistral TTS fallback (`preset or
-   *  custom voice` on `POST /v1/audio/speech`). Unset → the fallback is
-   *  skipped with a clear error. */
+  /** @deprecated Ignored; accepted only to preserve legacy settings. */
   mistralVoiceId?: string;
   /** Periodically transcribe non-overlapping audio during capture (default on).
    * False disables previews only; the same model transcribes once after Stop. */
@@ -62,8 +59,7 @@ export interface VoicePrefs {
 }
 
 /** One recorded clip the renderer hands to main for transcription. Always
- *  16-bit PCM mono WAV, base64-encoded — the one format both provider paths
- *  accept without a codec dependency in the renderer. */
+ *  16-bit PCM mono WAV, base64-encoded for OpenRouter native transcription. */
 export interface VoiceAudioClip {
   /** Base64 of the complete WAV file (RIFF header + PCM data). */
   data: string;

@@ -35,7 +35,7 @@ function fixture(rate = 16000, previews = true) {
     transcribe: (clip, signal) =>
       transcribeClip(
         clip,
-        { openrouter: 'DUMMY', mistral: 'NEVER' },
+        { openrouter: 'DUMMY' },
         { sttModel: 'selected/native-id' },
         {
           signal,

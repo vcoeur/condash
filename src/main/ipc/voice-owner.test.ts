@@ -25,7 +25,7 @@ vi.mock('../terminals', () => ({
   tabRecentText: () => '',
 }));
 vi.mock('../voice/keys', () => ({
-  resolveVoiceKeys: () => ({ openrouter: 'DUMMY', mistral: 'NEVER' }),
+  resolveVoiceKeys: () => ({ openrouter: 'DUMMY' }),
 }));
 vi.mock('../safe-send', () => ({ safeSend: (...args: any[]) => edges.pushes(...args) }));
 vi.mock('./utils', async (original) => ({

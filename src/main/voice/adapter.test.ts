@@ -7,8 +7,10 @@ import {
   speakText,
   redactKeys,
 } from './adapter';
+import { resolveVoiceKeys } from './keys';
 
-const keys = { openrouter: 'DUMMY-OR', mistral: 'DUMMY-MISTRAL' };
+const keys = { openrouter: 'DUMMY-OR' };
+const legacyPrefs = { mistralApiKey: 'DUMMY-MISTRAL', mistralVoiceId: 'legacy-voice' };
 const clip = { data: 'UklGRg==', sampleRate: 16000, format: 'wav' } as const;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -50,16 +52,18 @@ describe('OpenRouter native dictation', () => {
       bias,
     );
   });
-  it('requires OpenRouter even when a Mistral key is available', async () => {
+  it('requires OpenRouter even when legacy Mistral credentials are saved', async () => {
     const fetch = vi.fn();
     await expect(
-      transcribeClip(clip, { mistral: keys.mistral }, undefined, { fetch }),
+      transcribeClip(clip, resolveVoiceKeys(legacyPrefs, '/absent/synthetic.env'), legacyPrefs, {
+        fetch,
+      }),
     ).rejects.toThrow('OpenRouter API key required');
     expect(fetch).not.toHaveBeenCalled();
   });
   it.each([401, 500])('reports HTTP %s without provider/model fallback', async (status) => {
     const fetch = vi.fn(async () => json({}, status));
-    await expect(transcribeClip(clip, keys, undefined, { fetch })).rejects.toThrow(
+    await expect(transcribeClip(clip, keys, legacyPrefs, { fetch })).rejects.toThrow(
       `HTTP ${status}`,
     );
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -75,7 +79,9 @@ describe('OpenRouter native dictation', () => {
         },
       }),
     ).rejects.toThrow('***');
-    expect(redactKeys(`${keys.openrouter} ${keys.mistral}`, keys)).toBe('*** ***');
+    expect(redactKeys(`${keys.openrouter} ${legacyPrefs.mistralApiKey}`, keys, legacyPrefs)).toBe(
+      '*** ***',
+    );
   });
   it('passes cancellation into fetch', async () => {
     const controller = new AbortController();
@@ -90,7 +96,7 @@ describe('OpenRouter native dictation', () => {
   });
 });
 
-describe('read aloud retains its independent fallback', () => {
+describe('OpenRouter-only read aloud', () => {
   it('uses OpenRouter raw mp3', async () => {
     const result = await speakText('hello', keys, undefined, {
       fetch: async (url, init) => {
@@ -107,26 +113,95 @@ describe('read aloud retains its independent fallback', () => {
     expect(result.provider).toBe('openrouter');
     expect([...result.audio]).toEqual([1, 2]);
   });
-  it('falls back to Mistral speech with a voice id', async () => {
-    const result = await speakText(
-      'hello',
-      keys,
-      { mistralVoiceId: 'voice' },
-      {
-        fetch: async (url, init) => {
-          if (url.includes('openrouter')) return json({}, 500);
-          expect(url).toBe('https://api.mistral.ai/v1/audio/speech');
-          expect(JSON.parse(String(init?.body)).voice_id).toBe('voice');
-          return json({ audio_data: 'AQI=' });
-        },
-      },
-    );
-    expect(result.provider).toBe('mistral');
-  });
-  it('requires a Mistral voice id and redacts both failures', async () => {
+  it.each(['mistralai/voxtral-mini-tts-2603', 'custom/speech-model'])(
+    'preserves the exact selected speech model %s and voice',
+    async (ttsModel) => {
+      const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe('https://openrouter.ai/api/v1/audio/speech');
+        expect(init?.headers).toEqual({
+          Authorization: `Bearer ${keys.openrouter}`,
+          'Content-Type': 'application/json',
+        });
+        expect(JSON.parse(String(init?.body))).toEqual({
+          model: ttsModel,
+          input: 'hello',
+          voice: 'fr_marie_neutral',
+          response_format: 'mp3',
+        });
+        return new Response(new Uint8Array([1, 2]));
+      });
+      const result = await speakText(
+        'hello',
+        keys,
+        { ...legacyPrefs, ttsModel, ttsVoice: 'fr_marie_neutral' },
+        { fetch },
+      );
+      expect(result.provider).toBe('openrouter');
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each([401, 500])(
+    'reports HTTP %s without fallback despite saved legacy credentials',
+    async (status) => {
+      const fetch = vi.fn(async () => json({}, status));
+      await expect(speakText('hello', keys, legacyPrefs, { fetch })).rejects.toThrow(
+        `HTTP ${status}`,
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/audio/speech',
+        expect.anything(),
+      );
+    },
+  );
+  it('requires OpenRouter even with a saved legacy key and voice', async () => {
+    const fetch = vi.fn();
     await expect(
-      speakText('x', keys, undefined, { fetch: async () => json({}, 500) }),
-    ).rejects.toThrow('Mistral TTS fallback needs a voice id');
-    await expect(speakText('x', {}, undefined)).rejects.toThrow('No text-to-speech API key');
+      speakText('hello', resolveVoiceKeys(legacyPrefs, '/absent/synthetic.env'), legacyPrefs, {
+        fetch,
+      }),
+    ).rejects.toThrow('OpenRouter API key required for read aloud');
+    expect(fetch).not.toHaveBeenCalled();
   });
+  it('reports empty audio without fallback', async () => {
+    const fetch = vi.fn(async () => new Response(new Uint8Array()));
+    await expect(speakText('hello', keys, legacyPrefs, { fetch })).rejects.toThrow(
+      'empty audio from provider',
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('voice error redaction', () => {
+  it('redacts longer legacy/manual secrets before overlapping active keys', () => {
+    expect(
+      redactKeys(
+        'secret-longer secret-long secret',
+        { openrouter: 'secret' },
+        {
+          openrouterApiKey: 'secret-long',
+          mistralApiKey: 'secret-longer',
+        },
+      ),
+    ).toBe('*** *** ***');
+  });
+  it.each(['dictate', 'read'])(
+    'redacts active, shadowed manual and ignored legacy keys for %s',
+    async (action) => {
+      const prefs = { ...legacyPrefs, openrouterApiKey: 'shadowed-settings-secret' };
+      const fetch = vi.fn(async () => {
+        throw new Error(`${keys.openrouter} ${prefs.openrouterApiKey} ${prefs.mistralApiKey}`);
+      });
+      const request =
+        action === 'dictate'
+          ? transcribeClip(clip, keys, prefs, { fetch })
+          : speakText('hello', keys, prefs, { fetch });
+      await expect(request).rejects.toThrow('*** *** ***');
+      const error = await request.catch(String);
+      expect(error).not.toContain(keys.openrouter);
+      expect(error).not.toContain(prefs.openrouterApiKey);
+      expect(error).not.toContain(prefs.mistralApiKey);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 });

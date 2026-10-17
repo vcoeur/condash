@@ -5,11 +5,10 @@ import { createVoiceKeyStatus } from './voice-key-status';
 
 const missing: VoiceCredentialStatus = {
   openrouter: { present: false, source: 'none' },
-  mistral: { present: false, source: 'none' },
 };
 const detected: VoiceCredentialStatus = {
   ...missing,
-  mistral: { present: true, source: 'agents-env' },
+  openrouter: { present: true, source: 'agents-env' },
 };
 
 describe('saved voice-key refresh ownership', () => {

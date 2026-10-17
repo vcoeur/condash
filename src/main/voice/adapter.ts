@@ -1,17 +1,11 @@
-// Dictation uses OpenRouter native audio/transcriptions only (JSON WAV → text).
-// The selected native STT model is never substituted. Read-aloud retains its
-// OpenRouter-first/Mistral-fallback contract. Native STT and provider.options
+// Voice uses OpenRouter only; selected STT/TTS models are never substituted.
+// Dictation uses native audio/transcriptions (JSON WAV → text). Native STT and provider.options
 // verified against OpenRouter's multimodal/stt documentation, 2026-10-16.
 //   TTS  OpenRouter  POST {OPENROUTER_BASE}/audio/speech — OpenAI-compatible
 //                    speech endpoint; `response_format` defaults to pcm so
 //                    `mp3` is requested explicitly; the reply is RAW audio
 //                    bytes. Model `mistralai/voxtral-mini-tts-2603`, persona
 //                    voice ids (`en_paul_neutral`, `fr_marie_neutral`, …).
-//   TTS  Mistral     POST {MISTRAL_BASE}/audio/speech — JSON body
-//                    {model, input, voice_id, response_format}; reply JSON
-//                    `{audio_data: <base64>}`. `voice_id` needs a preset or
-//                    saved custom voice, so the fallback runs only when
-//                    `voice.mistralVoiceId` is configured.
 //
 // Network never happens in the renderer: clips travel over the typed IPC
 // bridge and the main process calls out. All error text passes through
@@ -27,7 +21,6 @@ import type { ResolvedVoiceKeys } from './keys';
 import { MAX_CONTEXT_BIAS } from './resolve-context-bias';
 
 export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
-export const MISTRAL_BASE = 'https://api.mistral.ai/v1';
 
 /** OpenRouter native transcription model. */
 export const DEFAULT_STT_MODEL = 'mistralai/voxtral-mini-transcribe';
@@ -67,7 +60,7 @@ export async function transcribeClip(
 ): Promise<TranscribeSuccess> {
   if (!keys.openrouter) {
     throw new Error(
-      'OpenRouter API key required for dictation — set OPENROUTER_API_KEY or Settings → Voice. Mistral keys are read-aloud only.',
+      'OpenRouter API key required for dictation — set OPENROUTER_API_KEY or Settings → Voice. Voice uses OpenRouter only.',
     );
   }
   try {
@@ -81,7 +74,11 @@ export async function transcribeClip(
     );
   } catch (error) {
     throw new Error(
-      `OpenRouter transcription failed (${prefs?.sttModel?.trim() || DEFAULT_STT_MODEL}) — ${redactKeys((error as Error).message, keys)}`,
+      redactKeys(
+        `OpenRouter transcription failed (${prefs?.sttModel?.trim() || DEFAULT_STT_MODEL}) — ${(error as Error).message}`,
+        keys,
+        prefs,
+      ),
     );
   }
 }
@@ -92,9 +89,8 @@ export interface SpeakSuccess {
 }
 
 /**
- * Synthesize text to MP3: OpenRouter first, Mistral fallback (only when a
- * Mistral voice id is configured — its API has no anonymous preset voice).
- * Throws a redacted, user-displayable error when nothing answers.
+ * Synthesize text to MP3 through OpenRouter only, without provider/model fallback.
+ * Throws a redacted, user-displayable error on failure.
  */
 export async function speakText(
   text: string,
@@ -102,43 +98,27 @@ export async function speakText(
   prefs?: VoicePrefs,
   deps?: AdapterDeps,
 ): Promise<SpeakSuccess> {
-  const doFetch = deps?.fetch ?? globalThis.fetch.bind(globalThis);
-  const attempts: { provider: VoiceProvider; run: () => Promise<SpeakSuccess> }[] = [];
-  if (keys.openrouter) {
-    attempts.push({
-      provider: 'openrouter',
-      run: () => openrouterSpeak(text, keys.openrouter!, prefs, doFetch),
-    });
-  }
-  if (keys.mistral) {
-    attempts.push({
-      provider: 'mistral',
-      run: () => {
-        if (!prefs?.mistralVoiceId) {
-          throw new Error(
-            'Mistral TTS fallback needs a voice id — set one under Settings → Voice ' +
-              '(Mistral voice id), or fix the OpenRouter key.',
-          );
-        }
-        return mistralSpeak(text, keys.mistral!, prefs.mistralVoiceId, prefs, doFetch);
-      },
-    });
-  }
-  if (attempts.length === 0) {
+  if (!keys.openrouter) {
     throw new Error(
-      'No text-to-speech API key available — set OPENROUTER_API_KEY in ~/.config/agents/.env ' +
-        'or add one under Settings → Voice.',
+      'OpenRouter API key required for read aloud — set OPENROUTER_API_KEY or Settings → Voice. Voice uses OpenRouter only.',
     );
   }
-  const failures: string[] = [];
-  for (const attempt of attempts) {
-    try {
-      return await attempt.run();
-    } catch (err) {
-      failures.push(`${attempt.provider}: ${redactKeys((err as Error).message, keys)}`);
-    }
+  try {
+    return await openrouterSpeak(
+      text,
+      keys.openrouter,
+      prefs,
+      deps?.fetch ?? globalThis.fetch.bind(globalThis),
+    );
+  } catch (error) {
+    throw new Error(
+      redactKeys(
+        `OpenRouter speech failed (${prefs?.ttsModel?.trim() || DEFAULT_TTS_MODEL}) — ${(error as Error).message}`,
+        keys,
+        prefs,
+      ),
+    );
   }
-  throw new Error(`Text-to-speech failed — ${failures.join('; ')}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,48 +189,17 @@ async function openrouterSpeak(
 }
 
 // ---------------------------------------------------------------------------
-// Mistral
-// ---------------------------------------------------------------------------
-
-async function mistralSpeak(
-  text: string,
-  apiKey: string,
-  voiceId: string,
-  prefs: VoicePrefs | undefined,
-  doFetch: FetchLike,
-): Promise<SpeakSuccess> {
-  const res = await doFetch(`${MISTRAL_BASE}/audio/speech`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: prefs?.ttsModel?.trim() || DEFAULT_TTS_MODEL,
-      input: text,
-      voice_id: voiceId,
-      response_format: 'mp3',
-    }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = (await res.json()) as { audio_data?: string; message?: string };
-  if (!body.audio_data) throw new Error(body.message || 'no audio in reply');
-  return { audio: base64ToBytes(body.audio_data), provider: 'mistral' };
-}
-
-// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Remove every configured key (and any bearer-token-looking neighbour) from
- *  an error string. Every adapter failure passes through this before it can
- *  reach a renderer notice or a log line. */
-export function redactKeys(text: string, keys: ResolvedVoiceKeys): string {
+/** Redact active and saved keys, including ignored legacy credentials. */
+export function redactKeys(text: string, keys: ResolvedVoiceKeys, prefs?: VoicePrefs): string {
   let out = text;
-  for (const key of [keys.openrouter, keys.mistral]) {
-    if (key && out.includes(key)) out = out.split(key).join('***');
+  const secrets = [keys.openrouter, prefs?.openrouterApiKey, prefs?.mistralApiKey]
+    .filter((key): key is string => Boolean(key))
+    .sort((left, right) => right.length - left.length);
+  for (const key of secrets) {
+    if (out.includes(key)) out = out.split(key).join('***');
   }
   return out;
-}
-
-function base64ToBytes(data: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(data, 'base64'));
 }

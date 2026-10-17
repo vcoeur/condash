@@ -2,8 +2,8 @@
 //
 // Contract (agentsconf): `~/.config/agents/.env` is the machine's one
 // secret-bearing file. condash reads it **read-only** and treats it as the
-// default source for the STT/TTS provider keys; the per-machine
-// `settings.json` `voice.openrouterApiKey` / `voice.mistralApiKey` fields are
+// default source for the OpenRouter STT/TTS key; the per-machine
+// `settings.json` `voice.openrouterApiKey` field is
 // the manual fallback for machines without the env file. Key values are never
 // logged and never sent to the renderer.
 
@@ -14,7 +14,6 @@ import type { VoiceCredentialStatus, VoiceKeyStatus, VoicePrefs } from '../../sh
 
 /** Env-var names looked up in the agents env file. */
 export const OPENROUTER_ENV_KEY = 'OPENROUTER_API_KEY';
-export const MISTRAL_ENV_KEY = 'MISTRAL_API_KEY';
 
 /**
  * Path of the agents env file. Mirrors the `user-scope-paths.ts` convention:
@@ -65,15 +64,14 @@ export function readAgentEnvKey(name: string, path: string = agentsEnvPath()): s
   }
 }
 
-/** The resolved key pair the adapter runs with. Values are opaque secrets:
+/** The resolved OpenRouter key the adapter runs with. Values are opaque secrets:
  *  log nothing derived from them. */
 export interface ResolvedVoiceKeys {
   openrouter?: string;
-  mistral?: string;
 }
 
 /**
- * Resolve the provider keys for one adapter call. Precedence is the brief's
+ * Resolve the OpenRouter key for one adapter call. Precedence is the brief's
  * contract: the agents env file is the default source; a settings.json value
  * is the manual fallback consulted only when the env file (or the key in it)
  * is missing.
@@ -84,7 +82,6 @@ export function resolveVoiceKeys(
 ): ResolvedVoiceKeys {
   return {
     openrouter: readAgentEnvKey(OPENROUTER_ENV_KEY, path) ?? prefs?.openrouterApiKey ?? undefined,
-    mistral: readAgentEnvKey(MISTRAL_ENV_KEY, path) ?? prefs?.mistralApiKey ?? undefined,
   };
 }
 
@@ -100,6 +97,5 @@ export function voiceCredentialStatus(
   };
   return {
     openrouter: describe(OPENROUTER_ENV_KEY, prefs?.openrouterApiKey),
-    mistral: describe(MISTRAL_ENV_KEY, prefs?.mistralApiKey),
   };
 }

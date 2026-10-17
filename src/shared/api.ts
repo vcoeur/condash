@@ -426,8 +426,8 @@ export interface CondashApi {
    * Synthesize the session's recent visible output to speech (on-demand
    * readback — never automatic). Reads the same recent-output slice the
    * dashboard summarizer uses (recent scrollback, not a parsed "final
-   * answer") and returns base64 MP3 for the renderer to play. Provider
-   * selection remains OpenRouter first, Mistral fallback with key and voice id.
+   * answer") and returns base64 MP3 for the renderer to play. Uses only
+   * OpenRouter and the selected model/voice; errors never select a fallback.
    */
   voiceSpeak(id: string): Promise<VoiceSpeakResult>;
   /** Read the system clipboard via the main process. Used by the terminal's

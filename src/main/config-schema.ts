@@ -506,7 +506,7 @@ const dashboardSettings = z
  * the global file, never a versioned conception `condash.json`. **Default
  * off**: `enabled` must be true before anything records, transmits, or
  * speaks. By default the keys are read read-only from `~/.config/agents/.env`
- * (`OPENROUTER_API_KEY` / `MISTRAL_API_KEY`); the fields here are the manual
+ * (`OPENROUTER_API_KEY`); the OpenRouter field here is the manual
  * fallback for machines without that file. The adapter applies model/voice
  * defaults (`docs/reference/config.md` carries the table).
  */
@@ -519,7 +519,7 @@ const voiceSettings = z
     /** OpenRouter API key. Unset → `OPENROUTER_API_KEY` from the agents env
      *  file. Never logged, never sent to the renderer. */
     openrouterApiKey: z.string().optional(),
-    /** Mistral read-aloud fallback key. Dictation uses OpenRouter only. */
+    /** Deprecated and ignored; preserve existing settings without migration. */
     mistralApiKey: z.string().optional(),
     /** Native OpenRouter speech-to-text model for previews and final audio.
      *  Default `mistralai/voxtral-mini-transcribe`. */
@@ -529,8 +529,7 @@ const voiceSettings = z
     /** OpenRouter TTS voice id (Voxtral `en_paul_*` / `gb_jane_*` /
      *  `fr_marie_*` personas). Default `en_paul_neutral`. */
     ttsVoice: z.string().optional(),
-    /** Mistral TTS fallback voice (`voice_id` — preset or custom). Unset →
-     *  the Mistral TTS fallback is skipped. */
+    /** Deprecated and ignored; preserve existing settings without migration. */
     mistralVoiceId: z.string().optional(),
     /** Periodic OpenRouter captions while recording. Unset/true enables
      *  previews; false keeps only the same-model final transcription. */

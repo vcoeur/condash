@@ -1,4 +1,4 @@
-import { createEffect, For, Show, type JSX } from 'solid-js';
+import { createEffect, Show, type JSX } from 'solid-js';
 import type { VoiceKeyStatus, VoicePrefs } from '@shared/types';
 import { type RawConfig } from './data';
 import { SectionShell } from './section-shell';
@@ -48,8 +48,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
       scope="global"
       hint={
         <p class="settings-hint">
-          Dictate inserts speech into a terminal tab after Stop. Read speaks recent tab output. Both
-          are idle until requested.
+          OpenRouter only — Dictate and Read share one OpenRouter API key, with no direct-provider
+          fallback. Dictate inserts speech into a terminal tab after Stop. Read speaks recent tab
+          output. Both are idle until requested. Model ids starting with mistralai/ refer to models
+          accessed through OpenRouter; no Mistral credentials are needed.
         </p>
       }
     >
@@ -83,8 +85,8 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               Periodic captions while recording → OpenRouter ({sttModel()}). Stop → full recording
               with vocabulary hints → the same model ({sttModel()}). Final text may revise captions.
             </Show>{' '}
-            OpenRouter key required. No direct Mistral dictation or alternate model fallback. This
-            is a draft preview, not a saved setup or an actual action.
+            OpenRouter key required. No alternate provider or model fallback. This is a draft
+            preview, not a saved setup or an actual action.
           </p>
           <div class="settings-grid">
             <div class="settings-field-span">
@@ -129,8 +131,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 One phrase per line. App handles/names/aliases are added automatically: an empty
                 field need not mean empty effective vocabulary. Sent through OpenRouter
                 provider.options.mistral.context_bias on captions and final. Other upstream
-                providers may ignore these Mistral-specific hints. The full final audio pass can
-                change segment boundaries and words; accuracy is not guaranteed.
+                providers may ignore these Mistral-specific hints. No Mistral credentials are
+                needed. The full final audio pass can change segment boundaries and words; accuracy
+                is not guaranteed.
               </small>
             </label>
             <label>
@@ -152,10 +155,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
         <fieldset class="settings-launcher-fieldset" aria-label="Credentials">
           <legend>Credentials</legend>
           <p class="settings-hint">
-            Saved key sources only; unsaved keys below do not change this snapshot. The shared
-            API-key file wins over the manual Settings field. Default file:{' '}
-            <code>~/.config/agents/.env</code> (CONDASH_AGENTS_ENV may override it). Finding a key
-            does not test it with the provider; no provider request is made.
+            One OpenRouter key for Dictate and Read. Saved key sources only; the unsaved key below
+            does not change this snapshot. The shared API-key file wins over the manual Settings
+            field. Default file: <code>~/.config/agents/.env</code> (CONDASH_AGENTS_ENV may override
+            it). Finding a key does not test it with the provider; no provider request is made.
           </p>
           <div class="voice-key-snapshot" role="status" data-test-voice-keys>
             <Show
@@ -176,14 +179,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 return (
                   <>
                     <p>Last checked saved key sources at {snapshot.checkedAt}</p>
-                    <For each={['openrouter', 'mistral'] as const}>
-                      {(provider) => (
-                        <p>
-                          {provider === 'openrouter' ? 'OpenRouter' : 'Mistral'}:{' '}
-                          {keyDescription(snapshot.keys[provider])}
-                        </p>
-                      )}
-                    </For>
+                    <p>OpenRouter: {keyDescription(snapshot.keys.openrouter)}</p>
                   </>
                 );
               })()}
@@ -205,21 +201,9 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 }
               />
             </label>
-            <label>
-              <span>Mistral API key (read-aloud fallback only)</span>
-              <input
-                type="password"
-                autocomplete="off"
-                placeholder="…"
-                value={voice().mistralApiKey ?? ''}
-                onChange={(e) =>
-                  void update({ mistralApiKey: e.currentTarget.value.trim() || undefined })
-                }
-              />
-            </label>
           </div>
           <small class="settings-field-hint">
-            Manual keys are stored in this machine's settings.json and prefilled here. Environment
+            The manual key is stored in this machine's settings.json and prefilled here. Environment
             key values stay in main.
           </small>
         </fieldset>
@@ -227,9 +211,10 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
         <fieldset class="settings-launcher-fieldset" aria-label="Read aloud">
           <legend>Read aloud</legend>
           <p class="settings-hint" data-test-read-route>
-            <strong>Draft route if saved:</strong> OpenRouter speech → Mistral fallback (requires
-            both a Mistral key and voice id). Both use {ttsModel()}. This preview does not validate
-            the model, voice or credentials.
+            <strong>Draft route if saved:</strong> OpenRouter only → speech ({ttsModel()}). Uses the
+            same OpenRouter key as Dictate. No alternate provider, model or voice fallback on
+            missing credentials or errors. This preview does not validate the model, voice or
+            credentials.
           </p>
           <div class="settings-grid">
             <label>
@@ -242,7 +227,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                   void update({ ttsModel: e.currentTarget.value.trim() || undefined })
                 }
               />
-              <small class="settings-field-hint">Model id passed to both speech providers.</small>
+              <small class="settings-field-hint">Exact model id sent to OpenRouter.</small>
             </label>
             <label>
               <span>Speech voice</span>
@@ -257,22 +242,6 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               <small class="settings-field-hint">
                 OpenRouter voice: {voice().ttsVoice?.trim() || 'en_paul_neutral'}. Voice ids are
                 model-specific.
-              </small>
-            </label>
-            <label>
-              <span>Mistral voice id (fallback)</span>
-              <input
-                type="text"
-                placeholder="(unset — fallback skipped)"
-                value={voice().mistralVoiceId ?? ''}
-                onInput={(e) =>
-                  void update({ mistralVoiceId: e.currentTarget.value.trim() || undefined })
-                }
-              />
-              <small class="settings-field-hint">
-                {voice().mistralVoiceId?.trim()
-                  ? 'Voice id configured in this draft; a Mistral key is also required.'
-                  : 'Unset in this draft — Mistral speech fallback skipped.'}
               </small>
             </label>
           </div>

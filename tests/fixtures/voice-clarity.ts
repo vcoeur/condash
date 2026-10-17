@@ -16,6 +16,13 @@ export function install() {
     ipcMain.removeHandler(channel);
   globalThis.fetch = async (input, init) => {
     const url = String(input);
+    fixture.endpoints.push(url);
+    if (url === 'https://openrouter.ai/api/v1/audio/speech') {
+      fixture.speechRequests.push(JSON.parse(String(init?.body)));
+      if (fixture.mode === 'failed')
+        throw new Error('Synthetic provider failure synthetic-openrouter synthetic-legacy-secret');
+      return new Response(new Uint8Array([1, 2]), { status: fixture.speechStatus });
+    }
     if (url !== 'https://openrouter.ai/api/v1/audio/transcriptions')
       throw new Error('Unexpected provider endpoint (network forbidden)');
     const body = JSON.parse(String(init?.body));
