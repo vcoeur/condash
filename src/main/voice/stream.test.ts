@@ -76,11 +76,12 @@ it('previews before Stop, uses contiguous non-overlapping WAVs, then one full sa
   f.audio(2, 33);
   expect(f.requests).toHaveLength(1);
   await f.reply(0, 'first words');
+  await vi.waitFor(() => expect(f.requests).toHaveLength(2));
   expect(f.onPartial).toHaveBeenLastCalledWith('first words');
   expect(f.insert).not.toHaveBeenCalled();
   expect(f.requests).toHaveLength(2);
   await f.reply(1, 'next words');
-  expect(f.onPartial).toHaveBeenLastCalledWith('first words next words');
+  await vi.waitFor(() => expect(f.onPartial).toHaveBeenLastCalledWith('first words next words'));
   const stopping = f.session.stop();
   expect(f.requests).toHaveLength(3);
   await f.reply(2, 'Corrected full final');
@@ -129,7 +130,9 @@ it('preview failure is visible and final failure never inserts preview text or r
   f.audio(2);
   f.requests[0].gate.reject(new Error('Synthetic 401'));
   await flush();
-  expect(f.onUnavailable).toHaveBeenCalledWith(expect.stringContaining('Synthetic 401'));
+  await vi.waitFor(() =>
+    expect(f.onUnavailable).toHaveBeenCalledWith(expect.stringContaining('Synthetic 401')),
+  );
   const stopping = f.session.stop();
   f.requests[1].gate.reject(new Error('Synthetic final failure'));
   expect(await stopping).toMatchObject({
