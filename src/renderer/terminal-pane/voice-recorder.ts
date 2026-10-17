@@ -91,6 +91,7 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
     chunks: Float32Array[];
     samples: number;
     rate: number;
+    overflow: boolean;
   }
   let current: Capture | null = null;
   let capturedRate = RECORD_SAMPLE_RATE;
@@ -134,6 +135,7 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
         chunks: [],
         samples: 0,
         rate: RECORD_SAMPLE_RATE,
+        overflow: false,
       };
       current = capture;
       try {
@@ -160,6 +162,12 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
         processor.onaudioprocess = (event) => {
           if (!capture.active || capture.cancelled || current !== capture) return;
           const input = event.inputBuffer.getChannelData(0);
+          if (capture.overflow) return;
+          if ((capture.samples + input.length) * 2 + 44 > 20_000_000) {
+            capture.overflow = true;
+            capture.chunks = [];
+            return;
+          }
           capture.chunks.push(new Float32Array(input));
           capture.samples += input.length;
           if (options.onChunk) {
@@ -189,6 +197,8 @@ export function createVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRe
       const { rate, chunks: collected, samples } = capture;
       release(capture);
       capture.chunks = [];
+      if (capture.overflow)
+        throw new Error('Recording exceeds the 20 MB limit — nothing will be inserted.');
       if (samples < (rate * MIN_CLIP_MS) / 1000) return null;
       const merged = new Float32Array(samples);
       let offset = 0;

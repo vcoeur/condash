@@ -25,7 +25,6 @@ const transcribeClip = vi.fn();
 const speakText = vi.fn();
 vi.mock('../voice/adapter', () => ({
   transcribeClip: (...args: unknown[]) => transcribeClip(...(args as [])),
-  transcribeClipBiasFirst: (...args: unknown[]) => transcribeClip(...(args as [])),
   speakText: (...args: unknown[]) => speakText(...(args as [])),
 }));
 
@@ -33,7 +32,6 @@ vi.mock('../voice/adapter', () => ({
 const beginVoiceStream = vi.fn();
 vi.mock('../voice/stream', () => ({
   beginVoiceStream: (...args: unknown[]) => beginVoiceStream(...(args as [])),
-  createRealtimeSocket: vi.fn(),
   getActiveVoiceStream: () => null,
   takeActiveVoiceStream: () => null,
   cancelActiveVoiceStream: vi.fn(),
@@ -138,12 +136,12 @@ describe('voice IPC default-off gating', () => {
     transcribeClip.mockResolvedValue({
       text: 'hello',
       provider: 'openrouter',
-      producer: 'openrouter-batch',
+      producer: 'openrouter-native',
     });
     await expect(handlers.voiceTranscribe(trustedEvent, 's1', CLIP)).resolves.toEqual({
       inserted: true,
       provider: 'openrouter',
-      producer: 'openrouter-batch',
+      producer: 'openrouter-native',
       chars: 5,
     });
     expect(transcribeClip).toHaveBeenCalledTimes(1);
@@ -269,20 +267,22 @@ describe('voice realtime stream gating', () => {
     expect(beginVoiceStream).not.toHaveBeenCalled();
   });
 
-  it('voiceStreamStart answers disabled when enabled but streaming is off', async () => {
-    await writeSettings({ voice: { enabled: true, streaming: false } });
+  it('voiceStreamStart accepts a final-only session when captions are off', async () => {
+    await writeSettings({ voice: { enabled: true, streaming: false, openrouterApiKey: 'DUMMY' } });
+    beginVoiceStream.mockResolvedValue({ ok: true });
     await expect(handlers.voiceStreamStart(trustedEvent, START_REQUEST)).resolves.toEqual({
-      ok: false,
-      reason: 'disabled',
+      ok: true,
+      captions: false,
     });
-    expect(beginVoiceStream).not.toHaveBeenCalled();
+    expect(beginVoiceStream).toHaveBeenCalledTimes(1);
   });
 
-  it('voiceStreamStart answers no-mistral-key when the realtime provider is unkeyed', async () => {
+  it('voiceStreamStart requires an OpenRouter key, not a Mistral key', async () => {
     await writeSettings({ voice: { enabled: true, streaming: true } });
     await expect(handlers.voiceStreamStart(trustedEvent, START_REQUEST)).resolves.toEqual({
       ok: false,
-      reason: 'no-mistral-key',
+      reason: 'no-openrouter-key',
+      error: 'OpenRouter API key required for dictation; Mistral keys are read-aloud only.',
     });
     expect(beginVoiceStream).not.toHaveBeenCalled();
   });
@@ -292,9 +292,10 @@ describe('voice realtime stream gating', () => {
     await fs.writeFile(join(tmpdir(), 'noop'), '');
     beginVoiceStream.mockResolvedValue({ ok: true });
     // A Mistral key must resolve — seed the agents env file the handlers read.
-    await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, 'MISTRAL_API_KEY=stream-test-key\n');
+    await fs.writeFile(process.env.CONDASH_AGENTS_ENV!, 'OPENROUTER_API_KEY=stream-test-key\n');
     await expect(handlers.voiceStreamStart(trustedEvent, START_REQUEST)).resolves.toEqual({
       ok: true,
+      captions: true,
     });
     expect(beginVoiceStream).toHaveBeenCalledTimes(1);
     // The captured sample rate rides the session deps for the repass header.

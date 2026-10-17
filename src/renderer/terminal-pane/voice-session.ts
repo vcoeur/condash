@@ -41,7 +41,10 @@ export interface AudioLike {
  *  injected so tests fake it. Optional: when absent the session behaves
  *  exactly like the batch-only v4.131 controller. */
 export interface VoiceStreamEdge {
-  start(sid: string, ownerId: string): Promise<{ ok: boolean; reason?: string; error?: string }>;
+  start(
+    sid: string,
+    ownerId: string,
+  ): Promise<{ ok: boolean; captions?: boolean; reason?: string; error?: string }>;
   audio(chunk: { ownerId: string; pcmBase64: string }): Promise<void>;
   stop(ownerId: string): Promise<VoiceTranscribeResult>;
   cancel(ownerId: string): Promise<void>;
@@ -54,7 +57,7 @@ export interface VoiceSessionDeps {
   activeSid: () => string | null;
   onNotice: (message: string) => void;
   recorder: VoiceRecorder;
-  transcribe(sid: string, clip: VoiceAudioClip): Promise<VoiceTranscribeResult>;
+  transcribe(sid: string, clip: VoiceAudioClip, ownerId?: string): Promise<VoiceTranscribeResult>;
   speak(sid: string): Promise<VoiceSpeakResult>;
   createAudio(src: string): AudioLike;
   /** Realtime stream edge. Absent → batch-only behaviour. */
@@ -101,16 +104,14 @@ export interface VoiceDictationReport {
 
 export function dictationReportText(report: VoiceDictationReport): string {
   const producers = {
-    'mistral-batch': 'Mistral transcribed the final recording.',
-    'openrouter-batch': 'OpenRouter transcribed the final recording.',
-    'mistral-realtime': 'Mistral realtime text was used for the final transcript.',
+    'openrouter-native': 'OpenRouter native STT transcribed the full final recording.',
     pending: 'The final transcript is pending.',
     none: 'No final transcript was produced.',
     unknown: 'The final transcript source is unknown.',
   };
   const captions = {
     pending: 'Live captions have not appeared yet.',
-    live: 'Live captions were shown;',
+    live: 'Periodic captions were shown;',
     unavailable: 'Live captions were unavailable;',
     interrupted: 'Live captions were shown, then interrupted;',
     off: 'Live captions were off;',
@@ -124,7 +125,7 @@ export function dictationReportText(report: VoiceDictationReport): string {
         : report.capture === 'recording'
           ? 'Recording — ' +
             (report.captions === 'live'
-              ? 'live captions are visible.'
+              ? 'periodic OpenRouter captions are provisional; final text follows Stop.'
               : report.captions === 'unavailable' || report.captions === 'interrupted'
                 ? 'recording continues; transcription follows Stop.'
                 : 'transcription follows Stop.')
@@ -174,6 +175,10 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     stream: 'none' | 'pending' | 'ready' | 'batch';
     cancellation?: Promise<void>;
     report: VoiceDictationReport;
+    queuedAudio: string[];
+    queuedChars: number;
+    sending: Promise<void>;
+    audioError?: Error;
   }
   let current: Attempt | null = null;
   let latest: Attempt | null = null;
@@ -188,12 +193,13 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     attempt.report = { ...attempt.report, ...patch };
     if (visible(attempt)) setReport(attempt.report);
   };
-  const unavailable = (attempt: Attempt): void => {
+  const unavailable = (attempt: Attempt, reason?: string): void => {
     reportAttempt(attempt, {
       captions:
         attempt.report.captions === 'live' || attempt.report.captions === 'interrupted'
           ? 'interrupted'
           : 'unavailable',
+      reason,
     });
     deps.onNotice('Live captions unavailable — recording continues for transcription after Stop.');
   };
@@ -282,7 +288,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         msg.sid === current.sid &&
         msg.ownerId === current.ownerId
       ) {
-        if (msg.unavailable) unavailable(current);
+        if (msg.unavailable) unavailable(current, msg.reason);
         else if (current.stream === 'ready') {
           setPartial(msg.text);
           if (
@@ -305,6 +311,10 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
    * case (§9.3).
    */
   const noticeResult = (result: VoiceTranscribeResult, fallbackOnNoSession: boolean): boolean => {
+    if (result.reason === 'error') {
+      deps.onNotice(result.error ?? 'OpenRouter dictation failed — nothing inserted.');
+      return true;
+    }
     if (result.inserted) {
       deps.onNotice(`Dictated ${result.chars} characters into the tab.`);
       return true;
@@ -336,6 +346,9 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       sid,
       phase: 'microphone',
       stream: 'none',
+      queuedAudio: [],
+      queuedChars: 0,
+      sending: Promise.resolve(),
       report: {
         sid,
         capture: 'starting',
@@ -371,8 +384,12 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
           attempt.stream = started.ok ? 'ready' : 'batch';
           if (started.ok) {
             setPartial('');
+            if (started.captions === false) reportAttempt(attempt, { captions: 'off' });
+            for (const pcm of attempt.queuedAudio) sendAudio(attempt, pcm);
+            attempt.queuedAudio = [];
+            attempt.queuedChars = 0;
           } else if (started.reason === 'disabled') reportAttempt(attempt, { captions: 'off' });
-          else unavailable(attempt);
+          else unavailable(attempt, started.error);
         } catch {
           // A stream-start IPC rejection is not a microphone failure — the
           // mic is already open and the recording continues on the batch
@@ -421,7 +438,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       reportAttempt(attempt, {
         producer: result.producer ?? (result.inserted ? 'unknown' : 'none'),
         insertion: result.inserted ? 'inserted' : 'none',
-        reason: result.reason,
+        reason: result.error ?? result.reason,
       });
     };
     try {
@@ -430,15 +447,16 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       const stopping = deps.recorder.stop(attempt.ownerId);
       if (attempt.stream === 'pending') cancelStream(attempt);
       const clip = await stopping;
+      if (attempt.audioError) throw attempt.audioError;
       if (wasStreaming && deps.stream) {
+        await attempt.sending;
+        if (attempt.audioError) throw attempt.audioError;
         // A rejected stop may already have committed in main. Only an explicit
         // no-session response proves that the buffered fallback is safe.
         const result = await deps.stream.stop(attempt.ownerId);
-        if (result.reason !== 'no-session') {
-          reportResult(result);
-          if (visible(attempt)) noticeResult(result, false);
-          return;
-        }
+        reportResult(result);
+        if (visible(attempt)) noticeResult(result, false);
+        return;
       }
       if (!clip) {
         reportAttempt(attempt, {
@@ -453,10 +471,13 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         deps.onNotice('The tab closed while recording — nothing was inserted.');
         return;
       }
-      const result: VoiceTranscribeResult = await deps.transcribe(sid, clip);
+      const result: VoiceTranscribeResult = deps.stream
+        ? await deps.transcribe(sid, clip, attempt.ownerId)
+        : await deps.transcribe(sid, clip);
       reportResult(result);
       if (visible(attempt)) noticeResult(result, false);
     } catch (err) {
+      cancelStream(attempt);
       reportAttempt(attempt, {
         producer: 'unknown',
         insertion: 'unknown',
@@ -544,6 +565,21 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
     }
   };
 
+  function sendAudio(attempt: Attempt, pcmBase64: string): void {
+    attempt.sending = attempt.sending.then(async () => {
+      if (attempt.phase === 'cancelled' || attempt.audioError) return;
+      try {
+        await deps.stream?.audio({ ownerId: attempt.ownerId, pcmBase64 });
+      } catch (error) {
+        attempt.audioError = new Error(
+          `Dictation audio delivery failed — ${(error as Error).message}`,
+        );
+        cancelStream(attempt);
+        if (visible(attempt)) unavailable(attempt, attempt.audioError.message);
+      }
+    });
+  }
+
   return {
     recording,
     capturing,
@@ -564,7 +600,16 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         current.phase === 'capture' &&
         (current.stream === 'pending' || current.stream === 'ready')
       ) {
-        void deps.stream?.audio({ ownerId, pcmBase64 }).catch(() => undefined);
+        if (current.stream === 'pending') {
+          current.queuedChars += pcmBase64.length;
+          if (current.queuedChars > 27_000_000) {
+            current.audioError = new Error(
+              'Recording exceeds the 20 MB limit — nothing will be inserted.',
+            );
+            cancelStream(current);
+            unavailable(current, current.audioError.message);
+          } else current.queuedAudio.push(pcmBase64);
+        } else sendAudio(current, pcmBase64);
       }
     },
   };

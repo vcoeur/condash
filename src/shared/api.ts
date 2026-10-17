@@ -388,35 +388,36 @@ export interface CondashApi {
   /**
    * Transcribe a recorded clip (push-to-talk) and insert the transcript into
    * session `id`'s PTY input through the same terminal-service write path
-   * typed input uses. The provider call runs in main (OpenRouter first,
-   * Mistral fallback); the renderer never sees key values. Empty transcript
+   * typed input uses. Native STT runs in main through OpenRouter only;
+   * no model/provider fallback. An optional owner consumes that start's
+   * one-use snapshot for pending/refused-start Stop. Empty transcript
    * and dead sessions are reported no-ops — `reason` names which, so the
    * pane can show a notice instead of writing nothing silently.
    */
-  voiceTranscribe(id: string, clip: VoiceAudioClip): Promise<VoiceTranscribeResult>;
+  voiceTranscribe(
+    id: string,
+    clip: VoiceAudioClip,
+    ownerId?: string,
+  ): Promise<VoiceTranscribeResult>;
   /** Resolve key presence/source from last-saved settings in main, without
    *  validation, provider requests or returning key material. Takes no draft. */
   voiceCredentialStatus(): Promise<VoiceCredentialStatus>;
   /**
-   * Open the realtime dictation stream for session `id` (one WebSocket in
-   * main, Mistral realtime, Authorization header set there — the key never
-   * reaches the renderer). `sampleRate` labels the session with the rate
-   * the mic actually captured at. A refusal is a typed `{ok:false, reason}`;
-   * the renderer stays on the batch path for every reason.
+   * Reserve an owner-bound PCM session. Main snapshots model/keys/vocabulary
+   * for periodic OpenRouter native captions and one full final WAV. The rate
+   * must describe actual capture; refusal is typed `{ok:false, reason}`.
    */
   voiceStreamStart(request: VoiceStreamStartRequest): Promise<VoiceStreamStartResult>;
   /** Forward one chunk of raw s16le PCM (base64, no WAV header) from the
    *  recording tap to the active stream. No-op when no stream is live. */
   voiceStreamAudio(chunk: VoiceStreamChunk): Promise<void>;
   /**
-   * Finalise the active stream: stop sending audio, wait bounded for the
-   * provider's final text, and commit once through the same insert path as
-   * `voiceTranscribe` (with a bias-corrected batch repass first when
-   * effective vocabulary is present). Reports the final text's producer
-   * independently of the captions displayed during capture.
+   * Abort preview work, transcribe the full captured audio once with the
+   * snapshotted OpenRouter model and vocabulary, and insert once into the
+   * original target. Final words/boundaries can revise provisional captions.
    */
   voiceStreamStop(ownerId: string): Promise<VoiceTranscribeResult>;
-  /** Abort the active stream: close the socket, commit nothing. */
+  /** Abort the owner's active requests, fence late results and commit nothing. */
   voiceStreamCancel(ownerId: string): Promise<void>;
   /** Subscribe to accumulated partial transcripts pushed while a stream is
    *  live. Returns an unsubscribe function. */
@@ -426,7 +427,7 @@ export interface CondashApi {
    * readback — never automatic). Reads the same recent-output slice the
    * dashboard summarizer uses (recent scrollback, not a parsed "final
    * answer") and returns base64 MP3 for the renderer to play. Provider
-   * selection + fallback mirror `voiceTranscribe`.
+   * selection remains OpenRouter first, Mistral fallback with key and voice id.
    */
   voiceSpeak(id: string): Promise<VoiceSpeakResult>;
   /** Read the system clipboard via the main process. Used by the terminal's

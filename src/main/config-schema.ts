@@ -519,10 +519,10 @@ const voiceSettings = z
     /** OpenRouter API key. Unset → `OPENROUTER_API_KEY` from the agents env
      *  file. Never logged, never sent to the renderer. */
     openrouterApiKey: z.string().optional(),
-    /** Mistral API key. Unset → `MISTRAL_API_KEY` from the agents env file. */
+    /** Mistral read-aloud fallback key. Dictation uses OpenRouter only. */
     mistralApiKey: z.string().optional(),
-    /** OpenRouter transcription model (audio-in chat completion). Default
-     *  `mistralai/voxtral-small-24b-2507`. */
+    /** Native OpenRouter speech-to-text model for previews and final audio.
+     *  Default `mistralai/voxtral-mini-transcribe`. */
     sttModel: z.string().optional(),
     /** OpenRouter TTS model. Default `mistralai/voxtral-mini-tts-2603`. */
     ttsModel: z.string().optional(),
@@ -532,15 +532,12 @@ const voiceSettings = z
     /** Mistral TTS fallback voice (`voice_id` — preset or custom). Unset →
      *  the Mistral TTS fallback is skipped. */
     mistralVoiceId: z.string().optional(),
-    /** Realtime streaming dictation (Mistral realtime WebSocket). Unset or
-     *  true (the default) opens the stream while recording; false restores
-     *  batch-only behaviour. A stream failure still falls back to batch
-     *  regardless of this key — it only decides whether the socket opens. */
+    /** Periodic OpenRouter captions while recording. Unset/true enables
+     *  previews; false keeps only the same-model final transcription. */
     streaming: z.boolean().optional(),
     /** Vocabulary phrases for dictation (max 100 — the provider cap).
      *  Trimmed, deduplicated, and seeded with the conception's app
-     *  handles/names at use time; empty list → single-pass streaming
-     *  commit. */
+     *  handles/names at use time and supplied to the selected model. */
     contextBias: z.array(z.string()).max(100).optional(),
     /** Hold-to-dictate chord (`Ctrl+Shift+Space` grammar, `parseShortcut`
      *  compatible). Empty string disables push-to-talk. */

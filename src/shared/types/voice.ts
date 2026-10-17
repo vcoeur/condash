@@ -16,7 +16,7 @@ export interface VoiceCredentialStatus {
   mistral: VoiceKeyStatus;
 }
 
-export type VoiceTranscriptProducer = 'openrouter-batch' | 'mistral-batch' | 'mistral-realtime';
+export type VoiceTranscriptProducer = 'openrouter-native';
 
 /** Per-machine voice preferences — the global `voice` settings key. Provider
  *  API keys are secrets and live only in the per-machine `settings.json`;
@@ -31,10 +31,10 @@ export interface VoicePrefs {
   enabled?: boolean;
   /** Manual OpenRouter key fallback. The agents-env entry wins when present. */
   openrouterApiKey?: string;
-  /** Manual Mistral key fallback. The agents-env entry wins when present. */
+  /** Read-aloud fallback only; never used for dictation. Env entry wins. */
   mistralApiKey?: string;
-  /** OpenRouter model used for transcription (audio-in, text-out chat
-   *  completion). Default `mistralai/voxtral-small-24b-2507`. */
+  /** Native OpenRouter STT model for both captions and final WAV.
+   * Default `mistralai/voxtral-mini-transcribe`; existing ids are not migrated. */
   sttModel?: string;
   /** OpenRouter model used for text-to-speech. Default
    *  `mistralai/voxtral-mini-tts-2603`. */
@@ -47,17 +47,14 @@ export interface VoicePrefs {
    *  custom voice` on `POST /v1/audio/speech`). Unset → the fallback is
    *  skipped with a clear error. */
   mistralVoiceId?: string;
-  /** Realtime streaming dictation (Mistral realtime WebSocket). Unset or
-   *  true (the default) streams audio while recording so partial text shows
-   *  live; false restores batch-only behaviour. The batch chain stays the
-   *  fallback either way — this key only decides whether the socket opens. */
+  /** Periodically transcribe non-overlapping audio during capture (default on).
+   * False disables previews only; the same model transcribes once after Stop. */
   streaming?: boolean;
   /** Vocabulary phrases for dictation (max 100 — the provider cap),
    *  one concern each: app handles, project slugs, domain terms. Merged
    *  with the conception's `repositories[]` handles/names/aliases at use
-   *  time; the effective list applies on the batch surfaces (OpenRouter
-   *  prompt glossary, Mistral `context_bias` form fields) and a non-empty
-   *  list routes a streaming stop through a bias-corrected batch repass. */
+   *  time and sent through OpenRouter provider.options.mistral.context_bias.
+   * Other upstream providers may ignore these Mistral-specific hints. */
   contextBias?: string[];
   /** Hold-to-dictate chord in the `parseShortcut` grammar (default
    *  `Ctrl+Shift+Space`). An empty string disables push-to-talk. */
@@ -93,7 +90,8 @@ export interface VoiceTranscribeResult {
    *  `no-session` — the target tab is unknown or already exited;
    *  `disabled` — voice is switched off (the default), so nothing was
    *  recorded, contacted, or written. */
-  reason?: 'empty-transcript' | 'no-session' | 'disabled';
+  reason?: 'empty-transcript' | 'no-session' | 'disabled' | 'error';
+  error?: string;
 }
 
 /** Result of the on-demand readback: recent pane output synthesized to MP3.
@@ -113,34 +111,29 @@ export interface VoiceSpeakResult {
   error?: string;
 }
 
-/** Renderer → main request to open a realtime transcription stream for one
+/** Renderer → main request to open a periodic caption/final audio session for one
  *  tab. `sampleRate` is the rate the mic actually captured at (the
  *  AudioContext's real rate, which some backends vary from the requested
- *  16 kHz) so main's reassembled repass WAV can carry an honest header. */
+ *  16 kHz) so main's preview/final WAVs carry an honest header. */
 export interface VoiceStreamStartRequest {
   ownerId: string;
   sid: string;
   sampleRate: number;
 }
 
-/** Result of opening a realtime transcription stream. A refusal is always a
- *  typed `ok: false` — the renderer treats every reason as "stay on the
- *  batch path" (streaming is an upgrade, not a requirement), with an explicit
- *  unavailable-caption notice unless streaming itself is disabled. */
+/** Result of reserving periodic caption/final transcription ownership. */
 export interface VoiceStreamStartResult {
   ok: boolean;
-  /** `disabled` — voice (or `voice.streaming`) is off; `no-mistral-key` —
-   *  the realtime endpoint is Mistral-only and no key resolved;
-   *  `already-active` — one stream is already running; `error` — the socket
-   *  failed to open. */
-  reason?: 'disabled' | 'no-mistral-key' | 'already-active' | 'error';
+  /** Caption previews can be off while the final recording session is active. */
+  captions?: boolean;
+  /** Refusals never select a different provider or model. */
+  reason?: 'disabled' | 'no-openrouter-key' | 'already-active' | 'error';
   /** Redacted human-readable detail for `error`. Never carries key material. */
   error?: string;
 }
 
-/** One chunk of raw s16le mono 16 kHz PCM from the renderer's per-chunk tap
- *  — no WAV header; the realtime endpoint takes bare samples as binary
- *  frames. */
+/** Raw s16le mono PCM at the session's actual sample rate, without WAV header.
+ * Main retains full audio and builds non-overlapping preview WAV requests. */
 export interface VoiceStreamChunk {
   ownerId: string;
   pcmBase64: string;
@@ -155,4 +148,5 @@ export interface VoicePartialMessage {
   text: string;
   /** The stream failed during capture. Text may already have been displayed. */
   unavailable?: boolean;
+  reason?: string;
 }
