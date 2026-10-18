@@ -15,7 +15,7 @@ export interface VoiceCredentialStatus {
   openrouter: VoiceKeyStatus;
 }
 
-export type VoiceTranscriptProducer = 'openrouter-native';
+export type VoiceTranscriptProducer = 'openrouter-native' | 'openrouter-audio-context';
 
 /** Per-machine voice preferences — the global `voice` settings key. Provider
  *  API keys are secrets and live only in the per-machine `settings.json`;
@@ -35,6 +35,10 @@ export interface VoicePrefs {
   /** Native OpenRouter STT model for both captions and final WAV.
    * Default `mistralai/voxtral-mini-transcribe`; existing ids are not migrated. */
   sttModel?: string;
+  /** Absent means native STT; never inferred from a model id. */
+  dictationMethod?: 'native-stt' | 'audio-context';
+  /** Audio + context model. Default `google/gemini-2.5-flash`. */
+  audioContextModel?: string;
   /** OpenRouter model used for text-to-speech. Default
    *  `mistralai/voxtral-mini-tts-2603`. */
   ttsModel?: string;
@@ -49,9 +53,8 @@ export interface VoicePrefs {
   streaming?: boolean;
   /** Vocabulary phrases for dictation (max 100 — the provider cap),
    *  one concern each: app handles, project slugs, domain terms. Merged
-   *  with the conception's `repositories[]` handles/names/aliases at use
-   *  time and sent through OpenRouter provider.options.mistral.context_bias.
-   * Other upstream providers may ignore these Mistral-specific hints. */
+   *  with registry handles/names/aliases for native STT (provider.options).
+   *  Audio + context adds only canonical handles and sends candidate data. */
   contextBias?: string[];
   /** Hold-to-dictate chord in the `parseShortcut` grammar (default
    *  `Ctrl+Shift+Space`). An empty string disables push-to-talk. */

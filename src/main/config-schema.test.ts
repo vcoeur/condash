@@ -9,6 +9,26 @@ import {
 } from './config-schema';
 import { CARD_MIN_WIDTH_KEYS, DEFAULT_CARD_MIN_WIDTH } from '../shared/types';
 
+describe('explicit dictation method config', () => {
+  it('keeps absent defaults absent and preserves independent saved model ids', () => {
+    expect(globalSettingsSchema.parse({ voice: {} }).voice).toEqual({});
+    const voice = {
+      sttModel: 'old/chat-id',
+      dictationMethod: 'audio-context',
+      audioContextModel: 'custom/context',
+    };
+    expect(globalSettingsSchema.parse({ voice }).voice).toEqual(voice);
+    expect(
+      globalSettingsSchema.parse({ voice: { ...voice, dictationMethod: 'native-stt' } }).voice
+        ?.sttModel,
+    ).toBe('old/chat-id');
+    expect(
+      globalSettingsSchema.safeParse({ voice: { dictationMethod: 'guess-from-model' } }).success,
+    ).toBe(false);
+    expect(configSchema.safeParse({ voice }).success).toBe(false);
+  });
+});
+
 describe('configSchema repoEntry', () => {
   it('accepts the new env / install / pinned_branch fields', () => {
     const result = configSchema.safeParse({
@@ -810,6 +830,8 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       openrouterApiKey: 'sk-or-xxx',
       mistralApiKey: 'mistral-xxx',
       sttModel: 'mistralai/voxtral-small-24b-2507',
+      dictationMethod: 'audio-context',
+      audioContextModel: 'custom/context-model',
       ttsModel: 'mistralai/voxtral-mini-tts-2603',
       ttsVoice: 'en_paul_neutral',
       mistralVoiceId: 'my-saved-voice',

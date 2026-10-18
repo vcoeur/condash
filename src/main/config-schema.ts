@@ -524,6 +524,8 @@ const voiceSettings = z
     /** Native OpenRouter speech-to-text model for previews and final audio.
      *  Default `mistralai/voxtral-mini-transcribe`. */
     sttModel: z.string().optional(),
+    dictationMethod: z.enum(['native-stt', 'audio-context']).optional(),
+    audioContextModel: z.string().optional(),
     /** OpenRouter TTS model. Default `mistralai/voxtral-mini-tts-2603`. */
     ttsModel: z.string().optional(),
     /** OpenRouter TTS voice id (Voxtral `en_paul_*` / `gb_jane_*` /

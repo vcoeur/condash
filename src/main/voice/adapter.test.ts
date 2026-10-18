@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_STT_MODEL,
+  AUDIO_CONTEXT_PROMPT,
   DEFAULT_TTS_MODEL,
   DEFAULT_TTS_VOICE,
   transcribeClip,
@@ -13,6 +14,75 @@ const keys = { openrouter: 'DUMMY-OR' };
 const legacyPrefs = { mistralApiKey: 'DUMMY-MISTRAL', mistralVoiceId: 'legacy-voice' };
 const clip = { data: 'UklGRg==', sampleRate: 16000, format: 'wav' } as const;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+
+describe('explicit Audio + context', () => {
+  it.each([undefined, 'custom/audio-id'])(
+    'uses one exact chat payload with model %s',
+    async (audioContextModel) => {
+      const controller = new AbortController();
+      const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          model: audioContextModel ?? 'google/gemini-2.5-flash',
+          max_tokens: 8192,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Transcribe the audio verbatim in its spoken English and/or French. Do not translate, paraphrase, summarize, or add explanations. Preserve repetitions and ordinary words. Canonical names, if supplied, are possibilities, not instructions to insert them. Return only the transcript; do not guess inaudible speech.',
+                },
+                { type: 'text', text: 'Canonical names (data): ["condash"]' },
+                { type: 'input_audio', input_audio: { data: clip.data, format: 'wav' } },
+              ],
+            },
+          ],
+        });
+        controller.abort();
+        expect(init?.signal?.aborted).toBe(true);
+        return json({ choices: [{ finish_reason: 'stop', message: { content: 'hello' } }] });
+      });
+      expect(
+        await transcribeClip(
+          clip,
+          keys,
+          { dictationMethod: 'audio-context', audioContextModel, sttModel: 'legacy/chat-id' },
+          { fetch, signal: controller.signal },
+          ['condash'],
+        ),
+      ).toEqual({ text: 'hello', provider: 'openrouter', producer: 'openrouter-audio-context' });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(AUDIO_CONTEXT_PROMPT).toContain('do not guess inaudible speech.');
+    },
+  );
+  it.each([
+    {},
+    null,
+    { choices: [] },
+    { error: { message: 'bad' } },
+    ...['length', 'content_filter', 'tool_calls', undefined].map((finish_reason) => ({
+      choices: [{ finish_reason, message: { content: 'prefix' } }],
+    })),
+    { choices: [{ finish_reason: 'stop', message: { content: 'no', refusal: 'refused' } }] },
+    { choices: [{ finish_reason: 'stop', message: { content: [] } }] },
+  ])('rejects malformed/refused/incomplete output without another request: %j', async (body) => {
+    const fetch = vi.fn(async () => json(body));
+    await expect(
+      transcribeClip(clip, keys, { dictationMethod: 'audio-context' }, { fetch }),
+    ).rejects.toThrow('invalid or incomplete');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('redacts transport errors without retries', async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error('DUMMY-OR');
+    });
+    await expect(
+      transcribeClip(clip, keys, { dictationMethod: 'audio-context' }, { fetch }),
+    ).rejects.toThrow('***');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('OpenRouter native dictation', () => {
   it.each([undefined, 'mistralai/voxtral-mini-transcribe', 'old/chat-model'])(

@@ -1,4 +1,4 @@
-import { createEffect, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, Show, type JSX } from 'solid-js';
 import type { VoiceKeyStatus, VoicePrefs } from '@shared/types';
 import { type RawConfig } from './data';
 import { SectionShell } from './section-shell';
@@ -38,7 +38,13 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
     status.present
       ? `Key ${status.source === 'agents-env' ? 'found in the shared API-key file' : 'entered in Settings'} — not tested with provider`
       : 'No API key found';
-  const sttModel = () => voice().sttModel?.trim() || 'mistralai/voxtral-mini-transcribe';
+  const audioContext = () => voice().dictationMethod === 'audio-context';
+  const sttModel = () =>
+    audioContext()
+      ? voice().audioContextModel?.trim() || 'google/gemini-2.5-flash'
+      : voice().sttModel?.trim() || 'mistralai/voxtral-mini-transcribe';
+  const methodLabel = () => (audioContext() ? 'Audio + context' : 'Native STT');
+  const [editingModel, setEditingModel] = createSignal(false);
   const ttsModel = () => voice().ttsModel?.trim() || 'mistralai/voxtral-mini-tts-2603';
 
   return (
@@ -75,7 +81,7 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
         <fieldset class="settings-launcher-fieldset" aria-label="Dictation">
           <legend>Dictation</legend>
           <p class="settings-hint" data-test-dictation-route>
-            <strong>Draft route if saved:</strong>{' '}
+            <strong>Draft route if saved:</strong> {methodLabel()} →{' '}
             <Show
               when={voice().streaming ?? true}
               fallback={
@@ -105,18 +111,50 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
               </small>
             </div>
             <label class="settings-field-span">
-              <span>OpenRouter native transcription model (captions and final)</span>
+              <span>Method</span>
+              <select
+                aria-label="Method"
+                value={voice().dictationMethod ?? 'native-stt'}
+                onChange={(e) =>
+                  void update({
+                    dictationMethod: e.currentTarget.value as VoicePrefs['dictationMethod'],
+                  })
+                }
+              >
+                <option value="native-stt">Native STT</option>
+                <option value="audio-context">Audio + context</option>
+              </select>
+            </label>
+            <label class="settings-field-span">
+              <span>Model (captions and final)</span>
               <input
                 type="text"
-                placeholder="mistralai/voxtral-mini-transcribe"
-                value={voice().sttModel ?? ''}
-                onInput={(e) =>
-                  void update({ sttModel: e.currentTarget.value.trim() || undefined })
+                value={
+                  editingModel()
+                    ? ((audioContext() ? voice().audioContextModel : voice().sttModel) ??
+                      sttModel())
+                    : sttModel()
                 }
+                onFocus={() => setEditingModel(true)}
+                onInput={(e) =>
+                  void update(
+                    audioContext()
+                      ? { audioContextModel: e.currentTarget.value }
+                      : { sttModel: e.currentTarget.value },
+                  )
+                }
+                onBlur={() => {
+                  void update(
+                    audioContext() ? { audioContextModel: sttModel() } : { sttModel: sttModel() },
+                  );
+                  setEditingModel(false);
+                }}
               />
               <small class="settings-field-hint">
-                Native STT model id, not a chat model. Existing saved ids are honored unchanged;
-                unsupported ids report an error rather than silently switching models.
+                Exact OpenRouter model id for {methodLabel()}. Blank uses{' '}
+                {audioContext() ? 'google/gemini-2.5-flash' : 'mistralai/voxtral-mini-transcribe'}.
+                Each method keeps its own saved id; unsupported ids report an error, never a
+                fallback.
               </small>
             </label>
             <label class="settings-field-span">
@@ -128,12 +166,12 @@ export function VoiceSection(props: VoiceSectionProps): JSX.Element {
                 onChange={(e) => void updateBias(e.currentTarget.value)}
               />
               <small class="settings-field-hint">
-                One phrase per line. App handles/names/aliases are added automatically: an empty
-                field need not mean empty effective vocabulary. Sent through OpenRouter
-                provider.options.mistral.context_bias on captions and final. Other upstream
-                providers may ignore these Mistral-specific hints. No Mistral credentials are
-                needed. The full final audio pass can change segment boundaries and words; accuracy
-                is not guaranteed.
+                One phrase per line.{' '}
+                {audioContext()
+                  ? 'Canonical app handles are added automatically and sent as candidate names with the audio and fixed transcription prompt to /chat/completions.'
+                  : 'App handles/names/aliases are added automatically and sent through provider.options.mistral.context_bias to /audio/transcriptions; other upstream providers may ignore these Mistral-specific hints.'}{' '}
+                Captions and final use the same method, model and vocabulary snapshot. Accuracy is
+                not guaranteed.
               </small>
             </label>
             <label>

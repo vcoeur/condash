@@ -37,6 +37,7 @@ export type BiasRepoEntry =
 export function resolveContextBias(
   userBias: string[] | undefined,
   repositories: BiasRepoEntry[] | undefined,
+  handlesOnly = false,
 ): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -53,13 +54,19 @@ export function resolveContextBias(
   for (const phrase of userBias ?? []) push(phrase);
   for (const repo of repositories ?? []) {
     if (typeof repo === 'string') {
-      push(repo);
+      push(handlesOnly ? appHandle(repo) : repo);
       continue;
     }
     if ('section' in repo) continue;
-    push(repo.handle ?? appHandle(repo.name ?? repo.path ?? ''));
-    push(repo.name);
-    for (const alias of repo.aliases ?? []) push(alias);
+    push(
+      handlesOnly
+        ? appHandle(repo.handle ?? repo.name ?? repo.path ?? '')
+        : (repo.handle ?? appHandle(repo.name ?? repo.path ?? '')),
+    );
+    if (!handlesOnly) {
+      push(repo.name);
+      for (const alias of repo.aliases ?? []) push(alias);
+    }
   }
   return out;
 }

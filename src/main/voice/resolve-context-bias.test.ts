@@ -2,6 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { MAX_CONTEXT_BIAS, resolveContextBias } from './resolve-context-bias';
 
 describe('resolveContextBias', () => {
+  it('audio-context keeps canonical handles and user phrases only with the same cap', () => {
+    expect(
+      resolveContextBias(
+        [' Word ', 'word'],
+        [
+          { handle: 'canonical', name: 'Display', aliases: ['Alias'] },
+          'tools/quelle',
+          { section: 'skip' },
+        ],
+        true,
+      ),
+    ).toEqual(['Word', 'canonical', 'quelle']);
+    expect(
+      resolveContextBias(
+        Array.from({ length: 101 }, (_, i) => `phrase-${i}`),
+        [{ handle: 'extra' }],
+        true,
+      ),
+    ).toHaveLength(100);
+  });
   it('returns the user list unchanged when no repositories are configured', () => {
     expect(resolveContextBias(['condash', ' knoten '], undefined)).toEqual(['condash', 'knoten']);
     expect(resolveContextBias(undefined, undefined)).toEqual([]);

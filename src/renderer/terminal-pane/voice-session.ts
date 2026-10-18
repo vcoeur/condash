@@ -105,6 +105,7 @@ export interface VoiceDictationReport {
 export function dictationReportText(report: VoiceDictationReport): string {
   const producers = {
     'openrouter-native': 'OpenRouter native STT transcribed the full final recording.',
+    'openrouter-audio-context': 'OpenRouter Audio + context transcribed the full final recording.',
     pending: 'The final transcript is pending.',
     none: 'No final transcript was produced.',
     unknown: 'The final transcript source is unknown.',

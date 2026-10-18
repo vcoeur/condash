@@ -23,16 +23,23 @@ export function install() {
         throw new Error('Synthetic provider failure synthetic-openrouter synthetic-legacy-secret');
       return new Response(new Uint8Array([1, 2]), { status: fixture.speechStatus });
     }
-    if (url !== 'https://openrouter.ai/api/v1/audio/transcriptions')
+    const context = url === 'https://openrouter.ai/api/v1/chat/completions';
+    if (!context && url !== 'https://openrouter.ai/api/v1/audio/transcriptions')
       throw new Error('Unexpected provider endpoint (network forbidden)');
     const body = JSON.parse(String(init?.body));
-    const wav = Buffer.from(body.input_audio.data, 'base64');
+    const wav = Buffer.from(
+      context ? body.messages[0].content.at(-1).input_audio.data : body.input_audio.data,
+      'base64',
+    );
     const request = {
       url,
       model: body.model,
+      ...(context ? { prompt: body.messages[0].content[0].text, maxTokens: body.max_tokens } : {}),
       rate: wav.readUInt32LE(24),
       samples: wav.readUInt32LE(40) / 2,
-      hints: body.provider?.options?.mistral?.context_bias ?? [],
+      hints: context
+        ? JSON.parse(body.messages[0].content[1].text.replace('Canonical names (data): ', ''))
+        : (body.provider?.options?.mistral?.context_bias ?? []),
       aborted: false,
     };
     fixture.requests.push(request);
@@ -43,9 +50,24 @@ export function install() {
     if (fixture.mode === 'hold')
       await new Promise<void>((resolve) => fixture.releases.push(resolve));
     return new Response(
-      JSON.stringify({
-        text: fixture.finalizing ? 'Synthetic corrected final' : 'Synthetic live caption',
-      }),
+      JSON.stringify(
+        context
+          ? {
+              choices: [
+                {
+                  finish_reason: 'stop',
+                  message: {
+                    content: fixture.finalizing
+                      ? 'Synthetic corrected final'
+                      : 'Synthetic live caption',
+                  },
+                },
+              ],
+            }
+          : {
+              text: fixture.finalizing ? 'Synthetic corrected final' : 'Synthetic live caption',
+            },
+      ),
     );
   };
   registerVoiceIpc();

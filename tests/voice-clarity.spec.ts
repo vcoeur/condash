@@ -48,10 +48,10 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
     const vocabulary = section.locator('label', { hasText: 'Context bias — vocabulary' });
     await expect(vocabulary.locator('textarea')).toHaveValue('ExampleProject');
     await expect(vocabulary).toContainText(
-      'Sent through OpenRouter provider.options.mistral.context_bias on captions and final.',
+      'sent through provider.options.mistral.context_bias to /audio/transcriptions',
     );
     await expect(vocabulary).toContainText(
-      'Other upstream providers may ignore these Mistral-specific hints.',
+      'other upstream providers may ignore these Mistral-specific hints.',
     );
     for (const group of ['Dictation', 'Credentials', 'Read aloud'])
       await expect(section.getByRole('group', { name: group, exact: true })).toHaveCount(1);
@@ -62,7 +62,7 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
       'OpenRouter only — Dictate and Read share one OpenRouter API key',
     );
     await expect(section).toContainText('no Mistral credentials are needed');
-    await expect(vocabulary).toContainText('No Mistral credentials are needed.');
+    await expect(vocabulary).toContainText('Accuracy is not guaranteed.');
     await expect(section.getByText('Enable voice controls (Dictate and Read)')).toBeVisible();
     const keys = section.locator('[data-test-voice-keys]');
     await expect(keys).not.toContainText('Mistral:');
@@ -72,9 +72,7 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
     );
     const original = (await keys.locator('p').allTextContents()).slice(1);
     await section.getByLabel('OpenRouter API key', { exact: true }).fill('synthetic-draft-key');
-    await section
-      .getByRole('textbox', { name: /^OpenRouter native transcription model/ })
-      .fill('draft/audio-chat');
+    await section.getByRole('textbox', { name: /^Model \(captions/ }).fill('draft/audio-chat');
     await expect(section.locator('[data-test-dictation-route]')).toContainText('draft/audio-chat');
     await expect
       .poll(async () => (await keys.locator('p').allTextContents()).slice(1))
@@ -88,9 +86,7 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
       .toBe('openai/gpt-audio-mini');
     await section.getByLabel('Periodic captions while recording', { exact: true }).uncheck();
     await expect(section.locator('[data-test-dictation-route]')).toContainText('No live captions');
-    await expect(vocabulary).toContainText(
-      'The full final audio pass can change segment boundaries and words; accuracy is not guaranteed.',
-    );
+    await expect(vocabulary).toContainText('Accuracy is not guaranteed.');
     await expect(vocabulary).not.toContainText('selects a Stop re-check');
     await expect(vocabulary.locator('textarea')).toHaveValue('ExampleProject');
     await section.getByRole('textbox', { name: /^Speech model/ }).fill('draft/speech');
@@ -117,9 +113,9 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
     await expect(section.getByLabel('OpenRouter API key', { exact: true })).toHaveValue(
       'synthetic-draft-key',
     );
-    await expect(
-      section.getByRole('textbox', { name: /^OpenRouter native transcription model/ }),
-    ).toHaveValue('draft/audio-chat');
+    await expect(section.getByRole('textbox', { name: /^Model \(captions/ })).toHaveValue(
+      'draft/audio-chat',
+    );
     await page.setViewportSize({ width: 1200, height: 1800 });
     await section.scrollIntoViewIfNeeded();
     await section.screenshot({ path: evidencePath(testInfo, 'voice-settings-grouped.png') });
@@ -130,6 +126,36 @@ test('grouped Voice is OpenRouter-only and separates draft routes from real save
     await expect(vocabulary).toContainText('provider.options.mistral.context_bias');
     await expect(vocabulary).not.toContainText('Batch-only dictation uses');
     await section.screenshot({ path: evidencePath(testInfo, 'voice-settings-streaming.png') });
+    const model = section.getByRole('textbox', { name: /^Model \(captions/ });
+    await section.getByLabel('Method', { exact: true }).selectOption('audio-context');
+    await expect(model).toHaveValue('google/gemini-2.5-flash');
+    await section.screenshot({
+      path: evidencePath(testInfo, 'voice-settings-context-default.png'),
+    });
+    await model.fill('draft/context');
+    await model.fill('');
+    await expect(model).toHaveValue('');
+    await model.fill('draft/context');
+    await section.getByLabel('Method', { exact: true }).selectOption('native-stt');
+    await expect(model).toHaveValue('draft/audio-chat');
+    await section.getByLabel('Method', { exact: true }).selectOption('audio-context');
+    await expect(model).toHaveValue('draft/context');
+    await page.locator('.settings-save').click();
+    await expect(page.locator('.settings-save')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await sendMenu(app, 'open-settings');
+    await openVoice(page);
+    await expect(model).toHaveValue('draft/context');
+    expect(
+      await page.evaluate(
+        async () => JSON.parse(await window.condash.getGlobalSettingsRaw()).voice,
+      ),
+    ).toMatchObject({
+      sttModel: 'draft/audio-chat',
+      audioContextModel: 'draft/context',
+      dictationMethod: 'audio-context',
+    });
+    await section.screenshot({ path: evidencePath(testInfo, 'voice-settings-context.png') });
     await section
       .getByRole('group', { name: 'Credentials', exact: true })
       .screenshot({ path: evidencePath(testInfo, 'voice-key-source-detail.png') });
@@ -201,6 +227,86 @@ async function buildVoiceFixture(directory: string) {
   });
   return bundle;
 }
+
+test('Audio + context records synthetic captions and reports its actual final producer', async ({}, testInfo) => {
+  const directory = await mkdtemp(join(tmpdir(), 'condash-context-action-'));
+  const envFile = join(directory, 'agents.env');
+  await writeFile(envFile, 'OPENROUTER_API_KEY=synthetic-openrouter\n');
+  const bundle = await buildVoiceFixture(directory);
+  const booted = await bootApp({
+    globalConfig: {
+      layout: { projects: true, terminal: true },
+      voice: {
+        enabled: true,
+        dictationMethod: 'audio-context',
+        contextBias: ['ExampleProject'],
+        sttModel: 'draft/audio-chat',
+      },
+    },
+    env: {
+      CONDASH_AGENTS_ENV: envFile,
+      PULSE_SERVER: 'unix:/tmp/condash-clarity-no-pulse',
+      PIPEWIRE_REMOTE: 'condash-clarity-no-pipewire',
+    },
+    electronArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  });
+  const { app, window: page } = booted;
+  try {
+    const labels = await page.evaluate(async () =>
+      (await navigator.mediaDevices.enumerateDevices())
+        .filter((device) => device.kind === 'audioinput')
+        .map((device) => device.label),
+    );
+    expect(labels).toContain('Fake Default Audio Input');
+    expect(
+      labels.every((label) => /^Fake (Default Audio Input|Audio Input \d+)$/.test(label)),
+    ).toBe(true);
+    const session = await page.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 600' }),
+    );
+    await app.evaluate(
+      (_electron, { path, sid }) => {
+        const harness = process.getBuiltinModule('module').createRequire(path)(path);
+        harness.fixture.sid = sid;
+        harness.install();
+      },
+      { path: bundle, sid: session.id },
+    );
+    const dictate = page.locator('[data-label="dictate"]');
+    await dictate.click();
+    await expect(page.locator('.voice-caption-text')).toHaveText('Synthetic live caption');
+    await captureVoiceDetail(page, testInfo, 'voice-context-recording-detail.png');
+    await page.evaluate(async () => {
+      const saved = await window.condash.getGlobalSettingsRaw();
+      const next = JSON.parse(saved);
+      next.voice.dictationMethod = 'native-stt';
+      next.voice.audioContextModel = 'changed/context';
+      await window.condash.writeGlobalSettings(saved, JSON.stringify(next));
+    });
+    await dictate.click();
+    await expect(page.locator('[data-test-voice-status]')).toContainText(
+      'Text inserted into the tab. Periodic captions were shown; OpenRouter Audio + context transcribed the full final recording.',
+    );
+    await captureVoiceDetail(page, testInfo, 'voice-context-final-detail.png');
+    const state = await app.evaluate(
+      (_electron, path) => process.getBuiltinModule('module').createRequire(path)(path).fixture,
+      bundle,
+    );
+    expect(state.requests.length).toBeGreaterThanOrEqual(2);
+    for (const request of state.requests) {
+      expect(request.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(request.model).toBe('google/gemini-2.5-flash');
+      expect(request.maxTokens).toBe(8192);
+      expect(request.prompt).toBe(
+        'Transcribe the audio verbatim in its spoken English and/or French. Do not translate, paraphrase, summarize, or add explanations. Preserve repetitions and ordinary words. Canonical names, if supplied, are possibilities, not instructions to insert them. Return only the transcript; do not guess inaudible speech.',
+      );
+      expect(request.hints).toContain('ExampleProject');
+    }
+    expect(state.writes).toEqual([{ sid: session.id, text: 'Synthetic corrected final' }]);
+  } finally {
+    await booted.cleanup();
+  }
+});
 
 test('Read uses only OpenRouter with exact model and voice; legacy credentials stay inert and preserved', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'condash-openrouter-read-'));
@@ -297,12 +403,13 @@ test('Read uses only OpenRouter with exact model and voice; legacy credentials s
     await expect(section.getByLabel(/Mistral API key|Mistral voice id/)).toHaveCount(0);
     await expect(section.locator('input[type="password"]')).toHaveCount(1);
     await section.getByLabel('Periodic captions while recording', { exact: true }).uncheck();
+    await section.getByLabel('Method', { exact: true }).selectOption('audio-context');
     await page.locator('.settings-save').click();
     await expect(page.locator('.settings-save')).toBeDisabled();
     const saved = await page.evaluate(
       async () => JSON.parse(await window.condash.getGlobalSettingsRaw()).voice,
     );
-    expect(saved).toEqual({ ...voice, streaming: false });
+    expect(saved).toEqual({ ...voice, streaming: false, dictationMethod: 'audio-context' });
     expect(await read()).toMatchObject({
       ok: false,
       error: expect.stringContaining('OpenRouter API key required'),

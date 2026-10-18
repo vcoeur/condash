@@ -9,6 +9,8 @@ export const fixture = {
     samples: number;
     hints: string[];
     aborted: boolean;
+    prompt?: string;
+    maxTokens?: number;
   }[],
   endpoints: [] as string[],
   speechRequests: [] as { model: string; voice: string; input: string; response_format: string }[],

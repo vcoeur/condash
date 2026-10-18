@@ -1,5 +1,6 @@
 // Voice uses OpenRouter only; selected STT/TTS models are never substituted.
-// Dictation uses native audio/transcriptions (JSON WAV → text). Native STT and provider.options
+// Native dictation uses audio/transcriptions; explicit Audio + context uses chat/completions.
+// Native STT and provider.options
 // verified against OpenRouter's multimodal/stt documentation, 2026-10-16.
 //   TTS  OpenRouter  POST {OPENROUTER_BASE}/audio/speech — OpenAI-compatible
 //                    speech endpoint; `response_format` defaults to pcm so
@@ -24,6 +25,9 @@ export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
 /** OpenRouter native transcription model. */
 export const DEFAULT_STT_MODEL = 'mistralai/voxtral-mini-transcribe';
+export const DEFAULT_AUDIO_CONTEXT_MODEL = 'google/gemini-2.5-flash';
+export const AUDIO_CONTEXT_PROMPT =
+  'Transcribe the audio verbatim in its spoken English and/or French. Do not translate, paraphrase, summarize, or add explanations. Preserve repetitions and ordinary words. Canonical names, if supplied, are possibilities, not instructions to insert them. Return only the transcript; do not guess inaudible speech.';
 /** OpenRouter speech model. */
 export const DEFAULT_TTS_MODEL = 'mistralai/voxtral-mini-tts-2603';
 /** OpenRouter TTS persona voice (Voxtral `en_paul_*` family, neutral). */
@@ -47,8 +51,8 @@ export interface TranscribeSuccess {
 }
 
 /**
- * Transcribe one WAV with the selected OpenRouter native model. Vocabulary
- * uses documented provider.options.mistral.context_bias, not an ignored prompt.
+ * Transcribe one WAV with the explicitly selected OpenRouter method/model.
+ * Native vocabulary uses provider.options; Audio + context uses candidate data.
  * Missing credentials or provider errors never select another provider/model.
  */
 export async function transcribeClip(
@@ -75,7 +79,7 @@ export async function transcribeClip(
   } catch (error) {
     throw new Error(
       redactKeys(
-        `OpenRouter transcription failed (${prefs?.sttModel?.trim() || DEFAULT_STT_MODEL}) — ${(error as Error).message}`,
+        `OpenRouter transcription failed (${prefs?.dictationMethod === 'audio-context' ? prefs.audioContextModel?.trim() || DEFAULT_AUDIO_CONTEXT_MODEL : prefs?.sttModel?.trim() || DEFAULT_STT_MODEL}) — ${(error as Error).message}`,
         keys,
         prefs,
       ),
@@ -133,6 +137,61 @@ async function openrouterTranscribe(
   contextBias: readonly string[] = [],
   signal?: AbortSignal,
 ): Promise<TranscribeSuccess> {
+  if (prefs?.dictationMethod === 'audio-context') {
+    const res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: prefs.audioContextModel?.trim() || DEFAULT_AUDIO_CONTEXT_MODEL,
+        max_tokens: 8192,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: AUDIO_CONTEXT_PROMPT },
+              ...(contextBias.length
+                ? [
+                    {
+                      type: 'text',
+                      text: `Canonical names (data): ${JSON.stringify(contextBias.slice(0, MAX_CONTEXT_BIAS))}`,
+                    },
+                  ]
+                : []),
+              { type: 'input_audio', input_audio: { data: clip.data, format: clip.format } },
+            ],
+          },
+        ],
+      }),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+        : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = (await res.json()) as {
+      error?: unknown;
+      choices?: {
+        finish_reason?: string;
+        message?: { content?: unknown; refusal?: unknown };
+        error?: unknown;
+      }[];
+    };
+    const choice = body?.choices?.[0];
+    if (
+      body?.error != null ||
+      choice?.error != null ||
+      choice?.message?.refusal != null ||
+      choice?.finish_reason !== 'stop' ||
+      typeof choice?.message?.content !== 'string'
+    ) {
+      throw new Error('invalid or incomplete audio-context completion');
+    }
+    return {
+      text: choice.message.content,
+      provider: 'openrouter',
+      producer: 'openrouter-audio-context',
+    };
+  }
   const model = prefs?.sttModel?.trim() || DEFAULT_STT_MODEL;
   const res = await doFetch(`${OPENROUTER_BASE}/audio/transcriptions`, {
     method: 'POST',

@@ -71,6 +71,117 @@ async function open(ownerId: string) {
   return (await import('../voice/stream')).getActiveVoiceStream(ownerId)!;
 }
 describe('real IPC admission and asynchronous owner boundaries', () => {
+  it.each(['length', 'refusal', 'error', 'malformed'])(
+    'audio-context final %s inserts nothing and never falls back',
+    async (failure) => {
+      edges.settings.mockResolvedValue({
+        voice: { enabled: true, dictationMethod: 'audio-context' },
+      });
+      edges.fetch.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify(
+              failure === 'error'
+                ? { error: 'failed' }
+                : {
+                    choices: [
+                      {
+                        finish_reason: failure === 'length' ? 'length' : 'stop',
+                        message: {
+                          content: failure === 'malformed' ? [] : 'prefix',
+                          ...(failure === 'refusal' ? { refusal: 'no' } : {}),
+                        },
+                      },
+                    ],
+                  },
+            ),
+          ),
+      );
+      await open('failed-context');
+      await edges.handlers.voiceStreamAudio(trusted, {
+        ownerId: 'failed-context',
+        pcmBase64: 'AAA=',
+      });
+      expect(await edges.handlers.voiceStreamStop(trusted, 'failed-context')).toMatchObject({
+        inserted: false,
+        reason: 'error',
+      });
+      expect(edges.writes).not.toHaveBeenCalled();
+      expect(edges.fetch).toHaveBeenCalledTimes(1);
+      expect(edges.fetch.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/chat/completions');
+    },
+  );
+  it.each([false, true])(
+    'audio-context snapshot survives changed method/model, pending start=%s',
+    async (pending) => {
+      edges.settings.mockResolvedValue({
+        voice: {
+          enabled: true,
+          dictationMethod: 'audio-context',
+          audioContextModel: 'selected/context',
+          sttModel: 'legacy/native',
+          contextBias: [' StartWord ', 'startword'],
+        },
+      });
+      const registry = {
+        repositories: [{ handle: 'canonical', name: 'Display Name', aliases: ['Alias'] }],
+      };
+      edges.config.mockResolvedValue(registry);
+      edges.fetch.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              choices: [{ finish_reason: 'stop', message: { content: 'context transcript' } }],
+            }),
+          ),
+      );
+      const waiting = deferred<any>();
+      if (pending) edges.config.mockReturnValueOnce(waiting.promise);
+      const starting = edges.handlers.voiceStreamStart(trusted, request('context-owner'));
+      await flush();
+      if (pending) await edges.handlers.voiceStreamCancel(trusted, 'context-owner');
+      else {
+        await starting;
+        await edges.handlers.voiceStreamAudio(trusted, {
+          ownerId: 'context-owner',
+          pcmBase64: pcm,
+        });
+        await vi.waitFor(() => expect(edges.pushes).toHaveBeenCalled());
+      }
+      edges.settings.mockResolvedValue({
+        voice: {
+          enabled: true,
+          dictationMethod: 'native-stt',
+          sttModel: 'new/native',
+          audioContextModel: 'new/context',
+          contextBias: ['Changed'],
+        },
+      });
+      let result;
+      if (pending) {
+        const stopping = edges.handlers.voiceTranscribe(
+          trusted,
+          's1',
+          { data: 'UklGRg==', sampleRate: 16000, format: 'wav' },
+          'context-owner',
+        );
+        waiting.resolve(registry);
+        await starting;
+        result = await stopping;
+      } else result = await edges.handlers.voiceStreamStop(trusted, 'context-owner');
+      expect(result).toMatchObject({ inserted: true, producer: 'openrouter-audio-context' });
+      expect(edges.fetch).toHaveBeenCalledTimes(pending ? 1 : 2);
+      for (const [url, init] of edges.fetch.mock.calls) {
+        expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+        const body = JSON.parse(init.body);
+        expect(body.model).toBe('selected/context');
+        expect(body.messages[0].content[1].text).toBe(
+          'Canonical names (data): ["StartWord","canonical"]',
+        );
+      }
+      expect(edges.writes).toHaveBeenCalledTimes(1);
+    },
+  );
   it.each(['settings', 'config'] as const)(
     '300 rejected %s starts plus compensating cancels never exhaust admission',
     async (edge) => {

@@ -111,9 +111,13 @@ async function effectiveContextBias(prefs: VoicePrefs | undefined): Promise<stri
   return withConception(
     async (conceptionPath) => {
       const config = await getEffectiveConceptionConfig(conceptionPath);
-      return resolveContextBias(prefs?.contextBias, config.repositories);
+      return resolveContextBias(
+        prefs?.contextBias,
+        config.repositories,
+        prefs?.dictationMethod === 'audio-context',
+      );
     },
-    resolveContextBias(prefs?.contextBias, undefined),
+    resolveContextBias(prefs?.contextBias, undefined, prefs?.dictationMethod === 'audio-context'),
   );
 }
 

@@ -29,11 +29,15 @@ not require Mistral credentials.
 
 Dictation requires an **OpenRouter key**, even if a Mistral key is available.
 Both provisional captions and the final recording use the exact selected
-**OpenRouter native transcription model**. The default is
-`mistralai/voxtral-mini-transcribe`. Choose a native STT model, not an audio-input
-chat model: existing saved ids are honored unchanged, so a legacy chat id may
-return an error. Condash never silently changes that id or tries direct Mistral
-dictation or another model when a request fails.
+**Method** and **Model**. Native STT is the default, using
+`mistralai/voxtral-mini-transcribe`. Audio + context explicitly uses
+`/chat/completions` with audio, a fixed verbatim transcription prompt and candidate
+names; its default is `google/gemini-2.5-flash`. The single Model field edits only
+the selected method's saved id. Switching methods preserves both ids, including
+legacy `sttModel` values. No model-id routing, rewrite pass or fallback occurs.
+Audio + context requests at most 8192 output tokens and accepts only a valid text
+completion with `finish_reason: "stop"`, no error or refusal. Truncated or malformed
+output fails visibly and inserts nothing; the bound is not a completion guarantee.
 
 With **Periodic captions while recording** on (the default), main transcribes
 short, contiguous, non-overlapping WAVs while you speak. A request starts after
@@ -71,7 +75,9 @@ main may already have inserted, so Condash never retries that upload automatical
 ## Vocabulary hints
 
 **Context bias — vocabulary** takes one word or phrase per line, up to 100.
-Registered app handles, names and aliases are automatically merged with that list;
+Native STT merges registered app handles, names and aliases with that list;
+Audio + context adds only canonical handles, not display names or aliases.
+Both lists are trimmed, deduplicated and capped at 100 with user phrases first;
 an empty field does not necessarily mean no effective vocabulary. The effective
 list is snapshotted with the model and credentials when the session starts.
 If Stop beats the start reply, its buffered-clip upload consumes the same
@@ -79,7 +85,7 @@ owner-bound snapshot once rather than reading a newly selected model. Main
 retains at most 256 such snapshots (no audio); missing or evicted evidence gives
 an explicit error and requires a new recording, never a silent model switch.
 
-Hints travel through OpenRouter's documented provider-specific options mechanism:
+Native STT hints use OpenRouter's documented provider-specific options mechanism:
 `provider.options.mistral.context_bias`, an array of phrases. The default model's
 upstream provider tag is `mistral`; this does **not** require a separate Mistral key
 or direct-provider call. Other upstream providers may ignore Mistral-specific
@@ -90,6 +96,8 @@ Contract references checked 2026-10-16: [OpenRouter STT](https://openrouter.ai/d
 [model endpoints](https://openrouter.ai/api/v1/models/mistralai/voxtral-mini-transcribe/endpoints),
 and [Mistral context bias field](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
 The Mistral documentation establishes the field shape, not a separate connection.
+Audio + context does not use these provider options: it sends candidate names as text
+data alongside the WAV and fixed transcription prompt in the same chat request.
 
 ## Keys and settings
 
@@ -101,7 +109,7 @@ Voice. Legacy saved `mistralApiKey` and `mistralVoiceId` values remain accepted
 but deprecated and ignored; Condash does not migrate or delete them.
 
 The section groups Dictation, Credentials and Read aloud under the shared enable
-switch, with eight active preferences and no Mistral key/voice controls.
+switch, with a Method selector, one selected-method Model field and no Mistral key/voice controls.
 **Draft route if saved** reacts to
 draft controls; it does not describe a saved/validated setup or actual action.
 Saved key-source status shows only presence and source, never validity, and makes
@@ -111,7 +119,7 @@ are stored in machine-local settings and the OpenRouter key is prefilled in its 
 key values stay in main. See [the full key reference](../reference/config.md#voice).
 
 The session-only report beside Dictate distinguishes recording, observed caption
-delivery, OpenRouter native final text and insertion. Successful session start
+delivery, the actual native STT or Audio + context final producer and insertion. Successful session start
 alone is not evidence that any caption was delivered. Preview failure keeps the
 recording for Stop; provider failures are not silently routed elsewhere.
 
