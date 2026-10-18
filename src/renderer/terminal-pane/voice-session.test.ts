@@ -203,6 +203,94 @@ describe('voice session lifecycle', () => {
 
   afterEach(() => {
     h.dispose();
+    vi.useRealTimers();
+  });
+
+  it('expires success at five seconds and gives each new success its own deadline', async () => {
+    vi.useFakeTimers();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    vi.advanceTimersByTime(4999);
+    expect(h.session.report()?.insertion).toBe('inserted');
+    vi.advanceTimersByTime(1);
+    expect(h.session.report()).toBeNull();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    vi.advanceTimersByTime(4999);
+    expect(h.session.report()?.insertion).toBe('inserted');
+    vi.advanceTimersByTime(1);
+    expect(h.session.report()).toBeNull();
+  });
+
+  it.each(['b', null])('permanently clears success on departure to %s', async (target) => {
+    vi.useFakeTimers();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    h.setActiveSid(target);
+    expect(h.session.report()).toBeNull();
+    h.setActiveSid('a');
+    expect(h.session.report()).toBeNull();
+    vi.advanceTimersByTime(5000);
+    h.setActiveSid(target);
+    h.setActiveSid('a');
+    expect(h.session.report()).toBeNull();
+  });
+
+  it('does not present success completed while its target is inactive', async () => {
+    let finish!: (result: VoiceTranscribeResult) => void;
+    h.transcribe.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    await h.session.startDictation();
+    const stopping = h.session.stopDictation();
+    await Promise.resolve();
+    h.setActiveSid('b');
+    finish({ inserted: true, chars: 5 });
+    await stopping;
+    h.setActiveSid('a');
+    expect(h.session.report()).toBeNull();
+  });
+
+  it('never expires recording, pending or unknown errors, including after an old success', async () => {
+    vi.useFakeTimers();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    await h.session.startDictation();
+    vi.advanceTimersByTime(5000);
+    expect(h.session.report()?.capture).toBe('recording');
+    let fail!: (error: Error) => void;
+    h.transcribe.mockImplementation(() => new Promise((_resolve, reject) => (fail = reject)));
+    const stopping = h.session.stopDictation();
+    await Promise.resolve();
+    vi.advanceTimersByTime(5000);
+    expect(h.session.report()?.insertion).toBe('pending');
+    fail(new Error('Synthetic failure'));
+    await stopping;
+    vi.advanceTimersByTime(5000);
+    expect(h.session.report()?.insertion).toBe('unknown');
+  });
+
+  it('cleans the success timeout on disposal', async () => {
+    vi.useFakeTimers();
+    await h.session.startDictation();
+    await h.session.stopDictation();
+    expect(vi.getTimerCount()).toBe(1);
+    h.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps starting and known failures visible without a timeout', async () => {
+    vi.useFakeTimers();
+    let rejectStart!: (error: Error) => void;
+    h.recorder.start.mockImplementation(
+      () => new Promise((_resolve, reject) => (rejectStart = reject)),
+    );
+    const starting = h.session.startDictation();
+    vi.advanceTimersByTime(5000);
+    expect(h.session.report()?.capture).toBe('starting');
+    rejectStart(new Error('Synthetic microphone failure'));
+    await starting;
+    vi.advanceTimersByTime(5000);
+    expect(h.session.report()?.capture).toBe('failed');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('cancels capture when activeSid nulls mid-recording (the mic may never outlive the controls)', async () => {

@@ -110,6 +110,11 @@ the previous reading stale. Draft keys do not affect it. Manually entered keys
 are stored in machine-local settings and the OpenRouter key is prefilled in its password field; env
 key values stay in main. See [the full key reference](../reference/config.md#voice).
 
+Successful insertion reports clear permanently after five seconds, or immediately
+when you leave their target tab or column. Success completed while that target is
+inactive is not shown on return. Starting, recording, finalizing and error reports
+do not expire on this timer.
+
 The session-only report beside Dictate distinguishes recording, observed caption
 delivery, OpenRouter native final text and insertion. Successful session start
 alone is not evidence that any caption was delivered. Preview failure keeps the
