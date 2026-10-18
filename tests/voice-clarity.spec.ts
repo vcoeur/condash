@@ -202,6 +202,117 @@ async function buildVoiceFixture(directory: string) {
   return bundle;
 }
 
+test('successful voice reports never replay after leaving the target tab or Dashboard', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const directory = await mkdtemp(join(tmpdir(), 'condash-banner-lifecycle-'));
+  const bundle = await buildVoiceFixture(directory);
+  const envFile = join(directory, 'agents.env');
+  await writeFile(envFile, 'OPENROUTER_API_KEY=synthetic-openrouter\n');
+  const booted = await bootApp({
+    globalConfig: {
+      layout: { projects: true, terminal: true },
+      voice: { enabled: true },
+    },
+    env: {
+      CONDASH_AGENTS_ENV: envFile,
+      PULSE_SERVER: 'unix:/tmp/condash-banner-no-pulse',
+      PIPEWIRE_REMOTE: 'condash-banner-no-pipewire',
+    },
+    electronArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  });
+  const { app, window: page } = booted;
+  try {
+    const inputs = await page.evaluate(async () =>
+      (await navigator.mediaDevices.enumerateDevices())
+        .filter((device) => device.kind === 'audioinput')
+        .map((device) => device.label),
+    );
+    expect(inputs).toContain('Fake Default Audio Input');
+    expect(
+      inputs.every((label) => /^Fake (Default Audio Input|Audio Input \d+)$/.test(label)),
+    ).toBe(true);
+    const other = await page.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 600' }),
+    );
+    const target = await page.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 600' }),
+    );
+    await app.evaluate(
+      (_electron, { path, sid }) => {
+        const harness = process.getBuiltinModule('module').createRequire(path)(path);
+        harness.fixture.sid = sid;
+        harness.install();
+      },
+      { path: bundle, sid: target.id },
+    );
+    const report = page.locator('[data-test-voice-status]');
+    const dictate = page.locator('[data-label="dictate"]');
+    for (const destination of [
+      `.terminal-tab[data-sid="${other.id}"]`,
+      '.terminal-tab-dashboard',
+    ]) {
+      await dictate.click();
+      await expect(page.locator('.voice-caption-text')).toHaveText('Synthetic live caption');
+      await dictate.click();
+      await expect(report).toContainText('Text inserted into the tab.');
+      await page.locator(destination).click();
+      await page.locator(`.terminal-tab[data-sid="${target.id}"]`).click();
+      await expect(report).toHaveCount(0);
+      await page.screenshot({
+        path: evidencePath(
+          testInfo,
+          destination.includes('dashboard')
+            ? 'banner-dashboard-return-clear.png'
+            : 'banner-tab-return-clear.png',
+        ),
+      });
+    }
+    await page.clock.install();
+    await page.clock.fastForward(5000);
+    await page.locator(`.terminal-tab[data-sid="${other.id}"]`).click();
+    await page.locator(`.terminal-tab[data-sid="${target.id}"]`).click();
+    await expect(report).toHaveCount(0);
+    await page.clock.resume();
+    await dictate.click();
+    await expect(page.locator('.voice-caption-text')).toHaveText('Synthetic live caption');
+    await app.evaluate((_electron, path) => {
+      process.getBuiltinModule('module').createRequire(path)(path).fixture.mode = 'hold';
+    }, bundle);
+    await dictate.click();
+    await expect(report).toContainText('Preparing the final transcript.');
+    await expect
+      .poll(() =>
+        app.evaluate(
+          (_electron, path) =>
+            process.getBuiltinModule('module').createRequire(path)(path).fixture.releases.length,
+          bundle,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await page.clock.fastForward(5000);
+    await expect(report).toContainText('Preparing the final transcript.');
+    await page.screenshot({ path: evidencePath(testInfo, 'banner-pending-remains.png') });
+    await page.locator(`.terminal-tab[data-sid="${other.id}"]`).click();
+    await app.evaluate((_electron, path) => {
+      const fixture = process.getBuiltinModule('module').createRequire(path)(path).fixture;
+      for (const release of fixture.releases.splice(0)) release();
+    }, bundle);
+    await expect
+      .poll(() =>
+        app.evaluate(
+          (_electron, path) =>
+            process.getBuiltinModule('module').createRequire(path)(path).fixture.writes.length,
+          bundle,
+        ),
+      )
+      .toBe(3);
+    await page.locator(`.terminal-tab[data-sid="${target.id}"]`).click();
+    await expect(report).toHaveCount(0);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
 test('Read uses only OpenRouter with exact model and voice; legacy credentials stay inert and preserved', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'condash-openrouter-read-'));
   const envFile = join(directory, 'agents.env');
@@ -392,6 +503,11 @@ test('native OpenRouter captions precede Stop; final, failure, cancellation and 
       'Recording — periodic OpenRouter captions are provisional; final text follows Stop.',
     );
     await captureVoiceDetail(page, testInfo, 'voice-live-recording-detail.png');
+    await page.clock.install();
+    await page.clock.fastForward(5000);
+    await expect(report).toContainText('Recording —');
+    await page.screenshot({ path: evidencePath(testInfo, 'banner-recording-remains.png') });
+    await page.clock.resume();
     expect((await state()).writes).toHaveLength(0);
     await page.evaluate(async () => {
       const saved = await window.condash.getGlobalSettingsRaw();
@@ -417,6 +533,9 @@ test('native OpenRouter captions precede Stop; final, failure, cancellation and 
     }
     await captureVoiceDetail(page, testInfo, 'voice-final-result-detail.png');
     await captureVoiceDetail(page, testInfo, 'voice-live-batch-final.png');
+    await page.screenshot({ path: evidencePath(testInfo, 'banner-success-before.png') });
+    await expect(report).toHaveCount(0, { timeout: 6500 });
+    await page.screenshot({ path: evidencePath(testInfo, 'banner-after-timeout.png') });
     await page.evaluate(async () => {
       const saved = await window.condash.getGlobalSettingsRaw();
       const next = JSON.parse(saved);
@@ -469,6 +588,9 @@ test('native OpenRouter captions precede Stop; final, failure, cancellation and 
     await dictate.click();
     await expect(report).toContainText('Nothing inserted.');
     await expect(report).toContainText('Synthetic provider failure');
+    await page.clock.fastForward(5000);
+    await expect(report).toContainText('Synthetic provider failure');
+    await page.screenshot({ path: evidencePath(testInfo, 'banner-error-remains.png') });
     expect((await state()).writes).toHaveLength(2);
     await page
       .locator('.terminal-column')

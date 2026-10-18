@@ -182,6 +182,11 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   }
   let current: Attempt | null = null;
   let latest: Attempt | null = null;
+  let reportTimer: ReturnType<typeof setTimeout> | undefined;
+  const clearReportTimer = (): void => {
+    clearTimeout(reportTimer);
+    reportTimer = undefined;
+  };
   let disposed = false;
   // Read-aloud attempt token: bumped when a stop, a superseding read or
   // disposal invalidates an in-flight synthesis, so its late result is
@@ -191,7 +196,21 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   const visible = (attempt: Attempt): boolean => !disposed && latest === attempt;
   const reportAttempt = (attempt: Attempt, patch: Partial<VoiceDictationReport>): void => {
     attempt.report = { ...attempt.report, ...patch };
-    if (visible(attempt)) setReport(attempt.report);
+    if (visible(attempt)) {
+      clearReportTimer();
+      if (attempt.report.insertion === 'inserted' && deps.activeSid() !== attempt.sid) {
+        setReport(null);
+        return;
+      }
+      setReport(attempt.report);
+      if (attempt.report.insertion === 'inserted') {
+        const completedReport = attempt.report;
+        reportTimer = setTimeout(() => {
+          reportTimer = undefined;
+          if (!disposed && report() === completedReport) setReport(null);
+        }, 5000);
+      }
+    }
   };
   const unavailable = (attempt: Attempt, reason?: string): void => {
     reportAttempt(attempt, {
@@ -250,6 +269,11 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // outlive it: nulling activeSid releases the mic in the same reactive
   // flush that hides the buttons.
   createEffect(() => {
+    const completedReport = report();
+    if (completedReport?.insertion === 'inserted' && deps.activeSid() !== completedReport.sid) {
+      clearReportTimer();
+      setReport(null);
+    }
     if (deps.activeSid() === null && capturing()) {
       cancelRecording();
       deps.onNotice('Recording cancelled — the tab is no longer active.');
@@ -271,6 +295,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
   // Column unmount / conception switch: same release contract, plus playback.
   onCleanup(() => {
     disposed = true;
+    clearReportTimer();
     readAttempt += 1;
     cancelRecording();
     stopPlayback();
@@ -358,6 +383,7 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
       },
     };
     current = latest = attempt;
+    clearReportTimer();
     setReport(attempt.report);
     setCapturing(true);
     setTranscribing(false);

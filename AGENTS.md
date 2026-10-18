@@ -92,6 +92,8 @@ A Playwright run launches the **real Electron app**, which on a Wayland desktop 
 
 Voice media tests pass Chromium fake-device/permission flags through `bootApp`'s initial `electronArgs` (retained on restart), not the pre-window handshake. Certify labelled synthetic audio inputs before capture and keep native audio servers unavailable in that child. Fixed-date Logs navigation fixtures set test-owned global `terminal.logging.retentionDays: 0` so the real boot janitor cannot age out their navigation data; production retention stays unchanged.
 
+Voice successful-insertion reports clear permanently after five seconds or departure from their target tab/column; completion while inactive must not replay on return. Starting, recording, finalizing and error reports do not expire. Keep this presentation lifecycle separate from capture and Stop ownership.
+
 ### The unit suite is split in two — always run `make test-unit`, never a bare `vitest run`
 
 `perf-log.test.ts` and `perf-renderer.test.ts` assert real event-loop delay, so they flake whenever any other test file's deliberate busy-waits run alongside them. vitest 2.1.9 offers no in-process isolation — `poolMatchGlobs` pointed at the default pool name is a no-op, and all pools are scheduled concurrently — so the two files are **excluded from `vitest.config.ts` and run by a second invocation** under `vitest.perf.config.ts`. `npm run test:unit` chains both; `make test-unit` and the CI fast lane call that script.
