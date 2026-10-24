@@ -130,6 +130,7 @@ describe('spawnPtyEnv', () => {
 
     const env = await shellEnv.spawnPtyEnv(base);
     expect(env.TERM).toBe('xterm-256color');
+    expect(env.FORCE_HYPERLINK).toBe('1');
     expect(env.PATH).toBe('/test/bin');
     expect(env.npm_config_prefix).toBeUndefined();
     expect(env.npm_config_globalconfig).toBeUndefined();

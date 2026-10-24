@@ -79,6 +79,10 @@ These two combos are intercepted by the xterm custom-key hook **before the bytes
 
 URLs in the buffer are clickable thanks to the web-links addon — clicking opens through the safe `openExternal` IPC verb (allowlists `https:` and `mailto:`).
 
+**Labelled document links.** A program that emits OSC 8 hyperlinks (including OpenCode) can show a label such as **Read the guide** rather than a raw path. Single-click a local `.md` or `.mdx` link to open condash's existing Markdown or interactive visual-note viewer. Relative targets resolve from that terminal's working directory (the live process cwd on Linux, the spawn directory on other platforms). The resolved file must remain inside the active conception, including after following symlinks; unsupported schemes and non-document files never enter this route. HTTP(S) links keep their browser behavior.
+
+Condash enables hyperlink output in child terminals without changing the program's installed configuration. A link remains clickable after an unchanged TUI repaint or returning focus to the same hovered label; leaving the window during a click cancels that click. Local file URLs use the operating system's native path format, including Windows drive letters. Dragging still selects normally, and Shift-selection stays with the terminal. Close an existing viewer or utility overlay before opening another document from the terminal; an in-flight conception switch also blocks document navigation, so pending links cannot replace a draft or open in the wrong tree.
+
 ## Shell integration { #shell-integration }
 
 Drop-in snippets for bash, zsh, and fish make the terminal render **semantic prompts** — a coloured gutter mark next to each prompt boundary (green = exit 0, red = non-zero) and `Ctrl+Up` / `Ctrl+Down` to jump between them. They emit two standard OSC sequences:

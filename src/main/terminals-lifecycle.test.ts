@@ -115,6 +115,13 @@ vi.mock('./terminal-logger', () => ({
     return logger;
   }),
 }));
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  readlink: vi.fn(async () => '/fake/live-cwd'),
+}));
+vi.mock('./terminal-document', () => ({
+  resolveTerminalDocument: vi.fn(async () => '/fake/conception/guide.md'),
+}));
 // Keep real fs everywhere except the two write ops a conception spawn/close
 // performs (the sidecar mkdir + rm), which we neutralise.
 vi.mock('node:fs', async (importOriginal) => {
@@ -131,10 +138,12 @@ import {
   spawnTerminal,
   tabsBytes,
   trackedSessionIds,
+  terminalDocument,
   writeTerminal,
 } from './terminals';
 import { readSettings } from './settings';
 import { getEffectiveConceptionConfig } from './effective-config';
+import { resolveTerminalDocument } from './terminal-document';
 
 interface FakeWebContents {
   id: number;
@@ -188,6 +197,37 @@ function sentChannels(wc: FakeWebContents): string[] {
 }
 
 let killSpy: MockInstance | null = null;
+
+describe('terminal document session ownership', () => {
+  it('requires the live owning sender and original conception', async () => {
+    const owner = makeWebContents();
+    const other = makeWebContents();
+    const { id, pty } = await spawnConceptionSession(owner);
+    await expect(
+      terminalDocument(id, 'guide.md', other as unknown as WebContents, '/fake/conception'),
+    ).rejects.toThrow('not active');
+    await expect(
+      terminalDocument(id, 'guide.md', owner as unknown as WebContents, '/other/conception'),
+    ).rejects.toThrow('not active');
+    await expect(
+      terminalDocument('unknown', 'guide.md', owner as unknown as WebContents, '/fake/conception'),
+    ).rejects.toThrow('not active');
+    await expect(
+      terminalDocument(id, 'guide.md', owner as unknown as WebContents, '/fake/conception'),
+    ).resolves.toBe('/fake/conception/guide.md');
+    expect(resolveTerminalDocument).toHaveBeenLastCalledWith(
+      'guide.md',
+      process.platform === 'linux'
+        ? '/fake/live-cwd'
+        : listTerminalSessions().find((session) => session.id === id)!.cwd,
+      '/fake/conception',
+    );
+    pty.onExitCb!({ exitCode: 1 });
+    await expect(
+      terminalDocument(id, 'guide.md', owner as unknown as WebContents, '/fake/conception'),
+    ).rejects.toThrow('not active');
+  });
+});
 /** Spy `process.kill`: record every (pid, signal), and let the caller flip the
  *  process group's aliveness — an aliveness probe (`signal === 0`) throws when
  *  dead, mirroring a real ESRCH; actual signals are recorded and swallowed. */

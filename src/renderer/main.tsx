@@ -24,6 +24,7 @@ import { usableActionTemplates, type Section } from './settings-modal-parts/data
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
 import { createModalRouter } from './modal-router';
+import { TERMINAL_DOCUMENT_EVENT } from './terminal-document-links';
 import { createTerminalBridge } from './terminal-bridge';
 import { createTreeExpansion } from './tree-expansion';
 import { createBranchFilterStore } from './branch-filter-store';
@@ -505,6 +506,23 @@ function App() {
     if (deliverable.kind === 'wikilink') handleWikilink(deliverable.path);
     else handleOpenDeliverable(deliverable.path);
   };
+
+  const openTerminalDocument = async (event: Event): Promise<void> => {
+    if (transitionPending() || heightModalOpen()) return;
+    const root = conceptionPath();
+    const { sessionId, uri } = (event as CustomEvent<{ sessionId: string; uri: string }>).detail;
+    try {
+      const path = await window.condash.termResolveDocument(sessionId, uri);
+      // A pending resolution may not replace a viewer/draft or cross a root change.
+      if (conceptionPath() !== root || transitionPending() || heightModalOpen()) return;
+      handleOpenDeliverable(path);
+    } catch (error) {
+      if (conceptionPath() === root)
+        flashToast(`Cannot open terminal document: ${String(error)}`, 'error');
+    }
+  };
+  window.addEventListener(TERMINAL_DOCUMENT_EVENT, openTerminalDocument);
+  onCleanup(() => window.removeEventListener(TERMINAL_DOCUMENT_EVENT, openTerminalDocument));
 
   // Open Settings and land on a specific rail section — used by the Code
   // pane's empty-state CTA ("+ Add repository" → Repositories).
