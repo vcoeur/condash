@@ -7,8 +7,9 @@
  *                   by git-lfs.
  *  - `binaries`   — same extensions over 50 kB, not in lfs (informational;
  *                   usually downstream of `lfs`).
- *  - `cross-repo` — sibling app `CLAUDE.md` references `../../conception/...`
- *                   and the target doesn't resolve.
+ *  - `cross-repo` — sibling app agent-instruction files (`AGENTS.md`,
+ *                   `CLAUDE.md`, `.claude/CLAUDE.md`) referencing
+ *                   `../../conception/...` that doesn't resolve.
  *  - `worktrees`  — items with an active `**Branch**` field but no on-disk
  *                   worktree at `<worktrees_path>/<branch>/`. (Only items
  *                   whose Status is not `done` are checked.)
