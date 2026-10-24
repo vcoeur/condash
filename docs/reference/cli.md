@@ -237,7 +237,7 @@ condash audit --include links        # check relative Markdown links and anchors
 |---|---|
 | `lfs` | Files that should probably live in Git LFS but are tracked as blobs |
 | `binaries` | Binary files (PDF, .docx, images > size threshold) that may need migrating |
-| `cross-repo` | Cross-repo wikilinks or relative paths that escape the conception |
+| `cross-repo` | Sibling app instruction files (`AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md` — every one that exists is scanned) with relative paths that escape the conception and no longer resolve |
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
 | `links` | Relative Markdown links under `knowledge/` and `projects/` whose target or heading anchor no longer resolves. CommonMark AST positions provide exact link and reference-link lines; GitHub-compatible slugs cover decoded fragments, duplicate headings, combining marks, and image alt text. Explicit HTML `id` / `name` anchors are supported; fenced and inline-code examples plus external schemes are ignored. Also flags broken `**Transferred:**` targets in bare-backticked and Markdown-link forms. Never auto-fixed because a valid repair needs editorial judgment |

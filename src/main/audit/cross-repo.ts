@@ -1,6 +1,7 @@
 /**
- * `cross-repo` audit check — sibling-app `CLAUDE.md` references that
- * dot-walk into the conception tree (`../../conception/...`) but no
+ * `cross-repo` audit check — sibling-app agent-instruction files
+ * (`AGENTS.md` / `CLAUDE.md` / `.claude/CLAUDE.md`) whose references
+ * dot-walk into the conception tree (`../conception/...`) but no
  * longer resolve.
  */
 
@@ -16,10 +17,10 @@ export async function checkCrossRepo(conceptionPath: string): Promise<AuditIssue
   if (!workspace) return issues;
   const apps = await listSiblingApps(workspace, conceptionPath);
   const refRe = /\(((?:\.\.\/)+conception\/[^)\s]+)\)/g;
-  for (const claudePath of apps) {
+  for (const instructionPath of apps) {
     let raw: string;
     try {
-      raw = await fs.readFile(claudePath, 'utf8');
+      raw = await fs.readFile(instructionPath, 'utf8');
     } catch {
       continue;
     }
@@ -27,22 +28,28 @@ export async function checkCrossRepo(conceptionPath: string): Promise<AuditIssue
     refRe.lastIndex = 0;
     while ((match = refRe.exec(raw))) {
       const ref = match[1];
-      const target = resolve(dirname(claudePath), ref);
+      const target = resolve(dirname(instructionPath), ref);
       const exists = await pathExists(target);
       if (exists) continue;
       const lineNo = raw.slice(0, match.index).split('\n').length;
       issues.push({
         check: 'cross-repo',
         severity: 'warn',
-        file: claudePath,
+        file: instructionPath,
         line: lineNo,
         message: `Reference to ${ref} does not resolve`,
-        fix: { action: 'flag_for_user_edit', autoFix: false, ref, inFile: claudePath },
+        fix: { action: 'flag_for_user_edit', autoFix: false, ref, inFile: instructionPath },
       });
     }
   }
   return issues;
 }
+
+/** Instruction-file candidates per repo checkout, canonical-first — the same
+ *  order as `INSTRUCTION_FILES` in `../applications.ts`. Every candidate that
+ *  exists is scanned; a legacy repo carrying both AGENTS.md and CLAUDE.md
+ *  yields distinct paths, so findings can never duplicate. */
+const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', join('.claude', 'CLAUDE.md')];
 
 async function listSiblingApps(workspace: string, conceptionPath: string): Promise<string[]> {
   const out: string[] = [];
@@ -59,7 +66,7 @@ async function listSiblingApps(workspace: string, conceptionPath: string): Promi
     if (entry.name === conceptionName) continue;
     if (SKIP_SCAN_DIRS.has(entry.name)) continue;
     const appDir = join(workspace, entry.name);
-    for (const sub of ['CLAUDE.md', join('.claude', 'CLAUDE.md')]) {
+    for (const sub of INSTRUCTION_FILES) {
       const candidate = join(appDir, sub);
       if (await pathExists(candidate)) out.push(candidate);
     }
@@ -74,7 +81,7 @@ async function listSiblingApps(workspace: string, conceptionPath: string): Promi
       if (!innerEntry.isDirectory()) continue;
       if (innerEntry.name.startsWith('.')) continue;
       const innerDir = join(appDir, innerEntry.name);
-      for (const sub of ['CLAUDE.md', join('.claude', 'CLAUDE.md')]) {
+      for (const sub of INSTRUCTION_FILES) {
         const candidate = join(innerDir, sub);
         if (await pathExists(candidate)) out.push(candidate);
       }
