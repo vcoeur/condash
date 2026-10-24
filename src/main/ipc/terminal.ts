@@ -13,6 +13,7 @@ import {
   syncPerfLogging,
   tabsContext,
   terminalGeometry,
+  terminalDocument,
   writeTerminal,
 } from '../terminals';
 import { perfLog, readVitals } from '../perf-log';
@@ -111,6 +112,18 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('termGeometry', (event, id: unknown) => {
     requireMainWindowSender(event);
     return terminalGeometry(requireNonEmptyString('termGeometry', id));
+  });
+
+  ipcMain.handle('termResolveDocument', async (event, id: unknown, uri: unknown) => {
+    requireMainWindowSender(event);
+    const { lastConceptionPath } = await readSettings();
+    if (!lastConceptionPath) throw new Error('No conception is open');
+    return terminalDocument(
+      requireNonEmptyString('termResolveDocument', id),
+      requireNonEmptyString('termResolveDocument', uri),
+      event.sender,
+      lastConceptionPath,
+    );
   });
 
   ipcMain.handle('termClose', (event, id: unknown) => {

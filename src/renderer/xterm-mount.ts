@@ -19,6 +19,7 @@ import type { TerminalXtermPrefs } from '@shared/types';
 import { liveTerms } from './xterm-registry';
 import { PromptDecorations } from './prompt-decorations';
 import { webglPool, type WebglSlot } from './webgl-pool';
+import { terminalDocumentLinks } from './terminal-document-links';
 
 export type XtermPrefs = TerminalXtermPrefs;
 
@@ -187,6 +188,9 @@ export function mountXterm(
     allowProposedApi: true,
   });
 
+  const documentLinks = terminalDocumentLinks(term, hostElement, sessionId);
+  term.options.linkHandler = documentLinks.handler;
+
   // ---- core addons ----
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -197,7 +201,7 @@ export function mountXterm(
   const serialize = new SerializeAddon();
   term.loadAddon(serialize);
 
-  // OSC 8 + bare-URL detection; click via Ctrl/Cmd opens via shell.openExternal.
+  // Bare URLs retain the browser route; labelled OSC 8 uses linkHandler above.
   term.loadAddon(
     new WebLinksAddon((event, uri) => {
       event.preventDefault();
@@ -513,6 +517,7 @@ export function mountXterm(
       // Drop our pool slot before term.dispose() (which disposes the WebglAddon).
       webglPool.remove(webglSlot);
       prompts.dispose();
+      documentLinks.dispose();
       term.dispose();
     },
   };

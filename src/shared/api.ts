@@ -442,6 +442,8 @@ export interface CondashApi {
    *  for (the alternate buffer never reflows, so replaying at any other size
    *  mangles a full-screen TUI irrecoverably). */
   termGeometry(id: string): Promise<{ cols: number; rows: number } | null>;
+  /** Resolve a local OSC 8 document against the owning terminal's cwd and conception. */
+  termResolveDocument(id: string, uri: string): Promise<string>;
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
   /** Replace the persisted terminal prefs in settings.json. The patch is a

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { readlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
@@ -37,6 +38,7 @@ import { readFileTranscript, sidecarTranscriptPath } from './file-transcript';
 import { TerminalFlow } from './terminal-flow';
 import { SCAN_WINDOW_CHARS, suggestProjectForText } from './tab-mentions';
 import { mentionNeedles, mentionNeedlesVersion } from './tab-mentions-source';
+import { resolveTerminalDocument } from './terminal-document';
 
 interface Session {
   id: string;
@@ -58,6 +60,7 @@ interface Session {
   /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
    * so the Code pane can match a session to the worktree it was started in. */
   cwd: string;
+  conceptionPath: string | null;
   /** Project slug this tab's recent output suggests it is working on, from the
    * mention scan. Advisory only — it decorates the card's Link button and is
    * never itself a link. Undefined when nothing leads clearly. */
@@ -232,6 +235,28 @@ function broadcastSessions(): void {
 
 export function listTerminalSessions(): TermSession[] {
   return snapshot();
+}
+
+/** Resolve a link only for its live terminal owner and original conception. */
+export async function terminalDocument(
+  id: string,
+  uri: string,
+  sender: WebContents,
+  conceptionPath: string,
+): Promise<string> {
+  const session = sessions.get(id);
+  if (
+    !session?.pty ||
+    session.webContents !== sender ||
+    session.conceptionPath !== conceptionPath
+  ) {
+    throw new Error('Terminal is not active in this conception');
+  }
+  const cwd =
+    process.platform === 'linux' ? await readlink(`/proc/${session.pty.pid}/cwd`) : session.cwd;
+  const real = await resolveTerminalDocument(uri, cwd, conceptionPath);
+  if (sessions.get(id) !== session || !session.pty) throw new Error('Terminal has closed');
+  return real;
 }
 
 let memoryInterval: ReturnType<typeof setInterval> | null = null;
@@ -816,6 +841,7 @@ export async function spawnTerminal(
     cmd: commandLabel,
     bytesSeen: 0,
     cwd,
+    conceptionPath,
     cols,
     rows,
     forceStop,

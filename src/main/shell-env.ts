@@ -135,7 +135,11 @@ export async function spawnEnv(): Promise<NodeJS.ProcessEnv> {
  * so the resolved login-shell PATH is used.
  */
 export async function spawnPtyEnv(baseEnv?: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
-  const env: NodeJS.ProcessEnv = { ...(baseEnv ?? (await spawnEnv())), TERM: 'xterm-256color' };
+  const env: NodeJS.ProcessEnv = {
+    ...(baseEnv ?? (await spawnEnv())),
+    TERM: 'xterm-256color',
+    FORCE_HYPERLINK: '1',
+  };
   delete env.npm_config_prefix;
   delete env.npm_config_globalconfig;
   delete env.npm_config_userconfig;
