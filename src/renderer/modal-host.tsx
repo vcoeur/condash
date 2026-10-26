@@ -258,6 +258,8 @@ export function ModalHost(props: ModalHostProps) {
   return (
     <>
       <ProjectPreview
+        conceptionPath={conceptionPath()}
+        flashToast={flashToast}
         project={previewProject()}
         allProjects={projects}
         onOpenProject={handleOpenProject}

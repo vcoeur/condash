@@ -220,6 +220,8 @@ function InlineMarkup(props: { text: string }): JSX.Element {
 }
 
 export function ProjectPreview(props: {
+  conceptionPath: string | null;
+  flashToast: (message: string, kind?: 'success' | 'error' | 'info') => void;
   project: Project | null;
   onClose: () => void;
   onToggleStep: (project: Project, step: Step) => void;
@@ -249,6 +251,26 @@ export function ProjectPreview(props: {
   const [adding, setAdding] = createSignal(false);
   const [addText, setAddText] = createSignal('');
   const [busy, setBusy] = createSignal(false);
+  const [forgeLink, setForgeLink] = createSignal<string | null>(null);
+  createEffect(() => {
+    const path = props.project?.path;
+    const root = props.conceptionPath;
+    let disposed = false;
+    setForgeLink(null);
+    onCleanup(() => {
+      disposed = true;
+    });
+    if (path && root) {
+      void window.condash
+        .getProjectForgeLink(path)
+        .then((link) => {
+          if (!disposed) setForgeLink(link);
+        })
+        .catch(() => {
+          if (!disposed) setForgeLink(null);
+        });
+    }
+  });
 
   // When a project has no steps yet, expose the new-step input row directly
   // instead of hiding it behind a "+ Add step" button — the empty section
@@ -529,6 +551,26 @@ export function ProjectPreview(props: {
                   </Show>
                 </div>
                 <div class="revamped-meta-actions">
+                  <Show when={forgeLink()}>
+                    {(link) => (
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        title="Copy item directory link. Unpushed items may return 404 until pushed."
+                        onClick={() => {
+                          void navigator.clipboard
+                            .writeText(link())
+                            .then(() => props.flashToast('Link copied', 'success'))
+                            .catch((err) =>
+                              props.flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
+                            );
+                        }}
+                      >
+                        Copy link
+                      </Button>
+                    )}
+                  </Show>
                   <Button
                     type="button"
                     variant="primary"
