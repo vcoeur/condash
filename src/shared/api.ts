@@ -74,6 +74,7 @@ export interface CondashApi {
   bootstrap(): Promise<BootstrapData>;
   listProjects(): Promise<Project[]>;
   getProject(path: string): Promise<Project | null>;
+  getProjectForgeLink(path: string): Promise<string | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   /** Tree under <conception>/resources/ — every file (any extension),
    * carrying mime + coarse category for the renderer's icon picker.

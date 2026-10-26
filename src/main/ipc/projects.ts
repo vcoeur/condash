@@ -26,6 +26,7 @@ import {
 import { addStep, editStepText, toggleStep, transitionStatus, writeNote } from '../mutate';
 import { createProjectNote, readNote } from '../note';
 import { parseReadmeCached } from '../parse-cache';
+import { getProjectForgeLink } from '../project-forge-link';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings, settingsPath } from '../settings';
 import { findProjectReadmes } from '../walk';
@@ -132,6 +133,14 @@ function buildBranchWarning(
  * note path so they live with the rest of the note plumbing).
  */
 export function registerProjectsIpc(): void {
+  ipcMain.handle('getProjectForgeLink', async (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString(path, 'path');
+    const { lastConceptionPath } = await readSettings();
+    if (!lastConceptionPath) return null;
+    return getProjectForgeLink(lastConceptionPath, path);
+  });
+
   ipcMain.handle('listProjects', (event) => {
     requireMainWindowSender(event);
     return listProjects();

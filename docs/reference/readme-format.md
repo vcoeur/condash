@@ -11,6 +11,10 @@ description: The header fields condash reads from each item's README.md — type
 
 Every item lives at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. The file opens with a **header** (item metadata) followed by an H1 title and the body content.
 
+The project preview's **Copy link** action copies its directory URL on GitHub or GitLab when the conception checkout has a supported public `origin` (HTTPS or SSH) and an attached current branch. It uses that conception branch, not the item's `branch` field. Missing/unsupported origins and detached HEAD hide the action. Newly created or unpushed items may return 404 until pushed; copying performs no network lookup.
+
+A tag sharing the current branch's name does not change the branch name used in the copied link.
+
 From condash v2.16.0 onward, the canonical header shape is **YAML frontmatter** — a `---`-delimited block at the top of the file. The legacy **bold-prose** shape (`**Key**: value` lines under the H1) is also accepted indefinitely, so you do not have to migrate existing READMEs unless you want to.
 
 | Field | YAML key | Bold-prose key | Required | Applies to | Notes |

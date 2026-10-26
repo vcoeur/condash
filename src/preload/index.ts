@@ -18,6 +18,7 @@ const api: CondashApi = {
   bootstrap: () => ipcRenderer.invoke('bootstrap'),
   listProjects: () => ipcRenderer.invoke('listProjects'),
   getProject: (path) => ipcRenderer.invoke('getProject', path),
+  getProjectForgeLink: (path) => ipcRenderer.invoke('getProjectForgeLink', path),
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   readResourcesTree: () => ipcRenderer.invoke('readResourcesTree'),
   readSkillsTree: (scope) => ipcRenderer.invoke('readSkillsTree', scope),
