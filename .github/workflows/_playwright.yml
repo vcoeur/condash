@@ -15,7 +15,8 @@ permissions:
 jobs:
   playwright:
     name: Playwright suite
-    runs-on: ubuntu-latest
+    # Playwright 1.59.1 rejects Ubuntu 26.04 during browser dependency installation.
+    runs-on: ubuntu-24.04
     # The settings-modal-audit spec alone runs ~2.5 min locally and stages
     # ~70 fields through the Save round-trip; CI runners are slower. Give
     # generous headroom over the suite's own per-test timeouts so a single
@@ -62,7 +63,7 @@ jobs:
 
       # The suite runs headless through `xvfb-run` (scripts/run-playwright.mjs
       # wraps each invocation), so xvfb only needs to be present here.
-      # ubuntu-latest ships it, so the probe is the normal path and apt never
+      # ubuntu-24.04 ships it, so the probe is the normal path and apt never
       # runs; the action's fallback covers an image that later drops it.
       - name: Ensure xvfb
         uses: ./.github/actions/apt-install
