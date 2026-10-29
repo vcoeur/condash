@@ -12,13 +12,13 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 3. **Decide the write:**
 
-   - **New finding / work log** → write a `notes/NN-<slug>.md` or `notes/NN-<slug>.mdx` file (next available number from `data.notes[]`). When a note needs supporting files, place them in `notes/NN-<slug>/`. Add one line under `## Notes` in the README using the note's actual extension: `` - [`notes/<name>.md`](notes/<name>.md) — <one-line hook>. `` or `` - [`notes/<name>.mdx`](notes/<name>.mdx) — <one-line hook>. ``.
-   - **Status change** → `condash projects status set <slug> <value> --json`. CLI validates the enum, rewrites the header line idempotently, touches `projects/.index-dirty`. Add a timeline entry explaining the change (one-line `Edit`).
+   - **New finding** → write a `notes/NN-<slug>.md` or `notes/NN-<slug>.mdx` file (next available number from `data.notes[]`). When a note needs supporting files, place them in `notes/NN-<slug>/`. Add one line under `## Notes` in the README using the note's actual extension: `` - [`notes/<name>.md`](notes/<name>.md) — <one-line hook>. `` or `` - [`notes/<name>.mdx`](notes/<name>.mdx) — <one-line hook>. ``.
+   - **Status change** → `condash projects status set <slug> <value> --json`. CLI validates the enum, rewrites the header line idempotently, touches `projects/.index-dirty`. Record it in the timeline entry of the event that caused it, and add a separate entry only when no other entry covers it. A move into or out of `done` already writes a `Closed.` / `Reopened.` entry: give the outcome in `--summary` (one line) instead of adding a second entry.
    - **Field edit** (Apps, Branch, Severity, …) → edit the header line + a timeline entry if material. Run `condash dirty touch projects --json` if Apps or Branch changed.
-   - **Step completion** → flip `[ ]` → `[x]` (or `[~]`/`[!]`). Add a timeline entry.
+   - **Step completion** → flip `[ ]` → `[x]` (or `[~]`/`[!]`). Record the flip in the timeline entry of the event that caused it — one entry per event, not one per flip.
    - **Follow-ups parked elsewhere** → put under `## Notes` or `## Follow-ups`. If kept in `## Steps` for visibility, tag with `(outside this item)`, `(out of scope)`, `(follow-up)`, or `(tracked in <slug>)` so `/projects close` doesn't flag them.
 
-4. **Timeline entries.** One line: `<YYYY-MM-DD> — <what happened>`. Terse.
+4. **Timeline entries.** `<YYYY-MM-DD> — <what happened>`, in a few sentences: what happened, how it ended, and the evidence that proves it (a test count, a commit, a PR). Do not narrate how you got there (commands run, things checked and found unchanged), and do not list every value observed — keep the one or two that prove the outcome. Detail goes in a note about that work, which the entry names: the note that already covers it, or a new note whose name describes a subject (`NN-tls-rollout`), not an event or a date (`NN-2026-10-28-deploy-details`). Never repeat the note in the entry, and never create a note only to hold the rest of an entry.
 
 5. **Worktree check.** If the update involves code and `branch` is set, enforce branch isolation (edits go through `<worktrees_path>/<branch>/<repo>/`).
 
