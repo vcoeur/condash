@@ -17,10 +17,10 @@ import { collectFilterableBranches, groupRepos, orderedRepos } from './code-part
 import { RepoRow } from './code-parts/repo-row';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 
-/** Top-level Code-pane view. Renders one flat grid of repo cards in a
- *  scrollable top region, with ACTIVE RUNS pinned at the bottom so the
- *  live-process list never scrolls out of view. */
+/** Repository cards and active runs occupy separate full-height tabs. */
 export function CodeView(props: {
+  selectedTab: 'code' | 'runs';
+  onSelectTab: (tab: 'code' | 'runs') => void;
   repos: readonly RepoEntry[];
   slots: OpenWithSlots;
   liveRepos: ReadonlySet<string>;
@@ -91,97 +91,160 @@ export function CodeView(props: {
   return (
     <div class="repos-pane">
       <header class="pane-header">
-        <span class="pane-header-title">Code</span>
-        <span class="spacer" />
-        <div class="pane-header-actions">
-          <BranchFilter
-            available={filterable()}
-            selected={props.selectedBranches}
-            stickyAll={props.stickyAllBranches}
-            activeProjectBranches={props.activeProjectBranches}
-            onToggle={props.onToggleBranch}
-            onSetAllSticky={props.onSetAllSticky}
-            onSetNone={props.onSetNoneBranches}
-          />
-          <Show when={props.onPullAll}>
-            <button
-              type="button"
-              class="pane-header-action"
-              onClick={() => props.onPullAll?.()}
-              title="Pull all repositories"
-            >
-              Pull all
-            </button>
-          </Show>
+        <div
+          class="seg seg--sm"
+          role="tablist"
+          aria-label="Code view"
+          onKeyDown={(event) => {
+            let next: 'code' | 'runs';
+            if (event.key === 'Home') next = 'code';
+            else if (event.key === 'End') next = 'runs';
+            else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+              next = props.selectedTab === 'code' ? 'runs' : 'code';
+            else return;
+            event.preventDefault();
+            props.onSelectTab(next);
+            document.getElementById(`code-tab-${next}`)?.focus();
+          }}
+        >
+          <button
+            type="button"
+            id="code-tab-code"
+            role="tab"
+            class="seg-item"
+            classList={{ 'seg-item--active': props.selectedTab === 'code' }}
+            aria-selected={props.selectedTab === 'code'}
+            aria-controls="code-panel-code"
+            tabIndex={props.selectedTab === 'code' ? 0 : -1}
+            onClick={() => props.onSelectTab('code')}
+          >
+            Code
+          </button>
+          <button
+            type="button"
+            id="code-tab-runs"
+            role="tab"
+            class="seg-item"
+            classList={{ 'seg-item--active': props.selectedTab === 'runs' }}
+            aria-selected={props.selectedTab === 'runs'}
+            aria-controls="code-panel-runs"
+            tabIndex={props.selectedTab === 'runs' ? 0 : -1}
+            onClick={() => props.onSelectTab('runs')}
+          >
+            Active runs {props.codeRunSessions.length}
+          </button>
         </div>
       </header>
-      <div class="repos-pane-scroll" ref={scrollRef}>
-        <For each={grouped()}>
-          {(group) => {
-            const isCollapsed = (): boolean => collapsed().has(group.key);
-            const renderCard = (repo: RepoEntry): ReturnType<typeof RepoRow> => {
-              const liveBranch = (): string | null => {
-                const cwd = props.liveSessionCwds.get(repo.name);
-                if (!cwd) return null;
-                const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
-                if (wt) return wt.branch ?? '(no branch)';
-                if (cwd === repo.path) {
-                  const primary = (repo.worktrees ?? []).find((w) => w.primary);
-                  return primary?.branch ?? null;
-                }
-                return null;
+      <div
+        id="code-panel-code"
+        class="code-tab-panel"
+        role="tabpanel"
+        aria-labelledby="code-tab-code"
+        tabIndex={0}
+        hidden={props.selectedTab !== 'code'}
+      >
+        <div class="code-panel-toolbar">
+          <div class="pane-header-actions">
+            <BranchFilter
+              available={filterable()}
+              selected={props.selectedBranches}
+              stickyAll={props.stickyAllBranches}
+              activeProjectBranches={props.activeProjectBranches}
+              onToggle={props.onToggleBranch}
+              onSetAllSticky={props.onSetAllSticky}
+              onSetNone={props.onSetNoneBranches}
+            />
+            <Show when={props.onPullAll}>
+              <button
+                type="button"
+                class="pane-header-action"
+                onClick={() => props.onPullAll?.()}
+                title="Pull all repositories"
+              >
+                Pull all
+              </button>
+            </Show>
+          </div>
+        </div>
+        <div class="repos-pane-scroll" ref={scrollRef}>
+          <For each={grouped()}>
+            {(group) => {
+              const isCollapsed = (): boolean => collapsed().has(group.key);
+              const renderCard = (repo: RepoEntry): ReturnType<typeof RepoRow> => {
+                const liveBranch = (): string | null => {
+                  const cwd = props.liveSessionCwds.get(repo.name);
+                  if (!cwd) return null;
+                  const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
+                  if (wt) return wt.branch ?? '(no branch)';
+                  if (cwd === repo.path) {
+                    const primary = (repo.worktrees ?? []).find((w) => w.primary);
+                    return primary?.branch ?? null;
+                  }
+                  return null;
+                };
+                return (
+                  <RepoRow
+                    repo={repo}
+                    slots={props.slots}
+                    live={props.liveRepos.has(repo.name)}
+                    liveBranch={liveBranch()}
+                    selectedBranches={props.selectedBranches}
+                    stickyAllBranches={props.stickyAllBranches}
+                    onOpen={props.onOpen}
+                    onPull={props.onPull}
+                    onLaunch={props.onLaunch}
+                    onForceStop={props.onForceStop}
+                    onStop={props.onStop}
+                    onRun={props.onRun}
+                    onOpenInTerm={props.onOpenInTerm}
+                  />
+                );
               };
               return (
-                <RepoRow
-                  repo={repo}
-                  slots={props.slots}
-                  live={props.liveRepos.has(repo.name)}
-                  liveBranch={liveBranch()}
-                  selectedBranches={props.selectedBranches}
-                  stickyAllBranches={props.stickyAllBranches}
-                  onOpen={props.onOpen}
-                  onPull={props.onPull}
-                  onLaunch={props.onLaunch}
-                  onForceStop={props.onForceStop}
-                  onStop={props.onStop}
-                  onRun={props.onRun}
-                  onOpenInTerm={props.onOpenInTerm}
-                />
-              );
-            };
-            return (
-              <Show
-                when={group.section !== null}
-                fallback={
-                  <div class="repos-grid card-grid">
-                    <For each={group.repos}>{renderCard}</For>
-                  </div>
-                }
-              >
-                <div class="repos-section">
-                  <button
-                    type="button"
-                    class={`repos-section-header ${appColorClass(group.section ?? '')}`}
-                    aria-expanded={!isCollapsed()}
-                    onClick={() => toggleSection(group.key)}
-                  >
-                    <Caret expanded={!isCollapsed()} />
-                    <span class="repos-section-title">{group.section}</span>
-                    <span class="repos-section-count">{group.repos.length}</span>
-                  </button>
-                  <Show when={!isCollapsed()}>
+                <Show
+                  when={group.section !== null}
+                  fallback={
                     <div class="repos-grid card-grid">
                       <For each={group.repos}>{renderCard}</For>
                     </div>
-                  </Show>
-                </div>
-              </Show>
-            );
-          }}
-        </For>
+                  }
+                >
+                  <div class="repos-section">
+                    <button
+                      type="button"
+                      class={`repos-section-header ${appColorClass(group.section ?? '')}`}
+                      aria-expanded={!isCollapsed()}
+                      onClick={() => toggleSection(group.key)}
+                    >
+                      <Caret expanded={!isCollapsed()} />
+                      <span class="repos-section-title">{group.section}</span>
+                      <span class="repos-section-count">{group.repos.length}</span>
+                    </button>
+                    <Show when={!isCollapsed()}>
+                      <div class="repos-grid card-grid">
+                        <For each={group.repos}>{renderCard}</For>
+                      </div>
+                    </Show>
+                  </div>
+                </Show>
+              );
+            }}
+          </For>
+        </div>
       </div>
-      <div class="code-runs-dock">
+      <div
+        id="code-panel-runs"
+        class="code-tab-panel code-runs-panel"
+        role="tabpanel"
+        aria-labelledby="code-tab-runs"
+        tabIndex={0}
+        hidden={props.selectedTab !== 'runs'}
+      >
+        <Show when={dockSessions().length === 0}>
+          <div class="empty">No active runs. Start a run from a repository card in Code.</div>
+        </Show>
         <CodeRunRows
+          visible={props.selectedTab === 'runs'}
           sessions={dockSessions()}
           repos={props.repos}
           xtermPrefs={props.xtermPrefs}

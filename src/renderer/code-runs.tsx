@@ -12,6 +12,7 @@ import { Caret } from './icons';
 import { StopIcon } from './icons';
 
 interface CodeRunRowsProps {
+  visible: boolean;
   sessions: readonly TermSession[];
   repos: readonly RepoEntry[];
   xtermPrefs?: TerminalXtermPrefs;
@@ -44,14 +45,11 @@ export function CodeRunRows(props: CodeRunRowsProps) {
   return (
     <Show when={props.sessions.length > 0}>
       <section class="code-runs">
-        <h2 class="code-runs-header">
-          <span class="name">ACTIVE RUNS</span>
-          <span class="count">{props.sessions.length}</span>
-        </h2>
         <div class="code-runs-list card-grid">
           <For each={props.sessions}>
             {(session) => (
               <CodeRunRow
+                visible={props.visible}
                 session={session}
                 repos={props.repos}
                 xtermPrefs={props.xtermPrefs}
@@ -95,6 +93,7 @@ function repoMeta(
 }
 
 function CodeRunRow(props: {
+  visible: boolean;
   session: TermSession;
   repos: readonly RepoEntry[];
   xtermPrefs?: TerminalXtermPrefs;
@@ -140,7 +139,10 @@ function CodeRunRow(props: {
       ]);
       // The row may have unmounted while the chunk / attach were in flight —
       // bail before creating the Terminal (mountXterm itself is synchronous).
-      if (disposed) return;
+      if (disposed || !expanded() || !props.visible) {
+        mountPromise = null;
+        return;
+      }
       mounted = mountXterm(xtermElement, props.session.id, {
         replay: attach?.output,
         geometry: geometry ?? undefined,
@@ -157,7 +159,7 @@ function CodeRunRow(props: {
    *  a screen no program can draw into. */
   const fitRunTerm = (attemptsLeft = MAX_FIT_ATTEMPTS): void => {
     const term = mounted;
-    if (!term || disposed) return;
+    if (!term || disposed || !expanded() || !props.visible) return;
     let dims: { cols: number; rows: number } | undefined;
     try {
       dims = term.fit.proposeDimensions();
@@ -183,12 +185,16 @@ function CodeRunRow(props: {
   // Re-attach the xterm element to whichever host node is currently mounted.
   // createEffect re-runs when expanded() flips back on.
   createEffect(() => {
-    if (!expanded() || !host) {
+    if (!expanded() || !props.visible || !host) {
       // Collapsed row → release the WebGL context back to the pool (F1).
       mounted?.setVisible(false);
       return;
     }
     void ensureMounted().then(() => {
+      if (disposed || !expanded() || !props.visible) {
+        mounted?.setVisible(false);
+        return;
+      }
       if (host && xtermElement.parentElement !== host) {
         host.appendChild(xtermElement);
       }
@@ -210,11 +216,15 @@ function CodeRunRow(props: {
     // for output nobody is looking at. Whether that matters has never been
     // measured outside a synthetic profile; these two counters are the
     // measurement, and they cost nothing while recording is off.
-    if (!expanded()) {
+    if (!expanded() || !props.visible) {
       rendererPerf.count('codeRunCollapsedWrites');
       rendererPerf.count('codeRunCollapsedBytes', data.length);
     }
-    rendererPerf.timeWrite(mounted.term, data, expanded() ? 'codeRunWrite' : 'codeRunHiddenWrite');
+    rendererPerf.timeWrite(
+      mounted.term,
+      data,
+      expanded() && props.visible ? 'codeRunWrite' : 'codeRunHiddenWrite',
+    );
   });
   props.exitHandlers.set(props.session.id, (code) => {
     mounted?.term.write(`\r\n\x1b[33m[process exited ${code}]\x1b[0m\r\n`);
