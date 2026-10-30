@@ -189,6 +189,11 @@ function App() {
   // which body shows when the pane is open; re-selecting the active band's
   // handle closes the pane. Ephemeral per-session UI state (not persisted).
   const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard'>('terminal');
+  const [codeTab, setCodeTab] = createSignal<'code' | 'runs'>('code');
+  createEffect(() => {
+    conceptionPath();
+    setCodeTab('code');
+  });
   const selectBottomBand = (view: 'terminal' | 'dashboard'): void => {
     if (layout().terminal && bottomView() === view) {
       toggleTerminal();
@@ -920,6 +925,8 @@ function App() {
                       }
                     >
                       <CodeView
+                        selectedTab={codeTab()}
+                        onSelectTab={setCodeTab}
                         repos={repos}
                         slots={openWithSlots() ?? {}}
                         liveRepos={liveRepos()}

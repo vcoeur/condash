@@ -7,7 +7,7 @@ description: The per-repo Run/Stop button, the `run:` field, and the one-run-per
 
 > **Audience.** Daily user.
 
-Since v0.13.0, each row in the Code pane — every repo and every declared sub-repo — can carry an inline dev-server runner. Click **Run** and condash spawns the command under a PTY; a row appears in the pane's **ACTIVE RUNS** strip with a collapsible mini xterm streaming live output. The running server survives pane switches, terminal toggles, and even a renderer reload: the pty and its output buffer live in the main process, not in the page.
+Each row in the Code pane — every repo and every declared sub-repo — can carry an inline dev-server runner. Click **Run** and condash spawns the command under a PTY; a row appears in the pane's **Active runs** tab with a collapsible mini xterm streaming live output. Starting a run stays on **Code** and updates the tab's count. The running server survives pane switches, terminal toggles, and even a renderer reload: the pty and its output buffer live in the main process, not in the page.
 
 ## When to reach for it
 
@@ -53,7 +53,7 @@ Each branch row of a repo with a configured `run` carries a single button that f
 
 | State | What you see | What clicking does |
 |---|---|---|
-| **Idle** | `▶ Run` | Starts the command under a PTY, sided to the Code pane. A row appears in **ACTIVE RUNS** at the top of the pane. |
+| **Idle** | `▶ Run` | Starts the command under a PTY, sided to the Code pane. A row appears in **Active runs** without switching tabs. |
 | **Running** | `■ Stop` | Runs the [kill pipeline](../explanation/internals.md#pty-kill-pipeline) against the session: `SIGTERM` → optional `force_stop` → 500 ms → `SIGKILL` on the process group. |
 
 The Stop button appears on the branch row whose checkout the live session is actually running in; the repo header carries the same branch name next to a live dot, so a session started from a worktree is visible from anywhere in the repo's card.
@@ -64,9 +64,11 @@ The Stop button appears on the branch row whose checkout the live session is act
 
 The stop is awaited before the new pty spawns, so the port is free before the replacement binds and the renderer sees the old row disappear before the new one arrives. There is no confirmation prompt and no "switch here" affordance — clicking Run on a second branch simply moves the session there.
 
-## The ACTIVE RUNS strip
+## The Active runs tab
 
-Every code-side session gets a row at the top of the Code pane, showing the repo `#handle`, the branch, and a `running` / `exited <code>` status pill.
+Every code-side session gets a row in **Active runs**, showing the repo `#handle`, the branch, and a `running` / `exited <code>` status pill. Runs mirror the repository-card order. This tab uses the full pane height; the Code tab's branch filter and Pull all are hidden here. With zero sessions it shows a clear empty state.
+
+Tab selection is session-only: it survives hiding Code or visiting another working pane, but resets to Code on reload and conception change. Switching between Code and Active runs preserves expanded rows, their terminal instances and live output; hidden terminals do not fit until the panel is visible again.
 
 - **Collapsed by default.** Click the row header to expand a mini xterm; click again to collapse. The terminal is *not* torn down on collapse — it keeps parsing the live stream and keeps its scrollback, so re-expanding shows continuous output rather than an empty screen.
 - **Replays on attach.** Main holds a rolling tail of each session's output — **64 000 characters** (with a small reslice slack) — and the xterm replays it through the `termAttach` IPC when the row first mounts. There is no websocket and no HTTP anywhere in this path. Output that scrolls past that tail is gone; use `terminal.logging` if you need the full transcript on disk.
@@ -89,7 +91,7 @@ Runner state changes don't go through a polling loop — the main process pushes
 ## Lifetime
 
 - A session stays alive for as long as the child process is running, regardless of whether the renderer is attached.
-- **In the Code pane**, an exited run keeps its ACTIVE RUNS row and its output until you dismiss it.
+- **In the Code pane**, an exited run keeps its Active runs row and its output until you dismiss it.
 - **In the bottom terminal pane**, the rule is narrower: a clean `exit 0`, and a stop you asked for, auto-close the tab — a lingering "[process exited 0]" placeholder only forced a manual click. Any *abnormal* death keeps its row, with the verdict badge and a **Restart** button (`termRestart`), because auto-closing would destroy the only evidence of what happened. A Stop that also tripped the cgroup OOM killer counts as abnormal for exactly that reason. The tab strip's **Save buffer** button (xterm's serialize addon) captures the scrollback in either case.
 - On clean shutdown (window close, `quitApp` IPC, `SIGTERM` to the Electron main) every registered runner is reaped through the [PTY kill pipeline](../explanation/internals.md#pty-kill-pipeline): SIGTERM → optional `force_stop` → 500 ms wait → SIGKILL on the process group.
 - On a dirty crash (OOM, `kill -9` on Electron itself) the children are orphaned; you'll find them in `ps` under PID 1. This is the same footprint as the embedded terminal — condash does not install a double-fork sentinel.

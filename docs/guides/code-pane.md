@@ -11,6 +11,12 @@ description: What the Code pane shows — repo cards, branch rows, worktree rows
 
 The Code pane is the right-hand working surface that shows the git repos this conception cares about (`Ctrl+Shift+C`, or the rail's first right-pane item). It is a **view, not a manager**: it renders the configured repositories and their on-disk state, and it launches things (a shell, your IDE, a dev server). It never edits or runs your code — your IDE does that via the `open_with` slots ([Non-goals](../explanation/non-goals.md)). The JSON that configures everything on this page lives in [Repositories and open-with launchers](repositories-and-open-with.md); this page is about what you see.
 
+## Code and Active runs tabs
+
+The **Code** tab shows repository cards; **Active runs N** shows their running and exited sessions, in the same repository order. Each tab uses the full pane height. **Branches** and **Pull all** appear only on Code. With no sessions, Active runs shows 0 and an empty-state message.
+
+Starting a run stays on Code and updates the tab count. The selected tab survives hiding the pane or visiting another working pane during this session, but resets to Code on reload or conception change. Switching tabs preserves expanded run terminals and their output.
+
 ## Cards, rows, and the primary worktree
 
 ![Code pane — five cards in declaration order: helio, its two crates/ submodules, then helio-web and helio-docs](../assets/screenshots/code-pane-light.png#only-light)
@@ -25,7 +31,7 @@ The Code pane is the right-hand working surface that shows the git repos this co
 
 The actions live on each **branch row**, not on the card:
 
-1. **Run** / **Stop** — only when that repo has a `run:` command configured; it spawns a dev server as a PTY-owned child of condash and streams its output into an xterm under the row. See [inline dev-server runner](../reference/inline-runner.md).
+1. **Run** / **Stop** — only when that repo has a `run:` command configured; it spawns a dev server as a PTY-owned child of condash and streams its output into a collapsible xterm in **Active runs**. See [inline dev-server runner](../reference/inline-runner.md).
 2. **Open a shell here** — spawns a condash terminal tab with its cwd in that checkout.
 3. **Open with… ▾** — a dropdown holding your configured launchers (main IDE, secondary IDE, external terminal), plus **Open in file manager**, **Pull branch**, and **Open PR #N** when `gh` finds one.
 
