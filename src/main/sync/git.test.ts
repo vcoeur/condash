@@ -12,11 +12,36 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { exec } from '../exec';
-import { behindUpstream, fetchUpstream, ffOnlyMerge } from './git';
+import { behindUpstream, fetchUpstream, ffOnlyMerge, formatGitDiagnostic } from './git';
 
 let savedGlobal: string | undefined;
 let savedSystem: string | undefined;
 let savedLocale: string | undefined;
+
+describe('bounded Git diagnostics', () => {
+  it('uses the first nonempty source, retaining multiline paths', () => {
+    expect(
+      formatGitDiagnostic({
+        stderr: ' \n',
+        stdout: 'heading\n  path/index.md\n',
+        message: 'fallback',
+      }),
+    ).toBe('heading\npath/index.md');
+    expect(formatGitDiagnostic({ stderr: '', stdout: '', message: 'message' })).toBe('message');
+    expect(formatGitDiagnostic({})).toBe('unknown error');
+  });
+  it('caps lines and UTF-8 bytes including the explicit truncation marker', () => {
+    const lines = formatGitDiagnostic({
+      stderr: Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n'),
+    });
+    expect(lines.split('\n')).toHaveLength(12);
+    expect(lines).toContain('[diagnostic truncated]');
+    const bytes = formatGitDiagnostic({ stderr: 'é'.repeat(5000) });
+    expect(Buffer.byteLength(bytes)).toBeLessThanOrEqual(4096);
+    expect(bytes).toContain('[diagnostic truncated]');
+    expect(bytes).not.toContain('\ufffd');
+  });
+});
 
 beforeAll(() => {
   savedGlobal = process.env.GIT_CONFIG_GLOBAL;

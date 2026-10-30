@@ -232,7 +232,7 @@ export async function fetchUpstream(cwd: string): Promise<void> {
  *
  * @param cwd conception root
  * @returns `{ ok: true }` on a fast-forward, or `{ ok: false, error }` with
- *          the first line of git's diagnostic when the merge is refused
+ *          a bounded multiline diagnostic when the merge is refused
  */
 export async function ffOnlyMerge(
   cwd: string,
@@ -241,14 +241,38 @@ export async function ffOnlyMerge(
     await exec('git', ['merge', '--ff-only'], { cwd });
     return { ok: true };
   } catch (err) {
-    const e = err as ExecError;
-    const text = e.stderr ?? e.stdout ?? e.message ?? '';
-    const firstLine = text
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line.length > 0);
-    return { ok: false, error: firstLine ?? 'git merge --ff-only failed' };
+    return {
+      ok: false,
+      error: formatGitDiagnostic(err),
+    };
   }
+}
+
+/** Bound diagnostics without dropping all the useful path lines after Git's heading. */
+export function formatGitDiagnostic(error: unknown): string {
+  const detail = error as ExecError | null;
+  const text =
+    [detail?.stderr, detail?.stdout, detail?.message, typeof error === 'string' ? error : ''].find(
+      (source) => typeof source === 'string' && source.trim() !== '',
+    ) ?? 'unknown error';
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const marker = '\n[diagnostic truncated]';
+  let result = lines.slice(0, 12).join('\n');
+  if (lines.length > 12 || Buffer.byteLength(result) > 4096) {
+    result = lines.slice(0, 11).join('\n');
+    const characters: string[] = [];
+    let bytes = Buffer.byteLength(marker);
+    for (const character of result) {
+      bytes += Buffer.byteLength(character);
+      if (bytes > 4096) break;
+      characters.push(character);
+    }
+    result = characters.join('') + marker;
+  }
+  return result;
 }
 
 async function exists(path: string): Promise<boolean> {

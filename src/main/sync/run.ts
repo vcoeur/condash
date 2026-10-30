@@ -29,6 +29,7 @@ import {
   commitPaths,
   fetchUpstream,
   ffOnlyMerge,
+  formatGitDiagnostic,
   inProgressOperation,
   push,
   readChangedPaths,
@@ -110,7 +111,7 @@ export interface SyncReport {
   pushed: boolean;
   /** Set when the push was rejected. Not fatal — the next run retries. */
   pushError: string | null;
-  /** Set when the fetch or the fast-forward failed; the push is skipped.
+  /** Set when integration failed; commits and push are skipped.
    *  Not fatal — the next run retries. */
   integrateError: string | null;
 }
@@ -132,10 +133,14 @@ export async function syncRun(
     let changed = await readChangedPaths(conceptionPath);
     await assertOperable(gitDir, changed);
 
-    const integration = await integrateBeforePush(conceptionPath, options);
-    changed = await readChangedPaths(conceptionPath);
-
+    const indexMtimes = new Map<string, number>();
+    await captureIndexMtimes(conceptionPath, changed, indexMtimes);
     const cutoffMs = Date.now() - options.quietPeriodSeconds * 1000;
+    const integration = await integrateBeforePush(conceptionPath, options);
+    if (integration?.integrateError)
+      return integrationFailure(conceptionPath, options, integration);
+    changed = await readChangedPaths(conceptionPath);
+    await captureIndexMtimes(conceptionPath, changed, indexMtimes);
 
     // A detected rename is ONE logical change: the old paths are all deleted
     // (settled by definition — no mtime to compare), the new ones sit out the
@@ -164,12 +169,6 @@ export async function syncRun(
     const unsettledTrees = new Set<SyncTree>();
     const heldBackTrees = new Set<SyncTree>();
     const heldBackPaths: string[] = [];
-    // Index paths already modified BEFORE this sweep touched anything — i.e.
-    // by a hand-run `condash knowledge index` or another external writer.
-    // Sync cannot subject its own regenerated indexes to the quiet period,
-    // but these pre-existing changes are exactly what the quiet period is
-    // for, so they are remembered here and gated below.
-    const preExistingIndexChanges = new Set<string>();
     // Trees whose content this sweep commits. Their indexes are regenerated in
     // the same sweep whether or not a marker is set, so an index never trails
     // the content it describes by more than the quiet period — and a deleted
@@ -179,7 +178,6 @@ export async function syncRun(
       if (pairedPaths.has(path)) continue; // handled with its rename partner
       const cls = classifyPath(path);
       if (cls.kind === 'index') {
-        preExistingIndexChanges.add(path);
         continue;
       }
       if (cls.kind === 'unresolved') {
@@ -244,15 +242,14 @@ export async function syncRun(
     // tick's regeneration). A pre-existing change that is still inside the
     // quiet period — the hand-run index rewrite mid-write — waits for the
     // next tick, like every other path.
+    // Recheck before our own writes, so an observable later editor write stays warm.
+    await captureIndexMtimes(conceptionPath, await readChangedPaths(conceptionPath), indexMtimes);
     const regeneratedTrees = await regenerateDirtyTrees(conceptionPath, options.dryRun, {
       heldBackTrees,
       forceTrees: committingTrees,
     });
-
-    // A tree regenerated while one of its paths was mid-write may now carry a
-    // bullet derived from text that will never be committed as such. Keep the
-    // marker set so the next tick re-derives; it clears only on a regeneration
-    // that found every path in the tree settled.
+    // A tracked mid-write source may have contributed a transient row;
+    // keep its marker so the next tick derives it again.
     if (!options.dryRun) {
       for (const tree of regeneratedTrees) {
         if (unsettledTrees.has(tree)) await touchDirtyMarker(conceptionPath, tree);
@@ -275,10 +272,9 @@ export async function syncRun(
     for (const [tree, paths] of indexPathsByTree) {
       if (heldBackTrees.has(tree)) continue;
       for (const path of paths) {
-        const stat = await fs.stat(join(conceptionPath, path)).catch(() => null);
-        const mtimeMs = stat?.mtimeMs ?? 0;
+        const mtimeMs = indexMtimes.get(path) ?? 0;
         const settled = mtimeMs <= cutoffMs;
-        const syncAuthored = !preExistingIndexChanges.has(path);
+        const syncAuthored = !indexMtimes.has(path);
         if (settled || syncAuthored) indexPaths.push(path);
         else skipped.push({ path, reason: 'quiet-period' });
       }
@@ -350,6 +346,8 @@ export async function syncCommit(
       await assertOperable(gitDir, changed);
 
       const integration = await integrateBeforePush(conceptionPath, options);
+      if (integration?.integrateError)
+        return integrationFailure(conceptionPath, options, integration);
 
       const prefix = `${itemRelPath}/`;
       const paths = (await readChangedPaths(conceptionPath))
@@ -558,7 +556,7 @@ async function integrateBeforePush(
       ahead: null,
       behind: null,
       diverged: false,
-      integrateError: `fetch failed: ${firstLine(err)}`,
+      integrateError: formatGitDiagnostic(`fetch failed: ${formatGitDiagnostic(err)}`),
     };
   }
 
@@ -576,7 +574,7 @@ async function integrateBeforePush(
   if (behind > 0 && ahead === 0) {
     const ff = await ffOnlyMerge(conceptionPath);
     if (!ff.ok) {
-      integrateError = `fast-forward failed: ${ff.error}`;
+      integrateError = formatGitDiagnostic(`fast-forward failed: ${ff.error}`);
     } else {
       // The remote commits are now on HEAD; the sweep's own commits will keep
       // the push a fast-forward.
@@ -590,7 +588,7 @@ async function integrateBeforePush(
         resolvedBehind = 0;
         diverged = false;
       } catch (error) {
-        integrateError = `safe merge refused: ${firstLine(error)}`;
+        integrateError = formatGitDiagnostic(`safe merge refused: ${formatGitDiagnostic(error)}`);
       }
     }
   }
@@ -604,7 +602,7 @@ async function integrateBeforePush(
  * live session, which is the very race sync exists to prevent.
  *
  * With an integration result, a divergence or a failed integration refuses the
- * push outright — the local commits stay and the human reconciles.
+ * push outright; an integration error has already gated new commits.
  */
 async function pushState(
   conceptionPath: string,
@@ -649,8 +647,8 @@ async function pushState(
     }
   }
 
-  // A divergence or a failed integration refuses the push: the local commits
-  // stay and the human runs `git pull --rebase`.
+  // Explicit ff-only divergence retains its local-commit behavior; errors
+  // reached this point without creating new commits.
   if (integration.diverged || integration.integrateError) {
     return {
       ahead: await upstreamAhead(conceptionPath),
@@ -697,16 +695,32 @@ async function pushState(
   };
 }
 
-/** First non-empty line of an exec error's stderr/stdout/message. */
-function firstLine(err: unknown): string {
-  const e = err as { stderr?: string; stdout?: string; message?: string };
-  const text = e.stderr ?? e.stdout ?? e.message ?? '';
-  return (
-    text
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? 'unknown error'
-  );
+async function integrationFailure(
+  conceptionPath: string,
+  options: SyncOptions,
+  integration: Integration,
+) {
+  return {
+    ...(await pushState(conceptionPath, options, integration)),
+    commits: [],
+    skipped: [],
+    regeneratedTrees: [],
+    indexesDeferred: false,
+    deferredIndexTrees: [],
+    deferredIndexPaths: [],
+  };
+}
+
+async function captureIndexMtimes(
+  conceptionPath: string,
+  changed: ChangedPath[],
+  mtimes: Map<string, number>,
+): Promise<void> {
+  for (const { path } of changed) {
+    if (classifyPath(path).kind !== 'index') continue;
+    const stat = await fs.stat(join(conceptionPath, path)).catch(() => null);
+    mtimes.set(path, stat?.mtimeMs ?? 0);
+  }
 }
 
 /** A path older than the cutoff — or gone entirely — is safe to commit. */
