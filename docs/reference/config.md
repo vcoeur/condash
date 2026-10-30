@@ -207,6 +207,8 @@ An empty user vocabulary can still have automatically seeded app phrases. The `m
 
 The `autoSync` block runs [`condash sync run`](cli.md#sync) on a timer while a conception is open, committing settled, non-gitignored changes and pushing under the same lock, quiet period and mid-operation refusal as the CLI. Before pushing it fetches and fast-forwards an ahead-only remote. The default `ff-only` refuses divergence; opt-in `safe-merge` prepares a two-parent merge in isolation for clean or generated-row-only divergence, preserving human index content and refusing to apply over dirty/staged/untracked work. Handwritten conflicts still require manual reconciliation. See [safe-merge safeguards](../guides/auto-commit.md#safe-merge-recovery).
 
+An integration error skips regeneration, commits and push in both sync entry points. Overlapping dirty indexes are left untouched and retryable, not automatically repaired. Use `--no-push` explicitly to settle local work without integration. Dirty-index quiet eligibility uses its pre-integration/pre-regeneration mtime, refreshed for observable later writes before regeneration: a sweep rewrite does not starve an already settled index, while a fresh index waits. Git diagnostics retain at most 12 nonempty lines and 4096 UTF-8 bytes including a truncation marker. Defaults are unchanged.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | Master switch. Off by default — the engine is armed but never commits. |

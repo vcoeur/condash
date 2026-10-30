@@ -12,6 +12,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { writeProjectReadme } from '../../cli/commands/test-helpers';
 import { exec } from '../exec';
 import { syncCommit, syncRun, SyncRefusedError } from './run';
+import { regenerateIndex } from '../index-tree';
+import { projectsStrategy } from '../index-projects';
 
 const HOUR_AGO = () => new Date(Date.now() - 60 * 60 * 1000);
 
@@ -204,6 +206,46 @@ describe('syncRun', () => {
     const second = await syncRun(root, RUN_DEFAULTS);
     expect(second.commits.map((c) => c.subject)).toEqual(['indexes: sync']);
   });
+
+  it.each([true, false])(
+    'uses the original index mtime across a sweep rewrite (settled=%s)',
+    async (settled) => {
+      const alpha = await writeProjectReadme(root, 'alpha', {
+        date: '2026-07-10',
+        kind: 'project',
+        status: 'now',
+      });
+      const beta = await writeProjectReadme(root, 'beta', {
+        date: '2026-07-11',
+        kind: 'project',
+        status: 'now',
+      });
+      await settle(alpha, beta);
+      await syncRun(root, RUN_DEFAULTS);
+      await writeProjectReadme(root, 'alpha', {
+        date: '2026-07-10',
+        kind: 'project',
+        status: 'done',
+      });
+      await regenerateIndex(root, projectsStrategy);
+      await writeProjectReadme(root, 'beta', {
+        date: '2026-07-11',
+        kind: 'project',
+        status: 'review',
+      });
+      const index = join(root, 'projects/2026-07/index.md');
+      await settle(alpha, beta);
+      if (settled) await settle(index);
+      const report = await syncRun(root, { ...RUN_DEFAULTS, quietPeriodSeconds: 300 });
+      expect(
+        report.commits.flatMap((commit) => commit.paths).includes('projects/2026-07/index.md'),
+      ).toBe(settled);
+      expect(report.skipped.some((entry) => entry.path === 'projects/2026-07/index.md')).toBe(
+        !settled,
+      );
+      expect(await fs.readFile(index, 'utf8')).toContain('review');
+    },
+  );
 
   it('defers index regeneration while any item is still inside the quiet period', async () => {
     // Regression: the index is fan-in over every item, so regenerating it here
@@ -1076,7 +1118,7 @@ describe('syncRun', () => {
     await fs.rm(remote, { recursive: true, force: true });
   });
 
-  it('commits the local edit even when the fast-forward is blocked by a dirty collision', async () => {
+  it('leaves local bytes, staged entries and HEAD unchanged when a fast-forward collides', async () => {
     const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
@@ -1106,20 +1148,119 @@ describe('syncRun', () => {
     await fs.writeFile(readme, 'local edit\n');
     await settle(readme);
 
+    const head = await git(root, 'rev-parse', 'HEAD');
+    const staged = await git(root, 'ls-files', '--stage', '-z');
     const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
 
-    expect(report.integrateError).toBeTruthy();
+    expect(report.integrateError).toContain('projects/2026-07/2026-07-10-alpha/README.md');
     expect(report.integrateError).toMatch(/fast-forward/i);
     expect(report.pushed).toBe(false);
     expect(report.diverged).toBe(false);
-    expect(report.commits.length).toBeGreaterThanOrEqual(1);
-    // The local edit was still swept into a commit.
-    expect(await git(root, 'status', '--porcelain')).toBe('');
+    expect(report.commits).toEqual([]);
+    expect(report.regeneratedTrees).toEqual([]);
+    expect(await fs.readFile(readme, 'utf8')).toBe('local edit\n');
+    expect(await git(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(await git(root, 'ls-files', '--stage', '-z')).toBe(staged);
+    const next = await syncRun(root, { ...RUN_DEFAULTS, push: true });
+    expect(next.commits).toEqual([]);
+    expect(next.diverged).toBe(false);
+    expect(next.ahead).toBe(0);
+    expect(next.behind).toBe(1);
+    const milestone = await syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'Milestone', {
+      ...RUN_DEFAULTS,
+      push: true,
+    });
+    expect(milestone.commits).toEqual([]);
+    expect(milestone.integrateError).toContain('fast-forward failed');
+    expect(await git(root, 'rev-parse', 'HEAD')).toBe(head);
 
     await fs.rm(remote, { recursive: true, force: true });
   });
 
-  it('reports a failed fetch as a non-fatal integrate error and still commits', async () => {
+  it('keeps a later observable index write warm after integration', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+    const indexPath = 'projects/2026-07/index.md';
+    await fs.appendFile(join(root, indexPath), '\nLocal prose\n');
+    await settle(join(root, indexPath));
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-mtime-remote-'));
+    try {
+      await git(remote, 'init', '-q', '--bare', '-b', 'main');
+      await git(root, 'remote', 'add', 'origin', remote);
+      await git(root, 'push', '-q', '-u', 'origin', 'main');
+      await advanceRemote(remote, root);
+      await fs.writeFile(
+        join(root, '.git/hooks/post-merge'),
+        `#!/bin/sh\nprintf '\\nLater writer\\n' >> '${indexPath}'\n`,
+        { mode: 0o755 },
+      );
+      const report = await syncRun(root, { ...RUN_DEFAULTS, push: true, quietPeriodSeconds: 300 });
+      expect(report.integrateError).toBeNull();
+      expect(report.behind).toBe(0);
+      expect(report.commits).toEqual([]);
+      expect(report.skipped).toContainEqual({ path: indexPath, reason: 'quiet-period' });
+      expect(await fs.readFile(join(root, indexPath), 'utf8')).toContain('Later writer');
+    } finally {
+      await fs.rm(remote, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['run', 'commit'])('leaves dirty generated overlap retryable for %s', async (verb) => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await settle(readme);
+    await syncRun(root, RUN_DEFAULTS);
+    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-overlap-remote-'));
+    const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-overlap-clone-'));
+    try {
+      await git(remote, 'init', '-q', '--bare', '-b', 'main');
+      await git(root, 'remote', 'add', 'origin', remote);
+      await git(root, 'push', '-q', '-u', 'origin', 'main');
+      await git(root, 'clone', '-q', remote, clone);
+      await git(clone, 'config', 'user.email', 'test@example.com');
+      await git(clone, 'config', 'user.name', 'Test');
+      const indexPath = 'projects/2026-07/index.md';
+      await fs.appendFile(join(clone, indexPath), '\nRemote row\n');
+      await git(clone, 'add', indexPath);
+      await git(clone, 'commit', '-q', '-m', 'remote index');
+      await git(clone, 'push', '-q');
+      await fs.appendFile(join(root, indexPath), '\nLocal row\n');
+      await fs.appendFile(readme, '\nLocal source\n');
+      await fs.writeFile(join(root, 'projects/.index-dirty'), 'pending\n');
+      await settle(readme, join(root, indexPath));
+      await git(root, 'add', readme);
+      const head = await git(root, 'rev-parse', 'HEAD');
+      const staged = await git(root, 'ls-files', '--stage', '-z');
+      const indexBytes = await fs.readFile(join(root, indexPath));
+      const sourceBytes = await fs.readFile(readme);
+      const remoteHead = await git(remote, 'rev-parse', 'HEAD');
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const options = { ...RUN_DEFAULTS, push: true };
+        const report =
+          verb === 'run'
+            ? await syncRun(root, options)
+            : await syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'Milestone', options);
+        expect(report.integrateError).toContain(indexPath);
+        expect(report.commits).toEqual([]);
+        expect(report.regeneratedTrees).toEqual([]);
+        expect(report.pushed).toBe(false);
+        expect(report.ahead).toBe(0);
+        expect(report.behind).toBe(1);
+        expect(report.diverged).toBe(false);
+        expect(await git(root, 'rev-parse', 'HEAD')).toBe(head);
+        expect(await git(root, 'ls-files', '--stage', '-z')).toBe(staged);
+        expect(await fs.readFile(join(root, indexPath))).toEqual(indexBytes);
+        expect(await fs.readFile(readme)).toEqual(sourceBytes);
+        expect(await fs.readFile(join(root, 'projects/.index-dirty'), 'utf8')).toBe('pending\n');
+        expect(await git(remote, 'rev-parse', 'HEAD')).toBe(remoteHead);
+      }
+    } finally {
+      await fs.rm(clone, { recursive: true, force: true });
+      await fs.rm(remote, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a failed fetch and gates both sweep and milestone commits', async () => {
     const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
@@ -1130,14 +1271,32 @@ describe('syncRun', () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     await settle(readme);
 
+    const head = await git(root, 'rev-parse', 'HEAD');
+    await git(root, 'add', readme);
+    const staged = await git(root, 'ls-files', '--stage', '-z');
+    const sourceBytes = await fs.readFile(readme);
+    await fs.writeFile(join(root, 'projects/index.md'), 'local index\n');
+    await fs.writeFile(join(root, 'projects/.index-dirty'), 'pending\n');
     const report = await syncRun(root, { ...RUN_DEFAULTS, push: true });
 
-    expect(report.commits).toHaveLength(2);
+    expect(report.commits).toEqual([]);
+    expect(report.regeneratedTrees).toEqual([]);
     expect(report.pushed).toBe(false);
     expect(report.pushError).toBeNull();
     expect(report.integrateError).toBeTruthy();
     expect(report.integrateError).toMatch(/fetch failed/i);
-    expect(await subjects(root)).toContain('2026-07-10-alpha: sync');
+    const milestone = await syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'Milestone', {
+      ...RUN_DEFAULTS,
+      push: true,
+    });
+    expect(milestone.commits).toEqual([]);
+    expect(milestone.regeneratedTrees).toEqual([]);
+    expect(milestone.integrateError).toContain('fetch failed');
+    expect(await git(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(await git(root, 'ls-files', '--stage', '-z')).toBe(staged);
+    expect(await fs.readFile(readme)).toEqual(sourceBytes);
+    expect(await fs.readFile(join(root, 'projects/index.md'), 'utf8')).toBe('local index\n');
+    expect(await fs.readFile(join(root, 'projects/.index-dirty'), 'utf8')).toBe('pending\n');
   });
 
   it('reports a null behind when there is no upstream, without an integrate error', async () => {

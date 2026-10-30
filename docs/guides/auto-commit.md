@@ -19,11 +19,15 @@ A conception checkout shared by parallel agent sessions has three ways to corrup
 
 Each sweep takes an exclusive lock and then:
 
+When pushing with integration enabled, it fetches and integrates **before** the steps below. An integration error skips all new commits, live index regeneration and push, leaving behind-only history retryable instead of creating divergence. This also applies to milestone `sync commit` and refused opt-in safe merges. Explicit `ff-only` divergence without an integration error retains its local-commit behavior.
+
 1. **Skips anything still warm.** A path modified more recently than the quiet period is left for the next sweep, so a file mid-write is never committed half-finished.
 2. **Commits one commit per item.** Every changed file under `projects/<month>/<item>/` lands in a commit subjected `<item>: sync`, so a shared checkout still produces per-item history.
 3. **Then knowledge, then everything else.** Changed `knowledge/` bodies go into `knowledge: sync`; every other tracked, non-gitignored file outside the two trees — `AGENTS.md`, `.agents/`, config, `resources/`, `tasks/` — goes into `meta: sync`.
 4. **Then the regenerated indexes**, in a commit of their own (`indexes: sync`). A tree's indexes regenerate whenever its `.index-dirty` marker is set *or* the sweep commits content in it, so an index never trails what it describes by more than the quiet period. An index is fan-in over every item of its tree, so regenerating one while a **brand-new** item of that tree is mid-write would record a bullet pointing at a directory `main` does not contain. A held-back path that HEAD has never seen therefore defers index work — but only for **its own tree**: a mid-write project item never delays a `knowledge/**/index.md`, and vice versa. A held-back path that HEAD already holds does not defer: its bullet may describe the mid-write file for one sweep, and the tree stays marked dirty until a sweep finds every path in it settled, so the next tick re-derives it. The sweep names what it deferred and why (`deferred projects indexes until new projects/2026-08/2026-08-19-foo/README.md settles`), so an index change that sits uncommitted across several sweeps is visible rather than silent.
 5. **Pushes**, unless you turned that off.
+
+Dirty indexes use their **pre-integration, pre-regeneration mtime** for quiet-period eligibility. Rewriting an already settled index during the sweep does not make it warm again; a fresh pre-existing index still waits. Index changes first authored by the sweep remain immediately eligible.
 
 A sweep that introduces an item's `Closed.` timeline entry commits that item under a synthesised `Close <item>. Outcome: …` subject instead of `<item>: sync` — so closing an item stays a write-files-only operation.
 
@@ -73,6 +77,15 @@ The status bar carries the same engine, condensed:
 - **The lock is already held** (a CLI `condash sync run` is mid-sweep): the tick exits quietly and tries again next interval.
 - **The repo refuses** — mid-merge, a conflict, anything `syncRun` won't touch: the error is recorded, shown in both the Settings status line and the status-bar pill, and retried on the next interval. A failure is treated as a completed attempt so it can never hot-loop.
 - **The tree has diverged from the remote** (commits on both sides): `ff-only` still commits local work but refuses the push. `safe-merge` can recover automatically on a clean sweep; unsafe conflicts remain *Integration needed*. Reconcile manually with `git pull --rebase` or `git merge` against your upstream only once work is settled, then sync again. Preserve prose/curated rows in conflicted generated indexes, resolve only drafted content, then run `condash projects index` or `condash knowledge index`. Never take a whole index side blindly or discard local commits.
+- **Fetch, fast-forward or safe-merge recovery fails:** commits and push are skipped, with bounded multiline diagnostics naming known blockers. A dirty safe-merge checkout no longer commits during the refusal; explicitly use `condash sync run --no-push` to settle local work before the next recovery attempt if that is what you intend.
+
+## Dirty-index fast-forward refusal
+
+An overlapping dirty generated index can still block an ordinary fast-forward. Both `sync run` and `sync commit` leave it untouched, skip regeneration, commits and push, and remain behind-only and retryable rather than creating divergence. Reconcile the overlap manually; no automatic dirty-index repair is attempted.
+
+Diagnostics retain up to 12 nonempty lines and 4096 UTF-8 bytes, including an explicit truncation marker, so ordinary Git blocker paths remain visible within those bounds.
+
+The sync lock excludes cooperating sweepers, **not arbitrary external editors**. Dirty-index mtimes are refreshed for observable later writes before regeneration; this is not a universal writer lock. Default integration mode and quiet period are unchanged.
 
 ## Safe-merge recovery
 
@@ -86,7 +99,7 @@ Git **2.29 or newer** and the required merge guards are checked; unsupported Git
 
 ## Working with collaborators
 
-Each collaborator keeps their own checkout and pushes to the one shared remote. The sweeper fetches first and fast-forwards an ahead-only remote. On divergence, default `ff-only` waits for manual reconciliation; opt-in `safe-merge` recovers only under the safeguards above. Refused recovery never prevents settled local commits. `integration: 'off'` restores the old behavior (no fetch, no integration).
+Each collaborator keeps their own checkout and pushes to the one shared remote. The sweeper fetches first and fast-forwards an ahead-only remote unless local work blocks it. On divergence, default `ff-only` waits for manual reconciliation; opt-in `safe-merge` recovers only under its safeguards. An integration error prevents new local commits; `--no-push` explicitly settles work without integration. `integration: 'off'` restores the old behavior (no fetch, no integration).
 
 ## Doing it by hand
 

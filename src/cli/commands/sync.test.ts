@@ -205,6 +205,33 @@ describe('runSync run against a real repo', () => {
     expect(stdout).toBe('nothing to sync\n');
   });
 
+  it.each(['run', 'commit'])(
+    'warns that integration failure skipped commits and push for %s',
+    async (verb) => {
+      await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+      await exec('git', ['remote', 'add', 'origin', join(root, 'missing-remote.git')], {
+        cwd: root,
+      });
+      const { stdout, threw } = await captureStdout(() =>
+        runSync(
+          verb,
+          args(
+            verb,
+            verb === 'commit' ? ['alpha'] : [],
+            verb === 'commit' ? { message: 'Milestone' } : {},
+          ),
+          jsonCtx(),
+          root,
+        ),
+      );
+      expect(threw).toBeUndefined();
+      const envelope = JSON.parse(stdout);
+      expect(envelope.data.commits).toEqual([]);
+      expect(envelope.warnings.join('\n')).toContain('commits and push skipped');
+      expect(envelope.warnings.join('\n')).toContain('Will retry integration next run');
+    },
+  );
+
   it("names the new path that holds a tree's indexes back", async () => {
     // A mid-write README that HEAD has never held is the only thing that
     // defers since condash#527, so the line says which one to let settle.

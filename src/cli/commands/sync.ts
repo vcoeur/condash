@@ -162,7 +162,7 @@ function emitReport(ctx: OutputContext, report: SyncReport): void {
   }
   if (report.integrateError) {
     warnings.push(
-      `couldn't integrate with upstream — push skipped: ${report.integrateError}. Will retry next run.`,
+      `couldn't integrate with upstream — commits and push skipped: ${report.integrateError}. Will retry integration next run.`,
     );
   }
   emit(ctx, report, formatReport, warnings);
@@ -245,6 +245,11 @@ function printHelp(verb: string | null): void {
           'Preserve index prose/curated rows and regenerate projects/knowledge',
           'indexes after resolving drafts. Never discard local commits. Fetch-first',
           "behaviour is off when `autoSync.integration` is `'off'`.",
+          'Integration errors skip commits and push, including refused safe merge.',
+          'Use --no-push explicitly to settle work before a recovery attempt.',
+          'Dirty overlapping indexes are left untouched for manual reconciliation.',
+          'Dirty-index quiet eligibility',
+          'uses the original mtime, before integration or regeneration rewrites it.',
           '',
           'Bare `condash sync` (no verb) is a dry-run: it prints what a sweep',
           'would commit and writes no git state. Use `sync run` when you mean',

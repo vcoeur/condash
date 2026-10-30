@@ -470,7 +470,7 @@ describe('safe merge against a bare remote and two clones', () => {
     },
   );
 
-  it('reports the waiting count after locally committed settled work, not before', async () => {
+  it('gates settled commits on a safe-merge refusal, then permits explicit no-push settlement', async () => {
     await diverge();
     await write(local, 'settled.txt', 'settled local work\n');
     const when = new Date(Date.now() - 3600_000);
@@ -482,8 +482,16 @@ describe('safe merge against a bare remote and two clones', () => {
       integration: 'safe-merge',
     });
     expect(report.diverged).toBe(true);
-    expect(report.commits.length).toBe(1);
-    expect(report.ahead).toBe(2);
+    expect(report.integrateError).toContain('safe merge refused');
+    expect(report.commits).toEqual([]);
+    expect(report.ahead).toBe(1);
+    const settlement = await syncRun(local, {
+      dryRun: false,
+      push: false,
+      quietPeriodSeconds: 90,
+      integration: 'safe-merge',
+    });
+    expect(settlement.commits).toHaveLength(1);
     expect(await git(local, 'rev-list', '--count', '@{upstream}..HEAD')).toBe('2');
   });
 
@@ -497,7 +505,8 @@ describe('safe merge against a bare remote and two clones', () => {
       quietPeriodSeconds: 3600,
       integration: 'safe-merge',
     });
-    expect(report.skipped).toContainEqual({ path: 'warm.txt', reason: 'quiet-period' });
+    expect(report.integrateError).toContain('safe merge refused');
+    expect(report.skipped).toEqual([]);
     expect(report.commits).toEqual([]);
     expect(await git(local, 'rev-parse', 'HEAD')).toBe(head);
     expect(await fs.readFile(join(local, 'warm.txt'), 'utf8')).toBe('mid-write\n');
@@ -535,7 +544,7 @@ describe('safe merge against a bare remote and two clones', () => {
     await git(local, 'merge-base', '--is-ancestor', retained, 'HEAD');
   });
 
-  it('syncCommit retains item-only scope while safe recovery waits for dirty work', async () => {
+  it('syncCommit preserves all work while safe recovery waits for dirty work', async () => {
     await diverge();
     const item = 'projects/2026-07/2026-07-10-alpha';
     await write(local, item + '/notes/01-change.md', 'item milestone\n');
@@ -546,10 +555,14 @@ describe('safe merge against a bare remote and two clones', () => {
       push: true,
       integration: 'safe-merge',
     });
-    expect(report.commits[0].paths).toEqual([item + '/notes/01-change.md']);
+    expect(report.commits).toEqual([]);
+    expect(report.integrateError).toContain('safe merge refused');
     expect(report.diverged).toBe(true);
     expect(await git(local, 'diff', '--cached', '--name-only')).toBe('foreign.txt');
-    expect(report.ahead).toBe(2);
+    expect(report.ahead).toBe(1);
+    expect(await fs.readFile(join(local, item, 'notes/01-change.md'), 'utf8')).toBe(
+      'item milestone\n',
+    );
   });
 
   it('cleans its disposable repository after a real Git preflight refusal', async () => {
