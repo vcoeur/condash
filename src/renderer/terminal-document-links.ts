@@ -3,12 +3,12 @@ import { terminalDocumentPath } from '@shared/terminal-document-uri';
 
 export const TERMINAL_DOCUMENT_EVENT = 'condash-terminal-document';
 
-interface HoveredDocument {
+interface HoveredLink {
   uri: string;
   range: IBufferRange;
 }
 
-function sameDocumentLink(current: HoveredDocument, previous: HoveredDocument): boolean {
+function sameDocumentLink(current: HoveredLink, previous: HoveredLink): boolean {
   return (
     current.uri === previous.uri &&
     current.range.start.x === previous.range.start.x &&
@@ -18,22 +18,25 @@ function sameDocumentLink(current: HoveredDocument, previous: HoveredDocument): 
   );
 }
 
-/** Own local clicks before PTY reporting; hand drags back to xterm's ordinary mouse path. */
+const externalLink = (uri: string): boolean => /^(https?|mailto):/i.test(uri);
+
+/** Own document and modified reporting-mode web clicks before PTY reporting; replay drags. */
 export function terminalDocumentLinks(
   term: Terminal,
   host: HTMLElement,
   sessionId: string,
 ): { handler: ILinkHandler; dispose(): void } {
-  let hovered: HoveredDocument | null = null;
+  let hovered: HoveredLink | null = null;
   let pending: {
-    link: HoveredDocument;
+    link: HoveredLink;
     down: MouseEvent;
     target: EventTarget;
     dragged: boolean;
   } | null = null;
   let replaying = false;
+  let capturedGesture = false;
 
-  const contains = (event: MouseEvent, link: HoveredDocument): boolean => {
+  const contains = (event: MouseEvent, link: HoveredLink): boolean => {
     const screen = term.element?.querySelector('.xterm-screen');
     if (!screen) return false;
     const bounds = screen.getBoundingClientRect();
@@ -52,9 +55,16 @@ export function terminalDocumentLinks(
     event.stopImmediatePropagation();
   };
   const down = (event: MouseEvent): void => {
-    if (replaying || event.button !== 0 || event.shiftKey || !hovered || !contains(event, hovered))
+    if (replaying || event.button !== 0) return;
+    capturedGesture = false;
+    if (event.shiftKey || !hovered || !contains(event, hovered)) return;
+    if (
+      terminalDocumentPath(hovered.uri) === null &&
+      (term.modes.mouseTrackingMode === 'none' || (!event.ctrlKey && !event.metaKey))
+    )
       return;
     pending = { link: hovered, down: event, target: event.target ?? host, dragged: false };
+    capturedGesture = true;
     consume(event);
     term.focus();
   };
@@ -100,11 +110,15 @@ export function terminalDocumentLinks(
       !contains(event, hovered)
     )
       return;
-    window.dispatchEvent(
-      new CustomEvent(TERMINAL_DOCUMENT_EVENT, {
-        detail: { sessionId, uri: gesture.link.uri },
-      }),
-    );
+    if (terminalDocumentPath(gesture.link.uri) !== null) {
+      window.dispatchEvent(
+        new CustomEvent(TERMINAL_DOCUMENT_EVENT, {
+          detail: { sessionId, uri: gesture.link.uri },
+        }),
+      );
+    } else {
+      void window.condash.openExternal(gesture.link.uri);
+    }
   };
   const clear = (): void => {
     hovered = null;
@@ -126,15 +140,17 @@ export function terminalDocumentLinks(
       activate(event, uri) {
         // Local activation belongs exclusively to the capture gate, including
         // after a drag or Shift-selection; never replay it from Linkifier.
-        if (terminalDocumentPath(uri) !== null) return;
-        if (/^https?:\/\//i.test(uri) || /^mailto:/i.test(uri)) {
+        // Linkifier can retain a prior down-link after capture or blur. Original
+        // ownership survives fallback until the next genuine (not replayed) down.
+        if (terminalDocumentPath(uri) !== null || capturedGesture) return;
+        if (externalLink(uri) && !event.shiftKey) {
           // A mouse-reporting TUI owns the plain OSC-link gesture. Advertising
           // OSC 8 must not add a second browser launch beside its own opener.
+          // Ctrl/Meta belongs exclusively to capture, including cancelled clicks
+          // and replayed drags. Keep the existing Alt-only fallback with xterm.
           if (
             term.modes.mouseTrackingMode !== 'none' &&
-            !event.ctrlKey &&
-            !event.altKey &&
-            !event.shiftKey
+            (event.ctrlKey || event.metaKey || !event.altKey)
           )
             return;
           event.preventDefault();
@@ -143,7 +159,7 @@ export function terminalDocumentLinks(
       },
       hover(_event, uri, range) {
         hovered =
-          terminalDocumentPath(uri) === null
+          terminalDocumentPath(uri) === null && !externalLink(uri)
             ? null
             : {
                 uri,
