@@ -217,13 +217,146 @@ describe('terminal document gesture ownership', () => {
       'https://example.com',
       range,
     );
-    expect(s.window.condash.openExternal).toHaveBeenCalledTimes(1);
+    expect(s.window.condash.openExternal).not.toHaveBeenCalled();
     (s.term.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'none';
     s.links.handler.activate(
       new TestMouseEvent('mouseup') as unknown as MouseEvent,
       'https://example.com',
       range,
     );
-    expect(s.window.condash.openExternal).toHaveBeenCalledTimes(2);
+    expect(s.window.condash.openExternal).toHaveBeenCalledTimes(1);
   });
+
+  for (const uri of ['https://example.com', 'HTTP://example.com', 'mailto:test@example.com']) {
+    for (const modifier of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { ctrlKey: true, altKey: true },
+    ]) {
+      it(`owns reporting-mode ${uri} with ${JSON.stringify(modifier)} once before both edges`, () => {
+        const s = setup();
+        s.hover(uri);
+        expect(s.down(modifier)).toBe(false);
+        expect(s.up(modifier)).toBe(false);
+        expect(s.downReports).not.toHaveBeenCalled();
+        expect(s.opened).not.toHaveBeenCalled();
+        expect(s.window.condash.openExternal).toHaveBeenCalledTimes(1);
+        expect(s.window.condash.openExternal).toHaveBeenCalledWith(uri);
+        s.links.handler.activate(
+          new TestMouseEvent('mouseup', modifier) as unknown as MouseEvent,
+          uri,
+          {
+            start: { x: 1, y: 6 },
+            end: { x: 40, y: 6 },
+          },
+        );
+        expect(s.window.condash.openExternal).toHaveBeenCalledTimes(1);
+      });
+    }
+  }
+
+  it('does not capture non-reporting web, Alt-only, Shift combinations or unsafe schemes', () => {
+    const s = setup();
+    s.hover('https://example.com');
+    for (const modifier of [
+      {},
+      { altKey: true },
+      { ctrlKey: true, shiftKey: true },
+      { metaKey: true, shiftKey: true },
+    ]) {
+      expect(s.down(modifier)).toBe(true);
+      s.up(modifier);
+    }
+    (s.term.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'none';
+    expect(s.down({ ctrlKey: true })).toBe(true);
+    for (const uri of [
+      'javascript:alert(1)',
+      'data:text/html,test',
+      'httpsx://example.com',
+      'file:///tmp/test.html',
+    ]) {
+      s.hover(uri);
+      expect(s.down({ ctrlKey: true })).toBe(true);
+      s.links.handler.activate(new TestMouseEvent('mouseup') as unknown as MouseEvent, uri, {
+        start: { x: 1, y: 6 },
+        end: { x: 40, y: 6 },
+      });
+    }
+    expect(s.window.condash.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('replays a modified web drag but never activates it through Linkifier', () => {
+    const s = setup();
+    s.hover('https://example.com');
+    s.down({ metaKey: true });
+    s.move({ clientX: 20, metaKey: true });
+    s.up({ clientX: 20, metaKey: true });
+    expect(s.downReports).toHaveBeenCalledTimes(1);
+    expect((s.downReports.mock.calls[0][0] as MouseEvent).metaKey).toBe(true);
+    s.links.handler.activate(
+      new TestMouseEvent('mouseup', { metaKey: true }) as unknown as MouseEvent,
+      'https://example.com',
+      {
+        start: { x: 1, y: 6 },
+        end: { x: 40, y: 6 },
+      },
+    );
+    expect(s.window.condash.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('cancels pending web ownership on resize, scroll, disposal and Shift release', () => {
+    const s = setup();
+    for (const hook of ['resize', 'scroll']) {
+      s.hover('https://example.com');
+      s.down({ ctrlKey: true });
+      s.hooks.get(hook)!();
+      s.up({ ctrlKey: true });
+    }
+    s.hover('https://example.com');
+    s.down({ ctrlKey: true });
+    s.up({ ctrlKey: true, shiftKey: true });
+    s.down({ ctrlKey: true });
+    s.links.dispose();
+    s.up({ ctrlKey: true });
+    expect(s.window.condash.openExternal).not.toHaveBeenCalled();
+    expect(s.hooks.size).toBe(0);
+  });
+
+  for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+    for (const scenario of ['drag-release-alt', 'drag-mode-off', 'blur-mode-off']) {
+      it(`retains ${JSON.stringify(modifier)} capture through ${scenario} and resets on genuine downs`, () => {
+        const s = setup();
+        const uri = 'https://example.com';
+        const range = { start: { x: 1, y: 6 }, end: { x: 40, y: 6 } };
+        const activate = (values = {}) =>
+          s.links.handler.activate(
+            new TestMouseEvent('mouseup', values) as unknown as MouseEvent,
+            uri,
+            range,
+          );
+        s.hover(uri);
+        s.down(modifier);
+        if (scenario.startsWith('drag')) s.move({ clientX: 20 });
+        else s.window.dispatchEvent(new Event('blur'));
+        if (scenario.endsWith('mode-off')) {
+          (s.term.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'none';
+        }
+        const release = scenario === 'drag-release-alt' ? { altKey: true } : modifier;
+        s.up({ ...release, clientX: 20 });
+        activate(release);
+        expect(s.window.condash.openExternal).not.toHaveBeenCalled();
+
+        (s.term.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'vt200';
+        expect(s.down({ altKey: true })).toBe(true);
+        s.up({ altKey: true });
+        activate({ altKey: true });
+        expect(s.window.condash.openExternal).toHaveBeenCalledTimes(1);
+        (s.term.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'none';
+        expect(s.down()).toBe(true);
+        s.up();
+        activate();
+        expect(s.window.condash.openExternal).toHaveBeenCalledTimes(2);
+      });
+    }
+  }
 });
