@@ -478,6 +478,8 @@ function App() {
     projects,
     knowledge,
     loadKnowledgeForContext: knowledgeStore.loadForContext,
+    beginStepIntent: projectsStore.beginStepIntent,
+    settleFailedStep: projectsStore.settleFailedStep,
     mutate,
     setModal,
     setPreviewPath,
@@ -605,6 +607,7 @@ function App() {
   // --- Conception lifecycle (pick / refresh / init / quit) --------------
   const { handleRefresh, handlePick, openRecent, runInit, handleConfirmQuit } = useConception({
     withConceptionChange,
+    departProjects: projectsStore.depart,
     conceptionPath,
     setConceptionPath,
     knowledgeStore,

@@ -36,6 +36,10 @@ export const sharedResolve = {
     // bare-specifier rule.
     { find: /^solid-js$/, replacement: resolve(__dirname, 'node_modules/solid-js/dist/dev.js') },
     {
+      find: /^solid-js\/store$/,
+      replacement: resolve(__dirname, 'node_modules/solid-js/store/dist/dev.js'),
+    },
+    {
       find: /^solid-js\/web$/,
       replacement: resolve(__dirname, 'node_modules/solid-js/web/dist/dev.js'),
     },
@@ -52,6 +56,7 @@ export default defineConfig({
     // otherwise walk node_modules/ and dist/.
     exclude: [...configDefaults.exclude, ...PERF_LOOP_DELAY_TESTS],
     environment: 'node',
+    server: { deps: { inline: [/solid-js\/store\//] } },
     reporters: ['default'],
   },
   resolve: sharedResolve,

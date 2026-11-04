@@ -8,6 +8,7 @@ import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../modal-types';
 import type { ModalRouter } from '../modal-router';
 import type { PromptModalState } from '../prompt-modal';
+import type { ProjectsStore } from '../projects-store';
 
 export interface UseProjectActionsDeps {
   router: ModalRouter;
@@ -15,6 +16,8 @@ export interface UseProjectActionsDeps {
   knowledge: () => KnowledgeNode | null | undefined;
   loadKnowledgeForContext: () => Promise<void>;
   mutate: (mutator: (items: Project[] | undefined) => Project[]) => void;
+  beginStepIntent: ProjectsStore['beginStepIntent'];
+  settleFailedStep: ProjectsStore['settleFailedStep'];
   setModal: Setter<ModalState>;
   setPreviewPath: Setter<string | null>;
   setPdfPath: Setter<string | null>;
@@ -186,15 +189,23 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
   };
 
   const handleToggleStep = async (project: Project, step: Step): Promise<void> => {
-    const next = nextMarker(step.marker);
-    deps.mutate((items) => applyStepMarker(items ?? [], project.path, step.lineIndex, next));
+    // Reconcile updates the passed store objects in place, including during
+    // this optimistic patch. Keep the write expectation as values.
+    const { path } = project;
+    const { lineIndex, marker: previous } = step;
+    const next = nextMarker(previous);
+    const intent = deps.beginStepIntent(path);
+    deps.mutate((items) => applyStepMarker(items ?? [], path, lineIndex, next));
     try {
-      await window.condash.toggleStep(project.path, step.lineIndex, step.marker, next);
+      await window.condash.toggleStep(path, lineIndex, previous, next);
     } catch (err) {
-      deps.mutate((items) =>
-        applyStepMarker(items ?? [], project.path, step.lineIndex, step.marker),
-      );
-      deps.flashToast(`Toggle failed: ${(err as Error).message}`, 'error');
+      let message = `Toggle failed: ${(err as Error).message}`;
+      try {
+        await deps.settleFailedStep(intent);
+      } catch (repairError) {
+        message += `. ${(repairError as Error).message}`;
+      }
+      deps.flashToast(message, 'error');
     }
   };
 

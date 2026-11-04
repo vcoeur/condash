@@ -1,7 +1,8 @@
-import { createEffect, createSignal, onCleanup } from 'solid-js';
+import { createComputed, createEffect, createSignal, onCleanup } from 'solid-js';
 import type { Accessor } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import type { Project, TreeEvent } from '@shared/types';
+import type { Project, Step, TreeEvent } from '@shared/types';
+import { countSteps } from '@shared/projects';
 
 /**
  * Mutator passed to `applyTreeEvents` for per-project patches (add /
@@ -23,6 +24,13 @@ export type ProjectsMutator = (next: (items: Project[]) => Project[]) => void;
 export interface ProjectPatchTicket {
   readonly path: string;
   readonly seq: number;
+}
+
+/** Original local intent, captured before optimism, never minted by a late catch. */
+export interface StepIntentTicket extends ProjectPatchTicket {
+  readonly generation: number;
+  readonly conception: string | null;
+  readonly previousSteps: Step[];
 }
 
 /**
@@ -69,6 +77,13 @@ export interface ProjectsStore {
   reload: () => Promise<void>;
   /** Batch-arrival ownership handed to the tree-events dispatcher. */
   ownership: ProjectsOwnership;
+  /** Register before optimism, invalidating older path and list reads. */
+  beginStepIntent: (path: string) => StepIntentTicket;
+  /** Re-read failed intent's steps only while it still owns the resident row.
+   *  On read failure, restore the pre-optimism snapshot and reject explicitly. */
+  settleFailedStep: (intent: StepIntentTicket) => Promise<void>;
+  /** Invalidate local intents before a conception-switch IPC can change main's root. */
+  depart: () => void;
 }
 
 export interface ProjectsStoreDeps {
@@ -114,12 +129,29 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
   let listDirty = false;
   let disposed = false;
   const pathOps = new Map<string, { seq: number; conception: string }>();
+  const stepIntents = new Map<string, StepIntentTicket>();
+  const repairing = new Set<StepIntentTicket>();
+  let generation = 0;
+
+  const depart = (): void => {
+    generation += 1;
+    pathOps.clear();
+    stepIntents.clear();
+    repairing.clear();
+  };
+  // Unlike effects, this runs synchronously on departure and return, even
+  // when a held mutation rejects before the next scheduled list reload.
+  createComputed(() => {
+    deps.conceptionPath();
+    depart();
+  });
 
   onCleanup(() => {
     // Disposal suppresses both stale applies and trailing-read scheduling;
     // Solid runs onCleanup once per root disposal and a repeated dispose is
     // a no-op there, so the release happens exactly once.
     disposed = true;
+    depart();
     pathOps.clear();
     pendingLookups = 0;
     listDirty = false;
@@ -142,8 +174,11 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
       // One revision per batch: any list read that started before this
       // registration is stale for every path the batch touches.
       listRev += 1;
+      if (events.some((event) => event.kind === 'projects-reload' || event.kind === 'unknown'))
+        stepIntents.clear();
       const conception = deps.conceptionPath() ?? '';
       for (const [path, event] of lastProjectEvent) {
+        stepIntents.delete(path);
         const seq = ++opSeq;
         pathOps.set(path, { seq, conception });
         if (event.op === 'unlink') continue; // tombstone — no lookup, no ticket
@@ -190,11 +225,12 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
       return;
     }
     const rev = listRev;
+    const readGeneration = generation;
     const list = await window.condash.listProjects();
     if (disposed) return;
     // Discard a stale result if the conception changed while the fetch was
     // in flight — applying it would paint the previous conception's list.
-    if (deps.conceptionPath() !== path) return;
+    if (deps.conceptionPath() !== path || readGeneration !== generation) return;
     // A batch registered after this read started owns the list now; so do
     // any still-pending registered lookups. Discard and owe exactly one
     // coalesced trailing read — started once the pending lookups have
@@ -208,12 +244,75 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
       return;
     }
     setBox('list', reconcile(list, { key: 'path' }));
+    stepIntents.clear();
     setLoaded(true);
   };
 
   const mutate: ProjectsMutator = (fn) => {
     const next = fn(box.list);
     setBox('list', reconcile(next, { key: 'path' }));
+  };
+
+  const ownsIntent = (intent: StepIntentTicket): boolean =>
+    !disposed &&
+    intent.generation === generation &&
+    intent.conception === deps.conceptionPath() &&
+    stepIntents.get(intent.path) === intent &&
+    pathOps.get(intent.path)?.seq === intent.seq;
+
+  const beginStepIntent = (path: string): StepIntentTicket => {
+    const previous = stepIntents.get(path);
+    const previousSteps =
+      previous && ownsIntent(previous)
+        ? previous.previousSteps
+        : (box.list.find((project) => project.path === path)?.steps ?? []).map((step) => ({
+            ...step,
+          }));
+    const intent: StepIntentTicket = {
+      path,
+      seq: ++opSeq,
+      generation,
+      conception: deps.conceptionPath(),
+      previousSteps,
+    };
+    listRev += 1;
+    pathOps.set(path, { seq: intent.seq, conception: intent.conception ?? '' });
+    stepIntents.set(path, intent);
+    return intent;
+  };
+
+  const patchSteps = (path: string, steps: Step[]): void => {
+    mutate((items) =>
+      items.map((project) =>
+        project.path === path ? { ...project, steps, stepCounts: countSteps(steps) } : project,
+      ),
+    );
+  };
+
+  const settleFailedStep = async (intent: StepIntentTicket): Promise<void> => {
+    if (!ownsIntent(intent) || repairing.has(intent)) return;
+    repairing.add(intent);
+    // Invalidate list reads begun before this failure, without promoting an
+    // older failure over a newer local intent or authoritative publication.
+    listRev += 1;
+    try {
+      const project = await window.condash.getProject(intent.path);
+      if (!ownsIntent(intent)) return;
+      listRev += 1;
+      if (project) patchSteps(intent.path, project.steps);
+      else mutate((items) => items.filter((item) => item.path !== intent.path));
+      stepIntents.delete(intent.path);
+    } catch (error) {
+      if (!ownsIntent(intent)) return;
+      listRev += 1;
+      patchSteps(intent.path, intent.previousSteps);
+      stepIntents.delete(intent.path);
+      throw new Error(
+        `Steps reload failed: ${(error as Error).message}. Showing previous snapshot; refresh to retry.`,
+      );
+    } finally {
+      repairing.delete(intent);
+    }
   };
 
   // Same eager-load pattern as the repos store — first paint of the
@@ -235,5 +334,8 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
     mutate,
     reload,
     ownership,
+    beginStepIntent,
+    settleFailedStep,
+    depart,
   };
 }
