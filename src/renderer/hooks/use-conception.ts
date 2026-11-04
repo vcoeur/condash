@@ -5,6 +5,7 @@ export interface UseConceptionDeps {
   conceptionPath: () => string | null;
   setConceptionPath: (next: string | null) => void;
   withConceptionChange: (change: () => Promise<void>) => Promise<boolean>;
+  departProjects: () => void;
   knowledgeStore: { reload: () => Promise<void> };
   resourcesStore: { reload: () => Promise<void> };
   skillsStore: ReturnType<typeof createTreeStore<SkillNode>>;
@@ -90,15 +91,20 @@ export function useConception(deps: UseConceptionDeps): UseConception {
     let picked: string | null = null;
     try {
       await deps.withConceptionChange(async () => {
+        deps.departProjects();
         try {
           picked = await select();
         } catch (error) {
           // Main may already have committed its trust root before a later
           // setup step failed. Reconcile before releasing transition ownership.
           deps.setConceptionPath(await window.condash.getConceptionPath().catch(() => null));
+          await deps.reloadProjects();
           throw error;
         }
-        if (!picked) return;
+        if (!picked) {
+          await deps.reloadProjects();
+          return;
+        }
         const prior = deps.conceptionPath();
         deps.setConceptionPath(picked);
         if (prior === picked) void reloadAll();
