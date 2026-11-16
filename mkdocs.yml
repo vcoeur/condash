@@ -150,6 +150,7 @@ nav:
     - Advanced:
       - Values: explanation/values.md
       - Internals: explanation/internals.md
+      - Frontend pitfalls: explanation/frontend.md
       - Terminal acceptance harness: explanation/terminal-acceptance.md
       - Contributing: explanation/contributing.md
 

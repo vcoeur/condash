@@ -65,6 +65,8 @@ The window is one shell: an **activity rail** down the left edge with three sepa
 
 → Process layout, IPC contract, write queue: **[Internals](internals.md)**.
 
+→ Renderer invariants that real defects produced — stacking contexts, Solid reactivity, sanitisation, tree walks: **[Frontend pitfalls](frontend.md)**.
+
 → Design principles every change should serve: **[Values](values.md)**.
 
 → Clone, build, run, ship: **[Contributing](contributing.md)**.

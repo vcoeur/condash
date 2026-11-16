@@ -226,6 +226,7 @@ macOS and Windows are unaffected.
 - **Public site**: [`condash.vcoeur.com`](https://condash.vcoeur.com) — built from `docs/` + `mkdocs.yml` by `.github/workflows/docs.yml` on every published release. Includes a signed apt repo at `condash.vcoeur.com/apt/`, indexed against the **most-recent `APT_HISTORY` releases** (5 by default; tune in `docs.yml` env). Older `.deb` assets stay reachable from each release's GitHub page; only the apt index is windowed.
 - [`docs/index.md`](docs/index.md) — landing page of both the in-app Help menu and the public mkdocs site.
 - [`docs/explanation/internals.md`](docs/explanation/internals.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
+- [`docs/explanation/frontend.md`](docs/explanation/frontend.md) — renderer invariants: stacking contexts and Portals, Solid `<For>`/memo identity, Esc ownership, sanitisation, `?inline` assets, screenshot capture, tree-walk dirent filtering. **Read before changing anything under `src/renderer/`.**
 - [`docs/reference/config.md`](docs/reference/config.md) — `condash.json` + `settings.json` schema + per-key reference, including the disjoint global/conception scope split and the scope-partition migrator.
 - [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
 
