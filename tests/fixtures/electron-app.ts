@@ -177,6 +177,14 @@ export async function bootApp(
   const launch = async (): Promise<{ app: ElectronApplication; window: Page }> => {
     const app = await electron.launch({
       args: [
+        // A fractional display scale factor (e.g. 1.25) makes Chromium snap
+        // `border-left-width: 3px` to device pixels (2.4px), so the CSS
+        // assertions in card-decoration/card-relations become host-dependent.
+        // Pin the app to DPR 1 for a deterministic suite; Chromium applies a
+        // duplicated switch last, so a caller can still override by passing
+        // its own flag in electronArgs (the screenshot specs launch Electron
+        // directly and set their own scale factor).
+        '--force-device-scale-factor=1',
         ...(options.electronArgs ?? []),
         ...(options.beforeFirstWindow ? ['-r', bootstrapPath] : []),
         '.',
