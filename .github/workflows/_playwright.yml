@@ -86,7 +86,10 @@ jobs:
             echo "::warning::cached node_modules has no node-pty binary — rebuilding"
             npm rebuild node-pty
           fi
-          test -f node_modules/node-pty/build/Release/pty.node
+          # Existence alone would pass a truncated/corrupt binary; require()
+          # proves the module actually loads (node-pty is pure N-API, so any
+          # ABI it was built against works here).
+          node -e "require('node-pty')"
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
