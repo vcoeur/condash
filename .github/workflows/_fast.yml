@@ -51,7 +51,7 @@ jobs:
             node_modules
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v2
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'

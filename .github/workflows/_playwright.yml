@@ -53,7 +53,7 @@ jobs:
             node_modules
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v2
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
@@ -73,6 +73,23 @@ jobs:
           # and its ENOENT message names it. Same package ships both, so this
           # is about naming the real dependency, not a divergence we expect.
           skip-if-command: xvfb-run
+
+      # Caches are immutable per key and the tree *is* the install here: on a
+      # hit, `npm ci` below is skipped. A cached tree that lost its rebuilt
+      # native modules boots nothing — Electron throws
+      # `Failed to load native module: pty.node` and every spec times out —
+      # while `npm run build` still passes, because esbuild never loads one.
+      - name: Verify the rebuilt native module (cache hit only)
+        if: steps.deps-cache.outputs.cache-hit == 'true'
+        run: |
+          if [ ! -f node_modules/node-pty/build/Release/pty.node ]; then
+            echo "::warning::cached node_modules has no node-pty binary — rebuilding"
+            npm rebuild node-pty
+          fi
+          # Existence alone would pass a truncated/corrupt binary; require()
+          # proves the module actually loads (node-pty is pure N-API, so any
+          # ABI it was built against works here).
+          node -e "require('node-pty')"
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
