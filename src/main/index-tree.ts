@@ -50,8 +50,8 @@
  * pre-pass validator (projects has one; knowledge doesn't).
  */
 
-import { promises as fs } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { constants, promises as fs, type BigIntStats } from 'node:fs';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { toPosix } from '../shared/path';
 import { iterUnfencedLines } from '../shared/header';
 import { atomicWrite } from './atomic-write';
@@ -122,6 +122,43 @@ export interface ValidationWarning {
   field: string;
   message: string;
   severity: 'error' | 'warn';
+}
+
+/** Recovery-only input validation; paths are absolute and absence is significant. */
+export interface IndexRecoveryInput {
+  path: string;
+  kind: 'directory' | 'output' | 'source' | 'readme' | 'marker';
+}
+
+/** An actual render result, delivered under the output's file queue. */
+export interface IndexRecoveryOutput {
+  path: string;
+  input: Buffer | null;
+  proposed: Buffer;
+  changed: boolean;
+  renames: readonly RenameFlag[];
+}
+
+/** A marker operation delivered under its file queue, including absent clears. */
+export interface IndexRecoveryMarker {
+  path: string;
+  input: Buffer | null;
+  proposed: Buffer | null;
+}
+
+/** Internal recovery extension; callbacks must finish strict persistence before resolving. */
+export interface IndexRecoveryLifecycle {
+  validateInput(input: IndexRecoveryInput): Promise<void>;
+  /** Own validation, intent, strict write (only when changed), and completion; no ordinary writer runs. */
+  applyOutput(output: IndexRecoveryOutput): Promise<void>;
+  /** Own marker intent/write or unlink/durability/completion; null proposed bytes mean clear. */
+  applyMarker(marker: IndexRecoveryMarker): Promise<void>;
+}
+
+/** Output paths and conservative direct inputs, including recursion-skipped child indexes. */
+export interface IndexPathEnumeration {
+  outputs: string[];
+  inputs: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +255,11 @@ interface IndexFileShape {
    * are physically removed from disk (otherwise an unchanged tag set
    * would let the file slip past the `changed` gate). */
   hadDuplicates: boolean;
+  /** Line indexes that are engine-parseable (not inside a ```/~~~ fence and
+   * not a fence-toggle line) — the same prose/structure split `parseIndex`
+   * used to collect `bullets`. `renderIndex` reuses it so the bullet-block
+   * scan can never treat fenced content as structure. */
+  unfenced: Set<number>;
 }
 
 interface SectionRange {
@@ -367,11 +409,16 @@ export async function regenerateIndex(
      *  added); the flag still surfaces in `flaggedRenames` for visibility.
      *  Entries may carry the directory trailing slash or not. */
     confirmedRenames?: ReadonlySet<string>;
+    /** Inactive in ordinary callers; recovery supplies its own strict queued writer. */
+    recovery?: IndexRecoveryLifecycle;
   } = {},
 ): Promise<IndexRegenReport> {
   const dryRun = options.dryRun === true;
   const rewriteAggregated = options.rewriteAggregated === true;
   const rootPath = join(conceptionPath, strategy.rootDirName);
+  const recovery = options.recovery;
+  if (recovery && dryRun) throw new Error('Recovery lifecycle cannot run in dry-run mode');
+  await recovery?.validateInput({ path: resolve(rootPath), kind: 'directory' });
 
   const report: IndexRegenReport = {
     tree: strategy.treeName,
@@ -389,17 +436,23 @@ export async function regenerateIndex(
 
   try {
     await fs.access(rootPath);
-  } catch {
+  } catch (error) {
+    if (recovery && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return report;
   }
 
   if (strategy.preValidation) {
+    if (recovery) {
+      for (const path of await projectValidationInputs(conceptionPath, recovery)) {
+        await recovery.validateInput({ path, kind: 'readme' });
+      }
+    }
     report.validationWarnings = await strategy.preValidation(rootPath, conceptionPath);
   }
 
   // Collect every directory under root, then process leaves first so a parent
   // index can lift the just-written subdir's intro for its draft.
-  const allDirs = await listAllDirectories(rootPath);
+  const allDirs = await listAllDirectories(rootPath, recovery);
   allDirs.sort((a, b) => b.length - a.length); // deepest first
 
   // Per-subtree aggregated keyword frequency map, populated bottom-up. The
@@ -416,6 +469,7 @@ export async function regenerateIndex(
       dryRun,
       rewriteAggregated,
       options.confirmedRenames,
+      recovery,
     );
 
     if (result.created) report.created.push(result.indexPath);
@@ -436,11 +490,15 @@ export async function regenerateIndex(
   // Clear dirty marker on success.
   if (!dryRun) {
     const markerPath = join(rootPath, '.index-dirty');
-    try {
-      await fs.unlink(markerPath);
-      report.dirtyClear = true;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    if (recovery) {
+      report.dirtyClear = await mutateRecoveryMarker(conceptionPath, markerPath, null, recovery);
+    } else {
+      try {
+        await fs.unlink(markerPath);
+        report.dirtyClear = true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
     }
   }
 
@@ -470,6 +528,7 @@ async function processDirectory(
   dryRun: boolean,
   rewriteAggregated: boolean,
   confirmedRenames?: ReadonlySet<string>,
+  recovery?: IndexRecoveryLifecycle,
 ): Promise<DirResult> {
   const indexPath = join(dirAbsPath, 'index.md');
   const indexRel = relative(conceptionPath, indexPath);
@@ -486,15 +545,22 @@ async function processDirectory(
   };
 
   // Enumerate immediate children, classified.
-  const children = await listChildren(dirAbsPath, strategy);
+  const children = await listChildren(dirAbsPath, strategy, recovery);
 
   // Read or template the existing index.md.
   let existingRaw: string | null;
-  try {
-    existingRaw = await fs.readFile(indexPath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') existingRaw = null;
-    else throw err;
+  let renderState: RecoveryFileState | undefined;
+  if (recovery) {
+    await recovery.validateInput({ path: resolve(indexPath), kind: 'output' });
+    renderState = await readRecoveryFileState(conceptionPath, indexPath);
+    existingRaw = renderState.bytes?.toString('utf8') ?? null;
+  } else {
+    try {
+      existingRaw = await fs.readFile(indexPath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') existingRaw = null;
+      else throw err;
+    }
   }
 
   const isNew = existingRaw === null;
@@ -511,7 +577,15 @@ async function processDirectory(
     .filter((n) => !shape.bullets.has(n));
   const droppedBullets: { canonical: string; bullet: BulletEntry }[] = [];
   for (const [canonical, bullet] of shape.bullets) {
-    if (!onDiskNames.has(canonical)) droppedBullets.push({ canonical, bullet });
+    if (!onDiskNames.has(canonical)) {
+      // Loose-row ownership amendment (user-approved 2026-11-18): a
+      // NON-draft loose row whose target is not a real child is human-owned
+      // prose — preserved verbatim like the hand-written cross-reference
+      // rule, never dropped, never re-rendered, never re-keyed. A draft
+      // loose row is the engine's own stale output and still drops.
+      if (!bullet.draft && bullet.loose) continue;
+      droppedBullets.push({ canonical, bullet });
+    }
   }
   for (const { canonical, bullet } of droppedBullets) {
     const candidate = newCanonicalNames.find((n) => similarityOk(bullet.name, n));
@@ -548,6 +622,7 @@ async function processDirectory(
     }
 
     let draft: DraftResult;
+    await validateDraftInput(dirAbsPath, child, strategy, recovery);
     if (child.kind === 'file') {
       draft = await strategy.draftFileEntry(dirAbsPath, child);
     } else {
@@ -602,6 +677,7 @@ async function processDirectory(
     // the README. Container children (months, knowledge subdirs) keep using
     // the aggregate — `draftSubdirEntry` for those just hands `aggregated.kept`
     // back as `keywords`, so the call is shape-preserving.
+    await validateDraftInput(dirAbsPath, child, strategy, recovery);
     const draft = await strategy.draftSubdirEntry(dirAbsPath, child, ranked.kept);
     const newTags = draft.keywords;
 
@@ -662,6 +738,7 @@ async function processDirectory(
     const isEngineOwned = bullet.draft || bullet.loose;
     if (!isEngineOwned) continue;
 
+    await validateDraftInput(dirAbsPath, child, strategy, recovery);
     const draft = await strategy.draftFileEntry(dirAbsPath, child);
     const newTags = draft.keywords;
     const additions = newTags.filter((t) => !bullet.tags.includes(t));
@@ -722,7 +799,20 @@ async function processDirectory(
     result.tagsAdded.length > 0 ||
     shape.hadDuplicates;
 
-  if (changed) {
+  if (recovery) {
+    const proposed = changed ? Buffer.from(renderIndex(shape, newEntries)) : renderState!.bytes!;
+    await withFileQueue(indexPath, async () => {
+      const current = await readRecoveryFileState(conceptionPath, indexPath);
+      assertRecoveryFileUnchanged(indexPath, renderState!, current);
+      await recovery.applyOutput({
+        path: resolve(indexPath),
+        input: renderState!.bytes === null ? null : Buffer.from(renderState!.bytes),
+        proposed: Buffer.from(proposed),
+        changed,
+        renames: result.renames,
+      });
+    });
+  } else if (changed) {
     const rendered = renderIndex(shape, newEntries);
     if (!dryRun) {
       // The GUI's mutation writers queue per path through `withFileQueue`;
@@ -875,7 +965,7 @@ function parseIndex(raw: string): IndexFileShape {
     else section.kind = 'mixed';
   }
 
-  return { lines, eol, sections, bullets, hadDuplicates };
+  return { lines, eol, sections, bullets, hadDuplicates, unfenced };
 }
 
 /**
@@ -920,6 +1010,15 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
     let bulletStart = -1;
     let bulletEnd = -1;
     for (let i = section.contentStart; i < section.contentEnd; i++) {
+      // Fenced code blocks are prose, not structure — the same invariant
+      // parseIndex applies when collecting bullets. A fence line or a line
+      // inside a fence must never start or extend the bullet block, and a
+      // fence line ends an open block like any other non-bullet prose, so
+      // fenced content always survives the render verbatim.
+      if (!shape.unfenced.has(i)) {
+        if (bulletStart !== -1) break;
+        continue;
+      }
       if (matchBullet(lines[i])) {
         if (bulletStart === -1) bulletStart = i;
         bulletEnd = i + 1;
@@ -1000,20 +1099,274 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
 
 const SKIP_DIR_NAMES = new Set(['.git', 'node_modules', 'local', 'notes']);
 
-async function listAllDirectories(rootPath: string): Promise<string[]> {
+export interface IndexDirectoryEntry {
+  name: string;
+  kind: 'directory' | 'file' | 'other';
+}
+
+/** Metadata-only H/M directory lookup for the conservative envelope, never a render/source overlay. */
+export type IndexDirectoryReader = (path: string) => Promise<readonly IndexDirectoryEntry[] | null>;
+
+/** Enumerate actual outputs and potential direct reads using the generator's own walkers. */
+export async function enumerateIndexPaths(
+  conceptionPath: string,
+  strategy: IndexStrategy,
+  recovery?: IndexRecoveryLifecycle,
+  prospectiveDirectory?: IndexDirectoryReader,
+): Promise<IndexPathEnumeration> {
+  const rootPath = join(conceptionPath, strategy.rootDirName);
+  await recovery?.validateInput({ path: resolve(rootPath), kind: 'directory' });
+  try {
+    if (prospectiveDirectory) {
+      if ((await indexDirectoryEntries(rootPath, prospectiveDirectory)) === null)
+        return { outputs: [], inputs: [] };
+    } else await fs.access(rootPath);
+  } catch (error) {
+    if (prospectiveDirectory || (recovery && (error as NodeJS.ErrnoException).code !== 'ENOENT'))
+      throw error;
+    return { outputs: [], inputs: [] };
+  }
+  const directories = await listAllDirectories(rootPath, recovery, prospectiveDirectory);
+  const inputs = new Set<string>();
+  for (const directory of directories) {
+    for (const child of await listChildren(directory, strategy, recovery, prospectiveDirectory)) {
+      const input = draftInput(directory, child, strategy);
+      if (input) {
+        await recovery?.validateInput(input);
+        inputs.add(toPosix(relative(conceptionPath, input.path)));
+      }
+    }
+  }
+  if (strategy.preValidation) {
+    for (const path of await projectValidationInputs(
+      conceptionPath,
+      recovery,
+      prospectiveDirectory,
+    )) {
+      await recovery?.validateInput({ path, kind: 'readme' });
+      inputs.add(toPosix(relative(conceptionPath, path)));
+    }
+  }
+  return {
+    outputs: directories.map((directory) =>
+      toPosix(relative(conceptionPath, join(directory, 'index.md'))),
+    ),
+    inputs: [...inputs].sort(),
+  };
+}
+
+/** Retain a recovery tree's marker through the same queued lifecycle as marker clearing. */
+export async function retainRecoveryIndexDirtyMarker(
+  conceptionPath: string,
+  tree: 'projects' | 'knowledge',
+  recovery: IndexRecoveryLifecycle,
+): Promise<void> {
+  await mutateRecoveryMarker(
+    conceptionPath,
+    join(conceptionPath, tree, '.index-dirty'),
+    true,
+    recovery,
+  );
+}
+
+async function mutateRecoveryMarker(
+  conceptionPath: string,
+  markerPath: string,
+  retain: true | null,
+  recovery: IndexRecoveryLifecycle,
+): Promise<boolean> {
+  return withFileQueue(markerPath, async () => {
+    await recovery.validateInput({ path: resolve(markerPath), kind: 'marker' });
+    const state = await readRecoveryFileState(conceptionPath, markerPath);
+    const current = await readRecoveryFileState(conceptionPath, markerPath);
+    assertRecoveryFileUnchanged(markerPath, state, current);
+    await recovery.applyMarker({
+      path: resolve(markerPath),
+      input: state.bytes === null ? null : Buffer.from(state.bytes),
+      proposed: retain ? Buffer.from(state.bytes ?? '') : null,
+    });
+    return state.bytes !== null;
+  });
+}
+
+function draftInput(
+  parent: string,
+  child: ChildInfo,
+  strategy: IndexStrategy,
+): IndexRecoveryInput | null {
+  if (strategy.treeName === 'knowledge') {
+    return {
+      path: resolve(child.kind === 'file' ? child.absPath : join(child.absPath, 'index.md')),
+      kind: 'source',
+    };
+  }
+  if (child.kind === 'directory') {
+    if (/^\d{4}-\d{2}$/.test(basename(parent)) && /^\d{4}-\d{2}-\d{2}-/.test(child.name)) {
+      return { path: resolve(child.absPath, 'README.md'), kind: 'readme' };
+    }
+    if (basename(parent) === 'projects' && /^\d{4}-\d{2}$/.test(child.name)) {
+      return { path: resolve(child.absPath, 'index.md'), kind: 'source' };
+    }
+  }
+  return null;
+}
+
+async function validateDraftInput(
+  parent: string,
+  child: ChildInfo,
+  strategy: IndexStrategy,
+  recovery?: IndexRecoveryLifecycle,
+): Promise<void> {
+  if (!recovery) return;
+  const input = draftInput(parent, child, strategy);
+  if (input) await recovery.validateInput(input);
+}
+
+async function projectValidationInputs(
+  conceptionPath: string,
+  recovery?: IndexRecoveryLifecycle,
+  prospectiveDirectory?: IndexDirectoryReader,
+): Promise<string[]> {
+  const root = join(conceptionPath, 'projects');
+  const inputs: string[] = [];
+  for (const month of await subdirectories(root)) {
+    for (const item of await subdirectories(join(root, month))) {
+      inputs.push(resolve(root, month, item, 'README.md'));
+    }
+  }
+  return inputs;
+
+  async function subdirectories(path: string): Promise<string[]> {
+    await recovery?.validateInput({ path: resolve(path), kind: 'directory' });
+    try {
+      const directories: string[] = [];
+      for await (const entry of await iterateIndexDirectory(path, prospectiveDirectory, recovery)) {
+        if (entry.kind !== 'directory' || entry.name.startsWith('.')) continue;
+        await recovery?.validateInput({ path: resolve(path, entry.name), kind: 'directory' });
+        directories.push(entry.name);
+      }
+      return directories.sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+}
+
+interface RecoveryFileState {
+  bytes: Buffer | null;
+  identity: string | null;
+  ancestors: string[];
+}
+
+function fileIdentity(stat: BigIntStats): string {
+  return [
+    stat.dev,
+    stat.ino,
+    stat.mode,
+    stat.uid,
+    stat.gid,
+    stat.nlink,
+    stat.size,
+    stat.mtimeNs,
+    stat.ctimeNs,
+  ].join(':');
+}
+
+async function readRecoveryFileState(
+  conceptionPath: string,
+  path: string,
+): Promise<RecoveryFileState> {
+  const root = resolve(conceptionPath);
+  const target = resolve(path);
+  const rel = relative(root, target);
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || resolve(root, rel) !== target) {
+    throw new Error(`Recovery path is outside conception: ${JSON.stringify(path)}`);
+  }
+  if ((await fs.realpath(root)) !== root)
+    throw new Error('Recovery conception has symlink ancestors');
+  const ancestors: string[] = [];
+  let directory = root;
+  for (const component of ['', ...relative(root, dirname(target)).split(sep).filter(Boolean)]) {
+    if (component) directory = join(directory, component);
+    const stat = await fs.lstat(directory, { bigint: true });
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Unsafe recovery ancestor: ${JSON.stringify(directory)}`);
+    }
+    ancestors.push([stat.dev, stat.ino, stat.mode, stat.uid, stat.gid].join(':'));
+  }
+  const stat = await fs.lstat(target, { bigint: true }).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!stat) return { bytes: null, identity: null, ancestors };
+  if (!stat.isFile() || stat.nlink !== 1n) {
+    throw new Error(`Unsafe recovery file: ${JSON.stringify(target)}`);
+  }
+  if (stat.size > 8n * 1024n * 1024n)
+    throw new Error('Recovery output exceeds the 8 MiB supported bound');
+  const handle = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const identity = fileIdentity(stat);
+    if (fileIdentity(await handle.stat({ bigint: true })) !== identity) {
+      throw new Error(`Recovery file changed before read: ${JSON.stringify(target)}`);
+    }
+    const buffer = Buffer.alloc(Number(stat.size) + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const result = await handle.read(buffer, size, buffer.length - size, size);
+      if (!result.bytesRead) break;
+      size += result.bytesRead;
+    }
+    if (
+      size !== Number(stat.size) ||
+      fileIdentity(await handle.stat({ bigint: true })) !== identity ||
+      fileIdentity(await fs.lstat(target, { bigint: true })) !== identity
+    ) {
+      throw new Error(`Recovery file changed during read: ${JSON.stringify(target)}`);
+    }
+    return { bytes: buffer.subarray(0, size), identity, ancestors };
+  } finally {
+    await handle.close();
+  }
+}
+
+function assertRecoveryFileUnchanged(
+  path: string,
+  before: RecoveryFileState,
+  current: RecoveryFileState,
+): void {
+  if (
+    before.identity !== current.identity ||
+    before.ancestors.join('/') !== current.ancestors.join('/') ||
+    (before.bytes === null
+      ? current.bytes !== null
+      : !before.bytes.equals(current.bytes ?? Buffer.alloc(0)))
+  ) {
+    throw new Error(`Recovery render input changed: ${JSON.stringify(path)}`);
+  }
+}
+
+async function listAllDirectories(
+  rootPath: string,
+  recovery?: IndexRecoveryLifecycle,
+  prospectiveDirectory?: IndexDirectoryReader,
+): Promise<string[]> {
   const out: string[] = [rootPath];
   await walk(rootPath);
   return out;
 
   async function walk(dir: string): Promise<void> {
-    let entries: import('node:fs').Dirent[];
+    await recovery?.validateInput({ path: resolve(dir), kind: 'directory' });
+    let entries: AsyncIterable<IndexDirectoryEntry>;
     try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
+      entries = await iterateIndexDirectory(dir, prospectiveDirectory, recovery);
+    } catch (error) {
+      if (recovery || prospectiveDirectory) throw error;
       return;
     }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+    for await (const entry of entries) {
+      if (entry.kind !== 'directory') continue;
       if (entry.name.startsWith('.')) continue;
       if (SKIP_DIR_NAMES.has(entry.name)) continue;
       // Project item dirs (`YYYY-MM-DD-slug/`) carry a README.md, not an
@@ -1022,43 +1375,106 @@ async function listAllDirectories(rootPath: string): Promise<string[]> {
       // recursion. `notes/` lives below them and is in SKIP_DIR_NAMES already.
       if (/^\d{4}-\d{2}-\d{2}-/.test(entry.name)) continue;
       const full = join(dir, entry.name);
+      await recovery?.validateInput({ path: resolve(full), kind: 'directory' });
       out.push(full);
       await walk(full);
     }
   }
 }
 
-async function listChildren(dirAbsPath: string, strategy: IndexStrategy): Promise<ChildInfo[]> {
+async function listChildren(
+  dirAbsPath: string,
+  strategy: IndexStrategy,
+  recovery?: IndexRecoveryLifecycle,
+  prospectiveDirectory?: IndexDirectoryReader,
+): Promise<ChildInfo[]> {
   const out: ChildInfo[] = [];
-  let entries: import('node:fs').Dirent[];
+  await recovery?.validateInput({ path: resolve(dirAbsPath), kind: 'directory' });
+  let entries: AsyncIterable<IndexDirectoryEntry>;
   try {
-    entries = await fs.readdir(dirAbsPath, { withFileTypes: true });
-  } catch {
+    entries = await iterateIndexDirectory(dirAbsPath, prospectiveDirectory, recovery);
+  } catch (error) {
+    if (recovery || prospectiveDirectory) throw error;
     return out;
   }
   const isMonthDir = strategy.treeName === 'projects' && /^\d{4}-\d{2}$/.test(basename(dirAbsPath));
   const isProjectsRoot = strategy.treeName === 'projects' && basename(dirAbsPath) === 'projects';
-  for (const entry of entries) {
+  for await (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     if (entry.name === 'index.md') continue;
     const full = join(dirAbsPath, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.kind === 'directory') {
       if (SKIP_DIR_NAMES.has(entry.name)) continue;
       // For projects root: only month dirs are children. For month dirs:
       // only item dirs are children. For knowledge: everything is.
       if (isProjectsRoot && !/^\d{4}-\d{2}$/.test(entry.name)) continue;
-      out.push({ kind: 'directory', name: entry.name, absPath: full });
-    } else if (entry.isFile()) {
+      const child: ChildInfo = { kind: 'directory', name: entry.name, absPath: full };
+      await validateDraftInput(dirAbsPath, child, strategy, recovery);
+      out.push(child);
+    } else if (entry.kind === 'file') {
       // Project month dirs and project item dirs have no body files at the
       // index level. Knowledge does.
       if (strategy.treeName === 'projects' && (isMonthDir || isProjectsRoot)) continue;
       if (entry.name.toLowerCase().endsWith('.md')) {
+        await recovery?.validateInput({ path: resolve(full), kind: 'source' });
         out.push({ kind: 'file', name: entry.name, absPath: full });
       }
     }
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
+}
+
+async function iterateIndexDirectory(
+  path: string,
+  prospectiveDirectory?: IndexDirectoryReader,
+  recovery?: IndexRecoveryLifecycle,
+): Promise<AsyncIterable<IndexDirectoryEntry>> {
+  if (recovery && !prospectiveDirectory) {
+    const directory = await fs.opendir(path);
+    return (async function* () {
+      for await (const entry of directory)
+        yield {
+          name: entry.name,
+          kind: entry.isDirectory()
+            ? ('directory' as const)
+            : entry.isFile()
+              ? ('file' as const)
+              : ('other' as const),
+        };
+    })();
+  }
+  const entries = await indexDirectoryEntries(path, prospectiveDirectory);
+  if (entries === null)
+    throw Object.assign(new Error('Recovery directory vanished'), { code: 'ENOENT' });
+  return (async function* () {
+    yield* entries;
+  })();
+}
+
+async function indexDirectoryEntries(
+  path: string,
+  prospectiveDirectory?: IndexDirectoryReader,
+): Promise<readonly IndexDirectoryEntry[] | null> {
+  if (prospectiveDirectory) {
+    const entries = await prospectiveDirectory(resolve(path));
+    if (entries)
+      for (const entry of entries) {
+        if (
+          !entry.name ||
+          entry.name === '.' ||
+          entry.name === '..' ||
+          /[\/\0]/.test(entry.name) ||
+          !['directory', 'file', 'other'].includes(entry.kind)
+        )
+          throw new Error('Invalid prospective index directory metadata');
+      }
+    return entries;
+  }
+  return (await fs.readdir(path, { withFileTypes: true })).map((entry) => ({
+    name: entry.name,
+    kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
+  }));
 }
 
 function canonicalName(child: ChildInfo): string {

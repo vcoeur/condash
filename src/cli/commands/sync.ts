@@ -153,7 +153,9 @@ function emitReport(ctx: OutputContext, report: SyncReport): void {
     warnings.push(`another condash sync holds the lock${who} — skipping this tick`);
   }
   if (report.pushError) {
-    warnings.push(`push rejected, commits stay local: ${report.pushError}`);
+    warnings.push(
+      `push reported an error; inspect the remote outcome before retrying: ${report.pushError}`,
+    );
   }
   if (report.diverged) {
     warnings.push(
@@ -161,8 +163,13 @@ function emitReport(ctx: OutputContext, report: SyncReport): void {
     );
   }
   if (report.integrateError) {
+    const effects = report.pushed
+      ? 'push completed; any reported commits already exist'
+      : report.commits.some((commit) => commit.sha !== null)
+        ? 'reported commits already exist; push did not report success'
+        : 'no completed sync commits or successful push are reported; other partial effects may exist';
     warnings.push(
-      `couldn't integrate with upstream — commits and push skipped: ${report.integrateError}. Will retry integration next run.`,
+      `sync reported a problem — ${effects}: ${report.integrateError}. Follow the diagnostic before retrying; integration is not automatically replayed.`,
     );
   }
   emit(ctx, report, formatReport, warnings);
@@ -245,9 +252,11 @@ function printHelp(verb: string | null): void {
           'Preserve index prose/curated rows and regenerate projects/knowledge',
           'indexes after resolving drafts. Never discard local commits. Fetch-first',
           "behaviour is off when `autoSync.integration` is `'off'`.",
-          'Integration errors skip commits and push, including refused safe merge.',
+          'Integration errors stop later commits/push; actual partial effects remain',
+          'reported. Unfinished recovery evidence requires manual reconciliation.',
           'Use --no-push explicitly to settle work before a recovery attempt.',
-          'Dirty overlapping indexes are left untouched for manual reconciliation.',
+          'Qualified generated-index overlap can use guarded recovery; unsupported',
+          'overlap refuses before normalization. Never discard protected content.',
           'Dirty-index quiet eligibility',
           'uses the original mtime, before integration or regeneration rewrites it.',
           '',

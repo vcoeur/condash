@@ -1,11 +1,21 @@
 import { promises as fs } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { join, relative } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { knowledgeStrategy } from './index-knowledge';
 import { projectsStrategy } from './index-projects';
-import { indexHumanContent, regenerateIndex } from './index-tree';
+import {
+  enumerateIndexPaths,
+  indexHumanContent,
+  regenerateIndex,
+  retainRecoveryIndexDirtyMarker,
+  type IndexRecoveryLifecycle,
+  type IndexRecoveryOutput,
+  type IndexDirectoryEntry,
+} from './index-tree';
+import { withFileQueue } from './mutate-shared';
+import { assertRecoveryRequirements, recoveryProtectedSpans } from './sync/index-recovery';
 
 let conceptionDir: string;
 let knowledgeDir: string;
@@ -59,6 +69,730 @@ async function writeFile(relPath: string, content: string): Promise<void> {
 async function readFile(relPath: string): Promise<string> {
   return fs.readFile(join(conceptionDir, relPath), 'utf8');
 }
+
+describe('optional recovery lifecycle', () => {
+  function lifecycle(overrides: Partial<IndexRecoveryLifecycle> = {}): IndexRecoveryLifecycle {
+    return {
+      validateInput: async () => {},
+      applyOutput: async ({ path, proposed, changed }) => {
+        if (changed) await fs.writeFile(path, proposed);
+      },
+      applyMarker: async ({ path, proposed }) => {
+        if (proposed !== null) await fs.writeFile(path, proposed);
+        else
+          await fs.unlink(path).catch((error) => {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          });
+      },
+      ...overrides,
+    };
+  }
+
+  function barrier(): { promise: Promise<void>; release(): void } {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  }
+
+  it('bounds a recovery output reread before parsing or allocating a growing whole-file payload', async () => {
+    await fs.writeFile(join(knowledgeDir, 'index.md'), Buffer.alloc(8 * 1024 * 1024 + 1, 97));
+    const applyOutput = vi.fn();
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, { recovery: lifecycle({ applyOutput }) }),
+    ).rejects.toThrow('8 MiB supported bound');
+    expect(applyOutput).not.toHaveBeenCalled();
+  });
+
+  it('enumerates the real walker outputs and skipped direct inputs without reading irrelevant payloads', async () => {
+    await writeFile('knowledge/visible/deep/body.md', '# Body\n');
+    await writeFile('knowledge/2026-07-12-reference/index.md', '# Skipped but read\n');
+    for (const excluded of ['.hidden', 'node_modules', 'local', 'notes']) {
+      await writeFile(`knowledge/${excluded}/index.md`, 'ignored');
+    }
+    await fs.symlink('/not/a/real/dependency', join(knowledgeDir, 'dependency'));
+    const paths = await enumerateIndexPaths(conceptionDir, knowledgeStrategy);
+    expect(paths.outputs.sort()).toEqual([
+      'knowledge/index.md',
+      'knowledge/visible/deep/index.md',
+      'knowledge/visible/index.md',
+    ]);
+    expect(paths.inputs).toContain('knowledge/2026-07-12-reference/index.md');
+    expect(paths.inputs).not.toContain('knowledge/dependency/index.md');
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(report.created.sort()).toEqual(paths.outputs);
+  });
+
+  it('includes broad project prevalidation paths and known absence, not just dated generation children', async () => {
+    await writeFile('projects/strange/notes/README.md', '# Validated even in notes\n');
+    await fs.mkdir(join(conceptionDir, 'projects', '2026-07', '2026-07-12-missing'), {
+      recursive: true,
+    });
+    const paths = await enumerateIndexPaths(conceptionDir, projectsStrategy);
+    expect(paths.inputs).toContain('projects/strange/notes/README.md');
+    expect(paths.inputs).toContain('projects/2026-07/2026-07-12-missing/README.md');
+    expect(paths.outputs).not.toContain('projects/2026-07/2026-07-12-missing/index.md');
+    expect(paths.outputs).not.toContain('projects/strange/notes/index.md');
+  });
+
+  it('returns empty paths for a missing root and does not create it', async () => {
+    expect(await enumerateIndexPaths(conceptionDir, projectsStrategy)).toEqual({
+      outputs: [],
+      inputs: [],
+    });
+    await expect(fs.stat(join(conceptionDir, 'projects'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('renders identical ordinary bytes and reports with the optional writer', async () => {
+    await writeFile('knowledge/sub/body.md', '# Body\n\nLead.\n\n## Salientquartz\n');
+    await writeFile('knowledge/.index-dirty', 'marker');
+    const copy = join(conceptionDir, 'ordinary');
+    await fs.cp(knowledgeDir, join(copy, 'knowledge'), { recursive: true });
+    const ordinary = await regenerateIndex(copy, knowledgeStrategy);
+    const guarded = await regenerateIndex(conceptionDir, knowledgeStrategy, {
+      recovery: lifecycle(),
+    });
+    expect({ ...guarded, rootPath: '' }).toEqual({ ...ordinary, rootPath: '' });
+    for (const path of ordinary.created) {
+      expect(await fs.readFile(join(copy, path))).toEqual(
+        await fs.readFile(join(conceptionDir, path)),
+      );
+    }
+    expect(guarded.dirtyClear).toBe(true);
+  });
+
+  it('validates all current project README candidates before invoking real prevalidation, then repeats before drafting', async () => {
+    const readme = 'projects/2026-07/2026-07-12-item/README.md';
+    const extra = 'projects/non-month/notes/README.md';
+    await writeFile(readme, '# Item\n');
+    await writeFile(extra, '# Extra validation input\n');
+    const validated: string[] = [];
+    const strategy = {
+      ...projectsStrategy,
+      preValidation: vi.fn(async (root: string, conception: string) => {
+        expect(validated).toContain(readme);
+        expect(validated).toContain(extra);
+        return projectsStrategy.preValidation!(root, conception);
+      }),
+      draftSubdirEntry: vi.fn(
+        async (...args: Parameters<typeof projectsStrategy.draftSubdirEntry>) => {
+          if (args[1].name === '2026-07-12-item') {
+            expect(validated.filter((path) => path === readme).length).toBeGreaterThanOrEqual(2);
+          }
+          return projectsStrategy.draftSubdirEntry(...args);
+        },
+      ),
+    };
+    await regenerateIndex(conceptionDir, strategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path, kind }) => {
+          if (kind === 'readme') validated.push(relative(conceptionDir, path));
+        },
+      }),
+    });
+    expect(strategy.preValidation).toHaveBeenCalledOnce();
+    expect(strategy.draftSubdirEntry).toHaveBeenCalled();
+  });
+
+  it('does not enter project prevalidation after an input validator refuses', async () => {
+    await writeFile('projects/odd/notes/README.md', '# Input\n');
+    const preValidation = vi.fn(projectsStrategy.preValidation!);
+    await expect(
+      regenerateIndex(
+        conceptionDir,
+        { ...projectsStrategy, preValidation },
+        {
+          recovery: lifecycle({
+            validateInput: async ({ kind }) => {
+              if (kind === 'readme') throw new Error('unsafe README');
+            },
+          }),
+        },
+      ),
+    ).rejects.toThrow('unsafe README');
+    expect(preValidation).not.toHaveBeenCalled();
+    await expect(fs.stat(join(conceptionDir, 'projects/index.md'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('validates the freshly generated project month index before its parent reads it', async () => {
+    await writeFile('projects/2026-07/2026-07-12-item/README.md', '# Item\n');
+    const events: string[] = [];
+    const strategy = {
+      ...projectsStrategy,
+      draftSubdirEntry: async (...args: Parameters<typeof projectsStrategy.draftSubdirEntry>) => {
+        if (args[1].name === '2026-07') {
+          expect(events.at(-1)).toBe('read:projects/2026-07/index.md');
+          expect(events).toContain('completed:projects/2026-07/index.md');
+          expect(await readFile('projects/2026-07/index.md')).toContain('2026-07-12-item');
+        }
+        return projectsStrategy.draftSubdirEntry(...args);
+      },
+    };
+    await regenerateIndex(conceptionDir, strategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path, kind }) => {
+          if (kind === 'source') events.push(`read:${relative(conceptionDir, path)}`);
+        },
+        applyOutput: async (output) => {
+          await lifecycle().applyOutput(output);
+          events.push(`completed:${relative(conceptionDir, output.path)}`);
+        },
+      }),
+    });
+    expect(events).toContain('read:projects/2026-07/index.md');
+  });
+
+  it('allows the existing strategy to handle a validated absent dated-child index', async () => {
+    await fs.mkdir(join(knowledgeDir, '2026-07-12-missing'));
+    const inputs: string[] = [];
+    await regenerateIndex(conceptionDir, knowledgeStrategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path, kind }) => {
+          if (kind === 'source') inputs.push(path);
+        },
+      }),
+    });
+    expect(inputs).toContain(join(knowledgeDir, '2026-07-12-missing/index.md'));
+    expect(await readFile('knowledge/index.md')).toContain('2026-07-12-missing/index.md');
+  });
+
+  it('validates knowledge file and dated-child inputs immediately before actual strategy consumption', async () => {
+    const dated = 'knowledge/2026-07-12-reference/index.md';
+    await writeFile(dated, '# Reference\n\n## Salientquartz\n');
+    await writeFile('knowledge/body.md', '# Body\n');
+    const events: string[] = [];
+    const strategy = {
+      ...knowledgeStrategy,
+      draftFileEntry: async (...args: Parameters<typeof knowledgeStrategy.draftFileEntry>) => {
+        expect(events.at(-1)).toBe(args[1].absPath);
+        return knowledgeStrategy.draftFileEntry(...args);
+      },
+      draftSubdirEntry: async (...args: Parameters<typeof knowledgeStrategy.draftSubdirEntry>) => {
+        expect(events.at(-1)).toBe(join(args[1].absPath, 'index.md'));
+        return knowledgeStrategy.draftSubdirEntry(...args);
+      },
+    };
+    await regenerateIndex(conceptionDir, strategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path }) => {
+          events.push(path);
+        },
+      }),
+    });
+    expect(await readFile('knowledge/index.md')).toContain('salientquartz');
+    expect(events).toContain(join(conceptionDir, dated));
+  });
+
+  it('rejects a skipped dated input before its strategy can read it or write the parent', async () => {
+    await writeFile('knowledge/2026-07-12-reference/index.md', '# Reference\n');
+    await writeFile('knowledge/index.md', '# Original\n');
+    const draftSubdirEntry = vi.fn(knowledgeStrategy.draftSubdirEntry);
+    await expect(
+      regenerateIndex(
+        conceptionDir,
+        { ...knowledgeStrategy, draftSubdirEntry },
+        {
+          recovery: lifecycle({
+            validateInput: async ({ path }) => {
+              if (path.endsWith('/2026-07-12-reference/index.md'))
+                throw new Error('unsafe skipped input');
+            },
+          }),
+        },
+      ),
+    ).rejects.toThrow('unsafe skipped input');
+    expect(draftSubdirEntry).not.toHaveBeenCalled();
+    expect(await readFile('knowledge/index.md')).toBe('# Original\n');
+  });
+
+  it('validates newly discovered children rather than relying on a preflight path list', async () => {
+    let introduced = false;
+    const validated: string[] = [];
+    await regenerateIndex(conceptionDir, knowledgeStrategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path, kind }) => {
+          if (kind === 'output' && !introduced) {
+            introduced = true;
+            await writeFile(
+              'knowledge/2026-07-12-dynamic/index.md',
+              '# Dynamic\n\n## Salientquartz\n',
+            );
+          }
+          validated.push(path);
+        },
+      }),
+    });
+    // The first directory's children were already listed; the next invocation discovers it.
+    await regenerateIndex(conceptionDir, knowledgeStrategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path }) => {
+          validated.push(path);
+        },
+      }),
+    });
+    expect(validated).toContain(join(knowledgeDir, '2026-07-12-dynamic/index.md'));
+    expect(await readFile('knowledge/index.md')).toContain('salientquartz');
+  });
+
+  it('validates an actually dynamic child in the same run before reading its index', async () => {
+    let directoryVisits = 0;
+    const events: string[] = [];
+    await regenerateIndex(conceptionDir, knowledgeStrategy, {
+      recovery: lifecycle({
+        validateInput: async ({ path, kind }) => {
+          if (path === knowledgeDir && kind === 'directory' && ++directoryVisits === 3) {
+            await writeFile(
+              'knowledge/2026-07-12-dynamic/index.md',
+              '# Dynamic\n\n## Salientquartz\n',
+            );
+          }
+          events.push(path);
+        },
+      }),
+    });
+    expect(events).toContain(join(knowledgeDir, '2026-07-12-dynamic/index.md'));
+    expect(await readFile('knowledge/index.md')).toContain('salientquartz');
+  });
+
+  it('delivers changed and unchanged results with exact render bytes and does not write unchanged indexes', async () => {
+    await writeFile('knowledge/body.md', '# Body\n');
+    const results: IndexRecoveryOutput[] = [];
+    const recovery = lifecycle({
+      applyOutput: async (output) => {
+        results.push(output);
+        if (output.changed) await fs.writeFile(output.path, output.proposed);
+      },
+    });
+    await regenerateIndex(conceptionDir, knowledgeStrategy, { recovery });
+    expect(results[0].input).toBeNull();
+    expect(results[0].changed).toBe(true);
+    const before = await fs.stat(join(knowledgeDir, 'index.md'), { bigint: true });
+    const bytes = await fs.readFile(join(knowledgeDir, 'index.md'));
+    await regenerateIndex(conceptionDir, knowledgeStrategy, { recovery });
+    expect(results[1]).toMatchObject({
+      input: bytes,
+      proposed: bytes,
+      changed: false,
+      renames: [],
+    });
+    const after = await fs.stat(join(knowledgeDir, 'index.md'), { bigint: true });
+    expect(after.mtimeNs).toBe(before.mtimeNs);
+    expect(after.ino).toBe(before.ino);
+  });
+
+  it('delivers every suspected rename before allowing that output mutation', async () => {
+    await writeFile(
+      'knowledge/index.md',
+      '# Knowledge\n\n- [`old-name.md`](old-name.md) — *Old.* <!-- draft -->\n',
+    );
+    await writeFile('knowledge/old-names.md', '# Similar new name\n');
+    const before = await readFile('knowledge/index.md');
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, {
+        recovery: lifecycle({
+          applyOutput: async (output) => {
+            expect(output.renames).toEqual([
+              { indexPath: 'knowledge/index.md', oldName: 'old-name.md', newName: 'old-names.md' },
+            ]);
+            throw new Error('ambiguous rename');
+          },
+        }),
+      }),
+    ).rejects.toThrow('ambiguous rename');
+    expect(await readFile('knowledge/index.md')).toBe(before);
+  });
+
+  it.each(['changed', 'unchanged'])(
+    'runs %s validation through async completion inside one file queue',
+    async (mode) => {
+      await writeFile('knowledge/body.md', '# Body\n');
+      if (mode === 'unchanged') await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const entered = barrier();
+      const finish = barrier();
+      const events: string[] = [];
+      const running = regenerateIndex(conceptionDir, knowledgeStrategy, {
+        recovery: lifecycle({
+          applyOutput: async (output) => {
+            expect(output.changed).toBe(mode === 'changed');
+            events.push('guard');
+            entered.release();
+            await finish.promise;
+            if (output.changed) await fs.writeFile(output.path, output.proposed);
+            events.push('strict-completion');
+          },
+          applyMarker: async () => {
+            events.push('marker');
+          },
+        }),
+      });
+      await entered.promise;
+      const follower = withFileQueue(join(knowledgeDir, 'index.md'), async () => {
+        events.push('next-writer');
+      });
+      expect(events).toEqual(['guard']);
+      finish.release();
+      await Promise.all([running, follower]);
+      expect(events.indexOf('strict-completion')).toBeLessThan(events.indexOf('next-writer'));
+      expect(events.indexOf('strict-completion')).toBeLessThan(events.indexOf('marker'));
+    },
+  );
+
+  it('rechecks queued render input after an earlier queued writer runs', async () => {
+    await writeFile('knowledge/index.md', '# Original\n');
+    await writeFile('knowledge/body.md', '# Body\n');
+    const releaseWriter = barrier();
+    const writerEntered = barrier();
+    const rendered = barrier();
+    const writer = withFileQueue(join(knowledgeDir, 'index.md'), async () => {
+      writerEntered.release();
+      await releaseWriter.promise;
+      await writeFile('knowledge/index.md', '# Later human edit\n');
+    });
+    await writerEntered.promise;
+    const applyOutput = vi.fn(async () => {});
+    const running = regenerateIndex(
+      conceptionDir,
+      {
+        ...knowledgeStrategy,
+        draftFileEntry: async (...args: Parameters<typeof knowledgeStrategy.draftFileEntry>) => {
+          const draft = await knowledgeStrategy.draftFileEntry(...args);
+          rendered.release();
+          return draft;
+        },
+      },
+      { recovery: lifecycle({ applyOutput }) },
+    );
+    const refused = expect(running).rejects.toThrow('Recovery render input changed');
+    await rendered.promise;
+    releaseWriter.release();
+    await writer;
+    await refused;
+    expect(applyOutput).not.toHaveBeenCalled();
+    expect(await readFile('knowledge/index.md')).toBe('# Later human edit\n');
+  });
+
+  it.each(['same-content', 'mode', 'replacement', 'symlink', 'hardlink', 'ancestor'])(
+    'refuses observable %s drift before lifecycle writes',
+    async (drift) => {
+      await writeFile('knowledge/index.md', '# Original\n');
+      await writeFile('knowledge/body.md', '# Body\n');
+      const applyOutput = vi.fn(async () => {});
+      const strategy = {
+        ...knowledgeStrategy,
+        draftFileEntry: async (...args: Parameters<typeof knowledgeStrategy.draftFileEntry>) => {
+          const draft = await knowledgeStrategy.draftFileEntry(...args);
+          const index = join(knowledgeDir, 'index.md');
+          if (drift === 'same-content') await fs.utimes(index, new Date(0), new Date(0));
+          if (drift === 'mode') await fs.chmod(index, 0o600);
+          if (drift === 'replacement') {
+            await writeFile('knowledge/replacement', '# Original\n');
+            await fs.rename(join(knowledgeDir, 'replacement'), index);
+          }
+          if (drift === 'symlink') {
+            await fs.unlink(index);
+            await fs.symlink('body.md', index);
+          }
+          if (drift === 'hardlink') await fs.link(index, join(knowledgeDir, 'alias'));
+          if (drift === 'ancestor') await fs.chmod(knowledgeDir, 0o700);
+          return draft;
+        },
+      };
+      await expect(
+        regenerateIndex(conceptionDir, strategy, { recovery: lifecycle({ applyOutput }) }),
+      ).rejects.toThrow(/Recovery render input changed|Unsafe recovery file/);
+      expect(applyOutput).not.toHaveBeenCalled();
+    },
+  );
+
+  it('stops generation and retains the marker after an asynchronous completion failure', async () => {
+    await writeFile('knowledge/sub/body.md', '# Body\n');
+    await writeFile('knowledge/.index-dirty', 'original marker');
+    const applyMarker = vi.fn(async () => {});
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, {
+        recovery: lifecycle({
+          applyOutput: async ({ path, proposed }) => {
+            await fs.writeFile(path, proposed);
+            await Promise.resolve();
+            throw new Error('strict parent fsync failed');
+          },
+          applyMarker,
+        }),
+      }),
+    ).rejects.toThrow('strict parent fsync failed');
+    expect(await readFile('knowledge/sub/index.md')).toContain('body.md');
+    await expect(fs.stat(join(knowledgeDir, 'index.md'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(applyMarker).not.toHaveBeenCalled();
+    expect(await readFile('knowledge/.index-dirty')).toBe('original marker');
+  });
+
+  it('does not fall back to ordinary output or marker writers when lifecycle callbacks reject', async () => {
+    await writeFile('knowledge/index.md', '# Original\n');
+    await writeFile('knowledge/body.md', '# Body\n');
+    await writeFile('knowledge/.index-dirty', 'keep marker');
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, {
+        recovery: lifecycle({
+          applyOutput: async () => {
+            throw new Error('guard refused');
+          },
+        }),
+      }),
+    ).rejects.toThrow('guard refused');
+    expect(await readFile('knowledge/index.md')).toBe('# Original\n');
+    expect(await readFile('knowledge/.index-dirty')).toBe('keep marker');
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, {
+        recovery: lifecycle({
+          applyMarker: async () => {
+            throw new Error('marker intent failed');
+          },
+        }),
+      }),
+    ).rejects.toThrow('marker intent failed');
+    expect(await readFile('knowledge/.index-dirty')).toBe('keep marker');
+  });
+
+  it('queues marker writes and clears, preserving bytes on retain and reporting absent clears', async () => {
+    const events: (Buffer | null)[] = [];
+    const recovery = lifecycle({
+      applyMarker: async (marker) => {
+        events.push(marker.proposed);
+        await lifecycle().applyMarker(marker);
+      },
+    });
+    await retainRecoveryIndexDirtyMarker(conceptionDir, 'knowledge', recovery);
+    expect(await readFile('knowledge/.index-dirty')).toBe('');
+    await writeFile('knowledge/.index-dirty', 'retained bytes');
+    await retainRecoveryIndexDirtyMarker(conceptionDir, 'knowledge', recovery);
+    expect(await readFile('knowledge/.index-dirty')).toBe('retained bytes');
+    const cleared = await regenerateIndex(conceptionDir, knowledgeStrategy, { recovery });
+    expect(cleared.dirtyClear).toBe(true);
+    const absent = await regenerateIndex(conceptionDir, knowledgeStrategy, { recovery });
+    expect(absent.dirtyClear).toBe(false);
+    expect(events).toEqual([Buffer.alloc(0), Buffer.from('retained bytes'), null, null]);
+  });
+
+  it('awaits marker completion inside its queue and propagates retain failures', async () => {
+    const entered = barrier();
+    const finish = barrier();
+    const events: string[] = [];
+    const pending = retainRecoveryIndexDirtyMarker(
+      conceptionDir,
+      'knowledge',
+      lifecycle({
+        applyMarker: async () => {
+          entered.release();
+          await finish.promise;
+          events.push('marker-completed');
+        },
+      }),
+    );
+    await entered.promise;
+    const next = withFileQueue(join(knowledgeDir, '.index-dirty'), async () => {
+      events.push('next');
+    });
+    expect(events).toEqual([]);
+    finish.release();
+    await Promise.all([pending, next]);
+    expect(events).toEqual(['marker-completed', 'next']);
+    await expect(
+      retainRecoveryIndexDirtyMarker(
+        conceptionDir,
+        'knowledge',
+        lifecycle({
+          applyMarker: async () => {
+            throw new Error('retain completion failed');
+          },
+        }),
+      ),
+    ).rejects.toThrow('retain completion failed');
+    await expect(fs.stat(join(knowledgeDir, '.index-dirty'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it.each(['retain', 'clear'])(
+    'propagates %s completion failure even after the marker effect actually happened',
+    async (operation) => {
+      await writeFile('knowledge/.index-dirty', 'previous marker');
+      const recovery = lifecycle({
+        applyMarker: async (marker) => {
+          await lifecycle().applyMarker(marker);
+          throw new Error('marker completion publication failed');
+        },
+      });
+      const pending =
+        operation === 'retain'
+          ? retainRecoveryIndexDirtyMarker(conceptionDir, 'knowledge', recovery)
+          : regenerateIndex(conceptionDir, knowledgeStrategy, { recovery });
+      await expect(pending).rejects.toThrow('marker completion publication failed');
+      if (operation === 'retain')
+        expect(await readFile('knowledge/.index-dirty')).toBe('previous marker');
+      else
+        await expect(fs.stat(join(knowledgeDir, '.index-dirty'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+    },
+  );
+
+  it('rejects lifecycle dry-run before any validation or mutation callback', async () => {
+    const validateInput = vi.fn(async () => {});
+    await expect(
+      regenerateIndex(conceptionDir, knowledgeStrategy, {
+        dryRun: true,
+        recovery: lifecycle({ validateInput }),
+      }),
+    ).rejects.toThrow('cannot run in dry-run');
+    expect(validateInput).not.toHaveBeenCalled();
+  });
+});
+
+describe('metadata-only prospective recovery envelope', () => {
+  const directory = (name: string): IndexDirectoryEntry => ({ name, kind: 'directory' });
+  const file = (name: string): IndexDirectoryEntry => ({ name, kind: 'file' });
+
+  function reader(entries: Record<string, IndexDirectoryEntry[]>) {
+    const read = vi.fn(async (path: string) => entries[relative(conceptionDir, path)] ?? null);
+    return read;
+  }
+
+  it('uses the real exclusions and includes skipped dated-child inputs without traversing their payloads', async () => {
+    const read = reader({
+      knowledge: [
+        directory('internal'),
+        directory('2026-07-10-dated'),
+        directory('node_modules'),
+        directory('notes'),
+        directory('local'),
+        directory('.hidden'),
+        file('index.md'),
+        file('body.md'),
+        file('image.bin'),
+        { name: 'dependency-link', kind: 'other' },
+      ],
+      'knowledge/internal': [file('index.md'), file('inside.md'), directory('deeper')],
+      'knowledge/internal/deeper': [],
+    });
+    const draft = vi.fn(async () => {
+      throw new Error('Prospective census must never draft or read source bytes');
+    });
+    const result = await enumerateIndexPaths(
+      conceptionDir,
+      { ...knowledgeStrategy, draftFileEntry: draft, draftSubdirEntry: draft },
+      undefined,
+      read,
+    );
+    expect(result.outputs.sort()).toEqual([
+      'knowledge/index.md',
+      'knowledge/internal/deeper/index.md',
+      'knowledge/internal/index.md',
+    ]);
+    expect(result.inputs).toEqual([
+      'knowledge/2026-07-10-dated/index.md',
+      'knowledge/body.md',
+      'knowledge/internal/deeper/index.md',
+      'knowledge/internal/index.md',
+      'knowledge/internal/inside.md',
+    ]);
+    expect(
+      read.mock.calls.every(
+        ([path]) =>
+          !/node_modules|\/notes|\/local|\.hidden|2026-07-10-dated|dependency-link/.test(
+            relative(conceptionDir, path),
+          ),
+      ),
+    ).toBe(true);
+    expect(draft).not.toHaveBeenCalled();
+  });
+
+  it('shares project output and prevalidation input traversal even when the incoming root is absent on disk', async () => {
+    const read = reader({
+      projects: [directory('2026-07'), directory('node_modules'), directory('.hidden')],
+      'projects/2026-07': [directory('2026-07-10-alpha'), file('index.md')],
+      'projects/node_modules': [],
+    });
+    const preValidation = vi.fn(async () => {
+      throw new Error('Do not execute prevalidation against a virtual tree');
+    });
+    const result = await enumerateIndexPaths(
+      conceptionDir,
+      { ...projectsStrategy, preValidation },
+      undefined,
+      read,
+    );
+    expect(result.outputs.sort()).toEqual(['projects/2026-07/index.md', 'projects/index.md']);
+    expect(result.inputs).toEqual([
+      'projects/2026-07/2026-07-10-alpha/README.md',
+      'projects/2026-07/index.md',
+    ]);
+    expect(preValidation).not.toHaveBeenCalled();
+    expect(read.mock.calls.some(([path]) => path.endsWith('2026-07-10-alpha'))).toBe(false);
+    await expect(fs.stat(join(conceptionDir, 'projects'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('does not invent an output root absent from the pinned directory metadata', async () => {
+    const read = reader({});
+    expect(await enumerateIndexPaths(conceptionDir, knowledgeStrategy, undefined, read)).toEqual({
+      outputs: [],
+      inputs: [],
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['../escape', 'nested/name', '\0', '', '.'])(
+    'refuses invalid prospective directory name %j before traversal',
+    async (name) => {
+      const read = reader({ knowledge: [directory(name)] });
+      await expect(
+        enumerateIndexPaths(conceptionDir, knowledgeStrategy, undefined, read),
+      ).rejects.toThrow('Invalid prospective');
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
+describe('recovery traversal resource boundaries', () => {
+  it('streams real directory entries and stops at incremental validation before accumulating the whole child list', async () => {
+    for (let index = 0; index < 20; index++)
+      await writeFile(`knowledge/body-${index}.md`, '# Body\n');
+    const readdir = vi.spyOn(fs, 'readdir');
+    const opendir = vi.spyOn(fs, 'opendir');
+    const observed = new Set<string>();
+    const recovery: IndexRecoveryLifecycle = {
+      validateInput: async (input) => {
+        if (input.kind === 'source') {
+          observed.add(input.path);
+          if (observed.size > 2) throw new Error('fixture incremental budget');
+        }
+      },
+      applyOutput: async () => {
+        throw new Error('No output during census');
+      },
+      applyMarker: async () => {
+        throw new Error('No marker during census');
+      },
+    };
+    try {
+      await expect(enumerateIndexPaths(conceptionDir, knowledgeStrategy, recovery)).rejects.toThrow(
+        'fixture incremental budget',
+      );
+      expect(observed.size).toBe(3);
+      expect(opendir).toHaveBeenCalled();
+      expect(readdir).not.toHaveBeenCalled();
+    } finally {
+      readdir.mockRestore();
+      opendir.mockRestore();
+    }
+  });
+});
 
 describe('regenerateIndex (knowledge strategy)', () => {
   describe('drafted-leaf marker', () => {
@@ -839,6 +1573,119 @@ describe('fenced code blocks in hand-written prose are not structure', () => {
     expect(await readFile('knowledge/topics/index.md')).toBe(index);
     expect(report2.updated).toEqual([]);
   });
+
+  it('keeps a fence that directly abuts the block region prose-verbatim and drafts its child outside the fence', async () => {
+    // Counterexample shape (acceptance15 run-RLvFse): the fence directly
+    // abuts the surrounding content with no separating blank line and no
+    // unfenced bullet before it, so the old fence-blind scan started the
+    // bullet block inside the fence, dropped the fenced row and spliced the
+    // engine's replacement row into the fence.
+    const fenceBlock = [
+      '~~~md',
+      '- [`body.md`](body.md) — *Fenced row.* <!-- draft -->',
+      '~~~',
+    ].join('\n');
+    await writeFile(
+      'knowledge/index.md',
+      [
+        '# Knowledge',
+        '',
+        'Prose above the fence.',
+        fenceBlock,
+        '- [`a-file.md`](a-file.md) — *Curated.* `[a]`',
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/body.md', '# Body\n\nSecond source.\n');
+    await writeFile('knowledge/a-file.md', '# A\n\nBody A.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    // The fenced drafted row survives verbatim — prose, never engine-owned.
+    expect(index).toContain(fenceBlock);
+    expect(index).toContain('*Fenced row.*');
+    // The canonical entry still comes from the disk child, drafted once,
+    // after the kept bullet and outside the fence.
+    const canonical = '- [`body.md`](body.md) — *Second source.* `[body]` <!-- draft -->';
+    expect(index).toContain(canonical);
+    expect(index.indexOf(canonical)).toBeGreaterThan(index.indexOf(fenceBlock));
+    expect(index.split(canonical).length - 1).toBe(1);
+    expect(index).toContain('- [`a-file.md`](a-file.md) — *Curated.* `[a]`');
+    // The fenced row is prose: never reported dropped, never re-rendered.
+    const row = report.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row?.dropped ?? []).toEqual([]);
+
+    // Second run: byte-identical convergence.
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+
+  it('appends additions before a fence that directly abuts the end of the bullet block', async () => {
+    const fenceBlock = [
+      '~~~md',
+      '- [`body.md`](body.md) — *Fenced row.* <!-- draft -->',
+      '~~~',
+    ].join('\n');
+    await writeFile(
+      'knowledge/index.md',
+      [
+        '# Knowledge',
+        '',
+        'Prose.',
+        '',
+        '## Current files',
+        '',
+        '- [`a-file.md`](a-file.md) — *Curated.* `[a]`',
+        fenceBlock,
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/body.md', '# Body\n\nSecond source.\n');
+    await writeFile('knowledge/a-file.md', '# A\n\nBody A.\n');
+
+    await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    expect(index).toContain(fenceBlock);
+    expect(index).toContain('*Fenced row.*');
+    const canonical = '- [`body.md`](body.md) — *Second source.* `[body]` <!-- draft -->';
+    expect(index).toContain(canonical);
+    // The addition joins the kept bullets; the fence stays after them.
+    expect(index.indexOf(canonical)).toBeGreaterThan(index.indexOf('- [`a-file.md`]'));
+    expect(index.indexOf(canonical)).toBeLessThan(index.indexOf(fenceBlock));
+
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+
+  it('never resurrects a fenced copy of a live drafted row as a canonical duplicate', async () => {
+    // The fence stays prose; the canonical entry still comes from
+    // shape.bullets only. The old scan treated the fenced copy as the block,
+    // replaced it with the canonical row inside the fence and left the real
+    // row below — a duplicate.
+    const fenceBlock = [
+      '~~~md',
+      '- [`a-file.md`](a-file.md) — *Fenced copy of the live row.* <!-- draft -->',
+      '~~~',
+    ].join('\n');
+    const live = '- [`a-file.md`](a-file.md) — *Body A.* `[a-file]` <!-- draft -->';
+    await writeFile(
+      'knowledge/index.md',
+      ['# Knowledge', '', 'Prose.', fenceBlock, live, ''].join('\n'),
+    );
+    await writeFile('knowledge/a-file.md', '# A\n\nBody A.\n');
+
+    const before = await readFile('knowledge/index.md');
+    await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    expect(index).toBe(before);
+    expect(index).toContain(fenceBlock);
+    expect(index.split(live).length - 1).toBe(1);
+  });
 });
 
 describe('stale dir-like bullet convergence', () => {
@@ -875,6 +1722,134 @@ describe('stale dir-like bullet convergence', () => {
     expect(after2).toBe(after1);
     expect(report2.updated).toEqual([]);
     expect(report2.unchanged).toContain('knowledge/index.md');
+  });
+});
+
+describe('loose-row ownership amendment (user-approved 2026-11-18)', () => {
+  const looseRow = '- [loose](loose.md) — Loose row';
+
+  it('preserves a non-draft loose row with no real target verbatim across a real rewrite, and recovery protection agrees', async () => {
+    // The round-2 acceptance counterexample: the loose row directly abuts
+    // the bullet block, loose.md does not exist, and a new child forces a
+    // real rewrite. Human owns the row — byte-identical, never dropped.
+    const before = [
+      '# Knowledge',
+      '',
+      'Prose.',
+      '',
+      '## Structure',
+      '',
+      '- [`a-file.md`](a-file.md) — *Curated.* `[a]`',
+      looseRow,
+      '',
+    ].join('\n');
+    await writeFile('knowledge/index.md', before);
+    await writeFile('knowledge/a-file.md', '# A\n\nBody A.\n');
+    await writeFile('knowledge/new.md', '# New\n\nNew source.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    expect(index).toContain(looseRow);
+    expect(index.split(looseRow).length - 1).toBe(1);
+    expect(index).toContain('- [`a-file.md`](a-file.md) — *Curated.* `[a]`');
+    expect(index).toContain('- [`new.md`](new.md) — *New source.* <!-- draft -->');
+    const row = report.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row?.dropped ?? []).toEqual([]);
+
+    // The recovery side classifies the row as protected human content
+    // (indexHumanContent keeps every non-draft line), and the generator's
+    // rewritten output satisfies that requirement by construction. The pin
+    // is discriminating: removing the row loses the protected sequence.
+    const requirements = [recoveryProtectedSpans(Buffer.from(before, 'utf8'))];
+    expect(() =>
+      assertRecoveryRequirements(Buffer.from(index, 'utf8'), requirements),
+    ).not.toThrow();
+    expect(() =>
+      assertRecoveryRequirements(
+        Buffer.from(index.replace(`${looseRow}\n`, ''), 'utf8'),
+        requirements,
+      ),
+    ).toThrow('sequence lost');
+
+    // Second run: byte-identical convergence.
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+
+  it('still drops a draft loose row whose target is missing', async () => {
+    // The engine cleans up its own stale output; only non-draft rows are
+    // human-owned under the amendment.
+    const stale = '- [gone](gone.md) — Loose. <!-- draft -->';
+    await writeFile(
+      'knowledge/index.md',
+      [
+        '# Knowledge',
+        '',
+        '## Structure',
+        '',
+        '- [`a-file.md`](a-file.md) — *Curated.* `[a]`',
+        stale,
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/a-file.md', '# A\n\nBody A.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    const row = report.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row?.dropped).toEqual(['gone']);
+    expect(index).not.toContain('gone.md');
+    expect(index).toContain('- [`a-file.md`](a-file.md) — *Curated.* `[a]`');
+  });
+
+  it('still repairs a loose row canonically when its target exists', async () => {
+    // The row keys to the real file child (`loose.md` — the engine keys a
+    // bullet by its captured name, so the name must spell the child) — the
+    // malformed shape with a real target is still rebuilt from a fresh
+    // draft, as before the amendment.
+    const keyed = '- [loose.md](loose.md) — Loose row';
+    await writeFile('knowledge/index.md', ['# Knowledge', '', keyed, ''].join('\n'));
+    await writeFile('knowledge/loose.md', '# Loose\n\nLoose body.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    expect(index).toContain('- [`loose.md`](loose.md) — *Loose body.* `[loose]` <!-- draft -->');
+    expect(index).not.toContain(keyed);
+    const row = report.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row?.dropped ?? []).toEqual([]);
+
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+
+  it('treats a non-draft loose row whose spelling keys to no child as human-owned prose', async () => {
+    // The amendment evaluates "target is not a real child" by the engine's
+    // canonical keying: `[loose](loose.md)` keys as `loose`, which is not
+    // the file child `loose.md` — so the row is human-owned even though a
+    // similarly named file exists. The row itself is untouched; the real
+    // child still gets its canonical bullet, because every on-disk child is
+    // indexed and the human prose never suppresses it.
+    const missKeyed = '- [loose](loose.md) — Loose row';
+    await writeFile('knowledge/index.md', ['# Knowledge', '', missKeyed, ''].join('\n'));
+    await writeFile('knowledge/loose.md', '# Loose\n\nLoose body.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/index.md');
+
+    expect(index).toContain(missKeyed);
+    expect(index.split(missKeyed).length - 1).toBe(1);
+    expect(index).toContain('- [`loose.md`](loose.md) — *Loose body.* `[loose]` <!-- draft -->');
+    const row = report.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row?.dropped ?? []).toEqual([]);
+
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    expect(await readFile('knowledge/index.md')).toBe(index);
+    expect(report2.updated).toEqual([]);
   });
 });
 

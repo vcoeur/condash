@@ -8,12 +8,705 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeProjectReadme } from '../../cli/commands/test-helpers';
 import { exec } from '../exec';
 import { syncCommit, syncRun, SyncRefusedError } from './run';
 import { regenerateIndex } from '../index-tree';
 import { projectsStrategy } from '../index-projects';
+import { knowledgeStrategy } from '../index-knowledge';
+import * as gitApi from './git';
+import * as lockApi from './lock';
+import { RecoveryJournal, readRecoveryManifest } from './index-recovery';
+
+describe('actual guarded generated-index sync orchestration', () => {
+  let root: string;
+  let remote: string;
+  let clone: string;
+  let initial: string;
+  let incoming: string;
+  let local: string;
+  const output = 'knowledge/index.md';
+  const source = 'knowledge/2026-07-10-skipped/index.md';
+  beforeEach(async () => {
+    root = await makeGitConception();
+    remote = join(root, '.git/fixture-remote.git');
+    clone = join(root, '.git/fixture-incoming');
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  async function scenario(kind = 'ordinary') {
+    await git(root, 'config', 'core.autocrlf', 'false');
+    await fs.writeFile(join(root, '.gitattributes'), '*.md -text\n');
+    await fs.writeFile(join(root, 'knowledge/body.md'), '# Body\n\nFirst source content.\n');
+    let index = '# Human\n\n- [`body.md`](body.md) — *First source content.* <!-- draft -->\n';
+    if (kind === 'annotated-transform' || kind === 'safe-transform') {
+      await fs.mkdir(join(root, 'knowledge/2026-07-10-skipped'));
+      await fs.writeFile(join(root, source), '## Before\n');
+      index += `- [\`2026-07-10-skipped/\`](2026-07-10-skipped/index.md) — *Before.*${kind === 'annotated-transform' ? ' <!-- human annotation -->' : ''} <!-- draft -->\n`;
+      await fs.appendFile(join(root, '.gitattributes'), `${source} filter=heading\n`);
+      const filter = join(root, '.git/source-filter.cjs');
+      await fs.writeFile(
+        filter,
+        `const fs=require('node:fs');const text=fs.readFileSync(0,'utf8');process.stdout.write(process.argv[2]==='smudge'?text.replace(/^TRANSFORM$/gm,'## Salientquartz'):text.replace(/^## Salientquartz$/gm,'TRANSFORM'));`,
+      );
+      await git(root, 'config', 'filter.heading.clean', `${process.execPath} '${filter}' clean`);
+      await git(root, 'config', 'filter.heading.smudge', `${process.execPath} '${filter}' smudge`);
+    }
+    await fs.writeFile(join(root, output), index);
+    await git(root, 'add', '.');
+    await git(root, 'commit', '-qm', 'guarded baseline');
+    initial = (await git(root, 'rev-parse', 'HEAD')).trim();
+    await git(root, 'init', '--bare', '-q', '-b', 'main', remote);
+    await git(root, 'remote', 'add', 'origin', remote);
+    await git(root, 'push', '-qu', 'origin', 'main');
+    await git(root, 'clone', '-q', remote, clone);
+    await git(clone, 'config', 'user.name', 'Fixture');
+    await git(clone, 'config', 'user.email', 'fixture@example.invalid');
+    await fs.writeFile(
+      join(clone, output),
+      index + '- [`remote.md`](remote.md) — *Remote source.* <!-- draft -->\n',
+    );
+    await fs.writeFile(join(clone, 'knowledge/remote.md'), '# Remote\n\nRemote source.\n');
+    if (kind.includes('transform')) await fs.writeFile(join(clone, source), 'TRANSFORM\n');
+    if (kind === 'noncandidate-filter')
+      await fs.appendFile(join(clone, '.gitattributes'), 'projects/index.md filter=strip\n');
+    if (kind === 'candidate-filter')
+      await fs.appendFile(join(clone, '.gitattributes'), `${output} filter=strip\n`);
+    await git(clone, 'add', '.');
+    await git(clone, 'commit', '-qm', 'guarded incoming');
+    await git(clone, 'push', '-q');
+    incoming = (await git(clone, 'rev-parse', 'HEAD')).trim();
+    local = index.replace('First source content.*', 'Stale second-source row.*');
+    await fs.writeFile(join(root, output), local);
+    await fs.writeFile(
+      join(root, 'knowledge/body.md'),
+      '# Body\n\nSecond source edit with moonstone details.\n',
+    );
+    await settle(join(root, output), join(root, 'knowledge/body.md'));
+  }
+  const options = { ...RUN_DEFAULTS, push: true, quietPeriodSeconds: 0 };
+  it('normalizes exact H, uses actual guarded generation and verifies real local/remote output objects', async () => {
+    await scenario();
+    const report = await syncRun(root, options);
+    expect(report.integrateError).toBeNull();
+    expect(report.pushed).toBe(true);
+    expect(report.commits.length).toBeGreaterThan(0);
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
+    expect(await git(remote, 'show', 'main:knowledge/index.md')).toBe(
+      await fs.readFile(join(root, output), 'utf8'),
+    );
+    expect(await git(remote, 'show', 'main:knowledge/body.md')).toContain('Second source edit');
+    expect(await fs.readFile(join(root, output), 'utf8')).toContain('moonstone');
+    expect(await lockApi.inspectRecoveryEvidence(join(root, '.git'))).toEqual([]);
+  }, 90_000);
+  it('warms an opaque hook, defers unrelated commits too and resumes a fresh cutoff without another fetch/FF/hook', async () => {
+    await scenario();
+    const hookLog = join(root, '.git/once.log');
+    await fs.writeFile(
+      join(root, '.git/hooks/post-merge'),
+      `#!/bin/sh\nprintf 'ran\\n' >> '${hookLog}'\n`,
+      { mode: 0o755 },
+    );
+    await fs.writeFile(join(root, 'meta.txt'), 'unrelated settled\n');
+    await settle(join(root, 'meta.txt'));
+    const first = await syncRun(root, { ...options, quietPeriodSeconds: 90 });
+    expect(first.integrateError).toBeNull();
+    expect(first.indexesDeferred).toBe(true);
+    expect(first.commits).toEqual([]);
+    expect(first.pushed).toBe(false);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(incoming);
+    const fetch = await fs.readFile(join(root, '.git/FETCH_HEAD'));
+    await expect(syncRun(root, { ...options, push: false })).rejects.toBeInstanceOf(
+      SyncRefusedError,
+    );
+    await expect(
+      syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'blocked', options),
+    ).rejects.toBeInstanceOf(SyncRefusedError);
+    await fs.appendFile(join(root, output), '\nLater retained prose\n');
+    const second = await syncRun(root, options);
+    expect(second.integrateError).toBeNull();
+    expect(second.commits).toEqual([]);
+    expect(second.indexesDeferred).toBe(true);
+    const third = await syncRun(root, options);
+    expect(third.integrateError).toBeNull();
+    expect(third.pushed).toBe(true);
+    expect(third.indexesDeferred).toBe(false);
+    expect(await git(remote, 'show', 'main:meta.txt')).toBe('unrelated settled\n');
+    expect(await git(remote, 'show', 'main:knowledge/index.md')).toContain('Later retained prose');
+    expect(await fs.readFile(hookLog, 'utf8')).toBe('ran\n');
+    expect(await fs.readFile(join(root, '.git/FETCH_HEAD'))).toEqual(fetch);
+  }, 90_000);
+  it.each(['noncandidate-filter', 'candidate-filter'])(
+    'refuses incoming %s before any candidate replacement',
+    async (kind) => {
+      await scenario(kind);
+      const before = await fs.stat(join(root, output), { bigint: true });
+      const report = await syncRun(root, options);
+      expect(report.integrateError).not.toBeNull();
+      expect(report.commits).toEqual([]);
+      expect(report.pushed).toBe(false);
+      expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+      expect(await fs.readFile(join(root, output), 'utf8')).toBe(local);
+      const after = await fs.stat(join(root, output), { bigint: true });
+      expect([after.ino, after.mtimeNs, after.ctimeNs]).toEqual([
+        before.ino,
+        before.mtimeNs,
+        before.ctimeNs,
+      ]);
+    },
+    30_000,
+  );
+  it.each(['annotated-transform', 'safe-transform'])(
+    'consumes actual converted A for %s rather than raw M, preserving requirements or stopping the parent write',
+    async (kind) => {
+      await scenario(kind);
+      const draft = knowledgeStrategy.draftSubdirEntry;
+      const observations: { name: string; keywords: string[]; bytes: string }[] = [];
+      vi.spyOn(knowledgeStrategy, 'draftSubdirEntry').mockImplementation(async (...args) => {
+        const result = await draft(...args);
+        if (args[1].name === '2026-07-10-skipped')
+          observations.push({
+            name: args[1].name,
+            keywords: result.keywords,
+            bytes: await fs.readFile(join(args[1].absPath, 'index.md'), 'utf8'),
+          });
+        return result;
+      });
+      const report = await syncRun(root, options);
+      expect(observations.some((observation) => observation.bytes === '## Salientquartz\n')).toBe(
+        true,
+      );
+      expect(
+        observations.some((observation) =>
+          observation.keywords.some((keyword) => /Salientquartz/i.test(keyword)),
+        ),
+      ).toBe(true);
+      expect(await fs.readFile(join(root, source), 'utf8')).toBe('## Salientquartz\n');
+      expect(await git(clone, 'show', `${incoming}:${source}`)).toBe('TRANSFORM\n');
+      if (kind === 'annotated-transform') {
+        expect(report.integrateError).toContain('Protected recovery sequence lost');
+        expect(report.commits).toEqual([]);
+        expect(report.pushed).toBe(false);
+        expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(incoming);
+        expect(await fs.readFile(join(root, output), 'utf8')).toBe(
+          await git(clone, 'show', `${incoming}:${output}`),
+        );
+        expect(await fs.readFile(join(root, output), 'utf8')).toContain('human annotation');
+      } else {
+        expect(report.integrateError).toBeNull();
+        expect(report.pushed).toBe(true);
+        expect(await git(remote, 'show', `main:${output}`)).toBe(
+          await fs.readFile(join(root, output), 'utf8'),
+        );
+        expect(await git(remote, 'show', `main:${source}`)).toBe('TRANSFORM\n');
+      }
+    },
+    30_000,
+  );
+  it('records an actual hook-caused incompatible local commit and stops every later group/push', async () => {
+    await scenario();
+    const hook = join(root, '.git/hooks/pre-commit');
+    await fs.writeFile(
+      hook,
+      '#!/bin/sh\nprintf "# Hook lost protected human\\n" > knowledge/index.md\ngit add -- knowledge/index.md\n',
+      { mode: 0o755 },
+    );
+    const report = await syncRun(root, options);
+    expect(report.integrateError).not.toBeNull();
+    expect(report.commits.length).toBeGreaterThan(0);
+    expect(report.pushed).toBe(false);
+    expect((await git(remote, 'rev-parse', 'main')).trim()).toBe(incoming);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).not.toBe(incoming);
+    expect((await lockApi.inspectRecoveryEvidence(join(root, '.git'))).length).toBeGreaterThan(0);
+  }, 30_000);
+  it.each(['same-oid-branch', 'attributes'])(
+    'rejects a live post-merge hook changing %s after the actual FF and before any own commit',
+    async (kind) => {
+      await scenario();
+      const program =
+        kind === 'same-oid-branch'
+          ? '#!/bin/sh\ngit branch switched\ngit symbolic-ref HEAD refs/heads/switched\n'
+          : '#!/bin/sh\nprintf "knowledge/index.md filter=strip\\n" > .git/info/attributes\n';
+      await fs.writeFile(join(root, '.git/hooks/post-merge'), program, { mode: 0o755 });
+      const report = await syncRun(root, options);
+      expect(report.integrateError).not.toBeNull();
+      expect(report.commits).toEqual([]);
+      expect(report.pushed).toBe(false);
+      expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(incoming);
+      expect(await fs.readFile(join(root, output), 'utf8')).toBe(
+        await git(clone, 'show', `${incoming}:${output}`),
+      );
+      expect((await git(remote, 'rev-parse', 'main')).trim()).toBe(incoming);
+      expect((await lockApi.inspectRecoveryEvidence(join(root, '.git'))).length).toBeGreaterThan(0);
+    },
+    30_000,
+  );
+  it('stops after a real target rename/completion-fsync fault with prior durable intent and no first commit/push', async () => {
+    await scenario();
+    let injected = false;
+    const report = await syncRun(root, options, {
+      boundary: async (edge) => {
+        if (edge === 'target.parent.fsync:before' && !injected) {
+          injected = true;
+          throw Object.assign(new Error('wiring fsync fault'), { code: 'EIO' });
+        }
+      },
+    });
+    expect(injected).toBe(true);
+    expect(report.integrateError).toContain('wiring fsync fault');
+    expect(report.commits).toEqual([]);
+    expect(report.pushed).toBe(false);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+    expect((await lockApi.inspectRecoveryEvidence(join(root, '.git'))).length).toBeGreaterThan(0);
+  }, 30_000);
+  it('warms a same-content external stat change across FF even without an executable hook', async () => {
+    await scenario();
+    const untouched = join(root, 'knowledge/untouched/index.md');
+    await fs.mkdir(join(root, 'knowledge/untouched'));
+    await fs.writeFile(untouched, '# Untouched human\n');
+    await settle(untouched);
+    const merge = gitApi.ffOnlyMerge;
+    vi.spyOn(gitApi, 'ffOnlyMerge').mockImplementation(async (...args) => {
+      const result = await merge(...args);
+      await fs.utimes(untouched, new Date(), new Date());
+      return result;
+    });
+    const first = await syncRun(root, options);
+    expect(first.integrateError).toBeNull();
+    expect(first.indexesDeferred).toBe(true);
+    expect(first.commits).toEqual([]);
+    const deferred = await readRecoveryManifest(join(root, '.git/condash-index-recovery/active'));
+    expect(deferred.checkout?.opaqueHook).toBe(false);
+    expect(
+      deferred.paths.find((path) => path.protection.path === 'knowledge/untouched/index.md')!
+        .eligibleAtMs,
+    ).toBeGreaterThan(deferred.invocation.cutoffMs);
+    expect(await fs.readFile(untouched, 'utf8')).toBe('# Untouched human\n');
+    const second = await syncRun(root, options);
+    expect(second.integrateError).toBeNull();
+    expect(second.pushed).toBe(true);
+    expect(gitApi.ffOnlyMerge).toHaveBeenCalledTimes(1);
+  }, 30_000);
+  it('refuses an ambiguous configured push destination before normalization', async () => {
+    await scenario();
+    await git(root, 'config', 'remote.origin.push', 'refs/heads/main:refs/heads/other');
+    const report = await syncRun(root, options);
+    expect(report.integrateError).toContain('unambiguous upstream push destination');
+    expect(report.commits).toEqual([]);
+    expect(report.pushed).toBe(false);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+    expect(await fs.readFile(join(root, output), 'utf8')).toBe(local);
+  }, 30_000);
+  it('rejects a post-commit tree-only protected-output substitution despite an unchanged live index/worktree', async () => {
+    await scenario();
+    await fs.writeFile(
+      join(root, '.git/hooks/post-commit'),
+      `#!/bin/sh
+blob=$(printf '# Tree-only lost human\\n' | git hash-object -w --stdin)
+GIT_INDEX_FILE=.git/fixture-tree-index git read-tree HEAD
+GIT_INDEX_FILE=.git/fixture-tree-index git update-index --add --cacheinfo 100644 "$blob" knowledge/index.md
+tree=$(GIT_INDEX_FILE=.git/fixture-tree-index git write-tree)
+parent=$(git rev-parse HEAD^)
+commit=$(printf 'fixture tree-only substitution\\n' | git commit-tree "$tree" -p "$parent")
+git update-ref HEAD "$commit"
+`,
+      { mode: 0o755 },
+    );
+    const report = await syncRun(root, options);
+    expect(report.integrateError).toMatch(
+      /Actual recovery commit tree differs|Recovery refuses staged deltas/,
+    );
+    expect(report.commits).toHaveLength(1);
+    expect(report.pushed).toBe(false);
+    expect(await fs.readFile(join(root, output), 'utf8')).toContain('# Human');
+    expect(await git(root, 'show', 'HEAD:knowledge/index.md')).toBe('# Tree-only lost human\n');
+    expect((await git(remote, 'rev-parse', 'main')).trim()).toBe(incoming);
+  }, 30_000);
+  it('reports an observed local commit when the commit command fails after its actual effect', async () => {
+    await scenario();
+    vi.spyOn(gitApi, 'commitPaths').mockImplementation(
+      async (directory, paths, subject, checkpoints) => {
+        await checkpoints!.beforeAdd(paths);
+        await git(directory, 'add', '-A', '--', ...paths);
+        await checkpoints!.afterAdd(paths);
+        await checkpoints!.beforeCommit(paths);
+        await git(directory, 'commit', '--only', '-qm', subject, '--', ...paths);
+        throw new Error('injected lost command response after actual commit');
+      },
+    );
+    const report = await syncRun(root, options);
+    const actual = (await git(root, 'rev-parse', 'HEAD')).trim();
+    expect(actual).not.toBe(incoming);
+    expect(report.integrateError).toContain(`observedLocalCommits=${actual}`);
+    expect(report.integrateError).toContain('verifiedCommits=0');
+    expect(report.pushed).toBe(false);
+    expect((await git(remote, 'rev-parse', 'main')).trim()).toBe(incoming);
+    expect(
+      (
+        JSON.parse(
+          await fs.readFile(join(root, '.git/condash-index-recovery/active/manifest.json'), 'utf8'),
+        ) as { intents: { kind: string; status: string }[] }
+      ).intents.some((intent) => intent.kind === 'commit' && intent.status === 'pending'),
+    ).toBe(true);
+  }, 30_000);
+  it('reports a verified push honestly when later outcome publication fails', async () => {
+    await scenario();
+    const report = await syncRun(root, options, {
+      boundary: async (edge) => {
+        if (edge === 'manifest.complete.rename:before')
+          throw new Error('outcome publication fault');
+      },
+    });
+    expect(report.integrateError).toContain('outcome publication fault');
+    expect(report.integrateError).toContain('push=pushed');
+    expect(report.pushed).toBe(true);
+    expect(report.commits.length).toBeGreaterThan(0);
+    expect(await git(remote, 'rev-parse', 'main')).toBe(await git(root, 'rev-parse', 'HEAD'));
+    expect((await lockApi.inspectRecoveryEvidence(join(root, '.git'))).length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it.each(['journal-root.mkdir:after', 'journal-active.mkdir:after', 'token.purpose.fsync:before'])(
+    'transfers cleanup before a possibly effective bootstrap operation at %s',
+    async (edge) => {
+      await scenario();
+      const before = await fs.readFile(join(root, output));
+      const report = await syncRun(root, options, {
+        boundary: async (point) => {
+          if (point === edge) throw new Error('bootstrap return-gap fault');
+          if (point === 'emergency-error.open:before') throw new Error('emergency ENOSPC');
+        },
+      });
+      expect(report.integrateError).toContain('manual reconciliation required');
+      expect(report.commits).toEqual([]);
+      expect(report.pushed).toBe(false);
+      expect(await fs.readFile(join(root, output))).toEqual(before);
+      expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+      expect(await fs.stat(join(root, '.git/condash-sync.lock'))).toBeDefined();
+      await expect(syncRun(root, options)).rejects.toBeInstanceOf(SyncRefusedError);
+    },
+    30_000,
+  );
+
+  it('releases the ordinary lock when a pre-evidence journal-create check fails, and the next sweep proceeds', async () => {
+    await scenario();
+    const before = await fs.readFile(join(root, output));
+    // A wrong umask fails RecoveryJournal.create's provably non-mutating
+    // checks; with the fix they run before the cleanup transfer, so the
+    // ordinary lock is released normally instead of blocking a live sweeper
+    // up to the stale window.
+    const savedUmask = process.umask(0o077);
+    let report;
+    try {
+      report = await syncRun(root, options);
+    } finally {
+      process.umask(savedUmask);
+    }
+    expect(report.integrateError).toContain('refused before normalization');
+    expect(report.integrateError).toContain('0644 Git checkout umask');
+    expect(report.commits).toEqual([]);
+    expect(report.pushed).toBe(false);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+    expect(await fs.readFile(join(root, output))).toEqual(before);
+    // Pre-evidence: no journal exists, and the lock is gone.
+    expect(await lockApi.inspectRecoveryEvidence(join(root, '.git'))).toEqual([]);
+    await expect(fs.stat(join(root, '.git/condash-sync.lock'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const next = await syncRun(root, options);
+    expect(next.integrateError).toBeNull();
+    expect(next.pushed).toBe(true);
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
+  }, 90_000);
+
+  it('releases the ordinary lock when a hoisted read-only create check fails, and the next sweep proceeds', async () => {
+    await scenario();
+    const before = await fs.readFile(join(root, output));
+    // Round 2: the four read-only create-time checks (directoryChain,
+    // checkedDirectory ×2, checkGit) run before the cleanup transfer too.
+    // The existing verifyGit hook seam injects the checkGit failure — no new
+    // harness machinery.
+    let calls = 0;
+    const report = await syncRun(root, options, {
+      verifyGit: async () => {
+        calls++;
+        throw new Error('hoisted git-state fault');
+      },
+    });
+    expect(calls).toBe(1);
+    expect(report.integrateError).toContain('refused before normalization');
+    expect(report.integrateError).toContain('hoisted git-state fault');
+    expect(report.commits).toEqual([]);
+    expect(report.pushed).toBe(false);
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(initial);
+    expect(await fs.readFile(join(root, output))).toEqual(before);
+    expect(await lockApi.inspectRecoveryEvidence(join(root, '.git'))).toEqual([]);
+    await expect(fs.stat(join(root, '.git/condash-sync.lock'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const next = await syncRun(root, options);
+    expect(next.integrateError).toBeNull();
+    expect(next.pushed).toBe(true);
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
+  }, 90_000);
+
+  it.each([
+    'token.release.unlink:after',
+    'token.release.parent.fsync:before',
+    'token.release.helper:before',
+  ])(
+    'reports actual completed commits/push and cleanup uncertainty after %s without poisoning the archive',
+    async (edge) => {
+      await scenario();
+      let fired = false;
+      const report = await syncRun(root, options, {
+        boundary: async (point) => {
+          if (point === edge) {
+            fired = true;
+            throw new Error('post-ack cleanup fault');
+          }
+          if (fired && point === 'emergency-error.open:before')
+            throw new Error('forbidden emergency write');
+        },
+      });
+      expect(fired).toBe(true);
+      expect(report.integrateError).toContain('cleanup uncertainty');
+      expect(report.integrateError).not.toContain('manual reconciliation required');
+      expect(report.pushed).toBe(true);
+      expect(report.commits).toHaveLength(2);
+      expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(
+        (await git(remote, 'rev-parse', 'main')).trim(),
+      );
+      expect(await lockApi.inspectRecoveryEvidence(join(root, '.git'))).toEqual([]);
+      await fs.writeFile(join(root, 'after-cleanup.txt'), 'ordinary next invocation\n');
+      const next = await syncRun(root, options);
+      expect(next.integrateError).toBeNull();
+      expect(await git(remote, 'show', 'main:after-cleanup.txt')).toBe(
+        'ordinary next invocation\n',
+      );
+    },
+    90_000,
+  );
+});
+
+describe('early unfinished-recovery entry gate', () => {
+  let root: string;
+  let gitDir: string;
+  let evidence: string;
+  beforeEach(async () => {
+    root = await makeGitConception();
+    gitDir = join(root, '.git');
+    evidence = join(gitDir, 'condash-index-recovery');
+    await fs.writeFile(join(root, 'knowledge/index.md'), '# Protected human\n');
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function assertRefused(entry: () => Promise<unknown>, expected: RegExp): Promise<Error> {
+    const status = vi.spyOn(gitApi, 'readChangedPaths');
+    const fetch = vi.spyOn(gitApi, 'fetchUpstream');
+    const acquire = vi.spyOn(lockApi, 'acquireSyncLock');
+    const index = await fs.readFile(join(gitDir, 'index'));
+    const protectedBytes = await fs.readFile(join(root, 'knowledge/index.md'));
+    const head = await git(root, 'rev-parse', 'HEAD');
+    const error = await entry().then(
+      () => null,
+      (failure: unknown) => failure,
+    );
+    expect(error).toBeInstanceOf(SyncRefusedError);
+    expect((error as Error).message).toMatch(expected);
+    expect(status).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+    expect(await fs.readFile(join(gitDir, 'index'))).toEqual(index);
+    expect(await fs.readFile(join(root, 'knowledge/index.md'))).toEqual(protectedBytes);
+    expect(await git(root, 'rev-parse', 'HEAD')).toBe(head);
+    return error as Error;
+  }
+
+  it.each([
+    'run',
+    'no-push',
+    'dry-run',
+    'off',
+    'safe-merge',
+    'invalid-quiet',
+    'milestone',
+    'milestone-no-push',
+    'milestone-dry-run',
+    'milestone-off',
+  ])(
+    'refuses %s before status/fetch/ordinary-lock routing for missing authoritative metadata',
+    async (invocation) => {
+      await fs.mkdir(join(evidence, 'active'), { recursive: true, mode: 0o700 });
+      const staleLock = join(gitDir, 'condash-sync.lock');
+      await fs.writeFile(
+        staleLock,
+        JSON.stringify({ pid: process.pid, startedAt: new Date(0).toISOString() }),
+      );
+      await fs.utimes(staleLock, new Date(0), new Date(0));
+      const before = await fs.readFile(staleLock);
+      const identity = await fs.stat(staleLock, { bigint: true });
+      const options = {
+        ...RUN_DEFAULTS,
+        push: invocation !== 'no-push' && invocation !== 'milestone-no-push',
+        dryRun: invocation === 'dry-run' || invocation === 'milestone-dry-run',
+        integration:
+          invocation === 'off' || invocation === 'milestone-off'
+            ? ('off' as const)
+            : invocation === 'safe-merge'
+              ? ('safe-merge' as const)
+              : ('ff-only' as const),
+        quietPeriodSeconds: invocation === 'invalid-quiet' ? Number.NaN : 0,
+      };
+      const error = await assertRefused(
+        () =>
+          invocation.startsWith('milestone')
+            ? syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'fixture milestone', options)
+            : syncRun(root, options),
+        /Unresolved index recovery.*manual reconciliation/,
+      );
+      expect(error.message).toContain('authoritative metadata/evidence invalid or incomplete');
+      expect(error.message).toContain(JSON.stringify(join(evidence, 'active')));
+      expect(await fs.readFile(staleLock)).toEqual(before);
+      expect((await fs.stat(staleLock, { bigint: true })).ino).toBe(identity.ino);
+      expect((await fs.stat(staleLock, { bigint: true })).mtimeNs).toBe(0n);
+      await expect(fs.stat(join(gitDir, 'FETCH_HEAD'))).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+    20_000,
+  );
+
+  it.each(['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'])(
+    'never lets %s retarget status/index writes around the root journal gate',
+    async (key) => {
+      await fs.mkdir(join(evidence, 'active'), { recursive: true, mode: 0o700 });
+      await assertRefused(async () => {
+        const saved = process.env[key];
+        process.env[key] = join(gitDir, 'fixture-redirection');
+        try {
+          return await syncRun(root, RUN_DEFAULTS);
+        } finally {
+          if (saved === undefined) delete process.env[key];
+          else process.env[key] = saved;
+        }
+      }, /root\/index redirection is unsupported/);
+    },
+  );
+
+  it.each(['partial-main', 'invalid-main', 'pending-archive', 'header-only-terminal'])(
+    'retains and diagnoses %s without treating it as absent or resolved',
+    async (shape) => {
+      const location =
+        shape.endsWith('archive') || shape === 'header-only-terminal'
+          ? join(evidence, 'resolved', 'a'.repeat(32))
+          : join(evidence, 'active');
+      await fs.mkdir(location, { recursive: true, mode: 0o700 });
+      const bytes =
+        shape === 'partial-main'
+          ? '{'
+          : JSON.stringify({
+              version: 1,
+              generation: 2,
+              owner: { nonce: 'b'.repeat(32) },
+              phase:
+                shape === 'header-only-terminal'
+                  ? 'archived'
+                  : shape === 'pending-archive'
+                    ? 'archive-pending'
+                    : 'preparing',
+            });
+      await fs.writeFile(join(location, 'manifest.json'), bytes, { mode: 0o600 });
+      await assertRefused(
+        () => syncRun(root, { ...RUN_DEFAULTS, push: true, quietPeriodSeconds: 0 }),
+        /Unresolved index recovery/,
+      );
+      expect(await fs.readFile(join(location, 'manifest.json'), 'utf8')).toBe(bytes);
+      await expect(fs.stat(join(gitDir, 'condash-sync.lock'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+    20_000,
+  );
+
+  it.each(['valid-active', 'missing-immutable'])(
+    'diagnoses %s without changing authoritative evidence or ordinary state',
+    async (shape) => {
+      await git(root, 'config', 'core.autocrlf', 'false');
+      const remote = join(root, '.git/fixture-remote.git');
+      await git(root, 'init', '--bare', '-q', '-b', 'main', remote);
+      await git(root, 'remote', 'add', 'origin', remote);
+      await git(root, 'push', '-q', '-u', 'origin', 'main');
+      const limits = { maxBytes: 8 * 1024 * 1024, maxEntries: 100_000 };
+      const state = await gitApi.readRecoveryGitState(root, limits);
+      const acquired = await lockApi.acquireSyncLock(gitDir);
+      if (!acquired.acquired) throw new Error('Fixture lock unavailable');
+      const lease = await lockApi.promoteSyncLock(acquired.lock);
+      const journal = await RecoveryJournal.create({
+        root,
+        gitDir,
+        lock: acquired.lock,
+        lease,
+        state,
+        invocation: {
+          kind: 'syncRun',
+          dryRun: false,
+          push: true,
+          integration: 'ff-only',
+          quietPeriodSeconds: 90,
+          cutoffMs: Date.now() - 90_000,
+        },
+      });
+      await journal.addPath({
+        path: 'knowledge/index.md',
+        role: 'source',
+        incoming: 'unchanged',
+        head: null,
+        incomingBytes: null,
+        eligibleAtMs: 0,
+      });
+      await journal.releaseForManualReconciliation();
+      const manifest = await readRecoveryManifest(journal.directory);
+      const originalManifest = await fs.readFile(join(journal.directory, 'manifest.json'));
+      const retainedPath = join(gitDir, 'fixture-retained-immutable-evidence.bin');
+      if (shape === 'missing-immutable')
+        await fs.rename(join(journal.directory, manifest.data[0].file), retainedPath);
+      const error = await assertRefused(
+        () =>
+          syncCommit(root, 'projects/2026-07/2026-07-10-alpha', 'blocked milestone', {
+            dryRun: false,
+            push: false,
+            integration: 'off',
+          }),
+        /phase="preparing"/,
+      );
+      expect(error.message).toContain(`generation=${manifest.generation}`);
+      if (shape === 'valid-active') {
+        expect(error.message).toContain(`expectedHEAD=${state.head}`);
+        expect(error.message).toContain('pending=0');
+      } else {
+        expect(error.message).toContain('authoritative metadata/evidence invalid or incomplete');
+        expect(await fs.readFile(retainedPath)).toEqual(Buffer.from('# Protected human\n'));
+      }
+      expect(await fs.readFile(join(journal.directory, 'manifest.json'))).toEqual(originalManifest);
+    },
+    20_000,
+  );
+
+  it('quotes hostile private paths and bounds diagnostics without opening a partial record as authority', async () => {
+    const location = join(evidence, 'resolved', 'bad\narchive');
+    await fs.mkdir(location, { recursive: true, mode: 0o700 });
+    await fs.writeFile(join(location, 'manifest.json'), '{');
+    const error = await assertRefused(
+      () => syncRun(root, RUN_DEFAULTS),
+      /Unresolved index recovery/,
+    );
+    expect(error.message).toContain('bad\\narchive');
+    expect(error.message.split('\n').length).toBeLessThanOrEqual(12);
+    expect(Buffer.byteLength(error.message)).toBeLessThanOrEqual(4096);
+  }, 20_000);
+});
 
 const HOUR_AGO = () => new Date(Date.now() - 60 * 60 * 1000);
 
@@ -60,6 +753,8 @@ async function makeGitConception(): Promise<string> {
   );
 
   await git(root, 'init', '-q', '-b', 'main');
+  await fs.mkdir(join(root, '.git/hooks'), { recursive: true });
+  await fs.mkdir(join(root, '.git/info'), { recursive: true });
   await git(root, 'config', 'user.email', 'test@example.com');
   await git(root, 'config', 'user.name', 'Test');
   await git(root, 'add', '.gitignore');

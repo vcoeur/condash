@@ -6,9 +6,10 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exec } from '../../main/exec';
 import type { SyncReport } from '../../main/sync/run';
+import * as syncApi from '../../main/sync/run';
 import { CliError } from '../output';
 import { UsageError, type ParsedArgs } from '../parser';
 import { runSync } from './sync';
@@ -206,7 +207,7 @@ describe('runSync run against a real repo', () => {
   });
 
   it.each(['run', 'commit'])(
-    'warns that integration failure skipped commits and push for %s',
+    'reports zero known completed effects without promising integration replay for %s',
     async (verb) => {
       await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
       await exec('git', ['remote', 'add', 'origin', join(root, 'missing-remote.git')], {
@@ -227,8 +228,11 @@ describe('runSync run against a real repo', () => {
       expect(threw).toBeUndefined();
       const envelope = JSON.parse(stdout);
       expect(envelope.data.commits).toEqual([]);
-      expect(envelope.warnings.join('\n')).toContain('commits and push skipped');
-      expect(envelope.warnings.join('\n')).toContain('Will retry integration next run');
+      expect(envelope.warnings.join('\n')).toContain(
+        'no completed sync commits or successful push are reported',
+      );
+      expect(envelope.warnings.join('\n')).toContain('integration is not automatically replayed');
+      expect(envelope.warnings.join('\n')).not.toContain('commits and push skipped');
     },
   );
 
@@ -246,6 +250,67 @@ describe('runSync run against a real repo', () => {
       'deferred projects indexes until new projects/2026-07/2026-07-10-alpha/README.md settles',
     );
   });
+
+  it.each([
+    {
+      pushed: true,
+      committed: true,
+      problem: 'Index recovery stopped; manual reconciliation required',
+      expected: 'push completed',
+    },
+    {
+      pushed: false,
+      committed: true,
+      problem: 'Index recovery stopped; manual reconciliation required; push=uncertain',
+      expected: 'reported commits already exist',
+    },
+    {
+      pushed: true,
+      committed: true,
+      problem:
+        'Index recovery cleanup uncertainty after durable terminal publication and owned token removal',
+      expected: 'cleanup uncertainty',
+    },
+    {
+      pushed: false,
+      committed: false,
+      problem:
+        'Index recovery cleanup uncertainty after durable deferred publication and owned token removal',
+      expected: 'cleanup uncertainty',
+    },
+  ])(
+    'keeps actual effect fields and truthful warnings for $problem / pushed=$pushed',
+    async (scenario) => {
+      const baseline = await syncApi.syncRun(root, {
+        dryRun: false,
+        push: false,
+        integration: 'off',
+        quietPeriodSeconds: 0,
+      });
+      const report: SyncReport = {
+        ...baseline,
+        pushed: scenario.pushed,
+        commits: scenario.committed
+          ? [{ subject: 'recorded effect', sha: 'a'.repeat(40), paths: ['meta.txt'] }]
+          : [],
+        integrateError: scenario.problem,
+      };
+      const spy = vi.spyOn(syncApi, 'syncRun').mockResolvedValue(report);
+      try {
+        const { stdout, threw } = await captureStdout(() =>
+          runSync('run', args('run'), jsonCtx(), root),
+        );
+        expect(threw).toBeUndefined();
+        const envelope = JSON.parse(stdout);
+        expect(envelope.data).toEqual(report);
+        expect(envelope.warnings.join('\n')).toContain(scenario.expected);
+        expect(envelope.warnings.join('\n')).not.toContain('commits and push skipped');
+        expect(envelope.warnings.join('\n')).not.toContain('Will retry integration');
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 
   it('prints nothing and exits cleanly when the lock is held', async () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
