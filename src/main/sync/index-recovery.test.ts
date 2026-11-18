@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -32,37 +32,25 @@ import {
 } from './lock';
 import type { RecoveryGitState, RecoveryGitChange, ChangedPath } from './git';
 import { readRecoveryGitState, ffOnlyMerge } from './git';
+import { closeRecoveryFixtureParent, openRecoveryFixtureParent } from './recovery-test-env';
 
 const bytes = (text: string) => Buffer.from(text);
 const draft = '- [old](old.md) — *Stale*. <!-- draft -->';
 
 // The recovery journal's ancestor gate (`directoryChain`) refuses a journal
 // root whose chain contains a world-writable or foreign-owned ancestor —
-// designed production protection for a journal about to be trusted. CI's
-// /tmp is the standard 1777 sticky, so fixtures rooted at os.tmpdir() were
-// refused before any fault could be injected (PR #622: 152/194 failures, all
-// `Foreign or writable recovery ancestor`); this dev host's /tmp is a
-// nonstandard 755 <user>, which masked the failure the same way its umask 002
-// masked the 0644 gate. The fixture chain must therefore be one the gate
-// accepts on every CI-like layout: `/` and `/home` are root-owned (equal to
-// the filesystem root's systemUid, so the gate accepts them) and
-// `/home/<runner>` is runner-owned, so a private 0700 parent under
-// os.homedir() passes on any host whose home directory is user-owned.
-// `CONDASH_VITEST_RECOVERY_PARENT` is a test-host accommodation only (e.g. a
-// sandbox mounting the home root read-only); CI never sets it, so CI always
-// exercises the prescribed home chain.
-// Only this file's vitest worker touches the path (test files run one per
-// worker), so a module-scoped parent is safe; a stale crashed run's
-// leftovers are force-recreated before the run and removed after it.
-const FIXTURE_PARENT =
-  process.env.CONDASH_VITEST_RECOVERY_PARENT ?? join(homedir(), '.condash-recovery-vitest');
+// designed production protection for a journal about to be trusted — so every
+// fixture that activates recovery roots under the private parent described in
+// recovery-test-env.ts instead of os.tmpdir(), whose CI shape is 1777.
+// Only this file's vitest worker touches its scope (test files run one per
+// worker), so a module-scoped parent is safe.
+let fixtureParent: string;
 
 beforeAll(async () => {
-  await fs.rm(FIXTURE_PARENT, { recursive: true, force: true }).catch(() => {});
-  await fs.mkdir(FIXTURE_PARENT, { recursive: true, mode: 0o700 });
+  fixtureParent = await openRecoveryFixtureParent('index-recovery');
 });
 afterAll(async () => {
-  await fs.rm(FIXTURE_PARENT, { recursive: true, force: true }).catch(() => {});
+  await closeRecoveryFixtureParent('index-recovery');
 });
 
 describe('all-or-nothing structural recovery overlap selection', () => {
@@ -207,7 +195,7 @@ describe('explicit reviewed manual restart resolution (real local Git)', () => {
 
   beforeEach(async () => {
     environment = { ...process.env };
-    base = await fs.mkdtemp(join(FIXTURE_PARENT, 'condash-manual-resolution-'));
+    base = await fs.mkdtemp(join(fixtureParent, 'condash-manual-resolution-'));
     root = join(base, 'root');
     reviewDirectory = join(base, 'review');
     await fs.mkdir(root);
@@ -1161,7 +1149,7 @@ describe('inactive strict recovery data/manifest/target protocol', () => {
   let hooks: RecoveryPersistenceHooks;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(join(FIXTURE_PARENT, 'condash-strict-recovery-'));
+    root = await fs.mkdtemp(join(fixtureParent, 'condash-strict-recovery-'));
     gitDir = join(root, '.git');
     await fs.mkdir(gitDir);
     await fs.mkdir(join(root, 'knowledge'));

@@ -6,7 +6,6 @@
  * for the whole file rather than per-invocation.
  */
 import { promises as fs } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeProjectReadme } from '../../cli/commands/test-helpers';
@@ -18,6 +17,20 @@ import { knowledgeStrategy } from '../index-knowledge';
 import * as gitApi from './git';
 import * as lockApi from './lock';
 import { RecoveryJournal, readRecoveryManifest } from './index-recovery';
+import { closeRecoveryFixtureParent, openRecoveryFixtureParent } from './recovery-test-env';
+
+// The guarded-orchestration describe below activates real recovery journals,
+// whose ancestor gate refuses CI's world-writable /tmp chain, so every
+// mkdtemp fixture in this file roots under the private parent described in
+// recovery-test-env.ts.
+let fixtureParent: string;
+
+beforeAll(async () => {
+  fixtureParent = await openRecoveryFixtureParent('run');
+});
+afterAll(async () => {
+  await closeRecoveryFixtureParent('run');
+});
 
 describe('actual guarded generated-index sync orchestration', () => {
   let root: string;
@@ -744,7 +757,7 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 
 /** A git-backed conception with the real `.gitignore` sentinels. */
 async function makeGitConception(): Promise<string> {
-  const root = await fs.mkdtemp(join(tmpdir(), 'condash-sync-test-'));
+  const root = await fs.mkdtemp(join(fixtureParent, 'condash-sync-test-'));
   await fs.mkdir(join(root, 'projects'), { recursive: true });
   await fs.mkdir(join(root, 'knowledge'), { recursive: true });
   await fs.writeFile(
@@ -779,7 +792,7 @@ async function subjects(root: string): Promise<string[]> {
  * the second session pushed.
  */
 async function advanceRemote(remote: string, root: string): Promise<string> {
-  const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-second-'));
+  const clone = await fs.mkdtemp(join(fixtureParent, 'condash-sync-second-'));
   try {
     await git(root, 'clone', '-q', remote, clone);
     await git(clone, 'config', 'user.email', 'test@example.com');
@@ -1721,7 +1734,7 @@ describe('syncRun', () => {
   });
 
   it('pushes when the branch is ahead of its upstream', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -1742,7 +1755,7 @@ describe('syncRun', () => {
   });
 
   it('fast-forwards a remote-only lead before committing, keeping the push a fast-forward', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -1775,7 +1788,7 @@ describe('syncRun', () => {
   });
 
   it('refuses to push on a genuine divergence, keeping the local commits', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -1814,7 +1827,7 @@ describe('syncRun', () => {
   });
 
   it('leaves local bytes, staged entries and HEAD unchanged when a fast-forward collides', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -1825,7 +1838,7 @@ describe('syncRun', () => {
     await git(root, 'push', '-q', 'origin', 'main');
 
     // A second session edits the same README and pushes.
-    const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-second-'));
+    const clone = await fs.mkdtemp(join(fixtureParent, 'condash-sync-second-'));
     try {
       await git(root, 'clone', '-q', remote, clone);
       await git(clone, 'config', 'user.email', 'test@example.com');
@@ -1879,7 +1892,7 @@ describe('syncRun', () => {
     const indexPath = 'projects/2026-07/index.md';
     await fs.appendFile(join(root, indexPath), '\nLocal prose\n');
     await settle(join(root, indexPath));
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-mtime-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-mtime-remote-'));
     try {
       await git(remote, 'init', '-q', '--bare', '-b', 'main');
       await git(root, 'remote', 'add', 'origin', remote);
@@ -1905,8 +1918,8 @@ describe('syncRun', () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     await settle(readme);
     await syncRun(root, RUN_DEFAULTS);
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-overlap-remote-'));
-    const clone = await fs.mkdtemp(join(tmpdir(), 'condash-sync-overlap-clone-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-overlap-remote-'));
+    const clone = await fs.mkdtemp(join(fixtureParent, 'condash-sync-overlap-clone-'));
     try {
       await git(remote, 'init', '-q', '--bare', '-b', 'main');
       await git(root, 'remote', 'add', 'origin', remote);
@@ -1956,7 +1969,7 @@ describe('syncRun', () => {
   });
 
   it('reports a failed fetch and gates both sweep and milestone commits', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -2027,7 +2040,7 @@ describe('syncRun', () => {
   });
 
   it("honors integration: 'off' as legacy behavior — no fetch, the push fails instead", async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
@@ -2108,7 +2121,7 @@ describe('syncCommit', () => {
   });
 
   it('commits the item under a real subject but refuses to push on divergence', async () => {
-    const remote = await fs.mkdtemp(join(tmpdir(), 'condash-sync-remote-'));
+    const remote = await fs.mkdtemp(join(fixtureParent, 'condash-sync-remote-'));
     await git(remote, 'init', '-q', '--bare', '-b', 'main');
     await git(root, 'remote', 'add', 'origin', remote);
     await git(root, 'push', '-q', '-u', 'origin', 'main');
