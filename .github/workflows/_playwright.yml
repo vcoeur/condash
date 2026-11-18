@@ -53,7 +53,7 @@ jobs:
             node_modules
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v2
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v3
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
@@ -75,20 +75,24 @@ jobs:
           skip-if-command: xvfb-run
 
       # Caches are immutable per key and the tree *is* the install here: on a
-      # hit, `npm ci` below is skipped. A cached tree that lost its rebuilt
-      # native modules boots nothing — Electron throws
+      # hit, `npm ci` below is skipped. A cached tree with a missing native
+      # module boots nothing — Electron throws
       # `Failed to load native module: pty.node` and every spec times out —
       # while `npm run build` still passes, because esbuild never loads one.
-      - name: Verify the rebuilt native module (cache hit only)
+      # Existence alone is not enough either: the v4.137.5 gate failure of
+      # 2026-11-18 was a pty.node that existed but was built on a newer-glibc
+      # image than this lane's (`ubuntu-latest` drifting under the fast lane;
+      # this lane pins 24.04), and `[ -f ]` passed it straight through.
+      # require() catches both absent and unloadable; the rebuild path works
+      # because node-pty is pure N-API, so the binary it produces (against
+      # this runner's Node headers) loads in Electron too.
+      - name: Verify node-pty loads (cache hit only)
         if: steps.deps-cache.outputs.cache-hit == 'true'
         run: |
-          if [ ! -f node_modules/node-pty/build/Release/pty.node ]; then
-            echo "::warning::cached node_modules has no node-pty binary — rebuilding"
+          if ! node -e "require('node-pty')" 2>/dev/null; then
+            echo "::warning::cached node-pty binary missing or unloadable on this image — rebuilding"
             npm rebuild node-pty
           fi
-          # Existence alone would pass a truncated/corrupt binary; require()
-          # proves the module actually loads (node-pty is pure N-API, so any
-          # ABI it was built against works here).
           node -e "require('node-pty')"
 
       - name: Install dependencies

@@ -19,7 +19,15 @@ permissions:
 jobs:
   fast:
     name: Fast checks (typecheck + unit)
-    runs-on: ubuntu-latest
+    # Pinned to the same image as _playwright.yml, deliberately: the two lanes
+    # share one node_modules cache ("deps-ubuntu-*"), so they must share one
+    # libc. On 2026-11-18 ubuntu-latest resolved to a glibc-2.42 image while
+    # the playwright lane (pinned 24.04, glibc 2.39) served that cached tree —
+    # pty.node compiled here loaded nowhere else, and the v4.137.5 release
+    # gate caught it via the node-pty load smoke. ubuntu-24.04 is the newest
+    # image both lanes can share (Playwright 1.59.1 rejects 26.04 — see
+    # _playwright.yml), so it pins both until Playwright lifts that.
+    runs-on: ubuntu-24.04
     # Same 360-minute-default exposure as the other lanes. Measured at
     # 1-2 min across recent releases; 20 leaves an order of magnitude.
     timeout-minutes: 20
@@ -51,7 +59,7 @@ jobs:
             node_modules
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v2
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33-v3
 
       - name: Install dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
