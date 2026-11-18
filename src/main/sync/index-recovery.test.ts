@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   RECOVERY_LIMITS,
   RecoveryBudget,
@@ -35,6 +35,35 @@ import { readRecoveryGitState, ffOnlyMerge } from './git';
 
 const bytes = (text: string) => Buffer.from(text);
 const draft = '- [old](old.md) — *Stale*. <!-- draft -->';
+
+// The recovery journal's ancestor gate (`directoryChain`) refuses a journal
+// root whose chain contains a world-writable or foreign-owned ancestor —
+// designed production protection for a journal about to be trusted. CI's
+// /tmp is the standard 1777 sticky, so fixtures rooted at os.tmpdir() were
+// refused before any fault could be injected (PR #622: 152/194 failures, all
+// `Foreign or writable recovery ancestor`); this dev host's /tmp is a
+// nonstandard 755 <user>, which masked the failure the same way its umask 002
+// masked the 0644 gate. The fixture chain must therefore be one the gate
+// accepts on every CI-like layout: `/` and `/home` are root-owned (equal to
+// the filesystem root's systemUid, so the gate accepts them) and
+// `/home/<runner>` is runner-owned, so a private 0700 parent under
+// os.homedir() passes on any host whose home directory is user-owned.
+// `CONDASH_VITEST_RECOVERY_PARENT` is a test-host accommodation only (e.g. a
+// sandbox mounting the home root read-only); CI never sets it, so CI always
+// exercises the prescribed home chain.
+// Only this file's vitest worker touches the path (test files run one per
+// worker), so a module-scoped parent is safe; a stale crashed run's
+// leftovers are force-recreated before the run and removed after it.
+const FIXTURE_PARENT =
+  process.env.CONDASH_VITEST_RECOVERY_PARENT ?? join(homedir(), '.condash-recovery-vitest');
+
+beforeAll(async () => {
+  await fs.rm(FIXTURE_PARENT, { recursive: true, force: true }).catch(() => {});
+  await fs.mkdir(FIXTURE_PARENT, { recursive: true, mode: 0o700 });
+});
+afterAll(async () => {
+  await fs.rm(FIXTURE_PARENT, { recursive: true, force: true }).catch(() => {});
+});
 
 describe('all-or-nothing structural recovery overlap selection', () => {
   function fixture(path = 'knowledge/index.md') {
@@ -178,7 +207,7 @@ describe('explicit reviewed manual restart resolution (real local Git)', () => {
 
   beforeEach(async () => {
     environment = { ...process.env };
-    base = await fs.mkdtemp(join(tmpdir(), 'condash-manual-resolution-'));
+    base = await fs.mkdtemp(join(FIXTURE_PARENT, 'condash-manual-resolution-'));
     root = join(base, 'root');
     reviewDirectory = join(base, 'review');
     await fs.mkdir(root);
@@ -1034,6 +1063,87 @@ describe('inactive recovery raw protection foundations', () => {
   });
 });
 
+describe('recovery ancestor gate', () => {
+  it('refuses a journal root under a world-writable ancestor without mutating anything', async () => {
+    // The direct pin for directoryChain's designed refusal: a 1777 parent —
+    // the shape of every CI /tmp — must refuse before the journal mutates
+    // anything. This is the exact failure mode PR #622 exposed through the
+    // os.tmpdir()-rooted fixtures; the main fixtures now live under the
+    // private home-rooted parent instead, and this test keeps the gate's
+    // refusal itself pinned.
+    const sticky = await fs.mkdtemp(join(tmpdir(), 'condash-gate-sticky-'));
+    await fs.chmod(sticky, 0o1777);
+    const root = join(sticky, 'root');
+    const gitDir = join(root, '.git');
+    let acquired: { acquired: boolean; lock?: SyncLock } | null = null;
+    let lease: RecoveryLease | null = null;
+    try {
+      await fs.mkdir(gitDir, { recursive: true });
+      await fs.mkdir(join(root, 'knowledge'));
+      await fs.writeFile(join(root, 'knowledge/index.md'), '# Human\n\n', { mode: 0o644 });
+      const candidate = await acquireSyncLock(gitDir);
+      if (!candidate.acquired) throw new Error('Fixture ordinary lock unavailable');
+      acquired = candidate;
+      const journalLock = candidate.lock!;
+      lease = await promoteSyncLock(journalLock);
+      let error: unknown = null;
+      try {
+        await RecoveryJournal.create({
+          root,
+          gitDir,
+          lock: journalLock,
+          lease,
+          state: {
+            root,
+            gitDir,
+            head: 'a'.repeat(40),
+            upstreamOid: 'b'.repeat(40),
+            branch: 'refs/heads/main',
+            upstream: 'refs/remotes/origin/main',
+            remote: 'origin',
+            mergeRef: 'refs/heads/main',
+            pushRef: 'refs/remotes/origin/main',
+            pushRemote: 'origin',
+            pushMergeRef: 'refs/heads/main',
+            remoteUrls: ['fixture-local'],
+            pushUrls: ['fixture-local'],
+            config: [],
+            entries: [],
+            staged: '',
+          },
+          invocation: {
+            kind: 'syncRun',
+            dryRun: false,
+            push: true,
+            integration: 'ff-only',
+            quietPeriodSeconds: 90,
+            cutoffMs: Date.now() - 90_000,
+          },
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect((error as Error)?.message).toContain('Foreign or writable recovery ancestor');
+      // Zero mutation: the refusal precedes the first journal operation.
+      expect(await inspectRecoveryEvidence(gitDir)).toEqual([]);
+      await expect(fs.stat(join(gitDir, 'condash-index-recovery'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(fs.stat(gitDir)).resolves.toBeDefined();
+    } finally {
+      if (lease) {
+        await lease
+          .assertOwned()
+          .then(() => acquired?.lock?.release())
+          .catch(() => {});
+        await lease.close().catch(() => {});
+      }
+      await fs.chmod(sticky, 0o700);
+      await fs.rm(sticky, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
 describe('inactive strict recovery data/manifest/target protocol', () => {
   const path = 'knowledge/index.md';
   const local = bytes(`# Human\n\n${draft}\n`);
@@ -1051,7 +1161,7 @@ describe('inactive strict recovery data/manifest/target protocol', () => {
   let hooks: RecoveryPersistenceHooks;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(join(tmpdir(), 'condash-strict-recovery-'));
+    root = await fs.mkdtemp(join(FIXTURE_PARENT, 'condash-strict-recovery-'));
     gitDir = join(root, '.git');
     await fs.mkdir(gitDir);
     await fs.mkdir(join(root, 'knowledge'));
@@ -1101,7 +1211,7 @@ describe('inactive strict recovery data/manifest/target protocol', () => {
       .then(() => lock.release())
       .catch(() => {});
     await lease.close();
-    // Retain fixture evidence beneath the test-owned TMPDIR, including fault-created partial directories.
+    // Retain fixture evidence beneath the test-owned fixture parent, including fault-created partial directories.
   });
 
   async function create(budget?: RecoveryBudget): Promise<RecoveryJournal> {
