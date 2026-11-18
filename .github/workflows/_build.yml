@@ -41,7 +41,13 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          # Pinned, deliberately. This leg compiles node-pty into the shipped
+          # Linux AppImage, so the image's glibc becomes the AppImage's
+          # minimum: ubuntu-latest resolved to a glibc-2.42 image on
+          # 2026-11-18, which would gate the installer to distros on that
+          # glibc and later. ubuntu-24.04 (glibc 2.39) matches the test lanes
+          # and the widest currently-supported user base.
+          - ubuntu-24.04
           - macos-latest
           # windows-latest resolves to the windows-2025-vs2026 image (VS 2026
           # only, no VS 2022). That needs node-gyp >= 12.1 — provided by
