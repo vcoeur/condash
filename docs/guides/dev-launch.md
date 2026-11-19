@@ -69,7 +69,10 @@ Skip semantics:
 - **`--no-verify`** also skips the hook, but skips *every* hook, not just this gate — prefer the env var.
 - The hook itself skips the gate and exits 0 when the push sends no new commits: a branch deletion (null new sha), or a push whose remote ref already equals the local one. There is nothing new to gate.
 - If `node_modules` is missing, the hook fails fast with a "run `npm ci` first" message instead of a confusing vitest crash.
+- Before the gate runs, the hook strips git's hook environment (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_CONFIG_PARAMETERS`, ...): a child git resolves its repo from those variables instead of its own `cwd`, and the gate's test fixtures spawn git with explicit `cwd` values — with the handoff inherited, every fixture git call lands in the real repository instead of its own temporary one. CI and manual `make gate` runs never have those variables set, so the unset is a no-op there.
 - On failure the hook exits non-zero after naming the failed step family — fix it and push again; the push never happened, so nothing was published half-checked.
+
+The recovery suites' private fixture base resolves, in order: an explicit `CONDASH_VITEST_RECOVERY_PARENT`, then `~/.condash-recovery-vitest`, then — only when the home root is not writable (an agent sandbox mounting `/home` read-only) — `~/.local/state/condash-recovery-vitest`. A gated push from such a sandbox needs no variable exported.
 
 ## `--no-sandbox` and the sandbox toggle
 
