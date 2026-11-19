@@ -1,5 +1,6 @@
 import {
   addApplication,
+  exportAppsRegistry,
   fixAppsReferences,
   listApplications,
   renameApplication,
@@ -15,7 +16,7 @@ import {
 } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
 
-const NOUN_FLAGS: readonly string[] = ['label', 'purpose', 'path', 'fix'];
+const NOUN_FLAGS: readonly string[] = ['label', 'purpose', 'path', 'fix', 'export'];
 
 /**
  * `condash applications <verb>` — manage the app registry: the single source
@@ -100,7 +101,17 @@ export async function runApplications(
   }
 
   if (verb === 'sync-docs') {
+    const exportRegistry = args.flags.export === true;
+    delete args.flags.export;
     assertNoExtraFlags(args, NOUN_FLAGS);
+    if (exportRegistry) {
+      const result = await exportAppsRegistry(conceptionPath);
+      emit(ctx, result, (d) => {
+        const r = d as typeof result;
+        return `wrote ${r.file} (${r.live} live, ${r.retired} retired) — the committed registry sync-docs reads when present\n`;
+      });
+      return;
+    }
     const result = await syncAppsDocs(conceptionPath);
     emit(ctx, result, (d) => {
       const r = d as typeof result;
@@ -198,7 +209,8 @@ function printHelp(verb: string | null): void {
       '  add <handle> --path P      Register a new app.',
       '  set <handle> [--label|--purpose|--path]   Update an app.',
       '  rename <old> <new>         Rename a handle; rewrites README refs.',
-      '  sync-docs                  Regenerate the AGENTS.md Apps table.',
+      '  sync-docs [--export]       Regenerate the AGENTS.md Apps table (--export: write',
+      '                             the committed registry file instead).',
       '  validate                   Check every README apps: resolves.',
       UNIVERSAL_FOOTER,
     ].join('\n'),
@@ -224,10 +236,17 @@ function verbHelp(verb: string): string {
       'project README apps: reference that pointed at it.',
     ],
     'sync-docs': [
-      'condash applications sync-docs',
+      'condash applications sync-docs [--export]',
       '',
       'Regenerate the Apps table in AGENTS.md between the condash:apps sentinels',
       'from the registry. CLAUDE.md is compiled from AGENTS.md downstream.',
+      '',
+      '  --export  Write the registry to the committed file condash-apps.json at',
+      '            the conception root instead of syncing AGENTS.md. When that',
+      '            file exists, sync-docs reads the table from it — so the',
+      '            committed table no longer depends on per-machine settings.',
+      '            Re-run --export after applications add/set/rename to refresh',
+      '            it.',
     ],
     validate: [
       'condash applications validate [--fix]',

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addApplication,
   aliasIndex,
+  exportAppsRegistry,
   fixAppsReferences,
   listApplications,
   renameApplication,
@@ -169,72 +170,63 @@ describe('validateApplications', () => {
 });
 
 describe('renderAppsTable', () => {
-  it('renders #handle / path / Purpose / AGENTS.md / knowledge rows for live apps only', async () => {
+  it('renders #handle / path / AGENTS.md / knowledge rows for live apps only', async () => {
     writeConfig({
       repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com', label: 'Kasten' }],
       retired_apps: [{ handle: 'kasten-manager' }],
     });
-    // No checkout on disk → the AGENTS.md cell is empty; no `purpose` in the
-    // registry → the Purpose cell is empty too.
-    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain('| App | Repo | Purpose | AGENTS.md | Knowledge |');
+    // No checkout on disk → the AGENTS.md cell is empty.
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp);
+    expect(table).toContain('| App | Repo | AGENTS.md | Knowledge |');
     expect(table).toContain(
-      '| `#kasten` | `notes.vcoeur.com` |  |  | `knowledge/internal/kasten.md` |',
+      '| `#kasten` | `notes.vcoeur.com` |  | `knowledge/internal/kasten.md` |',
     );
     expect(table).not.toContain('kasten-manager');
   });
 
-  it('renders the registry purpose in the Purpose cell', async () => {
-    writeConfig({
-      repositories: [
-        { handle: 'kasten', path: 'notes.vcoeur.com', purpose: 'Zettelkasten vault and web UI' },
-      ],
-    });
-    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain('| `#kasten` | `notes.vcoeur.com` | Zettelkasten vault and web UI |');
-  });
-
-  it('keeps a purpose containing a pipe or newline inside its cell', async () => {
-    writeConfig({
-      repositories: [
-        { handle: 'kasten', path: 'notes.vcoeur.com', purpose: 'notes | vault\nand web UI' },
-      ],
-    });
-    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
-    const row = table.split('\n').find((line) => line.includes('#kasten'))!;
-    expect(row).toContain('notes \\| vault and web UI');
-    // One row, five columns: the escaped pipe must not open a sixth cell, so
-    // count only the delimiters that are not backslash-escaped.
-    const delimiters = row.match(/(?<!\\)\|/g) ?? [];
-    expect(delimiters.length - 1).toBe(5);
-  });
-
-  it('points the AGENTS.md cell at the resolved instruction file', async () => {
+  it('renders the AGENTS.md cell relative to the workspace root (#575)', async () => {
     writeConfig({ repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }] });
     const checkout = join(tmp, 'notes.vcoeur.com');
     mkdirSync(checkout, { recursive: true });
     writeFileSync(join(checkout, 'AGENTS.md'), '# A\n');
-    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain(`\`${join(checkout, 'AGENTS.md')}\``);
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp);
+    expect(table).toContain('`notes.vcoeur.com/AGENTS.md`');
+    // Never the absolute, home-embedding form.
+    expect(table).not.toContain(checkout);
   });
 
-  it('falls back AGENTS.md → CLAUDE.md → .claude/CLAUDE.md', async () => {
+  it('renders an out-of-workspace repo’s AGENTS.md cell verbatim', async () => {
+    // resolveCwd passes an absolute configured path through as-is, so the
+    // instruction file sits outside the workspace root — there is no
+    // workspace-relative form, so the path renders as-is.
+    const outside = mkdtempSync(join(tmpdir(), 'condash-apps-outside-'));
+    try {
+      writeFileSync(join(outside, 'AGENTS.md'), '# A\n');
+      writeConfig({ repositories: [{ handle: 'external', path: outside }] });
+      const table = await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp);
+      expect(table).toContain(`\`${join(outside, 'AGENTS.md')}\``);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back AGENTS.md → CLAUDE.md → .claude/CLAUDE.md, rendered workspace-relative', async () => {
     writeConfig({ repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }] });
     const checkout = join(tmp, 'notes.vcoeur.com');
     mkdirSync(join(checkout, '.claude'), { recursive: true });
     writeFileSync(join(checkout, '.claude', 'CLAUDE.md'), '# legacy\n');
-    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
-      `\`${join(checkout, '.claude', 'CLAUDE.md')}\``,
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp)).toContain(
+      '`notes.vcoeur.com/.claude/CLAUDE.md`',
     );
     // A top-level CLAUDE.md outranks the nested one.
     writeFileSync(join(checkout, 'CLAUDE.md'), '# legacy\n');
-    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
-      `\`${join(checkout, 'CLAUDE.md')}\``,
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp)).toContain(
+      '`notes.vcoeur.com/CLAUDE.md`',
     );
     // AGENTS.md outranks both.
     writeFileSync(join(checkout, 'AGENTS.md'), '# canonical\n');
-    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
-      `\`${join(checkout, 'AGENTS.md')}\``,
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp)).toContain(
+      '`notes.vcoeur.com/AGENTS.md`',
     );
   });
 
@@ -277,6 +269,145 @@ describe('syncAppsDocs', () => {
     expect(body).toContain('tail');
     // Second run is idempotent.
     expect((await syncAppsDocs(tmp)).changed).toBe(false);
+  });
+});
+
+describe('committed registry (condash-apps.json)', () => {
+  /** Write the committed registry file at the conception root. */
+  function writeCommittedRegistry(body: Record<string, unknown>): void {
+    writeFileSync(join(tmp, 'condash-apps.json'), JSON.stringify(body, null, 2) + '\n');
+  }
+
+  function writeAgentsMd(): string {
+    const agents = join(tmp, 'AGENTS.md');
+    writeFileSync(
+      agents,
+      '# A\n\n<!-- condash:apps:start -->\nstale\n<!-- condash:apps:end -->\n\ntail\n',
+    );
+    return agents;
+  }
+
+  it('generates the table from the committed file, ignoring per-machine settings (#575)', async () => {
+    // The settings registry describes a DIFFERENT set of apps than the
+    // committed file — exactly the second-machine drift the file exists to
+    // kill. The table must follow the committed file only.
+    writeConfig({
+      repositories: [{ handle: 'from-settings', name: 'from-settings' }],
+      retired_apps: [{ handle: 'retired-settings' }],
+    });
+    writeCommittedRegistry({
+      repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }],
+      retired_apps: [{ handle: 'retired-committed' }],
+    });
+    const agents = writeAgentsMd();
+    const result = await syncAppsDocs(tmp);
+    expect(result.changed).toBe(true);
+    const body = readFileSync(agents, 'utf8');
+    expect(body).toContain('| App | Repo | AGENTS.md | Knowledge |');
+    expect(body).toContain('| `#kasten` | `notes.vcoeur.com` |');
+    expect(body).not.toContain('from-settings');
+    expect(body).not.toContain('retired-settings');
+    // Retired handles never render; the committed file's retired list is the
+    // sole source, so a settings-only retired handle cannot leak in either.
+    expect(body).not.toContain('kasten-manager');
+  });
+
+  it('renders the committed file’s AGENTS.md cells workspace-relative', async () => {
+    writeConfig({ repositories: [{ handle: 'unrelated', name: 'unrelated' }] });
+    writeCommittedRegistry({
+      repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }],
+    });
+    const checkout = join(tmp, 'notes.vcoeur.com');
+    mkdirSync(checkout, { recursive: true });
+    writeFileSync(join(checkout, 'AGENTS.md'), '# A\n');
+    const agents = writeAgentsMd();
+    await syncAppsDocs(tmp);
+    const body = readFileSync(agents, 'utf8');
+    expect(body).toContain('`notes.vcoeur.com/AGENTS.md`');
+    expect(body).not.toContain(checkout);
+  });
+
+  it('without the file, the table still comes from the settings registry', async () => {
+    writeConfig({
+      repositories: [{ handle: 'from-settings', name: 'from-settings' }],
+      retired_apps: [{ handle: 'retired-settings' }],
+    });
+    const agents = writeAgentsMd();
+    await syncAppsDocs(tmp);
+    const body = readFileSync(agents, 'utf8');
+    expect(body).toContain('| `#from-settings` |');
+    expect(body).not.toContain('kasten');
+    expect(body).not.toContain('retired-settings');
+  });
+
+  it('rejects an invalid committed registry with a clear error, block untouched', async () => {
+    writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
+    const agents = writeAgentsMd();
+    const before = readFileSync(agents, 'utf8');
+
+    // Not an array.
+    writeCommittedRegistry({ repositories: 'nope' } as unknown as Record<string, unknown>);
+    await expect(syncAppsDocs(tmp)).rejects.toThrow(/condash-apps\.json: repositories/);
+    // A per-machine key has no place in a committed file — `.strict()`
+    // rejects it at the root.
+    writeCommittedRegistry({ workspace_path: tmp });
+    await expect(syncAppsDocs(tmp)).rejects.toThrow(
+      /condash-apps\.json: <root> — Unrecognized key: "workspace_path"/,
+    );
+    // Malformed JSON.
+    writeFileSync(join(tmp, 'condash-apps.json'), '{oops');
+    await expect(syncAppsDocs(tmp)).rejects.toThrow(/condash-apps\.json: invalid JSON/);
+
+    expect(readFileSync(agents, 'utf8')).toBe(before);
+  });
+
+  it('export writes a registry that round-trips into the same table (#575)', async () => {
+    writeConfig({
+      repositories: [
+        { section: 'Services' },
+        { handle: 'condash', name: 'condash' },
+        {
+          handle: 'beta',
+          path: 'beta',
+          aliases: ['BetaLegacy'],
+          submodules: [{ handle: 'gamma', path: 'gamma' }],
+        },
+      ],
+      retired_apps: [{ handle: 'old-app', aliases: ['OldApp'] }],
+    });
+    const agents = writeAgentsMd();
+    await syncAppsDocs(tmp);
+    const tableFromSettings = readFileSync(agents, 'utf8');
+
+    const result = await exportAppsRegistry(tmp);
+    expect(result.file).toBe(join(tmp, 'condash-apps.json'));
+    expect(result.live).toBe(3);
+    expect(result.retired).toBe(1);
+    // The export carries only the registry keys — no per-machine field.
+    const written = JSON.parse(readFileSync(result.file, 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(written).sort()).toEqual(['repositories', 'retired_apps']);
+
+    // A second machine's settings: a different registry entirely. The table
+    // must not move.
+    writeFileSync(
+      join(tmp, 'condash.json'),
+      JSON.stringify({ workspace_path: tmp, repositories: [{ handle: 'other', name: 'other' }] }),
+    );
+    await syncAppsDocs(tmp);
+    expect(readFileSync(agents, 'utf8')).toBe(tableFromSettings);
+  });
+
+  it('export refuses to write a body the committed-file schema would reject', async () => {
+    // The mutation path reads raw JSON without schema validation, so a
+    // hand-edited registry can carry a shape the settings reader tolerates
+    // but the committed file must not. Export surfaces it instead of landing
+    // a file the next sync-docs refuses.
+    writeFileSync(
+      join(tmp, 'condash.json'),
+      JSON.stringify({ workspace_path: tmp, repositories: [{ bogus: true }] }),
+    );
+    await expect(exportAppsRegistry(tmp)).rejects.toThrow(/condash-apps\.json/);
+    expect(() => readFileSync(join(tmp, 'condash-apps.json'), 'utf8')).toThrow();
   });
 });
 

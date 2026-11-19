@@ -19,10 +19,10 @@ Open `## Specifics` with the **Apps** table — one row per live app the concept
 
 ```markdown
 <!-- condash:apps:start -->
-| App | Repo | Purpose | AGENTS.md | Knowledge |
-|-----|------|---------|-----------|-----------|
-| `#helio` | `~/src/acme/helio` | Customer-facing API | `/home/you/src/acme/helio/AGENTS.md` | `knowledge/internal/helio.md` |
-| ↳ `#helio.web` | `~/src/acme/helio/apps/web` | Marketing site | | `knowledge/internal/helio.web.md` |
+| App | Repo | AGENTS.md | Knowledge |
+|-----|------|-----------|-----------|
+| `#helio` | `helio` | `helio/AGENTS.md` | `knowledge/internal/helio.md` |
+| ↳ `#helio.web` | `helio/apps/web` | `helio/apps/web/AGENTS.md` | `knowledge/internal/helio.web.md` |
 <!-- condash:apps:end -->
 ```
 
@@ -31,14 +31,34 @@ Add both sentinels by hand the first time. Without them `sync-docs` writes nothi
 | Column | Meaning |
 |---|---|
 | **App** | The `#handle`, backticked. Lower-case, kebab-or-dot, matching the repo basename when possible. The slug used in cross-references everywhere. A submodule row is prefixed `↳ ` and rendered directly under its parent. |
-| **Repo** | The path as configured in `repositories[]` (e.g. `~/src/<workspace>/<repo>`). |
-| **Purpose** | One line on what the app is for, from the registry's `purpose` field. Empty until set — fill it with `condash applications set <handle> --purpose "…"`, then re-run `sync-docs`. Pipes and newlines in the text are escaped and flattened so a long purpose cannot break the table. |
-| **AGENTS.md** | Absolute path to the app's own agent-config file. `sync-docs` resolves it per checkout with the fallback `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md`, so the cell always points at the file that actually exists; empty when the checkout carries none. (Formerly labelled **Config**.) |
+| **Repo** | The path as configured in `repositories[]` (e.g. `~/src/<workspace>/<repo>`, or bare `helio` for a workspace-relative entry). |
+| **AGENTS.md** | The app's own agent-config file, **relative to the workspace root**, resolved per checkout with the fallback `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md` so the cell always points at the file that actually exists; empty when the checkout carries none. A repo configured with an absolute path outside the workspace renders that path verbatim — there is no workspace-relative form to invent. (Formerly labelled **Config**.) |
 | **Knowledge** | The conventional per-app knowledge entry point, `knowledge/internal/<handle>.md`. Emitted for every row whether or not the file exists — it is the path to create, not a link that was checked. |
 
-Five columns, and no others: `sync-docs` regenerates the whole region, so any column you add by hand is erased on the next run — including a hand-kept companion table beside it, which is what the `Purpose` column exists to make unnecessary. Retired handles are omitted too — the table documents live apps only. Keep it a navigation index; operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`.
+Four columns, and no others: `sync-docs` regenerates the whole region, so any column you add by hand is erased on the next run. Retired handles are omitted too — the table documents live apps only. Keep it a navigation index; operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`.
 
 Everything the table needs comes from the registry, so the way to change a row is [`condash applications set`](cli.md#applications) followed by `sync-docs` — never a hand-edit inside the sentinels.
+
+### The table is reproducible: `condash-apps.json`
+
+The rows come from the app registry. By default that registry is `.condash/settings.json` — gitignored, per-machine — so two machines running `sync-docs` on the same clone can regenerate different tables and flip-flop the committed file forever. The optional committed registry file at the conception root ends that:
+
+```json
+{
+  "repositories": [
+    "condash",
+    { "handle": "kasten", "path": "notes.vcoeur.com" }
+  ],
+  "retired_apps": []
+}
+```
+
+- **When the file exists**, `sync-docs` reads the table's registry from it alone — `repositories` / `retired_apps` in `.condash/settings.json` are ignored for the table. The same entry shapes as the settings registry apply (see [Config files → repositories](config.md#repositories)), validated just as strictly, and the file carries **only** the two registry keys: a `workspace_path` or any other per-machine key is rejected.
+- **When it does not exist**, today's behaviour is unchanged — the table comes from `.condash/settings.json`.
+- **Adopt it in one command:** `condash applications sync-docs --export` writes `condash-apps.json` from the current settings registry (validated with the same schema before it lands). Re-run `--export` — or hand-edit the file — after `applications add` / `set` / `rename`, which still write the settings registry.
+- **Invalid file → hard error.** A malformed or schema-violating `condash-apps.json` makes `sync-docs` fail with a `condash-apps.json: <path> — <reason>` message and leave the sentinel block untouched; it never falls back silently to a machine-local table.
+
+Relative repo paths in the committed file resolve against `workspace_path` from the settings — the one per-machine input still read, because relative repo paths need *a* filesystem anchor. It cancels out of the output: cells render workspace-relative, so two machines with the same clone regenerate byte-identical tables regardless of where the workspace sits on disk. One residual input is inherent: the `AGENTS.md` column probes each checkout for its instruction file, so a repo that exists on one machine and is uncloned on another renders an empty cell on the second one.
 
 ### Submodules
 
@@ -50,7 +70,7 @@ The `submodules:` block in `.condash/settings.json` is orthogonal — that block
 
 ### Cross-references via `#<app>/<path>`
 
-Knowledge entries, project notes, and rule bodies refer to source code as `#<app>/<path-in-repo>` (e.g. `#<app>/src/server.ts:42`) instead of `~/src/<workspace>/<app>/...`. The `#` prefix makes references grep-friendly and decouples prose from any one host's filesystem layout — the Apps table is the only place the absolute path appears.
+Knowledge entries, project notes, and rule bodies refer to source code as `#<app>/<path-in-repo>` (e.g. `#<app>/src/server.ts:42`) instead of `~/src/<workspace>/<app>/...`. The `#` prefix makes references grep-friendly and decouples prose from any one host's filesystem layout. The Apps table follows the same rule — its `AGENTS.md` cells are workspace-relative, so the committed `AGENTS.md` contains no absolute path at all.
 
 When in doubt: an `#<name>/...` token is *always* an app reference; a path with no leading `#` is a path inside *this* conception (`projects/...`, `knowledge/...`, `.condash/settings.json`).
 

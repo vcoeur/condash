@@ -35,6 +35,7 @@ conception/
 ├── .condash/                                 ← tree-level state (gitignored)
 │   ├── settings.json                         ←   per-host config
 │   └── logs/YYYY/MM/DD/HHMMSS-<sid>.txt      ←   per-session terminal capture (plain text + JSON header/footer)
+├── condash-apps.json                         ← optional committed apps registry (condash applications sync-docs --export)
 └── condash.json                              ← legacy config (still read)
 ```
 
