@@ -24,7 +24,7 @@ import { usableActionTemplates, type Section } from './settings-modal-parts/data
 import { getBootstrap } from './bootstrap';
 import { startRendererPerf } from './perf-renderer';
 import { createModalRouter } from './modal-router';
-import { TERMINAL_DOCUMENT_EVENT } from './terminal-document-links';
+import { TERMINAL_DOCUMENT_EVENT, TERMINAL_OPEN_PATH_EVENT } from './terminal-document-links';
 import { createTerminalBridge } from './terminal-bridge';
 import { createTreeExpansion } from './tree-expansion';
 import { createBranchFilterStore } from './branch-filter-store';
@@ -530,6 +530,22 @@ function App() {
   };
   window.addEventListener(TERMINAL_DOCUMENT_EVENT, openTerminalDocument);
   onCleanup(() => window.removeEventListener(TERMINAL_DOCUMENT_EVENT, openTerminalDocument));
+
+  // Plain absolute paths the path-link provider cannot open itself (openPath
+  // is bounded to the workspace roots in main) surface the rejection here so
+  // a click outside the roots is visibly refused rather than silently dead.
+  const openTerminalPath = async (event: Event): Promise<void> => {
+    const root = conceptionPath();
+    const { path } = (event as CustomEvent<{ path: string }>).detail;
+    try {
+      await window.condash.openPath(path);
+    } catch (error) {
+      if (conceptionPath() === root)
+        flashToast(`Cannot open terminal file: ${String(error)}`, 'error');
+    }
+  };
+  window.addEventListener(TERMINAL_OPEN_PATH_EVENT, openTerminalPath);
+  onCleanup(() => window.removeEventListener(TERMINAL_OPEN_PATH_EVENT, openTerminalPath));
 
   // Open Settings and land on a specific rail section — used by the Code
   // pane's empty-state CTA ("+ Add repository" → Repositories).

@@ -445,6 +445,11 @@ export interface CondashApi {
   termGeometry(id: string): Promise<{ cols: number; rows: number } | null>;
   /** Resolve a local OSC 8 document against the owning terminal's cwd and conception. */
   termResolveDocument(id: string, uri: string): Promise<string>;
+  /** Whether a path resolves to an existing regular file — the existence probe
+   *  behind the terminal's plain-path link provider. A read-only stat with no
+   *  workspace bound: hovering lights up for any printable path, while opening
+   *  stays bounded by `openPath`'s workspace roots. */
+  termPathExists(path: string): Promise<boolean>;
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
   /** Replace the persisted terminal prefs in settings.json. The patch is a

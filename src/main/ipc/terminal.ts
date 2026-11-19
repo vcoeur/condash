@@ -1,4 +1,5 @@
 import { clipboard, ipcMain } from 'electron';
+import { promises as fs } from 'node:fs';
 import {
   ackTerminal,
   attachTerminal,
@@ -124,6 +125,22 @@ export function registerTerminalIpc(): void {
       event.sender,
       lastConceptionPath,
     );
+  });
+
+  // Existence probe behind the renderer's plain-path link provider (issue
+  // #617). A read-only stat, deliberately unbounded: the hover must light up
+  // for any printable absolute path (a screenshot under ~/Pictures is the
+  // issue's example), while opening stays bounded by openPath's workspace
+  // roots. Rate limiting lives renderer-side (cache + cap) around this call.
+  ipcMain.handle('termPathExists', async (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('termPathExists', path);
+    if (path.length > 8192) return false;
+    try {
+      return (await fs.stat(path)).isFile();
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle('termClose', (event, id: unknown) => {

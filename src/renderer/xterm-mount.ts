@@ -209,6 +209,11 @@ export function mountXterm(
     }),
   );
 
+  // Plain absolute paths printed as text (issue #617) take the lowest link
+  // priority: registered after the WebLinksAddon so OSC 8 and bare URLs keep
+  // their ranges, and xterm drops intersecting lower-priority provider links.
+  term.registerLinkProvider(documentLinks.pathProvider);
+
   // OSC 52 host-clipboard writes from inside the terminal.
   term.loadAddon(new ClipboardAddon());
 

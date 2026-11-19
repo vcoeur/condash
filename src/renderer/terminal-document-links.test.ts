@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Terminal } from '@xterm/xterm';
-import { terminalDocumentLinks, TERMINAL_DOCUMENT_EVENT } from './terminal-document-links';
+import type { IBufferCell, IBufferLine, ILink, Terminal } from '@xterm/xterm';
+import {
+  terminalDocumentLinks,
+  TERMINAL_DOCUMENT_EVENT,
+  TERMINAL_OPEN_PATH_EVENT,
+} from './terminal-document-links';
 
 class TestMouseEvent extends Event {
   clientX = 10;
@@ -32,8 +36,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+interface FakeCellData {
+  chars: string;
+  width: number;
+}
+
+/** Minimal buffer pieces for the path provider: blanks stay width 1 with no
+ *  chars, exactly like a real buffer row. */
+function pathCells(text: string): FakeCellData[] {
+  return [...text].map((character) => ({ chars: character, width: 1 }));
+}
+
+class PathLine implements IBufferLine {
+  constructor(private readonly cells: FakeCellData[]) {}
+  get length(): number {
+    return this.cells.length;
+  }
+  readonly isWrapped = false;
+  getCell(x: number): IBufferCell | undefined {
+    const data = this.cells[x];
+    if (!data) return undefined;
+    return {
+      getChars: () => data.chars,
+      getWidth: () => data.width,
+    } as unknown as IBufferCell;
+  }
+  translateToString(): string {
+    return this.cells.map((cell) => cell.chars || ' ').join('');
+  }
+}
+
 function setup() {
-  const window = Object.assign(new EventTarget(), { condash: { openExternal: vi.fn() } });
+  const window = Object.assign(new EventTarget(), {
+    condash: { openExternal: vi.fn(), termPathExists: async () => true },
+  });
   vi.stubGlobal('window', window);
   vi.stubGlobal('MouseEvent', TestMouseEvent);
   vi.stubGlobal('CustomEvent', TestCustomEvent);
@@ -43,6 +79,8 @@ function setup() {
     hooks.set(kind, callback);
     return { dispose: () => hooks.delete(kind) };
   };
+  // One paintable buffer row the path provider can scan: y 6 reads row index 5.
+  const pathRow = { cells: pathCells('/tmp/shot.png'), isWrapped: false };
   const term = {
     element: {
       querySelector: () => ({
@@ -52,7 +90,12 @@ function setup() {
     cols: 80,
     rows: 24,
     modes: { mouseTrackingMode: 'vt200' },
-    buffer: { active: { viewportY: 0 } },
+    buffer: {
+      active: {
+        viewportY: 0,
+        getLine: (index: number) => (index === 5 ? new PathLine(pathRow.cells) : null),
+      },
+    },
     focus: vi.fn(),
     onResize: hook('resize'),
     onScroll: hook('scroll'),
@@ -61,6 +104,8 @@ function setup() {
   disposals.push(links.dispose);
   const opened = vi.fn();
   window.addEventListener(TERMINAL_DOCUMENT_EVENT, opened);
+  const pathOpened = vi.fn();
+  window.addEventListener(TERMINAL_OPEN_PATH_EVENT, pathOpened);
   const downReports = vi.fn();
   host.addEventListener('mousedown', downReports);
   const hover = (uri = 'guide.md') =>
@@ -71,7 +116,35 @@ function setup() {
   const down = (values = {}) => host.dispatchEvent(new TestMouseEvent('mousedown', values));
   const up = (values = {}) => window.dispatchEvent(new TestMouseEvent('mouseup', values));
   const move = (values = {}) => window.dispatchEvent(new TestMouseEvent('mousemove', values));
-  return { window, host, term, links, opened, downReports, hover, down, up, move, hooks };
+  /** Repaint the buffer row, run the path provider, and feed its link into the
+   *  gate like xterm's Linkifier hover would. */
+  const hoverPath = async (text: string): Promise<ILink> => {
+    pathRow.cells = pathCells(text);
+    const provided = await new Promise<ILink[] | undefined>((resolve) =>
+      links.pathProvider.provideLinks(6, resolve),
+    );
+    if (!provided || provided.length === 0) throw new Error(`No path link provided for ${text}`);
+    provided[0].hover!(
+      new TestMouseEvent('mousemove') as unknown as MouseEvent,
+      provided[0].text as string,
+    );
+    return provided[0];
+  };
+  return {
+    window,
+    host,
+    term,
+    links,
+    opened,
+    pathOpened,
+    downReports,
+    hover,
+    down,
+    up,
+    move,
+    hoverPath,
+    hooks,
+  };
 }
 
 describe('terminal document gesture ownership', () => {
@@ -359,4 +432,65 @@ describe('terminal document gesture ownership', () => {
       });
     }
   }
+});
+
+describe('plain path link gestures', () => {
+  it('owns both edges of a click on a .md path and opens the document event', async () => {
+    const s = setup();
+    const link = await s.hoverPath('/tmp/note.md');
+    expect(s.down()).toBe(false);
+    expect(s.up()).toBe(false);
+    expect(s.downReports).not.toHaveBeenCalled();
+    expect(s.opened).toHaveBeenCalledTimes(1);
+    expect((s.opened.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      sessionId: 'terminal-fixture',
+      uri: '/tmp/note.md',
+    });
+    expect(s.pathOpened).not.toHaveBeenCalled();
+    // Local document activation belongs exclusively to the capture gate.
+    link.activate(new TestMouseEvent('mouseup') as unknown as MouseEvent, link.text as string);
+    expect(s.opened).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a non-document path plain click to the Linkifier and opens through the open-path event', async () => {
+    const s = setup();
+    const link = await s.hoverPath('/tmp/shot.png');
+    expect(s.down()).toBe(true);
+    expect(s.up()).toBe(true);
+    expect(s.downReports).toHaveBeenCalledTimes(1);
+    expect(s.opened).not.toHaveBeenCalled();
+    link.activate(new TestMouseEvent('mouseup') as unknown as MouseEvent, link.text as string);
+    expect(s.pathOpened).toHaveBeenCalledTimes(1);
+    expect((s.pathOpened.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      path: '/tmp/shot.png',
+    });
+    expect(s.opened).not.toHaveBeenCalled();
+    expect(s.window.condash.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('owns Ctrl- and Meta-clicks on a non-document path before both PTY edges', async () => {
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      const s = setup();
+      await s.hoverPath('/tmp/shot.png');
+      expect(s.down(modifier)).toBe(false);
+      expect(s.up(modifier)).toBe(false);
+      expect(s.downReports).not.toHaveBeenCalled();
+      expect(s.pathOpened).toHaveBeenCalledTimes(1);
+      expect((s.pathOpened.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        path: '/tmp/shot.png',
+      });
+    }
+  });
+
+  it('keeps Shift-selection and unsupported tokens terminal-owned', async () => {
+    const s = setup();
+    await s.hoverPath('/tmp/shot.png');
+    expect(s.down({ shiftKey: true })).toBe(true);
+    s.up({ shiftKey: true });
+    expect(s.pathOpened).not.toHaveBeenCalled();
+    // A token the provider refuses (no candidate) never enters the gate.
+    await expect(s.hoverPath('no path here')).rejects.toThrow('No path link provided');
+    expect(s.pathOpened).not.toHaveBeenCalled();
+    expect(s.opened).not.toHaveBeenCalled();
+  });
 });
