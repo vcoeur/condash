@@ -23,6 +23,20 @@ if [ ! -d "$repo_root/node_modules" ]; then
   exit 1
 fi
 
+# Git exports its repo handoff to hooks — GIT_DIR (here: this worktree's
+# gitdir), GIT_CONFIG_PARAMETERS and friends — and any child git resolves
+# its repo from those variables instead of its own cwd. `make gate` runs
+# the test suites, whose fixtures spawn git with explicit cwd values; with
+# the handoff inherited, every fixture git call lands in this real repo
+# (observed 2026-11-19: a gated push's vitest run appended fixture commits
+# to the branch being pushed and raced config.lock on the common config).
+# Strip the handoff so the gate's children resolve repos from their own
+# cwd, as they do in CI and in manual runs.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE \
+  GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  GIT_GRAFT_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+  GIT_PREFIX
+
 # Consume the ref lines git writes to stdin and skip the gate only when
 # every line is a no-op or deletion: a deletion carries an all-zero local
 # sha (40-zero SHA-1 / 64-zero SHA-256), a no-op carries a local sha equal

@@ -51,6 +51,27 @@ describe('the pre-push gate stays wired up', () => {
     expect(hook).toMatch(/while read -r/);
     expect(hook).toMatch(/sends_commits=0/);
     expect(hook).toContain('make gate');
+    // Git exports its repo handoff (GIT_DIR pointing at this worktree's
+    // gitdir, GIT_CONFIG_PARAMETERS, ...) to hooks, and a child git
+    // resolves its repo from those variables instead of its cwd — the
+    // gate's test fixtures spawn git with explicit cwd and would all land
+    // in the real repo. The hook must strip the handoff before `make gate`
+    // (2026-11-19: without the unset, a gated push's vitest run appended
+    // fixture commits to the branch being pushed).
+    expect(hook).toMatch(/unset GIT_DIR/);
+    // Assert against the unset command itself, not bare names: the hook's
+    // comment also names some of these variables, and a name kept only in
+    // the comment must not keep this guard green.
+    const unsetBlock = hook.match(/unset GIT_DIR[\s\S]*?GIT_PREFIX\s*$/m)?.[0] ?? '';
+    expect(unsetBlock).not.toBe('');
+    for (const envVar of [
+      'GIT_WORK_TREE',
+      'GIT_INDEX_FILE',
+      'GIT_COMMON_DIR',
+      'GIT_CONFIG_PARAMETERS',
+    ]) {
+      expect(unsetBlock).toContain(envVar);
+    }
   });
 
   it('the docs describe the hook, its skip variable and the umask rationale', () => {
