@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +16,10 @@ import { join } from 'node:path';
 // gate accepts them) and `/home/<runner>` is runner-owned.
 // `CONDASH_VITEST_RECOVERY_PARENT` is a test-host accommodation only (e.g. a
 // sandbox mounting the home root read-only); CI never sets it, so CI always
-// exercises the prescribed home chain.
+// exercises the prescribed home chain. When the env var is unset and the
+// home root itself is not writable, the base falls back to the state
+// directory (see resolveBase below) so a gated push from such a host does
+// not need the variable exported.
 //
 // Each test file opens its own scope under the base: vitest may run test
 // files in parallel workers, and force-recreating the whole base would race a
@@ -25,8 +29,42 @@ import { join } from 'node:path';
 // force-recreated when that scope next opens.
 export const RECOVERY_TEST_PARENT_ENV = 'CONDASH_VITEST_RECOVERY_PARENT';
 
+// The default home base is resolved once per process: `open` and `close`
+// must agree on where a scope lives, so a mid-run fallback decision cannot
+// send open to one directory and close to another. An explicit
+// RECOVERY_TEST_PARENT_ENV value participates in that same one-shot
+// resolution: it is used as-is, and if the test host points it somewhere
+// unusable, the suites fail loudly there on the first open — which is the
+// accommodation's contract.
+let cachedBase: string | undefined;
+
 function base(): string {
-  return process.env[RECOVERY_TEST_PARENT_ENV] ?? join(homedir(), '.condash-recovery-vitest');
+  cachedBase ??= resolveBase();
+  return cachedBase;
+}
+
+function resolveBase(): string {
+  const explicit = process.env[RECOVERY_TEST_PARENT_ENV];
+  if (explicit) return explicit;
+  const homeBase = join(homedir(), '.condash-recovery-vitest');
+  try {
+    mkdirSync(homeBase, { recursive: true, mode: 0o700 });
+    return homeBase;
+  } catch {
+    // A test host whose home root is not writable (e.g. an agent sandbox
+    // mounting /home read-only) cannot hold the base; fall back to the
+    // state directory, which such sandboxes keep writable. The ancestor
+    // gate accepts the chain: every element is user-owned, and the base
+    // itself is created 0700 below. If the fallback is unusable too, its
+    // error surfaces — same loud failure as before, in a host where
+    // neither location works.
+    const stateBase = join(
+      process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'),
+      'condash-recovery-vitest',
+    );
+    mkdirSync(stateBase, { recursive: true, mode: 0o700 });
+    return stateBase;
+  }
 }
 
 /** Where a scope's mkdtemp fixtures root; only meaningful while open. */

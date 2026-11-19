@@ -19,6 +19,17 @@ import * as lockApi from './lock';
 import { RecoveryJournal, readRecoveryManifest } from './index-recovery';
 import { closeRecoveryFixtureParent, openRecoveryFixtureParent } from './recovery-test-env';
 
+// The guarded-orchestration describes below activate recovery journals whose
+// 0644 creation gate refuses any other umask; under one dev host's ambient
+// 002 that threw 22/92 failures CI then reproduced. Pin the umask the suite
+// requires, test-side, and restore the ambient value on close — the forks
+// pool runs each test file in its own child process, so the pin stays scoped
+// to this file and sibling files still observe their ambient umask.
+const ambientUmask = process.umask(0o022);
+afterAll(() => {
+  process.umask(ambientUmask);
+});
+
 // The guarded-orchestration describe below activates real recovery journals,
 // whose ancestor gate refuses CI's world-writable /tmp chain, so every
 // mkdtemp fixture in this file roots under the private parent described in

@@ -1,0 +1,71 @@
+#!/bin/sh
+# Pre-push fast gate: runs `make gate` (the local mirror of the CI _fast.yml
+# lane, under CI's umask 022) before anything is pushed. See
+# docs/guides/dev-launch.md#pre-push-gate for the full semantics.
+
+# Explicit opt-out for the rare push that must not pay the minutes (e.g. a
+# docs-only branch where the failure is known and unrelated). `--no-verify`
+# exists too but skips every hook, not just this gate.
+if [ "${CONDASH_SKIP_GATE:-}" = "1" ]; then
+  exit 0
+fi
+
+# Resolve the repo root per invocation: a relative core.hooksPath resolves
+# against the worktree this push runs in, and the gate must run there — a
+# sibling worktree's node_modules/build state is the one being pushed.
+repo_root=$(git rev-parse --show-toplevel) || {
+  echo "pre-push: cannot resolve the repo root; refusing to run the gate blind." >&2
+  exit 1
+}
+
+if [ ! -d "$repo_root/node_modules" ]; then
+  echo "pre-push: node_modules is missing in $repo_root — run \`npm ci\` first." >&2
+  exit 1
+fi
+
+# Git exports its repo handoff to hooks — GIT_DIR (here: this worktree's
+# gitdir), GIT_CONFIG_PARAMETERS and friends — and any child git resolves
+# its repo from those variables instead of its own cwd. `make gate` runs
+# the test suites, whose fixtures spawn git with explicit cwd values; with
+# the handoff inherited, every fixture git call lands in this real repo
+# (observed 2026-11-19: a gated push's vitest run appended fixture commits
+# to the branch being pushed and raced config.lock on the common config).
+# Strip the handoff so the gate's children resolve repos from their own
+# cwd, as they do in CI and in manual runs.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE \
+  GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  GIT_GRAFT_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+  GIT_PREFIX
+
+# Consume the ref lines git writes to stdin and skip the gate only when
+# every line is a no-op or deletion: a deletion carries an all-zero local
+# sha (40-zero SHA-1 / 64-zero SHA-256), a no-op carries a local sha equal
+# to the remote one. Any line that sends a commit runs the gate — a mixed
+# push (`git push origin main :fix-branch`) sends commits to main and must
+# not be skipped just because another line deletes a branch.
+sends_commits=0
+while read -r _local_ref local_oid _remote_ref remote_oid; do
+  case $local_oid in
+    0000000000000000000000000000000000000000 | \
+      0000000000000000000000000000000000000000000000000000000000000000)
+      # Deletion: nothing sent.
+      ;;
+    "$remote_oid")
+      # No-op: local sha equals the remote sha.
+      ;;
+    *)
+      sends_commits=1
+      ;;
+  esac
+done
+if [ "$sends_commits" -eq 0 ]; then
+  exit 0
+fi
+
+if ! (cd "$repo_root" && make gate); then
+  echo "pre-push: gate failed — fix the failing step above (format-check, typecheck, build, test-unit or deadcode), then push again." >&2
+  echo "pre-push: a genuinely unrelated push can skip this once with CONDASH_SKIP_GATE=1." >&2
+  exit 1
+fi
+
+exit 0

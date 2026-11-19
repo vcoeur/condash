@@ -103,6 +103,8 @@ When changing the dev port, update **every** file:
 | `make test-headless` | alias of `make test` (headless; errors if `xvfb-run` absent) |
 | `make test-visible` | build, then Playwright with the window visible (`CONDASH_TEST_HEADED=1`) |
 | `make test-unit` / `npm run test:unit` | vitest unit suite — **both halves** (see below) |
+| `make gate` | the pre-push gate — format-check, typecheck, build, unit suite, knip under `umask 022`, mirroring `.github/workflows/_fast.yml` |
+| `make hooks` | one-time wiring: `git config core.hooksPath .githooks`, so the pre-push gate runs on every push (see docs/guides/dev-launch.md § Pre-push gate) |
 | `make deadcode` / `npm run deadcode` | knip — dead files / deps / duplicate exports |
 | `make typecheck` | tsc on both projects, no emit |
 | `make format` | prettier on `src/`, `tests/`, and the root `*.config.ts` |
