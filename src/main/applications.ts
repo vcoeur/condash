@@ -359,17 +359,28 @@ export async function renderAppsTable(
   return lines.join('\n');
 }
 
-/** The instruction-file path as the table renders it: workspace-relative when
- *  inside the workspace root, verbatim otherwise (an out-of-workspace repo is
- *  configured with an absolute path; that is the path it gets). Forward-slash
- *  form — the table is a shared, committed document, not a per-host shell
- *  string. */
-function asTablePath(abs: string, workspaceRoot: string | undefined): string {
+/**
+ * The instruction-file path as the table renders it: workspace-relative when
+ * inside the workspace root, verbatim otherwise (an out-of-workspace repo is
+ * configured with an absolute path; that is the path it gets). Forward-slash
+ * form — the table is a shared, committed document, not a per-host shell
+ * string.
+ *
+ * Exported because the Windows case cannot be exercised from a POSIX
+ * checkout: there, `resolve()` produces backslash paths, so the prefix check
+ * must compare both sides in posix form — a native-separator check never
+ * matches and the cell silently renders absolute, defeating the
+ * reproducibility axis (#575) on that platform. Pure string work; the unit
+ * test pins it with Windows-shaped input directly.
+ */
+export function asTablePath(abs: string, workspaceRoot: string | undefined): string {
   if (!abs) return '';
-  if (workspaceRoot && abs.startsWith(`${workspaceRoot}/`)) {
-    return toPosix(abs.slice(workspaceRoot.length + 1));
+  const posixAbs = toPosix(abs);
+  if (workspaceRoot) {
+    const posixRoot = toPosix(workspaceRoot);
+    if (posixAbs.startsWith(`${posixRoot}/`)) return posixAbs.slice(posixRoot.length + 1);
   }
-  return toPosix(abs);
+  return posixAbs;
 }
 
 /** Outcome of a {@link syncAppsDocs} run. */

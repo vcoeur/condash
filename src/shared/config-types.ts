@@ -48,7 +48,8 @@ export type RawRepo =
       name?: string;
       path?: string;
       label?: string;
-      /** One line on what the app is for — the AGENTS.md table's Purpose cell. */
+      /** One line on what the app is for. Per-app metadata — the generated
+       *  Apps table does not render it (its Purpose column was removed). */
       purpose?: string;
       aliases?: string[];
       run?: string;

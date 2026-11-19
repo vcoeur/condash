@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addApplication,
   aliasIndex,
+  asTablePath,
   exportAppsRegistry,
   fixAppsReferences,
   listApplications,
@@ -272,6 +273,22 @@ describe('syncAppsDocs', () => {
   });
 });
 
+describe('asTablePath', () => {
+  it('renders a backslash-separated Windows path workspace-relative (#575)', () => {
+    // On Windows, resolve() yields backslash paths; a native-separator
+    // prefix check would never match and the cell would silently render
+    // absolute. Both sides compare in posix form.
+    expect(asTablePath('C:\\ws\\repo\\AGENTS.md', 'C:\\ws')).toBe('repo/AGENTS.md');
+    // The verbatim (out-of-workspace) case also renders forward-slash form.
+    expect(asTablePath('D:\\elsewhere\\repo\\AGENTS.md', 'C:\\ws')).toBe(
+      'D:/elsewhere/repo/AGENTS.md',
+    );
+    // POSIX paths are already posix form — unchanged.
+    expect(asTablePath('/home/you/ws/repo/AGENTS.md', '/home/you/ws')).toBe('repo/AGENTS.md');
+    expect(asTablePath('', '/home/you/ws')).toBe('');
+  });
+});
+
 describe('committed registry (condash-apps.json)', () => {
   /** Write the committed registry file at the conception root. */
   function writeCommittedRegistry(body: Record<string, unknown>): void {
@@ -395,6 +412,30 @@ describe('committed registry (condash-apps.json)', () => {
     );
     await syncAppsDocs(tmp);
     expect(readFileSync(agents, 'utf8')).toBe(tableFromSettings);
+  });
+
+  it('export overwrites an existing committed registry with the current settings (#575)', async () => {
+    writeConfig({ repositories: [{ handle: 'old-row', name: 'old-row' }] });
+    const agents = writeAgentsMd();
+    await syncAppsDocs(tmp);
+    expect(readFileSync(agents, 'utf8')).toContain('| `#old-row` |');
+
+    // The tree adopts the committed file, then the registry moves on. The
+    // refresh contract: --export replaces the file wholesale with the
+    // current settings registry (its own bytes validated before the write),
+    // and the regenerated table follows.
+    writeCommittedRegistry({ repositories: [{ handle: 'old-row', name: 'old-row' }] });
+    writeConfig({ repositories: [{ handle: 'new-row', name: 'new-row' }] });
+    await exportAppsRegistry(tmp);
+
+    expect(JSON.parse(readFileSync(join(tmp, 'condash-apps.json'), 'utf8'))).toEqual({
+      repositories: [{ handle: 'new-row', name: 'new-row' }],
+      retired_apps: [],
+    });
+    await syncAppsDocs(tmp);
+    const body = readFileSync(agents, 'utf8');
+    expect(body).toContain('| `#new-row` |');
+    expect(body).not.toContain('old-row');
   });
 
   it('export refuses to write a body the committed-file schema would reject', async () => {
