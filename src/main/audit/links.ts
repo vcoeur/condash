@@ -4,12 +4,15 @@
  *
  * The scan covers Markdown under both `knowledge/` and `projects`: knowledge
  * articles commonly link to project evidence, while project notes carry
- * `**Transferred:**` markers that point back into knowledge. A CommonMark AST
- * supplies source positions and keeps code-shaped examples out of the scan.
+ * `**Transferred:**` markers that point back into knowledge — either into the
+ * tree itself or, when the `knowledge` skill's promotion rules moved detail
+ * into an app's doc tree, into a file inside the workspace or a configured
+ * repository. A CommonMark AST supplies source positions and keeps code-shaped
+ * examples out of the scan.
  */
 
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import GithubSlugger from 'github-slugger';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { toString } from 'mdast-util-to-string';
@@ -45,8 +48,23 @@ interface MdastNode {
   children?: MdastNode[];
 }
 
+/**
+ * Fallback roots a transfer target may resolve against beyond the conception
+ * tree. `runAudit` builds this from the effective config; tests pass it
+ * explicitly so the check stays deterministic without a config on disk.
+ */
+export interface TransferContext {
+  /** The conception's configured workspace root, when one is set. */
+  workspacePath?: string;
+  /** Every configured repository's directory name and resolved absolute cwd. */
+  repoRoots: { name: string; cwd: string }[];
+}
+
 /** Scan Markdown in the durable tree for unresolved relative links and anchors. */
-export async function checkLinks(conceptionPath: string): Promise<AuditIssue[]> {
+export async function checkLinks(
+  conceptionPath: string,
+  context: TransferContext = { repoRoots: [] },
+): Promise<AuditIssue[]> {
   const files = await markdownFiles(conceptionPath);
   const anchorCache = new Map<string, Promise<Set<string>>>();
   const issues: AuditIssue[] = [];
@@ -61,24 +79,31 @@ export async function checkLinks(conceptionPath: string): Promise<AuditIssue[]> 
 
     for (const paragraph of paragraphs(document)) {
       for (const transfer of transferredTargets(paragraph, definitions)) {
-        if (transfer.link) {
-          consumedTransferLinks.add(transfer.link.node);
-          const issue = await linkIssue(
+        for (const targetRef of transfer.targets) {
+          if (targetRef.link) {
+            consumedTransferLinks.add(targetRef.link.node);
+            const issue = await transferredLinkIssue(
+              conceptionPath,
+              filePath,
+              file,
+              targetRef.link,
+              anchorCache,
+              context,
+            );
+            if (issue) issues.push(issue);
+            continue;
+          }
+
+          const issue = await transferredIssue(
             conceptionPath,
             filePath,
             file,
-            transfer.link,
-            anchorCache,
-            {
-              missingTargetMessage: `Transferred marker target does not exist: ${transfer.link.target}`,
-            },
+            transfer.line,
+            targetRef.target,
+            context,
           );
           if (issue) issues.push(issue);
-          continue;
         }
-
-        const issue = await transferredIssue(conceptionPath, file, transfer.line, transfer.target);
-        if (issue) issues.push(issue);
       }
     }
 
@@ -105,7 +130,6 @@ async function linkIssue(
   sourceFile: string,
   link: MarkdownLink,
   anchorCache: Map<string, Promise<Set<string>>>,
-  options?: { missingTargetMessage?: string },
 ): Promise<AuditIssue | null> {
   if (isExternal(link.target)) return null;
   const target = splitTarget(link.target);
@@ -114,7 +138,7 @@ async function linkIssue(
     return unresolvedIssue(
       sourceFile,
       link.line,
-      options?.missingTargetMessage ?? `Link target does not exist: ${link.target}`,
+      `Link target does not exist: ${link.target}`,
       link.target,
     );
   }
@@ -131,17 +155,109 @@ async function linkIssue(
   );
 }
 
-/** Return a transfer-marker finding when its root-relative code target is absent. */
+/** Return a transfer-marker finding when its target resolves nowhere it could live. */
 async function transferredIssue(
   conceptionPath: string,
+  sourcePath: string,
   file: string,
   line: number,
   target: string,
+  context: TransferContext,
 ): Promise<AuditIssue | null> {
-  if (isExternal(target)) return null;
-  const targetPath = resolve(conceptionPath, splitTarget(target).path);
-  if (await pathExists(targetPath)) return null;
+  for (const candidate of transferCandidates(conceptionPath, sourcePath, target, context)) {
+    if (await pathExists(candidate)) return null;
+  }
+  const unverifiable = await unverifiableTransferTarget(target, context);
+  if (unverifiable) {
+    return { ...unresolvedIssue(file, line, unverifiable, target), severity: 'info' };
+  }
   return unresolvedIssue(file, line, `Transferred marker target does not exist: ${target}`, target);
+}
+
+/** Resolve a linked transfer target through the fallback chain, then its anchors. */
+async function transferredLinkIssue(
+  conceptionPath: string,
+  sourcePath: string,
+  sourceFile: string,
+  link: MarkdownLink,
+  anchorCache: Map<string, Promise<Set<string>>>,
+  context: TransferContext,
+): Promise<AuditIssue | null> {
+  const target = splitTarget(link.target);
+  for (const candidate of transferCandidates(conceptionPath, sourcePath, link.target, context)) {
+    if (!(await pathExists(candidate))) continue;
+    if (!target.anchor || !candidate.toLowerCase().endsWith('.md')) return null;
+    const anchors = await cachedAnchors(candidate, anchorCache);
+    if (anchors.has(target.anchor)) return null;
+    return unresolvedIssue(
+      sourceFile,
+      link.line,
+      `Anchor #${target.anchor} does not exist in ${relative(conceptionPath, candidate)}`,
+      link.target,
+    );
+  }
+  const unverifiable = await unverifiableTransferTarget(link.target, context);
+  if (unverifiable) {
+    return {
+      ...unresolvedIssue(sourceFile, link.line, unverifiable, link.target),
+      severity: 'info',
+    };
+  }
+  return unresolvedIssue(
+    sourceFile,
+    link.line,
+    `Transferred marker target does not exist: ${link.target}`,
+    link.target,
+  );
+}
+
+/**
+ * Absolute paths a transfer target may resolve against, in priority order: the
+ * conception root, the containing file's directory, the workspace root, and
+ * each configured repository whose directory name the target's first segment
+ * names — resolved against that repository's own cwd with the segment stripped,
+ * so a sub-path entry (cwd deeper than its directory name) still matches.
+ */
+function transferCandidates(
+  conceptionPath: string,
+  sourcePath: string,
+  target: string,
+  context: TransferContext,
+): string[] {
+  const rel = splitTarget(target).path;
+  if (!rel || isExternal(rel)) return [];
+  const candidates = new Set<string>([resolve(conceptionPath, rel)]);
+  if (!isAbsolute(rel)) candidates.add(resolve(dirname(sourcePath), rel));
+  if (context.workspacePath) candidates.add(resolve(context.workspacePath, rel));
+  const first = rel.split('/')[0];
+  for (const root of context.repoRoots) {
+    if (root.name === first && rel.length > first.length) {
+      candidates.add(join(root.cwd, rel.slice(first.length + 1)));
+    }
+  }
+  return [...candidates];
+}
+
+/**
+ * Explain when a miss cannot prove a dangler: without a configured workspace,
+ * or when the named repository is not cloned on this machine, the check cannot
+ * tell a missing file from a missing checkout — an info, not an error.
+ */
+async function unverifiableTransferTarget(
+  target: string,
+  context: TransferContext,
+): Promise<string | null> {
+  const rel = splitTarget(target).path;
+  if (!rel || isExternal(rel)) return null;
+  if (!context.workspacePath) {
+    return `Transferred marker target could not be verified: workspace_path is not configured (${target})`;
+  }
+  const first = rel.split('/')[0];
+  const repo = context.repoRoots.find((root) => root.name === first);
+  if (repo && rel.length > first.length && !(await pathExists(repo.cwd))) {
+    return `Transferred marker target could not be verified: ${repo.name} is not cloned (${target})`;
+  }
+  return null;
 }
 
 /** Build the standard non-auto-fixable issue shape for a broken reference. */
@@ -250,42 +366,64 @@ function* paragraphs(document: Root): Generator<Paragraph> {
   yield* found;
 }
 
-/** Identify each narrow Transferred marker shape from a paragraph's AST children. */
+/**
+ * Identify each Transferred marker shape from a paragraph's AST children and
+ * yield every target it names. A marker matches anywhere in a paragraph —
+ * timeline entries and list items start one mid-line — and after the first
+ * target further backticked nodes on the marker's own source line are
+ * additional targets (`… → `a.md` `b.md``): anything on a later line is the
+ * paragraph's next sentence, so an `on `repo`/`branch`` suffix and following
+ * prose both end the collection.
+ */
 function* transferredTargets(
   paragraph: Paragraph,
   definitions: Map<string, string>,
-): Generator<{ line: number; target: string; link?: MarkdownLink }> {
+): Generator<{ line: number; targets: { target: string; link?: MarkdownLink }[] }> {
   for (let index = 0; index < paragraph.children.length - 2; index += 1) {
     const marker = paragraph.children[index];
     const prefix = paragraph.children[index + 1];
     const target = paragraph.children[index + 2];
     if (marker?.type !== 'strong' || toString(marker) !== 'Transferred:') continue;
-    if (index > 0 && !startsAfterLineBreak(paragraph.children[index - 1], marker)) continue;
     if (prefix?.type !== 'text' || !TRANSFERRED_PREFIX_RE.test(prefix.value)) continue;
 
-    if (target?.type === 'inlineCode') {
-      yield { line: nodeLine(marker), target: (target as InlineCode).value };
-      continue;
-    }
-    if (target?.type === 'link') {
+    if (!target) continue;
+    const targetLine = nodeLine(target);
+
+    const refs: { target: string; link?: MarkdownLink }[] = [];
+    if (target.type === 'inlineCode') {
+      refs.push({ target: (target as InlineCode).value });
+    } else if (target.type === 'link') {
       const link = target as Link;
-      yield {
-        line: nodeLine(marker),
+      refs.push({
         target: link.url,
         link: { node: link, target: link.url, line: nodeLine(link) },
-      };
-      continue;
-    }
-    if (target?.type === 'linkReference') {
+      });
+    } else if (target.type === 'linkReference') {
       const link = target as LinkReference;
       const destination = definitions.get(link.identifier);
       if (!destination) continue;
-      yield {
-        line: nodeLine(marker),
+      refs.push({
         target: destination,
         link: { node: link, target: destination, line: nodeLine(link) },
-      };
+      });
+    } else {
+      continue;
     }
+
+    // Additional targets are same-line only (`… → `a.md` `b.md``): a node on a
+    // later line is the next sentence of the same paragraph, never part of the
+    // marker, and an `on `repo`/`branch`` suffix ends the scan the same way.
+    for (let scan = index + 3; scan < paragraph.children.length; scan += 1) {
+      const next = paragraph.children[scan];
+      if (!next || nodeLine(next) !== targetLine) break;
+      if (next.type === 'inlineCode') {
+        refs.push({ target: (next as InlineCode).value });
+        continue;
+      }
+      if (next.type === 'text' && /^\s*$/.test(next.value)) continue;
+      break;
+    }
+    yield { line: nodeLine(marker), targets: refs };
   }
 }
 
@@ -298,21 +436,6 @@ function walk(node: MdastNode, visit: (node: MdastNode) => void): void {
 /** Return the parser-provided line, keeping audit findings navigable. */
 function nodeLine(node: { position?: { start?: { line?: number } } }): number {
   return node.position?.start?.line ?? 1;
-}
-
-/** Return a node's parser-provided ending line for multi-marker paragraphs. */
-function nodeEndLine(node: { position?: { end?: { line?: number } } }): number {
-  return node.position?.end?.line ?? 1;
-}
-
-/** Keep metadata recognition at a paragraph start or a source line break. */
-function startsAfterLineBreak(
-  previous: { type: string; value?: string; position?: { end?: { line?: number } } },
-  current: { position?: { start?: { line?: number } } },
-): boolean {
-  return previous.type === 'text' && previous.value?.endsWith('\n') === true
-    ? true
-    : nodeLine(current) > nodeEndLine(previous);
 }
 
 /** Extract `id` and legacy `name` values from explicit HTML anchor tags. */
