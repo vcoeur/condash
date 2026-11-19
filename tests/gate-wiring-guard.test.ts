@@ -78,7 +78,10 @@ describe('the pre-push gate stays wired up', () => {
       'GIT_CONFIG',
       'GIT_CONFIG_COUNT',
     ]) {
-      expect(unsetBlock).toContain(envVar);
+      // Token-boundary match, not toContain: GIT_CONFIG is a substring of
+      // GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT, so a bare containment
+      // check cannot fail when only the standalone token is trimmed.
+      expect(unsetBlock).toMatch(new RegExp(`(?<![A-Z_])${envVar}(?![A-Z_])`));
     }
   });
 
