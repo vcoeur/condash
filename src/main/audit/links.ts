@@ -370,9 +370,10 @@ function* paragraphs(document: Root): Generator<Paragraph> {
  * Identify each Transferred marker shape from a paragraph's AST children and
  * yield every target it names. A marker matches anywhere in a paragraph —
  * timeline entries and list items start one mid-line — and after the first
- * target further backticked nodes are additional targets (`… → `a.md` `b.md``)
- * until an `on` word appears: `… on `repo`/`branch`` names the landing branch,
- * not a target, so everything after it is left uncollected.
+ * target further backticked nodes on the marker's own source line are
+ * additional targets (`… → `a.md` `b.md``): anything on a later line is the
+ * paragraph's next sentence, so an `on `repo`/`branch`` suffix and following
+ * prose both end the collection.
  */
 function* transferredTargets(
   paragraph: Paragraph,
@@ -385,16 +386,19 @@ function* transferredTargets(
     if (marker?.type !== 'strong' || toString(marker) !== 'Transferred:') continue;
     if (prefix?.type !== 'text' || !TRANSFERRED_PREFIX_RE.test(prefix.value)) continue;
 
+    if (!target) continue;
+    const targetLine = nodeLine(target);
+
     const refs: { target: string; link?: MarkdownLink }[] = [];
-    if (target?.type === 'inlineCode') {
+    if (target.type === 'inlineCode') {
       refs.push({ target: (target as InlineCode).value });
-    } else if (target?.type === 'link') {
+    } else if (target.type === 'link') {
       const link = target as Link;
       refs.push({
         target: link.url,
         link: { node: link, target: link.url, line: nodeLine(link) },
       });
-    } else if (target?.type === 'linkReference') {
+    } else if (target.type === 'linkReference') {
       const link = target as LinkReference;
       const destination = definitions.get(link.identifier);
       if (!destination) continue;
@@ -406,13 +410,17 @@ function* transferredTargets(
       continue;
     }
 
+    // Additional targets are same-line only (`… → `a.md` `b.md``): a node on a
+    // later line is the next sentence of the same paragraph, never part of the
+    // marker, and an `on `repo`/`branch`` suffix ends the scan the same way.
     for (let scan = index + 3; scan < paragraph.children.length; scan += 1) {
       const next = paragraph.children[scan];
-      if (next?.type === 'inlineCode') {
+      if (!next || nodeLine(next) !== targetLine) break;
+      if (next.type === 'inlineCode') {
         refs.push({ target: (next as InlineCode).value });
         continue;
       }
-      if (next?.type === 'text' && /^\s*$/.test(next.value)) continue;
+      if (next.type === 'text' && /^\s*$/.test(next.value)) continue;
       break;
     }
     yield { line: nodeLine(marker), targets: refs };

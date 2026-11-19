@@ -358,6 +358,23 @@ describe('checkLinks', () => {
     expect(issues[0].message).not.toContain('condash/fix-618');
   });
 
+  it('does not collect a later same-paragraph sentence as a second target', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      [
+        '**Transferred:** 2026-01-01 → `knowledge/topics/missing.md`',
+        '`condash audit` flags missing files.',
+        '',
+      ].join('\n'),
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain('knowledge/topics/missing.md');
+    expect(issues[0].message).not.toContain('condash audit');
+  });
+
   it('reports an error when the workspace is configured and the target exists nowhere', async () => {
     await writeFile(
       'projects/2026-09/2026-09-17-project/notes/01-work.md',
