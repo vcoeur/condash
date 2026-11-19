@@ -34,6 +34,18 @@ import type { RecoveryGitState, RecoveryGitChange, ChangedPath } from './git';
 import { readRecoveryGitState, ffOnlyMerge } from './git';
 import { closeRecoveryFixtureParent, openRecoveryFixtureParent } from './recovery-test-env';
 
+// The recovery journal's 0644 creation gate (assertRecoveryJournalPreconditions)
+// and the {mode: 0o644} fixtures below are CI-shaped: under one dev host's
+// ambient umask 002 they yielded 0664 files and 152/194 tests failed here on
+// gate refusals CI then reproduced for its own reasons. Pin the umask the
+// suite requires, test-side, and restore the ambient value on close — the
+// forks pool runs each test file in its own child process, so the pin stays
+// scoped to this file and sibling files still observe their ambient umask.
+const ambientUmask = process.umask(0o022);
+afterAll(() => {
+  process.umask(ambientUmask);
+});
+
 const bytes = (text: string) => Buffer.from(text);
 const draft = '- [old](old.md) — *Stale*. <!-- draft -->';
 
