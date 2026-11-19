@@ -49,11 +49,27 @@ The other half of the loop:
 | `make test-headless` | Same thing, named explicitly. |
 | `make test-visible` | Build and run with the window visible (`CONDASH_TEST_HEADED=1`). |
 | `make test-unit` | The vitest unit suite, no build needed. |
+| `make gate` | The pre-push gate: the full fast lane (format-check, typecheck, build, unit suite, knip) run locally under CI's umask 022 — mirrors `.github/workflows/_fast.yml`. |
+| `make hooks` | One-time wiring: point `core.hooksPath` at `.githooks/` so the pre-push gate below runs on every push. |
 | `make deadcode` | `knip` — fails on dead files, dead/unlisted deps, and duplicate exports. |
 | `make typecheck` | `tsc --noEmit` over main and renderer. |
 | `make format` | Prettier over `src/`. |
 
 A direct `npx playwright test` that skips the wrapper is aborted by a global-setup guard before any window opens — that guard is deliberate, not an obstacle to route around.
+
+## Pre-push gate
+
+After `make hooks` has been run once (repo-local config — every clone needs it once, and because the setting is shared across worktrees and `.githooks/` is a tracked directory, it then applies to every worktree of that clone), a `git push` first runs `.githooks/pre-push`, which runs `make gate`.
+
+`make gate` runs the same five steps the CI fast lane (`.github/workflows/_fast.yml`) runs, in the same order, delegating to the same Makefile targets: `format-check`, `typecheck`, `build`, `test-unit`, `deadcode`. Its whole sequence runs under `umask 022` — not cosmetics: a local gate that runs the suites under a dev host's *ambient* environment re-creates the exact masking it exists to catch. One dev machine's ambient umask `002` (vs CI's `022`) masked a 152/194 recovery-suite failure until CI found it; the gate is only worth having if it reproduces CI's file-permission environment.
+
+Skip semantics:
+
+- **`CONDASH_SKIP_GATE=1`** — exits 0 immediately, without running the gate. For a push you know is fine and don't want to wait out the minutes for (a docs-only branch, a WIP mirror).
+- **`--no-verify`** also skips the hook, but skips *every* hook, not just this gate — prefer the env var.
+- The hook itself skips the gate and exits 0 when the push sends no new commits: a branch deletion (null new sha), or a push whose remote ref already equals the local one. There is nothing new to gate.
+- If `node_modules` is missing, the hook fails fast with a "run `npm ci` first" message instead of a confusing vitest crash.
+- On failure the hook exits non-zero after naming the failed step family — fix it and push again; the push never happened, so nothing was published half-checked.
 
 ## `--no-sandbox` and the sandbox toggle
 

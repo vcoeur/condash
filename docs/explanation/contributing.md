@@ -88,8 +88,10 @@ make typecheck     # tsc --noEmit on both projects
 make test          # build, then the Playwright E2E suite
 make test-unit     # vitest unit tests
 make deadcode      # knip — dead files / deps / duplicate exports
+make gate          # the pre-push gate: the full fast lane under CI's umask 022
 ```
 
+- **Pre-push gate** (`make gate`, wired by `make hooks`) — the same five steps the CI fast lane runs, locally, before every push. Runs under `umask 022` for CI parity: a gate under the dev host's ambient umask re-creates the masking it exists to catch. `CONDASH_SKIP_GATE=1` skips it once; the hook itself exits 0 for pushes that send no new commits. Full semantics: [Dev launch — Pre-push gate](../guides/dev-launch.md#pre-push-gate).
 - **Vitest** (`make test-unit`) — `src/**/*.test.ts`. Fast. Pure-function tests (parsers, path helpers, regexes). `environment: 'node'`.
 
   Spawn-deadline heartbeat fixtures publish complete timestamps by synchronous same-directory staging and rename. Their forced-interleaving test checks the published value during truncation and partial staging writes without weakening the deadline liveness assertions.
