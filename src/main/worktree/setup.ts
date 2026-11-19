@@ -190,7 +190,11 @@ export async function setupBranchWorktrees(
     }
     try {
       const args = ['worktree', 'add'];
-      if (!branchOk) args.push('-b', branch);
+      // --no-track only when setup creates the branch (#623): with git's
+      // default branch.autoSetupMerge, a branch cut from a remote-tracking
+      // ref silently gains it as upstream, breaking `git push` under
+      // push.default=simple. Attaching an existing branch keeps its upstream.
+      if (!branchOk) args.push('--no-track', '-b', branch);
       args.push(target);
       if (branchOk) args.push(branch);
       else if (startRef) args.push(startRef);
