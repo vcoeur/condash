@@ -17,6 +17,11 @@
  *                   listing its children; flag dangling and orphan entries.
  *  - `links`      — relative Markdown links, heading anchors, and
  *                   `**Transferred:**` marker targets that no longer resolve.
+ *                   Marker targets resolve against the conception root, the
+ *                   containing file, the configured `workspace_path`, and each
+ *                   configured repository; a miss that a missing workspace or
+ *                   uncloned repository could explain reports `info`, others
+ *                   report `error`.
  *  - `stale-index`— `index.md` files under `projects/` or `knowledge/` whose
  *                   content has drifted from the tree (regen dry-run would
  *                   rewrite them). Covers freshness where `index` covers
@@ -53,13 +58,33 @@ import { checkIndex } from './audit/index-check';
 import { checkKnowledgeCheck } from './audit/check-knowledge';
 import { checkKnowledgeRecheck } from './audit/check-knowledge-deferred';
 import { checkLfs } from './audit/lfs';
-import { checkLinks } from './audit/links';
+import { checkLinks, type TransferContext } from './audit/links';
 import { checkStaleIndex } from './audit/stale-index';
 import { checkStaleVerification } from './audit/stale-verification';
 import { checkWorktrees } from './audit/worktrees';
-import type { AuditCheckName, AuditIssue, AuditReport } from './audit/shared';
+import { readConfig, type AuditCheckName, type AuditIssue, type AuditReport } from './audit/shared';
+import { walkRepos } from './config-walk';
 
 export type { AuditCheckName, AuditIssue, AuditReport } from './audit/shared';
+
+/**
+ * Workspace/repo fallback roots for transfer-marker targets, from the effective
+ * config. An unreadable config degrades to conception-root-only checking, where
+ * misses report info (the check cannot tell a missing file from a missing
+ * checkout) instead of error.
+ */
+async function transferContext(conceptionPath: string): Promise<TransferContext> {
+  try {
+    const config = await readConfig(conceptionPath);
+    const repoRoots: TransferContext['repoRoots'] = [];
+    walkRepos(config, (entry) => {
+      repoRoots.push({ name: entry.name, cwd: entry.cwd });
+    });
+    return { workspacePath: config.workspace_path, repoRoots };
+  } catch {
+    return { repoRoots: [] };
+  }
+}
 
 export async function runAudit(
   conceptionPath: string,
@@ -85,7 +110,7 @@ export async function runAudit(
           issues.push(...(await checkIndex(conceptionPath)));
           break;
         case 'links':
-          issues.push(...(await checkLinks(conceptionPath)));
+          issues.push(...(await checkLinks(conceptionPath, await transferContext(conceptionPath))));
           break;
         case 'stale-index':
           issues.push(...(await checkStaleIndex(conceptionPath)));

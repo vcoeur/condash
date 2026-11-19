@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { checkLinks } from './links';
 
 let conceptionPath: string;
+let workspacePath: string;
 
 async function writeFile(relPath: string, content: string): Promise<void> {
   const path = join(conceptionPath, relPath);
@@ -12,14 +13,22 @@ async function writeFile(relPath: string, content: string): Promise<void> {
   await fs.writeFile(path, content, 'utf8');
 }
 
+async function writeWorkspace(relPath: string, content = '# Placeholder\n'): Promise<void> {
+  const path = join(workspacePath, relPath);
+  await fs.mkdir(dirname(path), { recursive: true });
+  await fs.writeFile(path, content, 'utf8');
+}
+
 beforeEach(async () => {
   conceptionPath = await fs.mkdtemp(join(tmpdir(), 'condash-links-'));
+  workspacePath = await fs.mkdtemp(join(tmpdir(), 'condash-links-ws-'));
   await fs.mkdir(join(conceptionPath, 'knowledge'), { recursive: true });
   await fs.mkdir(join(conceptionPath, 'projects'), { recursive: true });
 });
 
 afterEach(async () => {
   await fs.rm(conceptionPath, { recursive: true, force: true });
+  await fs.rm(workspacePath, { recursive: true, force: true });
 });
 
 describe('checkLinks', () => {
@@ -277,9 +286,111 @@ describe('checkLinks', () => {
     const issues = await checkLinks(conceptionPath);
 
     expect(issues).toHaveLength(2);
+    expect(issues.map((issue) => issue.severity)).toEqual(['info', 'info']);
     expect(issues.map((issue) => issue.message)).toEqual([
-      'Transferred marker target does not exist: knowledge/topics/missing.md',
-      'Transferred marker target does not exist: ../../../../knowledge/topics/also-missing.md',
+      'Transferred marker target could not be verified: workspace_path is not configured (knowledge/topics/missing.md)',
+      'Transferred marker target could not be verified: workspace_path is not configured (../../../../knowledge/topics/also-missing.md)',
+    ]);
+  });
+
+  it('resolves a Transferred target under the configured workspace_path', async () => {
+    await writeWorkspace('condash/docs/promoted.md');
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `condash/docs/promoted.md`\n',
+    );
+
+    await expect(checkLinks(conceptionPath, { workspacePath, repoRoots: [] })).resolves.toEqual([]);
+  });
+
+  it('resolves a Transferred target through a sub-path repository entry', async () => {
+    await writeWorkspace('apps/fovea/docs/promoted.md');
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `fovea/docs/promoted.md`\n',
+    );
+
+    await expect(
+      checkLinks(conceptionPath, {
+        workspacePath,
+        repoRoots: [{ name: 'fovea', cwd: join(workspacePath, 'apps/fovea') }],
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it('checks every backticked target of a Transferred marker', async () => {
+    await writeFile('knowledge/promoted.md', '# Promoted\n');
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `knowledge/promoted.md` `knowledge/missing.md`\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('info');
+    expect(issues[0].message).toContain('knowledge/missing.md');
+    expect(issues[0].message).not.toContain('knowledge/promoted.md');
+  });
+
+  it('matches a Transferred marker that starts mid-line', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '- noted the handoff **Transferred:** 2026-09-17 → `knowledge/missing.md`\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('info');
+  });
+
+  it('does not treat an on-branch suffix as a second target', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `knowledge/missing.md` on `condash/fix-618`\n',
+    );
+
+    const issues = await checkLinks(conceptionPath);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain('knowledge/missing.md');
+    expect(issues[0].message).not.toContain('condash/fix-618');
+  });
+
+  it('reports an error when the workspace is configured and the target exists nowhere', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `knowledge/topics/missing.md`\n',
+    );
+
+    const issues = await checkLinks(conceptionPath, { workspacePath, repoRoots: [] });
+
+    expect(issues).toMatchObject([
+      {
+        severity: 'error',
+        message: 'Transferred marker target does not exist: knowledge/topics/missing.md',
+      },
+    ]);
+  });
+
+  it('reports info, not error, when the named repository is not cloned', async () => {
+    await writeFile(
+      'projects/2026-09/2026-09-17-project/notes/01-work.md',
+      '**Transferred:** 2026-09-17 → `condash/docs/promoted.md`\n',
+    );
+
+    const issues = await checkLinks(conceptionPath, {
+      workspacePath,
+      repoRoots: [{ name: 'condash', cwd: join(workspacePath, 'condash') }],
+    });
+
+    expect(issues).toMatchObject([
+      {
+        severity: 'info',
+        message:
+          'Transferred marker target could not be verified: condash is not cloned (condash/docs/promoted.md)',
+      },
     ]);
   });
 });
