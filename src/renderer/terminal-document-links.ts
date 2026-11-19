@@ -1,11 +1,22 @@
-import type { IBufferRange, ILinkHandler, Terminal } from '@xterm/xterm';
+import type { IBufferRange, ILinkHandler, ILinkProvider, Terminal } from '@xterm/xterm';
 import { terminalDocumentPath } from '@shared/terminal-document-uri';
+import { createTerminalPathLinkProvider } from './terminal-path-links';
 
 export const TERMINAL_DOCUMENT_EVENT = 'condash-terminal-document';
+export const TERMINAL_OPEN_PATH_EVENT = 'condash-terminal-open-path';
+
+/** Open an existing non-document terminal path through `openPath`; main.tsx
+ *  owns the call so its rejection surfaces as a toast. */
+export function dispatchTerminalPathOpen(path: string): void {
+  window.dispatchEvent(new CustomEvent(TERMINAL_OPEN_PATH_EVENT, { detail: { path } }));
+}
 
 interface HoveredLink {
   uri: string;
   range: IBufferRange;
+  /** 'osc' arrives through the linkHandler (OSC 8), 'path' through the plain
+   *  absolute-path link provider; it picks the open route on release. */
+  kind: 'osc' | 'path';
 }
 
 function sameDocumentLink(current: HoveredLink, previous: HoveredLink): boolean {
@@ -20,12 +31,14 @@ function sameDocumentLink(current: HoveredLink, previous: HoveredLink): boolean 
 
 const externalLink = (uri: string): boolean => /^(https?|mailto):/i.test(uri);
 
-/** Own document and modified reporting-mode web clicks before PTY reporting; replay drags. */
+/** Own document and modified reporting-mode web clicks before PTY reporting; replay drags.
+ * `pathProvider` must be registered AFTER the WebLinksAddon so OSC 8 and bare
+ * URLs keep their priority (xterm orders providers by registration). */
 export function terminalDocumentLinks(
   term: Terminal,
   host: HTMLElement,
   sessionId: string,
-): { handler: ILinkHandler; dispose(): void } {
+): { handler: ILinkHandler; pathProvider: ILinkProvider; dispose(): void } {
   let hovered: HoveredLink | null = null;
   let pending: {
     link: HoveredLink;
@@ -116,6 +129,8 @@ export function terminalDocumentLinks(
           detail: { sessionId, uri: gesture.link.uri },
         }),
       );
+    } else if (gesture.link.kind === 'path') {
+      dispatchTerminalPathOpen(gesture.link.uri);
     } else {
       void window.condash.openExternal(gesture.link.uri);
     }
@@ -133,6 +148,18 @@ export function terminalDocumentLinks(
   host.addEventListener('mouseleave', clear);
   const resized = term.onResize(clear);
   const scrolled = term.onScroll(clear);
+
+  const pathLinks = createTerminalPathLinkProvider(term, {
+    hover: (uri, range) => {
+      hovered = {
+        uri,
+        range: { start: { ...range.start }, end: { ...range.end } },
+        kind: 'path',
+      };
+    },
+    leave: clear,
+    openPath: dispatchTerminalPathOpen,
+  });
 
   return {
     handler: {
@@ -164,10 +191,12 @@ export function terminalDocumentLinks(
             : {
                 uri,
                 range: { start: { ...range.start }, end: { ...range.end } },
+                kind: 'osc',
               };
       },
       leave: clear,
     },
+    pathProvider: pathLinks.provider,
     dispose() {
       pending = null;
       host.removeEventListener('mousedown', down, true);
@@ -177,6 +206,7 @@ export function terminalDocumentLinks(
       host.removeEventListener('mouseleave', clear);
       resized.dispose();
       scrolled.dispose();
+      pathLinks.dispose();
     },
   };
 }
