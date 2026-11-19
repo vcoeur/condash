@@ -460,6 +460,69 @@ describe('stale-base warning (baseBehind)', () => {
   });
 });
 
+describe('new branches do not track their start ref (#623)', () => {
+  // With git's default branch.autoSetupMerge=true, a branch cut from a
+  // remote-tracking ref (origin/HEAD here) used to silently gain it as
+  // upstream — a bare `git push` then failed under push.default=simple, or
+  // pushed onto main under push.default=upstream. setup must pass
+  // --no-track when it creates the branch.
+  async function cloneWithOriginHead(): Promise<string> {
+    const originRoot = join(tmp, 'origin');
+    mkdirSync(originRoot, { recursive: true });
+    await git(originRoot, 'init', '-q', '-b', 'main', 'demo2');
+    const origin = join(originRoot, 'demo2');
+    await git(origin, 'config', 'user.email', 'test@example.com');
+    await git(origin, 'config', 'user.name', 'Test');
+    await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init');
+    await git(join(tmp, 'workspace'), 'clone', '-q', origin, 'demo2');
+    const clone = join(tmp, 'workspace', 'demo2');
+    await git(clone, 'config', 'user.email', 'test@example.com');
+    await git(clone, 'config', 'user.name', 'Test');
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo2' }],
+        },
+        null,
+        2,
+      ),
+    );
+    return clone;
+  }
+
+  it('branches from origin/HEAD without gaining it as upstream', async () => {
+    const clone = await cloneWithOriginHead();
+    // The fixture starts from origin/HEAD, the same default tip setup uses.
+    expect((await git(clone, 'symbolic-ref', 'refs/remotes/origin/HEAD')).trim()).toBe(
+      'refs/remotes/origin/main',
+    );
+    const result = await setupBranchWorktrees(conception, 'no-track-create', { repos: ['demo2'] });
+    expect(result.created).toHaveLength(1);
+    const target = join(worktreesRoot, 'no-track-create', 'demo2');
+    expect((await git(target, 'rev-parse', 'HEAD')).trim()).toBe(
+      (await git(clone, 'rev-parse', 'origin/main')).trim(),
+    );
+    // No upstream: the branch is created with --no-track, so the remote-tracking
+    // start ref is not adopted. `@{u}` must not resolve.
+    await expect(git(clone, 'rev-parse', '--abbrev-ref', 'no-track-create@{u}')).rejects.toThrow();
+  });
+
+  it('attaching an existing branch keeps its upstream', async () => {
+    const clone = await cloneWithOriginHead();
+    await git(clone, 'branch', '-q', 'attach-track');
+    await git(clone, 'branch', '-q', '--set-upstream-to=origin/main', 'attach-track');
+    const result = await setupBranchWorktrees(conception, 'attach-track', { repos: ['demo2'] });
+    expect(result.created).toHaveLength(1);
+    // The existing branch's upstream must survive the attach.
+    expect((await git(clone, 'rev-parse', '--abbrev-ref', 'attach-track@{u}')).trim()).toBe(
+      'origin/main',
+    );
+  });
+});
+
 describe('setup-side flattened-path collision / stale-dir classification', () => {
   it('reports present-but-different-branch as blocked, not alreadyPresent', async () => {
     // `coll/ision` and `coll-ision` share the directory key `coll-ision`.
