@@ -108,6 +108,33 @@ describe('runApplications sync-docs', () => {
     const result = parseJsonEnvelope<{ missingSentinels: boolean }>(stdout).data!;
     expect(result.missingSentinels).toBe(true);
   });
+
+  it('--export writes the committed registry instead of syncing AGENTS.md', async () => {
+    await seed({
+      repositories: [
+        { handle: 'condash', name: 'condash' },
+        { handle: 'beta', path: 'beta', submodules: [{ handle: 'gamma', path: 'gamma' }] },
+      ],
+      retired_apps: [{ handle: 'old-app' }],
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      runApplications(
+        'sync-docs',
+        args('sync-docs', [], { export: true }),
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const result = parseJsonEnvelope<{ file: string; live: number; retired: number }>(stdout).data!;
+    expect(result.file).toBe(join(conceptionPath, 'condash-apps.json'));
+    expect(result.live).toBe(3);
+    expect(result.retired).toBe(1);
+    const written = JSON.parse(await fs.readFile(result.file, 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(written).sort()).toEqual(['repositories', 'retired_apps']);
+    // No AGENTS.md was written or required — the file carries no sentinels.
+    await expect(fs.access(join(conceptionPath, 'AGENTS.md'))).rejects.toThrow();
+  });
 });
 
 describe('runApplications add', () => {

@@ -23,9 +23,8 @@ export type RawSubmoduleRepo =
       name?: string;
       path?: string;
       label?: string;
-      /** One line on what the app is for. Rendered as the AGENTS.md table's
-       *  Purpose column, so a reader gets the answer without opening a second
-       *  file. */
+      /** One line on what the app is for. Per-app metadata — the generated
+       *  Apps table does not render it (its Purpose column was removed). */
       purpose?: string;
       aliases?: string[];
       run?: string;
@@ -49,7 +48,8 @@ export type RawRepo =
       name?: string;
       path?: string;
       label?: string;
-      /** One line on what the app is for — the AGENTS.md table's Purpose cell. */
+      /** One line on what the app is for. Per-app metadata — the generated
+       *  Apps table does not render it (its Purpose column was removed). */
       purpose?: string;
       aliases?: string[];
       run?: string;

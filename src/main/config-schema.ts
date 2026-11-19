@@ -169,8 +169,8 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
       name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
-      /** One line on what the app is for. `applications sync-docs` renders it
-       *  as the AGENTS.md table's Purpose column. */
+      /** One line on what the app is for — per-app metadata; the generated
+       *  Apps table does not render it. */
       purpose: z.string().min(1).optional(),
       /** Legacy spellings that resolve to this handle — drives the cleanup
        *  rewriter and lets `applications validate` auto-suggest a fix. */
@@ -701,6 +701,54 @@ export const globalSettingsSchema = z
 /** Schema for `<conception>/.condash/settings.json` — the disjoint tree-owned
  *  field group. A global key found here is rejected by `.strict()`. */
 export const conceptionConfigSchema = z.object(conceptionOnlyFields).strict();
+
+/**
+ * Schema for the optional committed registry file
+ * `<conception>/condash-apps.json` (#575): when it exists, `applications
+ * sync-docs` reads the generated Apps table's registry from it instead of the
+ * gitignored `.condash/settings.json`, so the committed table is reproducible
+ * from the repository alone. The entry schemas are the settings registry's
+ * own — the file IS a registry, not a config: only `repositories` +
+ * `retired_apps`, and `.strict()` keeps out every per-machine key (a
+ * committed file must never describe one host — no `workspace_path`, no
+ * paths-tracking fields).
+ */
+export const committedAppsRegistrySchema = z
+  .object({
+    repositories: z.array(topLevelRepoEntry).optional(),
+    retired_apps: z.array(retiredAppEntry).optional(),
+  })
+  .strict();
+
+/** What {@link parseCommittedAppsRegistry} returns. */
+export interface CommittedAppsRegistry {
+  repositories?: RawRepo[];
+  retired_apps?: Array<{ handle: string; label?: string; aliases?: string[] }>;
+}
+
+/**
+ * Parse → validate a committed registry file's body. Used by the
+ * `applications sync-docs` read path (a present file is validated, an absent
+ * one never reaches here) and by `sync-docs --export` before its write, so an
+ * export can never land a file the next sync-docs refuses. Errors name the
+ * file and the offending path, mirroring
+ * {@link validateAndCanonicaliseConceptionConfig}.
+ */
+export function parseCommittedAppsRegistry(json: string): CommittedAppsRegistry {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    throw new Error(`condash-apps.json: invalid JSON — ${(err as Error).message}`);
+  }
+  const result = committedAppsRegistrySchema.safeParse(parsed);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+    throw new Error(`condash-apps.json: ${where} — ${issue.message}`);
+  }
+  return result.data as CommittedAppsRegistry;
+}
 
 // `SCOPE_OF` (the key → owning-file map) and `SettingsScope` are defined in the
 // zod-free `config-scope.ts` and re-exported at the top of this file. The

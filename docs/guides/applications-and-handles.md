@@ -61,6 +61,10 @@ A repo that no longer exists but is still referenced by closed-project READMEs g
 
 Retired handles **resolve** (so history stays valid) but are never rendered as cards and never appear in the generated Apps table. A handle is either live (in `repositories`) or retired (here) — never both.
 
+### The committed registry file
+
+`sync-docs` normally reads the table from this gitignored, per-machine settings file — which makes the committed Apps table a function of local configuration. The optional committed file `condash-apps.json` at the conception root fixes that: when it exists, `sync-docs` reads the table's registry from it alone. Adopt it with `condash applications sync-docs --export`; the file's schema and rules are in **[Config files → `condash-apps.json`](../reference/config.md#condash-appsjson--the-committed-apps-registry)**.
+
 ## How `apps:` values resolve
 
 A project README's `apps:` entry must be one of:
@@ -81,6 +85,7 @@ condash applications rename fovea fovea-web   # cascades into README apps: refs
 condash applications validate            # exit 3 on an unresolved reference
 condash applications validate --fix      # canonicalise every resolvable value
 condash applications sync-docs           # regenerate the AGENTS.md Apps table
+condash applications sync-docs --export  # write the committed condash-apps.json registry
 ```
 
 | Verb | What it does |
@@ -89,7 +94,7 @@ condash applications sync-docs           # regenerate the AGENTS.md Apps table
 | `add <handle> --path <p> [--label <l>] [--purpose <t>]` | Register a new live app (top-level only — there is no parent flag, so a submodule cannot be created here). |
 | `set <handle> [--label <l>] [--purpose <t>] [--path <p>]` | Update a registered app — any handle `list` shows, submodules included. An entry written as a bare string is widened to object form so it can hold the field; its handle is unchanged. `--path ""` is rejected because a registered app must keep a non-empty locator. |
 | `rename <old> <new>` | Rename a handle; records the old as an alias **and** rewrites every project README `apps:` reference that pointed at it. |
-| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry, including each app's one-line `purpose`. (Agent-specific files like `CLAUDE.md` are virtual renders of `AGENTS.md` and are never written to disk.) |
+| `sync-docs [--export]` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry. (Agent-specific files like `CLAUDE.md` are virtual renders of `AGENTS.md` and are never written to disk.) `--export` writes the registry to the committed file `condash-apps.json` instead — once that file exists, `sync-docs` reads the table from it, making the committed table reproducible from the repository alone. Re-run `--export` after `add` / `set` / `rename` to refresh it. |
 | `validate [--fix]` | Check every README `apps:` value resolves to a known `#handle` or existing path. `--fix` canonicalises every resolvable value (bare names and aliases alike), leaving only the unresolvable ones for a human. |
 
 → Schema details for `repositories[]` and `retired_apps` are in **[Config files → repositories](../reference/config.md#repositories)**. The full CLI surface is in **[CLI → applications](../reference/cli.md#applications)**. How handles read inside an `AGENTS.md` `## Specifics` section: **[AGENTS.md style guide](../reference/agents-md-style.md)**.

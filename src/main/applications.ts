@@ -16,12 +16,14 @@ import { promises as fs } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
+import { toPosix } from '../shared/path';
 import { parseHeader } from '../shared/header';
 import { atomicWrite } from './atomic-write';
 import {
   findRepoSlotByHandle,
   walkRepos,
   type ConfigShape,
+  type RawRepo,
   type RepoLookup,
   type RepoSlot,
 } from './config-walk';
@@ -59,21 +61,15 @@ function retiredApps(config: ConfigShape & { retired_apps?: RawRetiredApp[] }): 
 }
 
 /**
- * List every registered application — live repos (submodules included, each
- * carrying its parent's handle) followed by retired handles, in declaration
- * order. A submodule handle is first-class: a project may depend on a single
- * submodule of a repo, so validate/list/sync-docs must all resolve it (#335).
+ * Build the registry records from a config object — the walk every reader
+ * (list/validate/fix/sync-docs) shares. Split from {@link listApplications}
+ * so `sync-docs` can build the same records from the committed registry file
+ * (condash-apps.json) instead of the effective config, without a second
+ * derivation of the handle/alias/parent rules.
  */
-export async function listApplications(
-  conceptionPath: string,
-  settingsFile?: string,
-): Promise<AppRecord[]> {
-  const config = (await getEffectiveConceptionConfig(
-    conceptionPath,
-    settingsFile,
-  )) as ConfigShape & {
-    retired_apps?: RawRetiredApp[];
-  };
+export function listApplicationsFromConfig(
+  config: ConfigShape & { retired_apps?: RawRetiredApp[] },
+): AppRecord[] {
   const records: AppRecord[] = [];
   const live: RepoLookup[] = [];
   walkRepos(config, (entry) => {
@@ -110,6 +106,23 @@ export async function listApplications(
     });
   }
   return records;
+}
+
+/**
+ * List every registered application — live repos (submodules included, each
+ * carrying its parent's handle) followed by retired handles, in declaration
+ * order. A submodule handle is first-class: a project may depend on a single
+ * submodule of a repo, so validate/list/sync-docs must all resolve it (#335).
+ */
+export async function listApplications(
+  conceptionPath: string,
+  settingsFile?: string,
+): Promise<AppRecord[]> {
+  return listApplicationsFromConfig(
+    (await getEffectiveConceptionConfig(conceptionPath, settingsFile)) as ConfigShape & {
+      retired_apps?: RawRetiredApp[];
+    },
+  );
 }
 
 /** The path string as written in condash.json (relative when inside the
@@ -310,43 +323,64 @@ async function instructionsFile(cwd: string | undefined): Promise<string> {
 
 /**
  * Render the Apps table markdown from the live registry. Columns: the
- * `#handle`, the repo path (as configured), one line of purpose from the
- * registry's `purpose` field, the absolute path to the app's instruction file
- * (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an agent can open it
- * directly), and the conventional knowledge file
+ * `#handle`, the repo path (as configured), the path to the app's instruction
+ * file (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an agent can open
+ * it directly), and the conventional knowledge file
  * `knowledge/internal/<handle>.md`. Submodules render right after their parent
  * with a `↳`-prefixed App cell. Retired apps are omitted — the table
  * documents live apps only.
  *
- * The Purpose column exists so a reader does not need a second, hand-kept
- * table beside the generated one: a cell is empty until the registry carries a
- * `purpose`, and `applications set <handle> --purpose "…"` fills it.
+ * `workspaceRoot` is the frame the AGENTS.md cell renders in: relative to it
+ * when the instruction file sits inside the workspace (the common case — the
+ * same frame the Repo column already uses, so the cell reads as "this file,
+ * inside the repo this row names"), verbatim when it does not (an
+ * absolute-path repo outside the workspace has no relative form worth
+ * inventing). Committed output therefore never embeds a machine's home or
+ * workspace path (#575).
  */
-export async function renderAppsTable(records: AppRecord[]): Promise<string> {
+export async function renderAppsTable(
+  records: AppRecord[],
+  workspaceRoot?: string,
+): Promise<string> {
   const live = records.filter((r) => !r.retired);
   const lines = [
-    '| App | Repo | Purpose | AGENTS.md | Knowledge |',
-    '|-----|------|---------|-----------|-----------|',
+    '| App | Repo | AGENTS.md | Knowledge |',
+    '|-----|------|-----------|-----------|',
   ];
   for (const record of live) {
     const repo = record.path ?? '';
-    const agents = await instructionsFile(record.cwd);
+    const agents = asTablePath(await instructionsFile(record.cwd), workspaceRoot);
     const agentsCell = agents ? `\`${agents}\`` : '';
     const appCell = `${record.parent ? '↳ ' : ''}\`#${record.handle}\``;
     lines.push(
-      `| ${appCell} | \`${repo}\` | ${escapeCell(record.purpose)} | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
+      `| ${appCell} | \`${repo}\` | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
     );
   }
   return lines.join('\n');
 }
 
-/** One markdown table cell: pipes escaped, newlines flattened, empty when unset. */
-function escapeCell(value: string | undefined): string {
-  if (!value) return '';
-  return value
-    .replace(/\s*\n\s*/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim();
+/**
+ * The instruction-file path as the table renders it: workspace-relative when
+ * inside the workspace root, verbatim otherwise (an out-of-workspace repo is
+ * configured with an absolute path; that is the path it gets). Forward-slash
+ * form — the table is a shared, committed document, not a per-host shell
+ * string.
+ *
+ * Exported because the Windows case cannot be exercised from a POSIX
+ * checkout: there, `resolve()` produces backslash paths, so the prefix check
+ * must compare both sides in posix form — a native-separator check never
+ * matches and the cell silently renders absolute, defeating the
+ * reproducibility axis (#575) on that platform. Pure string work; the unit
+ * test pins it with Windows-shaped input directly.
+ */
+export function asTablePath(abs: string, workspaceRoot: string | undefined): string {
+  if (!abs) return '';
+  const posixAbs = toPosix(abs);
+  if (workspaceRoot) {
+    const posixRoot = toPosix(workspaceRoot);
+    if (posixAbs.startsWith(`${posixRoot}/`)) return posixAbs.slice(posixRoot.length + 1);
+  }
+  return posixAbs;
 }
 
 /** Outcome of a {@link syncAppsDocs} run. */
@@ -357,12 +391,96 @@ export interface SyncDocsResult {
   file: string;
 }
 
+/** The committed registry file, at the conception root. When it exists,
+ *  `sync-docs` reads the generated table's registry from here instead of the
+ *  gitignored `.condash/settings.json`, so the committed table is a function
+ *  of the repository alone (#575). Named after its producer and content —
+ *  `condash.json` is legacy config and must not be shadowed. */
+const COMMITTED_REGISTRY_FILE = 'condash-apps.json';
+
+/** The committed registry file's parsed body. */
+interface CommittedRegistry {
+  repositories?: RawRepo[];
+  retired_apps?: RawRetiredApp[];
+}
+
+/**
+ * Read `<conception>/condash-apps.json`, the optional committed registry.
+ * Returns `null` when absent — today's settings-driven behaviour. A present
+ * but invalid file throws: the file's whole point is that the table is
+ * reproducible, so a half-broken one must surface as an error, never fall
+ * back silently to a machine-local table.
+ */
+async function readCommittedAppsRegistry(
+  conceptionPath: string,
+): Promise<CommittedRegistry | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(resolve(conceptionPath, COMMITTED_REGISTRY_FILE), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+  // Same schema discipline as the settings registry — the shared zod schemas
+  // are lazy-imported so a settings-only sync-docs never constructs them.
+  const { parseCommittedAppsRegistry } = await import('./config-schema');
+  return parseCommittedAppsRegistry(raw);
+}
+
+/** Outcome of an {@link exportAppsRegistry} run. */
+export interface ExportAppsRegistryResult {
+  file: string;
+  /** Live entries written (`repositories[]`, section markers excluded). */
+  live: number;
+  /** Retired handles written. */
+  retired: number;
+}
+
+/**
+ * Write the committed registry file (`condash-apps.json`, at the conception
+ * root) from the current settings registry — the one-command adoption of the
+ * committed-source mode. Only the two registry keys are exported: per-machine
+ * keys (`workspace_path`, tasks, paths) never enter a committed file. The
+ * serialised body is validated with the same schema `sync-docs` reads the
+ * file with before it lands, so an export can never produce a file the next
+ * sync-docs refuses.
+ */
+export async function exportAppsRegistry(
+  conceptionPath: string,
+): Promise<ExportAppsRegistryResult> {
+  const config = (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape & {
+    retired_apps?: RawRetiredApp[];
+  };
+  const body = {
+    repositories: config.repositories ?? [],
+    retired_apps: config.retired_apps ?? [],
+  };
+  const json = `${JSON.stringify(body, null, 2)}\n`;
+  const { parseCommittedAppsRegistry } = await import('./config-schema');
+  parseCommittedAppsRegistry(json);
+  const file = resolve(conceptionPath, COMMITTED_REGISTRY_FILE);
+  await atomicWrite(file, json);
+  return {
+    file,
+    // Table rows, not top-level entries: submodules each render one.
+    live: listApplicationsFromConfig(body).filter((record) => !record.retired).length,
+    retired: body.retired_apps.length,
+  };
+}
+
 /**
  * Regenerate the Apps table inside `AGENTS.md` between the
  * `condash:apps:start` / `:end` sentinels. AGENTS.md is the single source —
  * CLAUDE.md is compiled from it downstream and is never written here. Returns
  * `missingSentinels` when the markers are absent (the bootstrap must add them
  * once).
+ *
+ * Registry source: `<conception>/condash-apps.json` when it exists (the
+ * committed, machine-independent table — settings' `repositories` /
+ * `retired_apps` are ignored for the table), else the effective config as
+ * before. `workspace_path` stays the one per-machine input in both modes: it
+ * is the coordinate system relative repo paths resolve against, and the
+ * workspace-relative rendering cancels it out of the committed output.
  */
 export async function syncAppsDocs(conceptionPath: string): Promise<SyncDocsResult> {
   const file = resolve(conceptionPath, 'AGENTS.md');
@@ -377,8 +495,24 @@ export async function syncAppsDocs(conceptionPath: string): Promise<SyncDocsResu
   if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
     return { changed: false, missingSentinels: true, file };
   }
-  const records = await listApplications(conceptionPath);
-  const table = await renderAppsTable(records);
+  const settings = (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape & {
+    retired_apps?: RawRetiredApp[];
+  };
+  const committed = await readCommittedAppsRegistry(conceptionPath);
+  let records: AppRecord[];
+  let workspaceRoot: string | undefined;
+  if (committed) {
+    workspaceRoot = settings.workspace_path ?? conceptionPath;
+    records = listApplicationsFromConfig({
+      workspace_path: workspaceRoot,
+      repositories: committed.repositories,
+      retired_apps: committed.retired_apps,
+    });
+  } else {
+    records = listApplicationsFromConfig(settings);
+    workspaceRoot = settings.workspace_path;
+  }
+  const table = await renderAppsTable(records, workspaceRoot);
   const before = raw.slice(0, startIdx + APPS_TABLE_START.length);
   const after = raw.slice(endIdx);
   const next = `${before}\n\n${table}\n\n${after}`;

@@ -41,7 +41,8 @@ export interface RepoLookup {
   aliases?: string[];
   /** Optional human-friendly label. Surfaced as a card subtitle when set. */
   label?: string;
-  /** One line on what the app is for — the AGENTS.md table's Purpose cell. */
+  /** One line on what the app is for. Per-app metadata — the generated
+   *  Apps table does not render it (its Purpose column was removed). */
   purpose?: string;
   /** Parent name when this entry is a submodule. */
   parent?: string;

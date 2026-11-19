@@ -94,6 +94,7 @@ describe('argv-level boolean-flag smoke tests (real parseArgs per noun)', () => 
     { argv: ['search', 'query', '--json'], boolFlags: ['json'] },
     { argv: ['repos', 'list', '--include-worktrees'], boolFlags: ['include-worktrees'] },
     { argv: ['applications', 'validate', '--fix'], boolFlags: ['fix'] },
+    { argv: ['applications', 'sync-docs', '--export'], boolFlags: ['export'] },
     {
       argv: ['worktrees', 'setup', 'branch-x', '--no-env', '--no-install'],
       boolFlags: ['no-env', 'no-install'],
