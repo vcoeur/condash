@@ -40,10 +40,16 @@ describe('the pre-push gate stays wired up', () => {
     // git refuses to run it ("cannot run .githooks/pre-push: Permission
     // denied") and the push proceeds ungated.
     expect(statSync(join(ROOT, '.githooks', 'pre-push')).mode & 0o111).not.toBe(0);
-    expect(hook).toContain('CONDASH_SKIP_GATE');
-    // The hook must consume git's stdin ref lines and skip when nothing new
-    // is sent (deletion: null new sha; no-op: remote sha equals new sha).
+    // The env check itself, not the bare variable name — the failure-path
+    // message also mentions CONDASH_SKIP_GATE, so a substring match stays
+    // green if only the check disappears.
+    expect(hook).toMatch(/\[ "\$\{CONDASH_SKIP_GATE:-\}" = "1" \]/);
+    // The hook must consume git's stdin ref lines and skip only when every
+    // line is a no-op or deletion (deletion: all-zero local sha; no-op:
+    // remote sha equals local sha) — a mixed push that sends commits runs
+    // the gate.
     expect(hook).toMatch(/while read -r/);
+    expect(hook).toMatch(/sends_commits=0/);
     expect(hook).toContain('make gate');
   });
 
@@ -52,5 +58,12 @@ describe('the pre-push gate stays wired up', () => {
     expect(devLaunch).toContain('CONDASH_SKIP_GATE');
     expect(devLaunch).toContain('umask 022');
     expect(devLaunch).toContain('core.hooksPath');
+  });
+
+  it('test-unit pins the npm script so the local gate cannot drift from CI', () => {
+    // Defense in depth: CI's test-unit invocation is separately pinned by
+    // tests/vitest-split-guard.test.ts; this pins the Makefile recipe the
+    // gate calls.
+    expect(makefile).toMatch(/^test-unit:\n\tnpm run test:unit$/m);
   });
 });
