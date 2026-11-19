@@ -58,17 +58,25 @@ describe('the pre-push gate stays wired up', () => {
     // in the real repo. The hook must strip the handoff before `make gate`
     // (2026-11-19: without the unset, a gated push's vitest run appended
     // fixture commits to the branch being pushed).
-    expect(hook).toMatch(/unset GIT_DIR/);
+    expect(hook).toMatch(/^unset GIT_DIR/m);
     // Assert against the unset command itself, not bare names: the hook's
     // comment also names some of these variables, and a name kept only in
-    // the comment must not keep this guard green.
-    const unsetBlock = hook.match(/unset GIT_DIR[\s\S]*?GIT_PREFIX\s*$/m)?.[0] ?? '';
+    // the comment must not keep this guard green. The array pins every
+    // member of the unset list — the five git never actually exports are
+    // pinned too, so a future "trim the vars git doesn't export" cleanup
+    // cannot silently weaken the object-store redirection defense.
+    const unsetBlock = hook.match(/^unset GIT_DIR[\s\S]*?GIT_PREFIX\s*$/m)?.[0] ?? '';
     expect(unsetBlock).not.toBe('');
     for (const envVar of [
       'GIT_WORK_TREE',
       'GIT_INDEX_FILE',
       'GIT_COMMON_DIR',
       'GIT_CONFIG_PARAMETERS',
+      'GIT_OBJECT_DIRECTORY',
+      'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+      'GIT_GRAFT_FILE',
+      'GIT_CONFIG',
+      'GIT_CONFIG_COUNT',
     ]) {
       expect(unsetBlock).toContain(envVar);
     }

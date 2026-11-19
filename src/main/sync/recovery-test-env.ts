@@ -32,9 +32,10 @@ export const RECOVERY_TEST_PARENT_ENV = 'CONDASH_VITEST_RECOVERY_PARENT';
 // The default home base is resolved once per process: `open` and `close`
 // must agree on where a scope lives, so a mid-run fallback decision cannot
 // send open to one directory and close to another. An explicit
-// RECOVERY_TEST_PARENT_ENV value is used as-is and never cached — if the
-// test host points it somewhere unusable, the suites fail loudly there,
-// which is the accommodation's contract.
+// RECOVERY_TEST_PARENT_ENV value participates in that same one-shot
+// resolution: it is used as-is, and if the test host points it somewhere
+// unusable, the suites fail loudly there on the first open — which is the
+// accommodation's contract.
 let cachedBase: string | undefined;
 
 function base(): string {
@@ -53,9 +54,10 @@ function resolveBase(): string {
     // A test host whose home root is not writable (e.g. an agent sandbox
     // mounting /home read-only) cannot hold the base; fall back to the
     // state directory, which such sandboxes keep writable. The ancestor
-    // gate accepts the chain: every element is user-owned and private.
-    // If the fallback is unusable too, its error surfaces — same loud
-    // failure as before, in a host where neither location works.
+    // gate accepts the chain: every element is user-owned, and the base
+    // itself is created 0700 below. If the fallback is unusable too, its
+    // error surfaces — same loud failure as before, in a host where
+    // neither location works.
     const stateBase = join(
       process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'),
       'condash-recovery-vitest',
