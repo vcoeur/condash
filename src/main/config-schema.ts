@@ -132,6 +132,9 @@ const submoduleRepoEntry: z.ZodType<RawSubmoduleRepo> = z.union([
       name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
+      /** @deprecated No effect on generated output since v4.139.0 (the Apps
+       *  table's Purpose column was removed); still validated + stored for
+       *  compatibility. */
       purpose: z.string().min(1).optional(),
       aliases: z.array(z.string().min(1)).optional(),
       run: z.string().optional(),
@@ -169,8 +172,9 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
       name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
-      /** One line on what the app is for — per-app metadata; the generated
-       *  Apps table does not render it. */
+      /** @deprecated No effect on generated output since v4.139.0 (the Apps
+       *  table's Purpose column was removed); still validated + stored for
+       *  compatibility. */
       purpose: z.string().min(1).optional(),
       /** Legacy spellings that resolve to this handle — drives the cleanup
        *  rewriter and lets `applications validate` auto-suggest a fix. */

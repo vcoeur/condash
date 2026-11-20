@@ -35,7 +35,10 @@ import { pathExists } from './fs-helpers';
 export interface AppRecord {
   handle: string;
   label?: string;
-  /** One line on what the app is for, from the registry. Empty when unset. */
+  /** One line on what the app is for, from the registry. Empty when unset.
+   *  @deprecated No effect on generated output since v4.139.0 (the Apps
+   *  table's Purpose column was removed); still validated + stored for
+   *  compatibility. */
   purpose?: string;
   /** Configured path (as written in condash.json) for live apps; undefined for retired. */
   path?: string;
@@ -469,6 +472,21 @@ export async function exportAppsRegistry(
 }
 
 /**
+ * When the committed registry file exists, re-export it from the settings
+ * registry in the same operation as an add / set / rename (#575 follow-up):
+ * the file is the active table source, so a mutation must never leave it
+ * drifted from the settings it was just written to. Same validation as
+ * `--export` — the serialised body is checked before the atomic write. When
+ * the file does NOT exist, nothing is created implicitly (adoption stays an
+ * explicit `sync-docs --export`), and the AGENTS.md table is never touched
+ * here — that remains `sync-docs`' job.
+ */
+async function refreshCommittedRegistry(conceptionPath: string): Promise<void> {
+  if (!(await pathExists(resolve(conceptionPath, COMMITTED_REGISTRY_FILE)))) return;
+  await exportAppsRegistry(conceptionPath);
+}
+
+/**
  * Regenerate the Apps table inside `AGENTS.md` between the
  * `condash:apps:start` / `:end` sentinels. AGENTS.md is the single source —
  * CLAUDE.md is compiled from it downstream and is never written here. Returns
@@ -559,9 +577,12 @@ export async function addApplication(
     const repos = (config.repositories ??= []);
     const entry: Record<string, unknown> = { handle, path: input.path };
     if (input.label) entry.label = input.label;
+    // Deprecated config surface (no consumer since v4.139.0 — the table's
+    // Purpose column was removed); still written while the field validates.
     if (input.purpose) entry.purpose = input.purpose;
     repos.push(entry);
   });
+  await refreshCommittedRegistry(conceptionPath);
 }
 
 /** Update a live application's label, purpose or path, keyed by handle. */
@@ -583,6 +604,7 @@ export async function setApplication(
     // An empty --purpose clears the cell rather than writing a blank string.
     if (patch.purpose !== undefined) obj.purpose = patch.purpose || undefined;
   });
+  await refreshCommittedRegistry(conceptionPath);
 }
 
 /**
@@ -681,6 +703,7 @@ export async function renameApplication(
       rewritten.push(readme);
     }
   }
+  await refreshCommittedRegistry(conceptionPath);
   return { oldHandle, newHandle, readmesRewritten: rewritten };
 }
 

@@ -452,6 +452,89 @@ describe('committed registry (condash-apps.json)', () => {
   });
 });
 
+describe('committed registry auto-refresh (#628 follow-up)', () => {
+  function readCommitted(): string {
+    return readFileSync(join(tmp, 'condash-apps.json'), 'utf8');
+  }
+
+  function writeCommittedRegistry(body: Record<string, unknown>): void {
+    writeFileSync(join(tmp, 'condash-apps.json'), JSON.stringify(body, null, 2) + '\n');
+  }
+
+  it('add / set / rename refresh an existing committed registry in the same operation', async () => {
+    writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
+    writeCommittedRegistry({
+      repositories: [{ handle: 'condash', name: 'condash' }],
+      retired_apps: [],
+    });
+
+    await addApplication(tmp, { handle: 'fovea', path: 'fovea' });
+    expect(JSON.parse(readCommitted())).toEqual({
+      repositories: [
+        { handle: 'condash', name: 'condash' },
+        { handle: 'fovea', path: 'fovea' },
+      ],
+      retired_apps: [],
+    });
+
+    await setApplication(tmp, 'fovea', { label: 'Fovea' });
+    expect(JSON.parse(readCommitted())).toMatchObject({
+      repositories: [{}, { handle: 'fovea', path: 'fovea', label: 'Fovea' }],
+    });
+
+    await renameApplication(tmp, 'fovea', 'fovea-web');
+    expect(JSON.parse(readCommitted())).toMatchObject({
+      repositories: [{}, { handle: 'fovea-web', aliases: ['fovea'] }],
+    });
+  });
+
+  it('a rejected mutation leaves the committed file untouched', async () => {
+    writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
+    writeCommittedRegistry({ repositories: [{ handle: 'condash', name: 'condash' }] });
+    const before = readCommitted();
+
+    await expect(addApplication(tmp, { handle: 'condash', path: 'x' })).rejects.toThrow(/exists/);
+    await expect(setApplication(tmp, 'ghost', { label: 'x' })).rejects.toThrow(
+      /no live app #ghost/,
+    );
+
+    expect(readCommitted()).toBe(before);
+  });
+
+  it('without the committed file, add/set/rename create nothing', async () => {
+    writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
+
+    await addApplication(tmp, { handle: 'fovea', path: 'fovea' });
+    await setApplication(tmp, 'fovea', { label: 'Fovea' });
+    await renameApplication(tmp, 'fovea', 'fovea-web');
+
+    expect(() => readCommitted()).toThrow();
+  });
+
+  it('a settings registry carrying purpose still validates and generates the same table', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'kasten', path: 'notes.vcoeur.com', purpose: 'personal zettelkasten' },
+      ],
+    });
+
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal), tmp);
+    // The four-column shape, and the purpose value never renders.
+    expect(table).toContain('| App | Repo | AGENTS.md | Knowledge |');
+    expect(table).toContain('| `#kasten` | `notes.vcoeur.com` |');
+    expect(table).not.toContain('zettelkasten');
+
+    // The field keeps round-tripping through --export — the schema still
+    // accepts it (deprecated, not removed).
+    await exportAppsRegistry(tmp);
+    const written = JSON.parse(readCommitted()) as { repositories: Array<Record<string, unknown>> };
+    expect(written.repositories[0]).toMatchObject({
+      handle: 'kasten',
+      purpose: 'personal zettelkasten',
+    });
+  });
+});
+
 describe('rewriteAppsRefs', () => {
   it('maps bare and quoted list items, leaving the rest intact', () => {
     const raw = [
